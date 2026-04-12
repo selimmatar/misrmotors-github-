@@ -1,0 +1,21 @@
+-- Drop all existing tables in the correct order (respecting foreign key constraints)
+DROP TABLE IF EXISTS ar_payments CASCADE;
+DROP TABLE IF EXISTS ap_payments CASCADE;
+DROP TABLE IF EXISTS collection_transactions CASCADE;
+DROP TABLE IF EXISTS payment_transactions CASCADE;
+DROP TABLE IF EXISTS inventory_transactions CASCADE;
+DROP TABLE IF EXISTS balance_transactions CASCADE;
+DROP TABLE IF EXISTS balance_entries CASCADE;
+DROP TABLE IF EXISTS customer_invoices CASCADE;
+DROP TABLE IF EXISTS supplier_invoices CASCADE;
+DROP TABLE IF EXISTS sales_order_items CASCADE;
+DROP TABLE IF EXISTS sales_orders CASCADE;
+DROP TABLE IF EXISTS purchase_order_items CASCADE;
+DROP TABLE IF EXISTS purchase_orders CASCADE;
+DROP TABLE IF EXISTS inventory CASCADE;
+DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS suppliers CASCADE;
+DROP TABLE IF EXISTS accounts_receivable CASCADE;
+DROP TABLE IF EXISTS accounts_payable CASCADE;
+DROP TABLE IF EXISTS users CASCADE;

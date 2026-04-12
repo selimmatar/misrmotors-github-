@@ -1,0 +1,100 @@
+{
+  "name": "Payment Reminder Email Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "payment-reminders",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook - Receive Reminders",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "payment-reminders"
+    },
+    {
+      "parameters": {
+        "jsCode": "const reminders = $input.first().json.reminders || [];\nconst summary = $input.first().json.summary || {};\nreturn reminders.map(reminder => ({ json: { ...reminder, summary } }));"
+      },
+      "id": "extract-reminders",
+      "name": "Extract Reminders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst html = `<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Payment Reminder</title></head><body style=\"margin:0;padding:20px;font-family:Arial,sans-serif;background:#f4f4f5\"><div style=\"max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden\"><div style=\"background:linear-gradient(135deg,#0ea5e9,#0284c7);padding:30px;text-align:center\"><h1 style=\"color:#fff;margin:0\">Payment Reminder</h1></div><div style=\"padding:30px\"><p>Dear <strong>${r.customerName}</strong>,</p><p>This is a friendly reminder that you have an upcoming payment due:</p><div style=\"background:#f8fafc;padding:20px;border-radius:8px;margin:20px 0\"><p><strong>Invoice:</strong> #${r.invoiceId}</p><p><strong>Amount Due:</strong> $${r.amountDue?.toFixed(2) || '0.00'}</p><p><strong>Due Date:</strong> ${r.dueDate}</p><p><strong>Days Until Due:</strong> ${r.daysUntilDue} days</p></div><p>Please ensure payment is made by the due date to avoid any late fees.</p><p>If you have already made this payment, please disregard this reminder.</p><p style=\"margin-top:30px\">Best regards,<br><strong>Your Company Name</strong></p></div><div style=\"background:#f1f5f9;padding:20px;text-align:center;font-size:12px;color:#64748b\"><p>Questions? Contact us at accounts@yourcompany.com</p></div></div></body></html>`;\nreturn [{ json: { ...r, emailHtml: html } }];"
+      },
+      "id": "build-email",
+      "name": "Build Email HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "payments@yourcompany.com",
+        "toEmail": "={{ $json.customerEmail }}",
+        "subject": "=Payment Reminder: Invoice #{{ $json.invoiceId }} - Due {{ $json.dueDate }}",
+        "emailType": "html",
+        "html": "={{ $json.emailHtml }}"
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [910, 300],
+      "credentials": {
+        "smtp": {
+          "id": "YOUR_SMTP_CREDENTIAL_ID",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = {\n  success: true,\n  emailsSent: items.length,\n  timestamp: new Date().toISOString(),\n  details: items.map(item => ({\n    customerName: item.json.customerName,\n    customerEmail: item.json.customerEmail,\n    invoiceId: item.json.invoiceId,\n    status: 'sent'\n  }))\n};\nreturn [{ json: results }];"
+      },
+      "id": "collect-results",
+      "name": "Collect Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1350, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Receive Reminders": {
+      "main": [[{ "node": "Extract Reminders", "type": "main", "index": 0 }]]
+    },
+    "Extract Reminders": {
+      "main": [[{ "node": "Build Email HTML", "type": "main", "index": 0 }]]
+    },
+    "Build Email HTML": {
+      "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]]
+    },
+    "Send Email": {
+      "main": [[{ "node": "Collect Results", "type": "main", "index": 0 }]]
+    },
+    "Collect Results": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

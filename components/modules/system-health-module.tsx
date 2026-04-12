@@ -1,0 +1,221 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Loader2, CheckCircle2, XCircle, AlertTriangle, RefreshCw } from "lucide-react"
+import { useI18n } from "@/lib/i18n-context"
+
+interface HealthCheck {
+  name: string
+  status: "pass" | "fail" | "warn"
+  message: string
+  duration?: number
+  details?: any
+}
+
+interface HealthReport {
+  timestamp: string
+  summary: {
+    total: number
+    passed: number
+    failed: number
+    warnings: number
+    healthy: boolean
+  }
+  checks: HealthCheck[]
+}
+
+export function SystemHealthModule() {
+  const { t } = useI18n()
+  const [loading, setLoading] = useState(false)
+  const [report, setReport] = useState<HealthReport | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set())
+
+  const runHealthCheck = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/system-health")
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      const data = await response.json()
+      setReport(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    runHealthCheck()
+  }, [])
+
+  const toggleExpand = (name: string) => {
+    const next = new Set(expandedChecks)
+    if (next.has(name)) {
+      next.delete(name)
+    } else {
+      next.add(name)
+    }
+    setExpandedChecks(next)
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "pass":
+        return <CheckCircle2 className="h-5 w-5 text-green-500" />
+      case "fail":
+        return <XCircle className="h-5 w-5 text-red-500" />
+      case "warn":
+        return <AlertTriangle className="h-5 w-5 text-yellow-500" />
+      default:
+        return null
+    }
+  }
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "pass":
+        return <Badge className="bg-green-100 text-green-800">PASS</Badge>
+      case "fail":
+        return <Badge className="bg-red-100 text-red-800">FAIL</Badge>
+      case "warn":
+        return <Badge className="bg-yellow-100 text-yellow-800">WARN</Badge>
+      default:
+        return null
+    }
+  }
+
+  // Group checks by category
+  const groupedChecks = report?.checks.reduce(
+    (acc, check) => {
+      let category = "Other"
+      if (check.name.startsWith("Database")) category = "Database"
+      else if (check.name.startsWith("Table:")) category = "Tables"
+      else if (check.name.startsWith("API:")) category = "APIs"
+      else if (check.name.startsWith("Workflow:")) category = "Workflows"
+
+      if (!acc[category]) acc[category] = []
+      acc[category].push(check)
+      return acc
+    },
+    {} as Record<string, HealthCheck[]>,
+  )
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">{t("system-health.title") || "System Health"}</h2>
+          <p className="text-muted-foreground">
+            {t("system-health.description") || "Monitor system health and data integrity"}
+          </p>
+        </div>
+        <Button onClick={runHealthCheck} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+          {t("action.refresh") || "Refresh"}
+        </Button>
+      </div>
+
+      {error && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-red-800">
+              <XCircle className="h-5 w-5" />
+              <span>{error}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {report && (
+        <>
+          {/* Summary Card */}
+          <Card className={report.summary.healthy ? "border-green-200" : "border-red-200"}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {report.summary.healthy ? (
+                  <CheckCircle2 className="h-6 w-6 text-green-500" />
+                ) : (
+                  <XCircle className="h-6 w-6 text-red-500" />
+                )}
+                {report.summary.healthy ? "System Healthy" : "Issues Detected"}
+              </CardTitle>
+              <CardDescription>Last checked: {new Date(report.timestamp).toLocaleString()}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold">{report.summary.total}</div>
+                  <div className="text-sm text-muted-foreground">Total Checks</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">{report.summary.passed}</div>
+                  <div className="text-sm text-muted-foreground">Passed</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-600">{report.summary.failed}</div>
+                  <div className="text-sm text-muted-foreground">Failed</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-yellow-600">{report.summary.warnings}</div>
+                  <div className="text-sm text-muted-foreground">Warnings</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Detailed Checks by Category */}
+          {groupedChecks &&
+            Object.entries(groupedChecks).map(([category, checks]) => (
+              <Card key={category}>
+                <CardHeader>
+                  <CardTitle>{category}</CardTitle>
+                  <CardDescription>
+                    {checks.filter((c) => c.status === "pass").length}/{checks.length} passed
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {checks.map((check, idx) => (
+                      <div key={idx} className="border rounded-lg">
+                        <div
+                          className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50"
+                          onClick={() => check.details && toggleExpand(check.name)}
+                        >
+                          <div className="flex items-center gap-3">
+                            {getStatusIcon(check.status)}
+                            <span className="font-medium">{check.name}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {check.duration && (
+                              <span className="text-sm text-muted-foreground">{check.duration}ms</span>
+                            )}
+                            {getStatusBadge(check.status)}
+                          </div>
+                        </div>
+                        <div className="px-3 pb-3 text-sm text-muted-foreground">{check.message}</div>
+                        {check.details && expandedChecks.has(check.name) && (
+                          <div className="px-3 pb-3">
+                            <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
+                              {JSON.stringify(check.details, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+        </>
+      )}
+    </div>
+  )
+}
