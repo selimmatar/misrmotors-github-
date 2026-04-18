@@ -4,7 +4,10 @@ import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-const adminClient = createAdminClient()
+// Create admin client lazily to ensure env vars are available
+function getAdmin() {
+  return createAdminClient()
+}
 
 export async function GET(request: Request) {
   // Use admin client to bypass RLS for reading returns
@@ -12,7 +15,7 @@ export async function GET(request: Request) {
   const status = searchParams.get("status")
   
   try {
-    let query = adminClient
+    let query = getAdmin()
       .from("product_returns")
       .select(`
         *,
@@ -33,7 +36,7 @@ export async function GET(request: Request) {
     let soLookup: Record<number, any> = {}
     
     if (soIds.length > 0) {
-      const { data: soData } = await adminClient
+      const { data: soData } = await getAdmin()
         .from("sales_orders")
         .select("so_id, so_number, customer_id, customers(customer_name)")
         .in("so_id", soIds)
@@ -110,7 +113,7 @@ export async function POST(request: Request) {
     } = body
     
     // Create the return record - using correct column names from schema
-    const { data: returnData, error: returnError } = await adminClient
+    const { data: returnData, error: returnError } = await getAdmin()
       .from("product_returns")
       .insert({
         permit_id: permitId || `RET-${Date.now()}`,
@@ -145,7 +148,7 @@ export async function POST(request: Request) {
           is_outsourced: item.isOutsourced || !item.productId || false,
         }))
       
-      const { error: itemsError } = await adminClient
+      const { error: itemsError } = await getAdmin()
         .from("return_items")
         .insert(returnItems)
       
@@ -198,7 +201,7 @@ export async function PUT(request: Request) {
     }
     
     // Use admin client to bypass RLS for updating returns
-    const { data: returnData, error: returnError } = await adminClient
+    const { data: returnData, error: returnError } = await getAdmin()
       .from("product_returns")
       .update(updateData)
       .eq("return_id", returnId)
@@ -240,7 +243,7 @@ export async function PUT(request: Request) {
         
         if (isOutsourced) {
           // Handle outsourced items - check if outsourced item with same name exists
-          const { data: existingOutsourced } = await adminClient
+          const { data: existingOutsourced } = await getAdmin()
             .from("inventory")
             .select("*")
             .eq("warehouse_id", warehouseId)
@@ -251,7 +254,7 @@ export async function PUT(request: Request) {
           if (existingOutsourced) {
             // Update existing outsourced inventory
             const newQuantity = (existingOutsourced.quantity || 0) + (assignment.quantityReturned || 0)
-            const { error: updateError } = await adminClient
+            const { error: updateError } = await getAdmin()
               .from("inventory")
               .update({ quantity: newQuantity })
               .eq("inventory_id", existingOutsourced.inventory_id)
@@ -263,7 +266,7 @@ export async function PUT(request: Request) {
             }
           } else {
             // Create new outsourced inventory record
-            const { error: insertError } = await adminClient
+            const { error: insertError } = await getAdmin()
               .from("inventory")
               .insert({
                 product_id: null,
@@ -283,7 +286,7 @@ export async function PUT(request: Request) {
           }
         } else {
           // Regular product - find or create inventory record
-          const { data: invData } = await adminClient
+          const { data: invData } = await getAdmin()
             .from("inventory")
             .select("*")
             .eq("product_id", productId)
@@ -293,7 +296,7 @@ export async function PUT(request: Request) {
           if (invData) {
             // Update existing inventory - just update quantity
             const newQuantity = (invData.quantity || 0) + (assignment.quantityReturned || 0)
-            const { error: updateError } = await adminClient
+            const { error: updateError } = await getAdmin()
               .from("inventory")
               .update({ quantity: newQuantity })
               .eq("inventory_id", invData.inventory_id)
@@ -305,7 +308,7 @@ export async function PUT(request: Request) {
             }
           } else {
             // Create new inventory record
-            const { error: insertError } = await adminClient
+            const { error: insertError } = await getAdmin()
               .from("inventory")
               .insert({
                 product_id: productId,
@@ -338,7 +341,7 @@ export async function PUT(request: Request) {
         }
         
         // Get current inventory for product in assigned warehouse
-        const { data: invData } = await adminClient
+        const { data: invData } = await getAdmin()
           .from("inventory")
           .select("*")
           .eq("product_id", productId)
@@ -347,7 +350,7 @@ export async function PUT(request: Request) {
         
         if (invData) {
           // Update existing inventory - just update quantity
-          const { error: updateErr } = await adminClient
+          const { error: updateErr } = await getAdmin()
             .from("inventory")
             .update({ quantity: (invData.quantity || 0) + (item.quantityReturned || 0) })
             .eq("inventory_id", invData.inventory_id)
@@ -359,7 +362,7 @@ export async function PUT(request: Request) {
           }
         } else {
           // Create new inventory record
-          const { error: insertErr } = await adminClient
+          const { error: insertErr } = await getAdmin()
             .from("inventory")
             .insert({
               product_id: productId,
@@ -376,7 +379,7 @@ export async function PUT(request: Request) {
         }
         
         // Mark item as restocked
-        await adminClient
+        await getAdmin()
           .from("return_items")
           .update({ restocked: true })
           .eq("return_item_id", item.id)

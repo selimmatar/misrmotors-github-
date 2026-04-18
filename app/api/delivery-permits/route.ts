@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
           allocatedQuantity: item.allocated_quantity,
           allocationNotes: item.allocation_notes,
           supplierId: item.supplier_id?.toString() || "",
-          supplierName: item.suppliers?.supplier_name || item.outsourced_name || "",
+          supplierName: item.suppliers?.supplier_name || "",
           outsourcedName: item.outsourced_name || "",
         })),
         files: files.map((file: any) => ({

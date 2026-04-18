@@ -143,10 +143,11 @@ export function WarehouseDeliveryModule() {
           // Create a virtual "warehouse" entry for the supplier
           // We'll store the supplier name in warehouseName and use a special ID format
           // API returns: supplierName (from suppliers table join), outsourcedName (item name)
-          const supplierName = item.supplierName || item.outsourcedName || "Outsourced Supplier"
+          // If no supplier linked, show "External Supplier" instead of product name
+          const supplierName = item.supplierName || "External Supplier"
           const supplierId = item.supplierId || "outsourced"
           
-          console.log("[v0] Outsourced item data:", { supplierName: item.supplierName, outsourcedName: item.outsourcedName, supplierId: item.supplierId })
+          console.log("[v0] Outsourced item data:", { supplierName: item.supplierName, outsourcedName: item.outsourcedName, supplierId: item.supplierId, productName: item.itemNameSnapshot })
           
           availableWarehouses = [{
             warehouseId: `supplier_${supplierId}`,
@@ -170,7 +171,7 @@ export function WarehouseDeliveryModule() {
           allocations: item.warehouseId ? [{
             warehouseId: String(item.warehouseId),
             warehouseName: item.isOutsourced 
-              ? (item.supplierName || item.outsourcedName || "Outsourced Supplier")
+              ? (item.supplierName || "External Supplier")
               : (warehouses.find(w => w.id === item.warehouseId)?.name || ""),
             quantity: item.allocatedQuantity || item.quantity
           }] : defaultWh ? [{
@@ -562,7 +563,7 @@ export function WarehouseDeliveryModule() {
                                               <>
                                                 <span className="mr-1">Supplier:</span>
                                                 {whId.startsWith('supplier_') 
-                                                  ? (item.supplierName || item.outsourcedName || `Supplier`)
+                                                  ? (item.supplierName || "External Supplier")
                                                   : (warehouses.find(w => w.id === item.warehouseId)?.name || `WH-${item.warehouseId}`)
                                                 }
                                               </>
@@ -587,7 +588,7 @@ export function WarehouseDeliveryModule() {
                                               <>
                                                 <span className="mr-1">Supplier:</span>
                                                 {whId.startsWith('supplier_') 
-                                                  ? (itemGroup[0].supplierName || itemGroup[0].outsourcedName || `Supplier`)
+                                                  ? (itemGroup[0].supplierName || "External Supplier")
                                                   : (warehouses.find(w => w.id === itemGroup[0].warehouseId)?.name || `WH-${itemGroup[0].warehouseId}`)
                                                 }
                                               </>
@@ -1213,17 +1214,20 @@ export function WarehouseDeliveryModule() {
                     }
                     
                     // Debug: Log the warehouse assignments being sent
-                    const warehouseAssignments = selectedReturn.items?.map((item: any, idx: number) => ({
-                      itemIndex: idx,
-                      productId: item.productId,
-                      productName: item.productName,
-                      sku: item.sku,
-                      quantityReturned: item.quantityReturned,
-                      warehouseId: returnWarehouseSelections[`${idx}`] || null,
-                      condition: item.condition,
-                      reason: item.reason,
-                      isOutsourced: item.isOutsourced || false,
-                    }))
+                    const warehouseAssignments = selectedReturn.items?.map((item: any, idx: number) => {
+                      const selectedWarehouse = returnWarehouseSelections[`${idx}`]
+                      return {
+                        itemIndex: idx,
+                        productId: item.productId,
+                        productName: item.productName,
+                        sku: item.sku,
+                        quantityReturned: item.quantityReturned,
+                        warehouseId: selectedWarehouse && selectedWarehouse !== "" ? selectedWarehouse : null,
+                        condition: item.condition,
+                        reason: item.reason,
+                        isOutsourced: item.isOutsourced || false,
+                      }
+                    })
                     console.log("[v0] Warehouse assignments being sent:", JSON.stringify(warehouseAssignments, null, 2))
                     console.log("[v0] returnWarehouseSelections:", JSON.stringify(returnWarehouseSelections, null, 2))
                     
