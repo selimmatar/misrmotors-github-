@@ -212,7 +212,7 @@ export async function PUT(request: Request) {
     
     // Handle warehouse assignments from warehouse module (new format)
     // Use admin client to bypass RLS for inventory operations
-    console.log("[v0] Returns PUT: status =", status, ", warehouseAssignments =", warehouseAssignments?.length || 0, "items")
+    console.log("[v0] Returns PUT: status =", status, ", warehouseAssignments =", JSON.stringify(warehouseAssignments, null, 2))
     
     if ((status === "completed" || status === "received") && warehouseAssignments && warehouseAssignments.length > 0) {
       console.log("[v0] Returns: Processing", warehouseAssignments.length, "warehouse assignments")

@@ -1210,6 +1210,21 @@ export function WarehouseDeliveryModule() {
                       return
                     }
                     
+                    // Debug: Log the warehouse assignments being sent
+                    const warehouseAssignments = selectedReturn.items?.map((item: any, idx: number) => ({
+                      itemIndex: idx,
+                      productId: item.productId,
+                      productName: item.productName,
+                      sku: item.sku,
+                      quantityReturned: item.quantityReturned,
+                      warehouseId: returnWarehouseSelections[`${idx}`] || null,
+                      condition: item.condition,
+                      reason: item.reason,
+                      isOutsourced: item.isOutsourced || false,
+                    }))
+                    console.log("[v0] Warehouse assignments being sent:", JSON.stringify(warehouseAssignments, null, 2))
+                    console.log("[v0] returnWarehouseSelections:", JSON.stringify(returnWarehouseSelections, null, 2))
+                    
                     setProcessingReturn(true)
                     try {
                       const response = await fetch("/api/returns", {
@@ -1219,17 +1234,7 @@ export function WarehouseDeliveryModule() {
                           returnId: selectedReturn.id,
                           status: "completed",
                           processedBy: user?.name || "warehouse_manager",
-                          warehouseAssignments: selectedReturn.items?.map((item: any, idx: number) => ({
-                            itemIndex: idx,
-                            productId: item.productId,
-                            productName: item.productName,
-                            sku: item.sku,
-                            quantityReturned: item.quantityReturned,
-                            warehouseId: returnWarehouseSelections[`${idx}`] || null,
-                            condition: item.condition,
-                            reason: item.reason,
-                            isOutsourced: item.isOutsourced || false,
-                          })),
+                          warehouseAssignments,
                         }),
                       })
                       
