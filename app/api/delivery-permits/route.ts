@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
 
     const [itemsResult, filesResult] = await Promise.all([
       permitIds.length > 0
-        ? withRetry(() => supabase.from("delivery_permit_items").select("*").in("permit_id", permitIds))
+        ? withRetry(() => supabase.from("delivery_permit_items").select("*, suppliers:supplier_id (supplier_id, supplier_name)").in("permit_id", permitIds))
         : Promise.resolve({ data: [] }),
       permitIds.length > 0
         ? withRetry(() => supabase.from("delivery_permit_files").select("*").in("permit_id", permitIds))
@@ -167,6 +167,9 @@ export async function GET(request: NextRequest) {
           warehouseId: item.warehouse_id,
           allocatedQuantity: item.allocated_quantity,
           allocationNotes: item.allocation_notes,
+          supplierId: item.supplier_id?.toString() || "",
+          supplierName: item.suppliers?.supplier_name || item.outsourced_name || "",
+          outsourcedName: item.outsourced_name || "",
         })),
         files: files.map((file: any) => ({
           id: file.file_id?.toString(),

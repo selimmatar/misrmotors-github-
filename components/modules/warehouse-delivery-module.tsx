@@ -139,12 +139,14 @@ export function WarehouseDeliveryModule() {
         } else {
           // For outsourced items, find the supplier from the sales order
           // We need to get supplier info from the permit's sales order data
-          const soNumber = permit.soNumber
           
           // Create a virtual "warehouse" entry for the supplier
           // We'll store the supplier name in warehouseName and use a special ID format
-          const supplierName = item.outsourced_name || item.outsourcedName || item.supplier_name || item.supplierName || "Outsourced Supplier"
-          const supplierId = item.supplier_id || item.supplierId || "outsourced"
+          // API returns: supplierName (from suppliers table join), outsourcedName (item name)
+          const supplierName = item.supplierName || item.outsourcedName || "Outsourced Supplier"
+          const supplierId = item.supplierId || "outsourced"
+          
+          console.log("[v0] Outsourced item data:", { supplierName: item.supplierName, outsourcedName: item.outsourcedName, supplierId: item.supplierId })
           
           availableWarehouses = [{
             warehouseId: `supplier_${supplierId}`,
@@ -168,7 +170,7 @@ export function WarehouseDeliveryModule() {
           allocations: item.warehouseId ? [{
             warehouseId: String(item.warehouseId),
             warehouseName: item.isOutsourced 
-              ? (item.outsourced_name || item.outsourcedName || item.supplier_name || item.supplierName || "Outsourced Supplier")
+              ? (item.supplierName || item.outsourcedName || "Outsourced Supplier")
               : (warehouses.find(w => w.id === item.warehouseId)?.name || ""),
             quantity: item.allocatedQuantity || item.quantity
           }] : defaultWh ? [{
@@ -560,7 +562,7 @@ export function WarehouseDeliveryModule() {
                                               <>
                                                 <span className="mr-1">Supplier:</span>
                                                 {whId.startsWith('supplier_') 
-                                                  ? (item.outsourced_name || item.outsourcedName || item.supplier_name || item.supplierName || `Supplier`)
+                                                  ? (item.supplierName || item.outsourcedName || `Supplier`)
                                                   : (warehouses.find(w => w.id === item.warehouseId)?.name || `WH-${item.warehouseId}`)
                                                 }
                                               </>
@@ -585,7 +587,7 @@ export function WarehouseDeliveryModule() {
                                               <>
                                                 <span className="mr-1">Supplier:</span>
                                                 {whId.startsWith('supplier_') 
-                                                  ? (itemGroup[0].outsourced_name || itemGroup[0].outsourcedName || itemGroup[0].supplier_name || itemGroup[0].supplierName || `Supplier`)
+                                                  ? (itemGroup[0].supplierName || itemGroup[0].outsourcedName || `Supplier`)
                                                   : (warehouses.find(w => w.id === itemGroup[0].warehouseId)?.name || `WH-${itemGroup[0].warehouseId}`)
                                                 }
                                               </>

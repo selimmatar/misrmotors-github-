@@ -18,7 +18,8 @@ export async function GET() {
           customers:customer_id (customer_name, phone, email),
           sales_order_items (
             *,
-            products:product_id (product_name, sku)
+            products:product_id (product_name, sku),
+            suppliers:supplier_id (supplier_id, supplier_name)
           ),
           delivery_permits (
             permit_id,
@@ -103,6 +104,8 @@ export async function GET() {
           itemType: item.item_type || "stock",
           item_type: item.item_type || "stock",
           itemCategory: item.item_category || "EQUIPMENT",
+          supplierId: item.supplier_id?.toString() || "",
+          supplierName: item.suppliers?.supplier_name || "",
         })),
         deliveryPermits: (order.delivery_permits || []).map((dp: any) => ({
           permitId: dp.permit_id,
@@ -407,7 +410,7 @@ export async function POST(request: Request) {
           outsourced_name: isOutsourced ? item.productName : null,
           outsourced_unit: isOutsourced ? (item.outsourced_unit || "unit") : null,
           outsourced_description: outsourcedDesc,
-          // supplier_id column exists but not using it yet - can link to suppliers table in future
+          supplier_id: item.supplierId ? Number(item.supplierId) : null,
         }
       })
 
