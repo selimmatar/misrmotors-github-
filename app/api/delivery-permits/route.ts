@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
           allocatedQuantity: item.allocated_quantity,
           allocationNotes: item.allocation_notes,
           supplierId: item.supplier_id?.toString() || "",
-          supplierName: item.suppliers?.supplier_name || "",
+          supplierName: item.outsourced_name || "", // outsourced_name stores the supplier name
           outsourcedName: item.outsourced_name || "",
         })),
         files: files.map((file: any) => ({
@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
         unit_price: item.unitPrice,
         total: item.total,
         supplier_id: item.supplierId ? Number.parseInt(item.supplierId) : null,
-        outsourced_name: item.outsourcedName || null,
+        outsourced_name: item.supplierName || null, // Store supplier name here (item name is in item_name_snapshot)
       }))
 
       console.log("[v0] DP POST - Permit items to insert:", JSON.stringify(permitItems, null, 2))

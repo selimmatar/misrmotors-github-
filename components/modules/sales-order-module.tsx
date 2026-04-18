@@ -1497,14 +1497,20 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
             canSubmit = false
             break
           }
-          newDpItems.push({
-            productId: item.productId || item.product_id || null,
-            productName: item.productName || item.product_name || item.outsourced_name,
-            outsourced_name: item.outsourced_name || null,
-            quantity: quantity,
-            unitPrice: item.unitPrice || item.unit_price,
-            total: quantity * (item.unitPrice || item.unit_price),
-          })
+                  // Extract supplier name from outsourced_description if available
+                  const supplierInfo = item.outsourced_description || item.outsourcedDescription || ""
+                  const supplierMatch = supplierInfo.match(/Supplier:\s*([^|]+)/)
+                  const extractedSupplierName = supplierMatch ? supplierMatch[1].trim() : null
+                  
+                  newDpItems.push({
+                            productId: item.productId || item.product_id || null,
+                            productName: item.productName || item.product_name || item.outsourced_name,
+                            outsourcedName: item.outsourced_name || item.outsourcedName || null,
+                            supplierName: extractedSupplierName || item.supplier_name || item.supplierName || null,
+                            quantity: quantity,
+                            unitPrice: item.unitPrice || item.unit_price,
+                            total: quantity * (item.unitPrice || item.unit_price),
+                          })
         }
       }
     }
