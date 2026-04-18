@@ -250,6 +250,8 @@ export async function POST(request: NextRequest) {
 
     // Create permit items (snapshot of SO items)
     if (items && items.length > 0) {
+      console.log("[v0] DP POST - Creating items:", JSON.stringify(items.slice(0, 2), null, 2))
+      
       const permitItems = items.map((item: any) => ({
         permit_id: permit.permit_id,
         product_id: item.productId ? Number.parseInt(item.productId) : null,
@@ -260,8 +262,10 @@ export async function POST(request: NextRequest) {
         unit_price: item.unitPrice,
         total: item.total,
         supplier_id: item.supplierId ? Number.parseInt(item.supplierId) : null,
-        outsourced_name: item.outsourcedName || item.supplierName || null,
+        outsourced_name: item.outsourcedName || null,
       }))
+
+      console.log("[v0] DP POST - Permit items to insert:", JSON.stringify(permitItems, null, 2))
 
       const { error: itemsError } = await withRetry(() => supabase.from("delivery_permit_items").insert(permitItems))
 

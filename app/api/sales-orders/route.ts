@@ -386,6 +386,13 @@ export async function POST(request: Request) {
         const hasProductId = item.productId && item.productId !== ""
         const isOutsourced = item.itemCategory === "OUTSOURCED" || !hasProductId
         
+        console.log("[v0] SO POST - Processing item:", {
+          productName: item.productName,
+          isOutsourced,
+          supplierId: item.supplierId,
+          supplierName: item.supplier_name || item.supplierName,
+        })
+        
         // Map item categories - OUTSOURCED is treated as EQUIPMENT
         let validItemCategory = "EQUIPMENT"
         if (item.itemCategory === "MAINTENANCE_PARTS") {
@@ -414,7 +421,7 @@ export async function POST(request: Request) {
         }
       })
 
-      console.log("[v0] Sales Orders POST: Inserting items", itemsWithSoId)
+      console.log("[v0] Sales Orders POST: Inserting items", JSON.stringify(itemsWithSoId, null, 2))
 
       const { error: itemsError } = await supabase.from("sales_order_items").insert(itemsWithSoId)
 
