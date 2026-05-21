@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createServerClient()
     const body = await request.json()
 
-    const { customer_name, customer_phone, customer_email, customer_address, validity_days, notes, items } = body
+    const { customer_name, customer_phone, customer_email, validity_days, notes, items } = body
 
     if (!customer_name || !items || items.length === 0) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -37,7 +37,6 @@ export async function POST(request: NextRequest) {
         customer_name,
         customer_phone,
         customer_email,
-        customer_address,
         validity_days,
         notes,
         subtotal,
