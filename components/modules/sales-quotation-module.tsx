@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -103,6 +103,26 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       [field]: value,
     }))
   }
+
+  // Recalculate payment amounts when subtotal or payment details change
+  useEffect(() => {
+    setPaymentDetails((prev) => {
+      const installmentMonths = prev.installmentMonths || 6
+      const monthlyAmount = subtotal / installmentMonths
+      const downPaymentPercent = prev.downPaymentPercent || 50
+      const downPaymentAmount = (subtotal * downPaymentPercent) / 100
+      const remainingAmount = subtotal - downPaymentAmount
+      const remainingMonthlyAmount = remainingAmount / (prev.remainingInstallmentMonths || 6)
+
+      return {
+        ...prev,
+        monthlyAmount,
+        downPaymentAmount,
+        remainingAmount,
+        chequeAmount: subtotal,
+      }
+    })
+  }, [subtotal, paymentDetails.installmentMonths, paymentDetails.downPaymentPercent, paymentDetails.remainingInstallmentMonths])
 
   // New customer form states
   const [showCustomerForm, setShowCustomerForm] = useState(false)
@@ -816,7 +836,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
             />
           )}
 
-          <PaymentSummaryCard paymentType={paymentType} paymentDetails={paymentDetails} total={subtotal} />
+          <PaymentSummaryCard paymentType={paymentType} paymentDetails={paymentDetails} totalAmount={subtotal} />
         </CardContent>
       </Card>
 
