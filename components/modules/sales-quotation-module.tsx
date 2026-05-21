@@ -588,6 +588,53 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         </CardContent>
       </Card>
 
+      {/* Delivery Information Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Delivery Information</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="deliveryDate">Delivery Date</Label>
+              <Input
+                id="deliveryDate"
+                type="date"
+                value={deliveryDate}
+                onChange={(e) => setDeliveryDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deliveryAddress">Delivery Address</Label>
+              <Input
+                id="deliveryAddress"
+                placeholder="Enter delivery address"
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deliveryContactName">Contact Name</Label>
+              <Input
+                id="deliveryContactName"
+                placeholder="Delivery contact person"
+                value={deliveryContactName}
+                onChange={(e) => setDeliveryContactName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deliveryContactPhone">Contact Phone</Label>
+              <Input
+                id="deliveryContactPhone"
+                placeholder="Delivery contact phone"
+                value={deliveryContactPhone}
+                onChange={(e) => setDeliveryContactPhone(e.target.value)}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Payment Terms Card */}
       <Card>
         <CardHeader>
@@ -678,52 +725,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
             vatEnabled={vatEnabled}
             vatRate={VAT_RATE}
           />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Delivery Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="deliveryDate">Delivery Date</Label>
-              <Input
-                id="deliveryDate"
-                type="date"
-                value={deliveryDate}
-                onChange={(e) => setDeliveryDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="deliveryAddress">Delivery Address</Label>
-              <Input
-                id="deliveryAddress"
-                placeholder="Enter delivery address"
-                value={deliveryAddress}
-                onChange={(e) => setDeliveryAddress(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="deliveryContactName">Contact Name</Label>
-              <Input
-                id="deliveryContactName"
-                placeholder="Delivery contact person"
-                value={deliveryContactName}
-                onChange={(e) => setDeliveryContactName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="deliveryContactPhone">Contact Phone</Label>
-              <Input
-                id="deliveryContactPhone"
-                placeholder="Delivery contact phone"
-                value={deliveryContactPhone}
-                onChange={(e) => setDeliveryContactPhone(e.target.value)}
-              />
-            </div>
-          </div>
         </CardContent>
       </Card>
 
