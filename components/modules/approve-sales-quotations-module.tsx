@@ -43,6 +43,7 @@ interface QuotationItem {
   quantity: number
   unit_price: number
   total: number
+  supplier_name?: string
 }
 
 interface QuotationDetails extends Quotation {
@@ -75,49 +76,19 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
   const fetchQuotations = async () => {
     try {
       setLoading(true)
-      // Fetch from sales_orders with status "draft" (these are pending quotations)
-      const response = await fetch("/api/sales-orders")
+      // Fetch from sales_quotations table
+      const response = await fetch("/api/sales-quotations")
       if (!response.ok) throw new Error("Failed to fetch quotations")
       
       const data = await response.json()
-      // Filter for draft status (pending approval quotations)
-      const draftOrders = data.filter((order: any) => order.status === "draft")
+      // Get quotations with pending/draft status
+      const pendingQuotations = (data.quotations || []).filter((q: any) => 
+        q.status === "draft" || q.status === "pending"
+      )
       
-      // Transform to quotation format
-      const transformedQuotations = draftOrders.map((order: any) => ({
-        id: order.soId,
-        quotation_number: order.soNumber,
-        quotation_request_number: order.quotationRequestNumber || "",
-        department_name: order.departmentName || "",
-        receiver_name: order.receiverName || "",
-        customer_name: order.customerName || `Customer ${order.customerId}`,
-        customer_phone: order.customerPhone || "",
-        customer_email: order.customerEmail || "",
-        validity_days: 30,
-        subtotal: order.subtotal || order.total,
-        tax: 0,
-        total: order.total,
-        status: "draft",
-        notes: order.notes || "",
-        created_at: order.createdAt,
-        updated_at: order.updatedAt,
-        items: (order.items || []).map((item: any, index: number) => ({
-          id: item.id || index,
-          quotation_id: order.soId,
-          line_no: index + 1,
-          item_type: "product",
-          product_id: item.productId ? Number(item.productId) : null,
-          product_name: item.productName || item.outsourcedName || "Unknown Item",
-          quantity: item.quantity,
-          unit_price: item.unitPrice,
-          total: item.total,
-        })),
-      }))
-      
-      setQuotations(transformedQuotations)
+      setQuotations(pendingQuotations)
     } catch (error) {
-      console.error("[v0] Error fetching quotations:", error)
-      alert("Failed to load quotations")
+      console.error("[v0] Failed to fetch quotations:", error)
     } finally {
       setLoading(false)
     }
@@ -125,15 +96,23 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
 
   const fetchQuotationDetails = async (id: number) => {
     try {
-      // Find the quotation in our already-loaded list
-      const quotation = quotations.find(q => q.id === id)
+      // Fetch quotation with items from the sales_quotations API
+      const response = await fetch(`/api/sales-quotations?id=${id}`)
+      if (!response.ok) throw new Error("Failed to fetch quotation details")
+      
+      const data = await response.json()
+      const quotation = data.quotation
+      
       if (!quotation) {
         throw new Error("Quotation not found")
       }
       
       setSelectedQuotation({
         ...quotation,
-        items: quotation.items || [],
+        items: (quotation.items || []).map((item: any) => ({
+          ...item,
+          total: item.quantity * item.unit_price,
+        })),
       } as QuotationDetails)
       setShowDetailsDialog(true)
     } catch (error) {

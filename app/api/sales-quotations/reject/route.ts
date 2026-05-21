@@ -11,27 +11,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Quotation ID and rejection reason are required" }, { status: 400 })
     }
 
-    // Fetch existing quotation (draft sales order)
-    const { data: existingQuotation } = await supabase
-      .from("sales_orders")
-      .select("notes")
-      .eq("so_id", quotation_id)
-      .eq("status", "draft")
+    // Fetch existing quotation from sales_quotations table
+    const { data: existingQuotation, error: fetchError } = await supabase
+      .from("sales_quotations")
+      .select("*")
+      .eq("id", quotation_id)
       .single()
 
-    if (!existingQuotation) {
-      return NextResponse.json({ error: "Quotation not found or already processed" }, { status: 404 })
+    if (fetchError || !existingQuotation) {
+      return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
     }
 
-    // Update quotation status to cancelled (rejected)
+    // Check if already processed
+    if (existingQuotation.status !== "draft" && existingQuotation.status !== "pending") {
+      return NextResponse.json({ error: "Quotation has already been processed" }, { status: 400 })
+    }
+
+    // Update quotation status to rejected
     const { data: updatedQuotation, error: updateError } = await supabase
-      .from("sales_orders")
+      .from("sales_quotations")
       .update({
-        status: "cancelled",
+        status: "rejected",
         notes: `REJECTED: ${rejection_reason}${existingQuotation?.notes ? `\n\nOriginal notes: ${existingQuotation.notes}` : ""}`,
         updated_at: new Date().toISOString(),
       })
-      .eq("so_id", quotation_id)
+      .eq("id", quotation_id)
       .select()
       .single()
 
