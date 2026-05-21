@@ -104,6 +104,9 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
     }))
   }
 
+  // Calculate subtotal from items
+  const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+
   // New customer form states
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [customerFormData, setCustomerFormData] = useState({
@@ -367,7 +370,8 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
 
     try {
       // Save quotation to database first
-      const discountAmount = calculateDiscount(subtotal, discountType, discountValue)
+      const discountResult = calculateDiscount(subtotal, discountType, discountValue)
+      const discountAmount = discountResult.discountAmount
       const taxAmount = vatEnabled ? (subtotal - discountAmount) * VAT_RATE : 0
       const totalAmount = subtotal - discountAmount + taxAmount
 
