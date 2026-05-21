@@ -8,7 +8,24 @@ export async function POST(request: NextRequest) {
     const supabase = await createServerClient()
     const body = await request.json()
 
-    const { customer_name, customer_phone, customer_email, validity_days, notes, items } = body
+    const { 
+      customer_id,
+      customer_name, 
+      customer_phone, 
+      customer_email, 
+      quotation_request_number,
+      department_name,
+      receiver_name,
+      delivery_date,
+      delivery_address,
+      delivery_contact_name,
+      delivery_contact_phone,
+      so_type,
+      order_date,
+      validity_days, 
+      notes, 
+      items 
+    } = body
 
     if (!customer_name || !items || items.length === 0) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -34,9 +51,19 @@ export async function POST(request: NextRequest) {
       .from("sales_quotations")
       .insert({
         quotation_number: quotationNumber,
+        customer_id: customer_id || null,
         customer_name,
         customer_phone,
         customer_email,
+        quotation_request_number: quotation_request_number || null,
+        department_name: department_name || null,
+        receiver_name: receiver_name || null,
+        delivery_date: delivery_date || null,
+        delivery_address: delivery_address || null,
+        delivery_contact_name: delivery_contact_name || null,
+        delivery_contact_phone: delivery_contact_phone || null,
+        so_type: so_type || 'EQUIPMENT',
+        order_date: order_date || null,
         validity_days,
         notes,
         subtotal,

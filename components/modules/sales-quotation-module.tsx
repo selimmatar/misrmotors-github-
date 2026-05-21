@@ -46,6 +46,17 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   const [notes, setNotes] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Additional fields from sales order form
+  const [quotationRequestNumber, setQuotationRequestNumber] = useState("")
+  const [departmentName, setDepartmentName] = useState("")
+  const [receiverName, setReceiverName] = useState("")
+  const [deliveryDate, setDeliveryDate] = useState("")
+  const [deliveryAddress, setDeliveryAddress] = useState("")
+  const [deliveryContactName, setDeliveryContactName] = useState("")
+  const [deliveryContactPhone, setDeliveryContactPhone] = useState("")
+  const [soType, setSoType] = useState("EQUIPMENT")
+  const [orderDate, setOrderDate] = useState(new Date().toISOString().split("T")[0])
+
   // New customer form states
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [customerFormData, setCustomerFormData] = useState({
@@ -110,6 +121,9 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       setCustomerPhone(customer.phone || "")
       setCustomerEmail(customer.email || "")
       setCustomerAddress(customer.address || "")
+      setDeliveryAddress(customer.address || "")
+      setDeliveryContactName(customer.name || "")
+      setDeliveryContactPhone(customer.phone || "")
     }
   }
 
@@ -310,9 +324,19 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          customer_id: selectedCustomerId ? Number(selectedCustomerId) : null,
           customer_name: customerName,
           customer_phone: customerPhone,
           customer_email: customerEmail,
+          quotation_request_number: quotationRequestNumber,
+          department_name: departmentName,
+          receiver_name: receiverName,
+          delivery_date: deliveryDate || null,
+          delivery_address: deliveryAddress,
+          delivery_contact_name: deliveryContactName,
+          delivery_contact_phone: deliveryContactPhone,
+          so_type: soType,
+          order_date: orderDate,
           validity_days: validityDays,
           notes: notes,
           items: items.map((item) => ({
@@ -447,9 +471,113 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 onChange={(e) => setValidityDays(Number(e.target.value))}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="quotationRequestNumber">Quotation Request Number</Label>
+              <Input
+                id="quotationRequestNumber"
+                placeholder="Customer's quotation request reference"
+                value={quotationRequestNumber}
+                onChange={(e) => setQuotationRequestNumber(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="departmentName">Department Name</Label>
+              <Input
+                id="departmentName"
+                placeholder="Department receiving the order"
+                value={departmentName}
+                onChange={(e) => setDepartmentName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="receiverName">Receiver Name</Label>
+              <Input
+                id="receiverName"
+                placeholder="Person who will receive the order"
+                value={receiverName}
+                onChange={(e) => setReceiverName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="soType">Quotation Type</Label>
+              <Select value={soType} onValueChange={setSoType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EQUIPMENT">Equipment</SelectItem>
+                  <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
+                  <SelectItem value="SPARE_PARTS">Spare Parts</SelectItem>
+                  <SelectItem value="SERVICE">Service</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="orderDate">Order Date</Label>
+              <Input
+                id="orderDate"
+                type="date"
+                value={orderDate}
+                onChange={(e) => setOrderDate(e.target.value)}
+              />
+            </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* New Customer Form */}
+      {/* Delivery Information Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Delivery Information</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="deliveryDate">Delivery Date</Label>
+              <Input
+                id="deliveryDate"
+                type="date"
+                value={deliveryDate}
+                onChange={(e) => setDeliveryDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deliveryAddress">Delivery Address</Label>
+              <Input
+                id="deliveryAddress"
+                placeholder="Enter delivery address"
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deliveryContactName">Contact Name</Label>
+              <Input
+                id="deliveryContactName"
+                placeholder="Delivery contact person"
+                value={deliveryContactName}
+                onChange={(e) => setDeliveryContactName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="deliveryContactPhone">Contact Phone</Label>
+              <Input
+                id="deliveryContactPhone"
+                placeholder="Delivery contact phone"
+                value={deliveryContactPhone}
+                onChange={(e) => setDeliveryContactPhone(e.target.value)}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Customer Information</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {showCustomerForm && (
             <Card className="mt-4 border-dashed">
               <CardHeader>
