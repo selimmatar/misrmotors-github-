@@ -41,19 +41,61 @@ export async function POST(request: NextRequest) {
 
     const soNumber = soNumberData as string
 
+    // Extract payment details from quotation
+    const paymentDetails = quotation.payment_details || {}
+    const paymentType = quotation.payment_type || "cash"
+
     // Create a new sales order from the approved quotation
     const { data: salesOrder, error: soError } = await supabase
       .from("sales_orders")
       .insert({
         so_number: soNumber,
-        customer_id: null, // Customer not linked yet, using name from quotation
+        customer_id: quotation.customer_id || null,
+        customer_name: quotation.customer_name,
         status: "pending_accountant",
         subtotal: quotation.subtotal,
         total: quotation.total,
+        net_total: quotation.net_total || quotation.total,
         notes: quotation.notes,
-        order_date: new Date().toISOString().split('T')[0],
+        order_date: quotation.order_date || new Date().toISOString().split('T')[0],
         parent_quotation_id: quotation.id,
         approval_document_url: approval_document_url || null,
+        // Quotation info
+        quotation_request_number: quotation.quotation_request_number,
+        department_name: quotation.department_name,
+        receiver_name: quotation.receiver_name,
+        so_type: quotation.so_type || 'EQUIPMENT',
+        // Delivery info
+        delivery_date: quotation.delivery_date,
+        delivery_address: quotation.delivery_address,
+        delivery_contact_name: quotation.delivery_contact_name,
+        delivery_contact_phone: quotation.delivery_contact_phone,
+        // Discount info
+        discount_type: quotation.discount_type || 'none',
+        discount_value: quotation.discount_value || 0,
+        discount_amount: quotation.discount_amount || 0,
+        // Payment info
+        payment_type: paymentType,
+        payment_terms: paymentType,
+        installments: paymentDetails.installmentMonths || null,
+        monthly_amount: paymentDetails.monthlyAmount || null,
+        payment_start_date: paymentDetails.paymentStartDate || null,
+        // Down payment (for hybrid)
+        down_payment_type: paymentDetails.downPaymentType || null,
+        down_payment_percent: paymentDetails.downPaymentPercent || null,
+        down_payment_amount: paymentDetails.downPaymentAmount || null,
+        down_payment_due_date: paymentDetails.downPaymentDueDate || null,
+        down_payment_cheque_number: paymentDetails.downPaymentChequeNumber || null,
+        down_payment_cheque_bank: paymentDetails.downPaymentChequeBank || null,
+        down_payment_cheque_due_date: paymentDetails.downPaymentChequeDueDate || null,
+        remaining_installment_months: paymentDetails.remainingInstallmentMonths || null,
+        remaining_amount: paymentDetails.remainingAmount || null,
+        // Cheque info
+        cheque_number: paymentDetails.chequeNumber || null,
+        cheque_bank_name: paymentDetails.chequeBankName || null,
+        cheque_due_date: paymentDetails.chequeDueDate || null,
+        cheque_amount: paymentDetails.chequeAmount || null,
+        cheque_notes: paymentDetails.chequeNotes || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
