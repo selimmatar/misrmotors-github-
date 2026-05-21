@@ -224,17 +224,23 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       return
     }
 
+    // Debug: Log items before validation
+    console.log("[v0] Items before validation:", items)
+    
     const invalidItems = items.filter((item) => {
       // For inventory items, check if product_id is set
       if (item.item_type === "inventory") {
-        return !item.product_id || item.quantity <= 0 || item.unit_price <= 0
+        const isInvalid = !item.product_id || item.quantity <= 0 || item.unit_price < 0
+        if (isInvalid) console.log("[v0] Invalid inventory item:", item)
+        return isInvalid
       }
-      // For outsourced items, check product_name and supplier_name
+      // For outsourced items, check product_name
       if (item.item_type === "outsourced") {
-        return !item.product_name.trim() || item.quantity <= 0 || item.unit_price <= 0
+        const isInvalid = !item.product_name || !item.product_name.trim() || item.quantity <= 0 || item.unit_price < 0
+        if (isInvalid) console.log("[v0] Invalid outsourced item:", item)
+        return isInvalid
       }
-      // For custom items, check if product_name is set
-      return !item.product_name.trim() || item.quantity <= 0 || item.unit_price <= 0
+      return false
     })
 
     if (invalidItems.length > 0) {
@@ -262,6 +268,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
             product_name: item.product_name,
             quantity: item.quantity,
             unit_price: item.unit_price,
+            supplier_name: item.supplier_name || null,
           })),
         }),
       })
