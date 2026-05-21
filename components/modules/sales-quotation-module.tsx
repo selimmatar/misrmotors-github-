@@ -104,25 +104,26 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
     }))
   }
 
-  // Recalculate payment amounts when subtotal or payment details change
+  // Recalculate payment amounts when items or payment details change
   useEffect(() => {
+    const currentSubtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+    
     setPaymentDetails((prev) => {
       const installmentMonths = prev.installmentMonths || 6
-      const monthlyAmount = subtotal / installmentMonths
+      const monthlyAmount = currentSubtotal / installmentMonths
       const downPaymentPercent = prev.downPaymentPercent || 50
-      const downPaymentAmount = (subtotal * downPaymentPercent) / 100
-      const remainingAmount = subtotal - downPaymentAmount
-      const remainingMonthlyAmount = remainingAmount / (prev.remainingInstallmentMonths || 6)
+      const downPaymentAmount = (currentSubtotal * downPaymentPercent) / 100
+      const remainingAmount = currentSubtotal - downPaymentAmount
 
       return {
         ...prev,
         monthlyAmount,
         downPaymentAmount,
         remainingAmount,
-        chequeAmount: subtotal,
+        chequeAmount: currentSubtotal,
       }
     })
-  }, [subtotal, paymentDetails.installmentMonths, paymentDetails.downPaymentPercent, paymentDetails.remainingInstallmentMonths])
+  }, [items, paymentDetails.installmentMonths, paymentDetails.downPaymentPercent, paymentDetails.remainingInstallmentMonths])
 
   // New customer form states
   const [showCustomerForm, setShowCustomerForm] = useState(false)
