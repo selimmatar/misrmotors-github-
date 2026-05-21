@@ -16,7 +16,7 @@ import * as XLSX from "xlsx"
 
 interface QuotationItem {
   id: string
-  item_type: "inventory" | "custom" | "outsourced"
+  item_type: "inventory" | "outsourced"
   product_id?: number
   product_name: string
   quantity: number
@@ -58,22 +58,42 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         const worksheet = workbook.Sheets[sheetName]
         const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
 
-        console.log("[v0] Excel data parsed:", jsonData)
+        // Log the column names from Excel to help debug
+        if (jsonData.length > 0) {
+          console.log("[v0] Excel columns found:", Object.keys(jsonData[0]))
+          console.log("[v0] First row data:", jsonData[0])
+        }
 
         // Map Excel rows to quotation items
         // Expected columns: Product Name, Quantity, Unit Price, Outsourced (yes/no), Supplier Name
         const newItems: QuotationItem[] = jsonData.map((row, index) => {
-          // Try different column name variations
-          const productName = row["Product Name"] || row["product_name"] || row["ProductName"] || row["Name"] || row["name"] || row["Item"] || row["item"] || ""
-          const quantity = Number(row["Quantity"] || row["quantity"] || row["Qty"] || row["qty"] || 1)
-          const unitPrice = Number(row["Unit Price"] || row["unit_price"] || row["UnitPrice"] || row["Price"] || row["price"] || 0)
+          // Get all keys from the row and find matching columns (case-insensitive)
+          const keys = Object.keys(row)
           
-          // Check if outsourced
-          const outsourcedValue = row["Outsourced"] || row["outsourced"] || row["Is Outsourced"] || row["is_outsourced"] || ""
-          const isOutsourced = String(outsourcedValue).toLowerCase() === "yes" || String(outsourcedValue).toLowerCase() === "true" || outsourcedValue === 1
+          const findValue = (possibleNames: string[]) => {
+            for (const name of possibleNames) {
+              const key = keys.find(k => k.toLowerCase().replace(/[_\s]/g, '') === name.toLowerCase().replace(/[_\s]/g, ''))
+              if (key && row[key] !== undefined && row[key] !== null && row[key] !== '') {
+                return row[key]
+              }
+            }
+            return null
+          }
           
-          // Get supplier name for outsourced items
-          const supplierName = row["Supplier Name"] || row["supplier_name"] || row["SupplierName"] || row["Supplier"] || row["supplier"] || ""
+          const productName = findValue(['Product Name', 'ProductName', 'product_name', 'Name', 'Item', 'item_name', 'ItemName']) || ""
+          const quantity = Number(findValue(['Quantity', 'Qty', 'quantity', 'qty']) || 1)
+          const unitPrice = Number(findValue(['Unit Price', 'UnitPrice', 'unit_price', 'Price', 'price']) || 0)
+          const supplierName = findValue(['Supplier Name', 'SupplierName', 'supplier_name', 'Supplier', 'supplier']) || ""
+          
+          // Check if outsourced - if supplier name is provided, it's outsourced
+          const outsourcedValue = findValue(['Outsourced', 'outsourced', 'Is Outsourced', 'is_outsourced'])
+          const hasSupplier = supplierName && String(supplierName).trim() !== ""
+          const isOutsourced = hasSupplier || 
+            String(outsourcedValue).toLowerCase() === "yes" || 
+            String(outsourcedValue).toLowerCase() === "true" || 
+            outsourcedValue === 1
+
+          console.log("[v0] Processing row:", { productName, quantity, unitPrice, supplierName, isOutsourced })
 
           if (isOutsourced) {
             // Outsourced item - use supplier name
@@ -89,7 +109,8 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           } else {
             // Inventory item - try to find matching product
             const matchedProduct = products.find(p => 
-              p.name.toLowerCase() === String(productName).toLowerCase() ||
+              p.name?.toLowerCase() === String(productName).toLowerCase() ||
+              p.productName?.toLowerCase() === String(productName).toLowerCase() ||
               p.sku?.toLowerCase() === String(productName).toLowerCase()
             )
             
@@ -98,37 +119,37 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 id: `excel-${Date.now()}-${index}`,
                 item_type: "inventory" as const,
                 product_id: matchedProduct.id,
-                product_name: matchedProduct.name,
+                product_name: matchedProduct.name || matchedProduct.productName || "",
                 quantity: isNaN(quantity) ? 1 : quantity,
                 unit_price: isNaN(unitPrice) ? (matchedProduct.price || 0) : unitPrice,
               }
             } else {
-              // Product not found in inventory - mark as custom with a note
+              // Product not found in inventory - mark as outsourced without supplier
               return {
                 id: `excel-${Date.now()}-${index}`,
-                item_type: "custom" as const,
+                item_type: "outsourced" as const,
                 product_id: undefined,
-                product_name: `${String(productName)} (Not found in inventory)`,
+                product_name: String(productName),
                 quantity: isNaN(quantity) ? 1 : quantity,
                 unit_price: isNaN(unitPrice) ? 0 : unitPrice,
+                supplier_name: undefined,
               }
             }
           }
-        }).filter(item => item.product_name.trim() !== "" && item.product_name !== "(Not found in inventory)") // Filter out empty rows
+        }).filter(item => item.product_name && item.product_name.trim() !== "") // Filter out empty rows
 
         if (newItems.length === 0) {
-          alert("No valid items found in Excel file. Please ensure your file has columns like 'Product Name', 'Quantity', 'Unit Price', and optionally 'Outsourced' and 'Supplier Name'.")
+          alert("No valid items found in Excel file. Please ensure your file has columns like 'Product Name', 'Quantity', 'Unit Price', and optionally 'Supplier Name'.")
           return
         }
 
         // Count matched vs unmatched items
         const inventoryItems = newItems.filter(i => i.item_type === "inventory").length
         const outsourcedItems = newItems.filter(i => i.item_type === "outsourced").length
-        const unmatchedItems = newItems.filter(i => i.item_type === "custom").length
 
         // Add the imported items to existing items
         setItems(prev => [...prev, ...newItems])
-        alert(`Successfully imported ${newItems.length} items:\n- ${inventoryItems} matched from inventory\n- ${outsourcedItems} outsourced items\n- ${unmatchedItems} not found in inventory (marked as custom)`)
+        alert(`Successfully imported ${newItems.length} items:\n- ${inventoryItems} matched from inventory\n- ${outsourcedItems} outsourced items`)
       } catch (error) {
         console.error("[v0] Excel parse error:", error)
         alert("Failed to parse Excel file. Please ensure it's a valid .xlsx or .xls file.")
@@ -142,7 +163,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
     }
   }
 
-  const addItem = (itemType: "inventory" | "custom" | "outsourced") => {
+  const addItem = (itemType: "inventory" | "outsourced") => {
     setItems([
       ...items,
       {
@@ -402,7 +423,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                   <div className="col-span-1 text-center">
                     <div className="font-semibold">{index + 1}</div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      {item.item_type === "inventory" ? "Inventory" : item.item_type === "outsourced" ? "Outsourced" : "Custom"}
+                      {item.item_type === "inventory" ? "Inventory" : "Outsourced"}
                     </div>
                   </div>
                   {item.item_type === "inventory" ? (
@@ -423,7 +444,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                         />
                       </div>
                     </>
-                  ) : item.item_type === "outsourced" ? (
+                  ) : (
                     <>
                       <div className="col-span-3 space-y-2">
                         <Label htmlFor={`product-${item.id}`}>Outsourced Product Name</Label>
@@ -441,18 +462,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                           placeholder="Enter supplier name"
                           value={item.supplier_name || ""}
                           onChange={(e) => updateItem(item.id, "supplier_name", e.target.value)}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="col-span-5 space-y-2">
-                        <Label htmlFor={`product-${item.id}`}>Custom Product/Service Name</Label>
-                        <Input
-                          id={`product-${item.id}`}
-                          placeholder="Enter product or service name"
-                          value={item.product_name}
-                          onChange={(e) => updateItem(item.id, "product_name", e.target.value)}
                         />
                       </div>
                     </>
