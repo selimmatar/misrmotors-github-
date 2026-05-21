@@ -1,17 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, FileText, Printer, Package } from "lucide-react"
+import { Plus, Trash2, FileText, Printer, Package, Upload } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { UserRole } from "@/lib/types"
 import { SupplierQuoteComparison } from "@/components/sales-quotation/supplier-quote-comparison"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
+import * as XLSX from "xlsx"
 
 interface QuotationItem {
   id: string
@@ -39,6 +40,63 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   const [validityDays, setValidityDays] = useState(30)
   const [savedQuotation, setSavedQuotation] = useState<any>(null)
   const [isCreatingQuotation, setIsCreatingQuotation] = useState(false)
+  const [items, setItems] = useState<QuotationItem[]>([])
+  const [notes, setNotes] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleExcelUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: "array" })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
+
+        console.log("[v0] Excel data parsed:", jsonData)
+
+        // Map Excel rows to quotation items
+        // Expected columns: Product Name, Quantity, Unit Price (or similar variations)
+        const newItems: QuotationItem[] = jsonData.map((row, index) => {
+          // Try different column name variations
+          const productName = row["Product Name"] || row["product_name"] || row["ProductName"] || row["Name"] || row["name"] || row["Item"] || row["item"] || ""
+          const quantity = Number(row["Quantity"] || row["quantity"] || row["Qty"] || row["qty"] || 1)
+          const unitPrice = Number(row["Unit Price"] || row["unit_price"] || row["UnitPrice"] || row["Price"] || row["price"] || 0)
+
+          return {
+            id: `excel-${Date.now()}-${index}`,
+            item_type: "custom" as const,
+            product_id: undefined,
+            product_name: String(productName),
+            quantity: isNaN(quantity) ? 1 : quantity,
+            unit_price: isNaN(unitPrice) ? 0 : unitPrice,
+          }
+        }).filter(item => item.product_name.trim() !== "") // Filter out empty rows
+
+        if (newItems.length === 0) {
+          alert("No valid items found in Excel file. Please ensure your file has columns like 'Product Name', 'Quantity', and 'Unit Price'.")
+          return
+        }
+
+        // Add the imported items to existing items
+        setItems(prev => [...prev, ...newItems])
+        alert(`Successfully imported ${newItems.length} items from Excel!`)
+      } catch (error) {
+        console.error("[v0] Excel parse error:", error)
+        alert("Failed to parse Excel file. Please ensure it's a valid .xlsx or .xls file.")
+      }
+    }
+    reader.readAsArrayBuffer(file)
+    
+    // Reset file input so the same file can be uploaded again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
 
   const addItem = (itemType: "inventory" | "custom") => {
     setItems([
@@ -253,6 +311,17 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           <div className="flex items-center justify-between">
             <CardTitle>Quotation Items</CardTitle>
             <div className="flex gap-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".xlsx,.xls"
+                onChange={handleExcelUpload}
+                className="hidden"
+              />
+              <Button onClick={() => fileInputRef.current?.click()} size="sm" variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                Import Excel
+              </Button>
               <Button onClick={() => addItem("inventory")} size="sm" variant="outline">
                 <Package className="h-4 w-4 mr-2" />
                 Add from Inventory
@@ -263,6 +332,9 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
               </Button>
             </div>
           </div>
+          <CardDescription className="text-xs mt-2">
+            Excel file should have columns: Product Name, Quantity, Unit Price
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {items.length === 0 ? (
