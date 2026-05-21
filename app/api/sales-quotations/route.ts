@@ -24,7 +24,19 @@ export async function POST(request: NextRequest) {
       order_date,
       validity_days, 
       notes, 
-      items 
+      items,
+      // Payment fields
+      payment_type,
+      payment_details,
+      // Discount fields
+      discount_type,
+      discount_value,
+      discount_amount,
+      // VAT
+      vat_enabled,
+      tax: providedTax,
+      subtotal: providedSubtotal,
+      net_total,
     } = body
 
     if (!customer_name || !items || items.length === 0) {
@@ -41,10 +53,10 @@ export async function POST(request: NextRequest) {
 
     const quotationNumber = numberData as string
 
-    // Calculate totals
-    const subtotal = items.reduce((sum: number, item: any) => sum + item.quantity * item.unit_price, 0)
-    const tax = subtotal * 0.14
-    const total = subtotal + tax
+    // Calculate totals - use provided values if available
+    const subtotal = providedSubtotal || items.reduce((sum: number, item: any) => sum + item.quantity * item.unit_price, 0)
+    const tax = providedTax !== undefined ? providedTax : subtotal * 0.14
+    const total = net_total || subtotal + tax
 
     // Insert quotation
     const { data: quotation, error: quotationError } = await supabase
@@ -69,6 +81,16 @@ export async function POST(request: NextRequest) {
         subtotal,
         tax,
         total,
+        // Payment fields
+        payment_type: payment_type || 'cash',
+        payment_details: payment_details || null,
+        // Discount fields
+        discount_type: discount_type || 'none',
+        discount_value: discount_value || 0,
+        discount_amount: discount_amount || 0,
+        // VAT
+        vat_enabled: vat_enabled !== undefined ? vat_enabled : true,
+        net_total: net_total || total,
         status: "draft",
         created_by: "current_user", // TODO: Get from auth
       })

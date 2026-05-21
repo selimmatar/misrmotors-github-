@@ -9,10 +9,19 @@ import { Textarea } from "@/components/ui/textarea"
 import { Plus, Trash2, FileText, Printer, Package, Upload, UserPlus } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { UserRole, Customer } from "@/lib/types"
+import type { UserRole, Customer, PaymentType, PaymentDetails } from "@/lib/types"
 import { SupplierQuoteComparison } from "@/components/sales-quotation/supplier-quote-comparison"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { getCitiesForCountry } from "@/lib/countries-data"
+import {
+  PaymentTypeSelector,
+  InstallmentFields,
+  ChequeFields,
+  HybridFields,
+  PaymentSummaryCard,
+} from "@/components/payment"
+import { DiscountFields, PricingSummaryCard, calculateDiscount, type DiscountType } from "@/components/discount"
+import { Checkbox } from "@/components/ui/checkbox"
 import * as XLSX from "xlsx"
 
 interface QuotationItem {
@@ -56,6 +65,44 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   const [deliveryContactPhone, setDeliveryContactPhone] = useState("")
   const [soType, setSoType] = useState("EQUIPMENT")
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split("T")[0])
+
+  // Payment fields
+  const [paymentType, setPaymentType] = useState<PaymentType>("cash")
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({
+    paymentType: "cash",
+    installmentMonths: 6,
+    monthlyAmount: 0,
+    chequeNumber: "",
+    chequeBankName: "",
+    chequeDueDate: "",
+    chequeAmount: 0,
+    chequeNotes: "",
+    downPaymentType: "cash",
+    downPaymentAmount: 0,
+    downPaymentPercent: 50,
+    remainingAmount: 0,
+    remainingInstallmentMonths: 6,
+    downPaymentChequeNumber: "",
+    downPaymentChequeBank: "",
+    downPaymentChequeDueDate: "",
+    paymentStartDate: new Date().toISOString().split("T")[0],
+    downPaymentDueDate: new Date().toISOString().split("T")[0],
+  })
+
+  // Discount fields
+  const [discountType, setDiscountType] = useState<DiscountType>("none")
+  const [discountValue, setDiscountValue] = useState<number>(0)
+
+  // VAT settings
+  const [vatEnabled, setVatEnabled] = useState(true)
+  const VAT_RATE = 0.14 // 14% VAT
+
+  const handlePaymentDetailChange = (field: string, value: string | number) => {
+    setPaymentDetails((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
 
   // New customer form states
   const [showCustomerForm, setShowCustomerForm] = useState(false)
@@ -320,6 +367,10 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
 
     try {
       // Save quotation to database first
+      const discountAmount = calculateDiscount(subtotal, discountType, discountValue)
+      const taxAmount = vatEnabled ? (subtotal - discountAmount) * VAT_RATE : 0
+      const totalAmount = subtotal - discountAmount + taxAmount
+
       const response = await fetch("/api/sales-quotations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -339,6 +390,18 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           order_date: orderDate,
           validity_days: validityDays,
           notes: notes,
+          // Payment fields
+          payment_type: paymentType,
+          payment_details: paymentDetails,
+          // Discount fields
+          discount_type: discountType,
+          discount_value: discountValue,
+          discount_amount: discountAmount,
+          // VAT
+          vat_enabled: vatEnabled,
+          tax: taxAmount,
+          subtotal: subtotal,
+          net_total: totalAmount,
           items: items.map((item) => ({
             item_type: item.item_type,
             product_id: item.product_id,
@@ -525,7 +588,99 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         </CardContent>
       </Card>
 
-      {/* Delivery Information Card */}
+      {/* Payment Terms Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Terms</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <PaymentTypeSelector value={paymentType} onChange={setPaymentType} />
+
+          {paymentType === "installments" && (
+            <InstallmentFields
+              total={subtotal}
+              installmentMonths={paymentDetails.installmentMonths || 6}
+              paymentStartDate={paymentDetails.paymentStartDate || ""}
+              onInstallmentMonthsChange={(months) => handlePaymentDetailChange("installmentMonths", months)}
+              onPaymentStartDateChange={(date) => handlePaymentDetailChange("paymentStartDate", date)}
+            />
+          )}
+
+          {paymentType === "cheque" && (
+            <ChequeFields
+              chequeNumber={paymentDetails.chequeNumber || ""}
+              chequeBankName={paymentDetails.chequeBankName || ""}
+              chequeDueDate={paymentDetails.chequeDueDate || ""}
+              chequeAmount={subtotal}
+              chequeNotes={paymentDetails.chequeNotes || ""}
+              onChequeNumberChange={(val) => handlePaymentDetailChange("chequeNumber", val)}
+              onChequeBankNameChange={(val) => handlePaymentDetailChange("chequeBankName", val)}
+              onChequeDueDateChange={(val) => handlePaymentDetailChange("chequeDueDate", val)}
+              onChequeNotesChange={(val) => handlePaymentDetailChange("chequeNotes", val)}
+            />
+          )}
+
+          {paymentType === "hybrid" && (
+            <HybridFields
+              total={subtotal}
+              downPaymentType={paymentDetails.downPaymentType || "cash"}
+              downPaymentPercent={paymentDetails.downPaymentPercent || 50}
+              downPaymentAmount={paymentDetails.downPaymentAmount || 0}
+              remainingInstallmentMonths={paymentDetails.remainingInstallmentMonths || 6}
+              downPaymentChequeNumber={paymentDetails.downPaymentChequeNumber || ""}
+              downPaymentChequeBank={paymentDetails.downPaymentChequeBank || ""}
+              downPaymentChequeDueDate={paymentDetails.downPaymentChequeDueDate || ""}
+              paymentStartDate={paymentDetails.paymentStartDate || ""}
+              downPaymentDueDate={paymentDetails.downPaymentDueDate || ""}
+              onDownPaymentTypeChange={(val) => handlePaymentDetailChange("downPaymentType", val)}
+              onDownPaymentPercentChange={(val) => handlePaymentDetailChange("downPaymentPercent", val)}
+              onDownPaymentAmountChange={(val) => handlePaymentDetailChange("downPaymentAmount", val)}
+              onRemainingInstallmentMonthsChange={(val) => handlePaymentDetailChange("remainingInstallmentMonths", val)}
+              onDownPaymentChequeNumberChange={(val) => handlePaymentDetailChange("downPaymentChequeNumber", val)}
+              onDownPaymentChequeBankChange={(val) => handlePaymentDetailChange("downPaymentChequeBank", val)}
+              onDownPaymentChequeDueDateChange={(val) => handlePaymentDetailChange("downPaymentChequeDueDate", val)}
+              onPaymentStartDateChange={(val) => handlePaymentDetailChange("paymentStartDate", val)}
+              onDownPaymentDueDateChange={(val) => handlePaymentDetailChange("downPaymentDueDate", val)}
+            />
+          )}
+
+          <PaymentSummaryCard paymentType={paymentType} paymentDetails={paymentDetails} total={subtotal} />
+        </CardContent>
+      </Card>
+
+      {/* Discount & Pricing Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Discount & VAT</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <DiscountFields
+            discountType={discountType}
+            discountValue={discountValue}
+            subtotal={subtotal}
+            onDiscountTypeChange={setDiscountType}
+            onDiscountValueChange={setDiscountValue}
+          />
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="vatEnabled"
+              checked={vatEnabled}
+              onCheckedChange={(checked) => setVatEnabled(checked === true)}
+            />
+            <Label htmlFor="vatEnabled">Apply VAT (14%)</Label>
+          </div>
+
+          <PricingSummaryCard
+            subtotal={subtotal}
+            discountType={discountType}
+            discountValue={discountValue}
+            vatEnabled={vatEnabled}
+            vatRate={VAT_RATE}
+          />
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Delivery Information</CardTitle>
