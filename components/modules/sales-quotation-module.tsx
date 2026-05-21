@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, FileText, Printer, Package, Upload } from "lucide-react"
+import { Plus, Trash2, FileText, Printer, Package, Upload, UserPlus } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import type { UserRole } from "@/lib/types"
+import type { UserRole, Customer } from "@/lib/types"
 import { SupplierQuoteComparison } from "@/components/sales-quotation/supplier-quote-comparison"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
+import { getCitiesForCountry } from "@/lib/countries-data"
 import * as XLSX from "xlsx"
 
 interface QuotationItem {
@@ -29,10 +30,10 @@ interface SalesQuotationModuleProps {
 }
 
 export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
-  const { products } = useAppContext()
+  const { products, customers, addCustomer } = useAppContext()
 
-  console.log("[v0] Sales Quotation - products count:", products.length)
-  console.log("[v0] Sales Quotation - first 3 products:", products.slice(0, 3))
+  // Customer selection
+  const [selectedCustomerId, setSelectedCustomerId] = useState("")
 
   const [customerName, setCustomerName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
@@ -44,6 +45,73 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   const [items, setItems] = useState<QuotationItem[]>([])
   const [notes, setNotes] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // New customer form states
+  const [showCustomerForm, setShowCustomerForm] = useState(false)
+  const [customerFormData, setCustomerFormData] = useState({
+    name: "",
+    email: "",
+    countryCode: "+20",
+    phone: "",
+    address: "",
+    country: "Egypt",
+    city: "",
+  })
+  const [availableCities, setAvailableCities] = useState<string[]>(getCitiesForCountry("Egypt"))
+
+  const handleCountryChange = (country: string) => {
+    setCustomerFormData({ ...customerFormData, country, city: "" })
+    setAvailableCities(getCitiesForCountry(country))
+  }
+
+  const handleCreateCustomer = async () => {
+    if (!customerFormData.name || !customerFormData.email || !customerFormData.phone) {
+      alert("Please fill in all required fields")
+      return
+    }
+
+    const newCustomer: Customer = {
+      id: Date.now().toString(),
+      name: customerFormData.name,
+      email: customerFormData.email,
+      countryCode: customerFormData.countryCode,
+      phone: customerFormData.phone,
+      address: customerFormData.address,
+      country: customerFormData.country,
+      city: customerFormData.city,
+      createdDate: new Date().toISOString().split("T")[0],
+      status: "active",
+    }
+
+    try {
+      await addCustomer(newCustomer)
+      setCustomerFormData({
+        name: "",
+        email: "",
+        countryCode: "+20",
+        phone: "",
+        address: "",
+        country: "Egypt",
+        city: "",
+      })
+      setShowCustomerForm(false)
+      alert("Customer created successfully!")
+    } catch (error) {
+      console.error("[v0] Error creating customer:", error)
+      alert("Failed to create customer. Please try again.")
+    }
+  }
+
+  const handleCustomerChange = (customerId: string) => {
+    setSelectedCustomerId(customerId)
+    const customer = customers.find((c) => c.id === customerId)
+    if (customer) {
+      setCustomerName(customer.name || "")
+      setCustomerPhone(customer.phone || "")
+      setCustomerEmail(customer.email || "")
+      setCustomerAddress(customer.address || "")
+    }
+  }
 
   const handleExcelUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -86,8 +154,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           const unitPrice = unitPriceRaw !== null ? Number(unitPriceRaw) : 0
           const supplierName = findValue(['Supplier Name', 'SupplierName', 'supplier_name', 'Supplier', 'supplier']) || ""
           
-          console.log("[v0] Price column raw value:", unitPriceRaw, "Parsed:", unitPrice)
-          
           // Check if outsourced - if supplier name is provided, it's outsourced
           const outsourcedValue = findValue(['Outsourced', 'outsourced', 'Is Outsourced', 'is_outsourced'])
           const hasSupplier = supplierName && String(supplierName).trim() !== ""
@@ -95,8 +161,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
             String(outsourcedValue).toLowerCase() === "yes" || 
             String(outsourcedValue).toLowerCase() === "true" || 
             outsourcedValue === 1
-
-          console.log("[v0] Processing row:", { productName, quantity, unitPrice, supplierName, isOutsourced })
 
           if (isOutsourced) {
             // Outsourced item - use supplier name
@@ -190,16 +254,15 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   }
 
   const handleInventorySelection = (itemId: string, productId: string) => {
-    const product = products.find((p) => p.id.toString() === productId)
+    const product = products.find((p) => p.id?.toString() === productId)
     if (product) {
-      console.log("[v0] Selected product:", product)
       setItems((prevItems) =>
         prevItems.map((item) =>
           item.id === itemId
             ? {
                 ...item,
                 product_id: Number(productId),
-                product_name: product.productName || product.product_name || "", // Populate product_name
+                product_name: product.productName || product.product_name || "",
                 unit_price: product.unitPrice || product.unit_price || 0,
               }
             : item,
@@ -224,21 +287,12 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       return
     }
 
-    // Debug: Log items before validation
-    console.log("[v0] Items before validation:", items)
-    
     const invalidItems = items.filter((item) => {
-      // For inventory items, check if product_id is set
       if (item.item_type === "inventory") {
-        const isInvalid = !item.product_id || item.quantity <= 0 || item.unit_price < 0
-        if (isInvalid) console.log("[v0] Invalid inventory item:", item)
-        return isInvalid
+        return !item.product_id || item.quantity <= 0 || item.unit_price < 0
       }
-      // For outsourced items, check product_name
       if (item.item_type === "outsourced") {
-        const isInvalid = !item.product_name || !item.product_name.trim() || item.quantity <= 0 || item.unit_price < 0
-        if (isInvalid) console.log("[v0] Invalid outsourced item:", item)
-        return isInvalid
+        return !item.product_name || !item.product_name.trim() || item.quantity <= 0 || item.unit_price < 0
       }
       return false
     })
@@ -259,7 +313,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           customer_name: customerName,
           customer_phone: customerPhone,
           customer_email: customerEmail,
-          customer_address: customerAddress,
           validity_days: validityDays,
           notes: notes,
           items: items.map((item) => ({
@@ -309,14 +362,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
 
   return (
     <div className="space-y-6">
-      {products.length === 0 && (
-        <Card className="bg-yellow-50 border-yellow-200">
-          <CardContent className="pt-6">
-            <p className="text-yellow-800">⚠️ No products loaded from inventory. Products count: {products.length}</p>
-          </CardContent>
-        </Card>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -335,6 +380,26 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="customer">Select Customer</Label>
+              <div className="flex gap-2">
+                <Select value={selectedCustomerId} onValueChange={handleCustomerChange}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a customer or enter manually" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.map((customer) => (
+                      <SelectItem key={customer.id} value={customer.id}>
+                        {customer.name} - {customer.phone}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={() => setShowCustomerForm(!showCustomerForm)}>
+                  <UserPlus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="customerName">Customer Name *</Label>
               <Input
@@ -383,6 +448,95 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
               />
             </div>
           </div>
+
+          {/* New Customer Form */}
+          {showCustomerForm && (
+            <Card className="mt-4 border-dashed">
+              <CardHeader>
+                <CardTitle className="text-lg">Add New Customer</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Customer Name *</Label>
+                    <Input
+                      placeholder="Enter customer name"
+                      value={customerFormData.name}
+                      onChange={(e) => setCustomerFormData({ ...customerFormData, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email *</Label>
+                    <Input
+                      type="email"
+                      placeholder="Enter email"
+                      value={customerFormData.email}
+                      onChange={(e) => setCustomerFormData({ ...customerFormData, email: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Phone *</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        className="w-20"
+                        value={customerFormData.countryCode}
+                        onChange={(e) => setCustomerFormData({ ...customerFormData, countryCode: e.target.value })}
+                      />
+                      <Input
+                        className="flex-1"
+                        placeholder="Phone number"
+                        value={customerFormData.phone}
+                        onChange={(e) => setCustomerFormData({ ...customerFormData, phone: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Address</Label>
+                    <Input
+                      placeholder="Enter address"
+                      value={customerFormData.address}
+                      onChange={(e) => setCustomerFormData({ ...customerFormData, address: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Country</Label>
+                    <Select value={customerFormData.country} onValueChange={handleCountryChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Egypt">Egypt</SelectItem>
+                        <SelectItem value="Saudi Arabia">Saudi Arabia</SelectItem>
+                        <SelectItem value="UAE">UAE</SelectItem>
+                        <SelectItem value="Kuwait">Kuwait</SelectItem>
+                        <SelectItem value="Qatar">Qatar</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>City</Label>
+                    <Select 
+                      value={customerFormData.city} 
+                      onValueChange={(city) => setCustomerFormData({ ...customerFormData, city })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select city" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCities.map((city) => (
+                          <SelectItem key={city} value={city}>{city}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" onClick={() => setShowCustomerForm(false)}>Cancel</Button>
+                  <Button onClick={handleCreateCustomer}>Create Customer</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </CardContent>
       </Card>
 
@@ -409,10 +563,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
               <Button onClick={() => addItem("outsourced")} size="sm" variant="outline">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Outsourced
-              </Button>
-              <Button onClick={() => addItem("custom")} size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Custom Item
               </Button>
             </div>
           </div>
