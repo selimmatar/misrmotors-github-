@@ -104,9 +104,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
     }))
   }
 
-  // Calculate subtotal from items
-  const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
-
   // New customer form states
   const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [customerFormData, setCustomerFormData] = useState({
