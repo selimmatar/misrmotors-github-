@@ -51,7 +51,6 @@ export async function POST(request: NextRequest) {
       .insert({
         so_number: soNumber,
         customer_id: quotation.customer_id || null,
-        customer_name: quotation.customer_name,
         status: "pending_accountant",
         subtotal: quotation.subtotal,
         total: quotation.total,
