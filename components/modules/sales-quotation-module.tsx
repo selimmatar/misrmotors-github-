@@ -81,9 +81,12 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           }
           
           const productName = findValue(['Product Name', 'ProductName', 'product_name', 'Name', 'Item', 'item_name', 'ItemName']) || ""
-          const quantity = Number(findValue(['Quantity', 'Qty', 'quantity', 'qty']) || 1)
-          const unitPrice = Number(findValue(['Unit Price', 'UnitPrice', 'unit_price', 'Price', 'price']) || 0)
+          const quantity = Number(findValue(['Quantity', 'Qty', 'quantity', 'qty', 'QTY', 'Amount', 'amount']) || 1)
+          const unitPriceRaw = findValue(['Unit Price', 'UnitPrice', 'unit_price', 'Price', 'price', 'Unit price', 'unit price', 'PRICE', 'Rate', 'rate', 'Cost', 'cost'])
+          const unitPrice = unitPriceRaw !== null ? Number(unitPriceRaw) : 0
           const supplierName = findValue(['Supplier Name', 'SupplierName', 'supplier_name', 'Supplier', 'supplier']) || ""
+          
+          console.log("[v0] Price column raw value:", unitPriceRaw, "Parsed:", unitPrice)
           
           // Check if outsourced - if supplier name is provided, it's outsourced
           const outsourcedValue = findValue(['Outsourced', 'outsourced', 'Is Outsourced', 'is_outsourced'])
