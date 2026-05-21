@@ -440,7 +440,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedQuotation.items.map((item) => (
+                      {(selectedQuotation.items || []).map((item) => (
                         <tr key={item.id} className="border-t">
                           <td className="p-3 text-sm">{item.line_no}</td>
                           <td className="p-3 text-sm font-medium">{item.product_name}</td>
