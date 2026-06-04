@@ -111,15 +111,24 @@ export async function GET() {
           items: items.map((item: any) => ({
             id: item.po_item_id?.toString(),
             productId: item.product_id?.toString(),
-            productName: item.products?.product_name || item.product_name || "Unknown Product",
+            productName:
+              item.item_type === "outsourced"
+                ? item.outsourced_name || "Outsourced Item"
+                : item.products?.product_name || item.product_name || "Unknown Product",
             sku: item.products?.sku || "",
-            unit: item.products?.unit || "pcs",
+            unit: item.item_type === "outsourced" ? item.outsourced_unit || "" : item.products?.unit || "pcs",
             quantity: item.quantity,
             unitPrice: item.unit_price,
             total: item.total,
             allocatedTax: item.allocated_tax,
             allocatedOverhead: item.allocated_overhead,
             landedCost: item.landed_cost,
+            itemType: item.item_type || "stock",
+            outsourcedName: item.outsourced_name || "",
+            outsourcedDescription: item.outsourced_description || "",
+            outsourcedUnit: item.outsourced_unit || "",
+            sourceSoId: item.source_so_id?.toString() || "",
+            sourceSoItemId: item.source_so_item_id?.toString() || "",
           })),
           bankName: order.bank_name,
           bankAccountNumber: order.bank_account_number,
@@ -222,13 +231,25 @@ export async function POST(request: Request) {
 
     // Insert items if provided
     if (items && items.length > 0) {
-      const itemsWithPoId = items.map((item: any) => ({
-        po_id: order.po_id,
-        product_id: item.productId || item.product_id,
-        quantity: item.quantity,
-        unit_price: item.unitPrice || item.unit_price,
-        total: item.total,
-      }))
+      const itemsWithPoId = items.map((item: any) => {
+        const itemType = item.itemType || item.item_type || "stock"
+        const isOutsourced = itemType === "outsourced"
+        const rawProductId = item.productId || item.product_id
+        return {
+          po_id: order.po_id,
+          // Outsourced items have no product; keep product_id null
+          product_id: isOutsourced ? null : rawProductId || null,
+          quantity: item.quantity,
+          unit_price: item.unitPrice || item.unit_price,
+          total: item.total,
+          item_type: itemType,
+          outsourced_name: item.outsourcedName || item.outsourced_name || null,
+          outsourced_description: item.outsourcedDescription || item.outsourced_description || null,
+          outsourced_unit: item.outsourcedUnit || item.outsourced_unit || null,
+          source_so_id: item.sourceSoId || item.source_so_id || null,
+          source_so_item_id: item.sourceSoItemId || item.source_so_item_id || null,
+        }
+      })
 
       const { error: itemsInsertError } = await supabase.from("purchase_order_items").insert(itemsWithPoId)
 

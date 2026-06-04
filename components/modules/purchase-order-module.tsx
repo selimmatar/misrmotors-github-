@@ -52,6 +52,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     updatePurchaseOrder,
     loadData,
     user,
+    salesOrders,
   } = useAppContext()
   const [showForm, setShowForm] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null)
@@ -62,7 +63,22 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     moq: number
     excess: number
   } | null>(null)
-  const [orderItems, setOrderItems] = useState<Array<{ productId: string; quantity: string; unitPrice: string }>>([])
+  const [orderItems, setOrderItems] = useState<
+    Array<{
+      productId: string
+      quantity: string
+      unitPrice: string
+      itemType?: "stock" | "outsourced"
+      outsourcedName?: string
+      outsourcedDescription?: string
+      outsourcedUnit?: string
+      sourceSoId?: string
+      sourceSoItemId?: string
+    }>
+  >([])
+  // PO source: build manually or import outsourced items from a sales order
+  const [poSource, setPoSource] = useState<"manual" | "sales_order">("manual")
+  const [selectedSourceSoId, setSelectedSourceSoId] = useState<string>("")
   const [poInvoiceFile, setPoInvoiceFile] = useState<File | null>(null)
   const [uploadingInvoice, setUploadingInvoice] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
@@ -490,11 +506,53 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   }
 
   const handleAddItem = () => {
-    setOrderItems([...orderItems, { productId: "", quantity: "", unitPrice: "" }])
+  setOrderItems([...orderItems, { productId: "", quantity: "", unitPrice: "", itemType: "stock" }])
+  }
+  
+  const handleRemoveItem = (index: number) => {
+  setOrderItems(orderItems.filter((_, i) => i !== index))
   }
 
-  const handleRemoveItem = (index: number) => {
-    setOrderItems(orderItems.filter((_, i) => i !== index))
+  // Returns sales orders that contain outsourced items assigned to the selected supplier
+  const getSalesOrdersForSupplier = (supplierId: string) => {
+    if (!supplierId) return []
+    return (salesOrders || []).filter((so: any) =>
+      (so.items || []).some(
+        (item: any) =>
+          (item.itemType === "outsourced" || item.item_type === "outsourced") &&
+          item.supplierId?.toString() === supplierId.toString(),
+      ),
+    )
+  }
+
+  // Load the outsourced items of a sales order that belong to the selected supplier
+  const loadOutsourcedItemsFromSO = (soId: string) => {
+    const so = (salesOrders || []).find((s: any) => s.id?.toString() === soId.toString())
+    if (!so) {
+      setOrderItems([])
+      return
+    }
+
+    const matchingItems = (so.items || []).filter(
+      (item: any) =>
+        (item.itemType === "outsourced" || item.item_type === "outsourced") &&
+        item.supplierId?.toString() === formData.supplierId.toString(),
+    )
+
+    const importedItems = matchingItems.map((item: any) => ({
+      productId: "",
+      quantity: (item.quantity ?? "").toString(),
+      // Default the PO cost to the SO unit price; the buyer can adjust it
+      unitPrice: (item.unitPrice ?? "").toString(),
+      itemType: "outsourced" as const,
+      outsourcedName: item.outsourcedName || item.productName || "",
+      outsourcedDescription: item.outsourcedDescription || "",
+      outsourcedUnit: item.outsourcedUnit || "",
+      sourceSoId: so.id?.toString() || "",
+      sourceSoItemId: item.id?.toString() || "",
+    }))
+
+    setOrderItems(importedItems)
   }
 
   const getTodayDate = () => {
@@ -583,7 +641,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
     // Validate items
     for (const item of orderItems) {
-      if (!item.productId || !item.quantity || !item.unitPrice) {
+      const hasName = item.itemType === "outsourced" ? !!item.outsourcedName : !!item.productId
+      if (!hasName || !item.quantity || !item.unitPrice) {
         alert(t("validation.complete-items"))
         return
       }
@@ -612,12 +671,19 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
       const items = orderItems.map((item) => {
         const product = products.find((p) => p.id === item.productId)
+        const isOutsourced = item.itemType === "outsourced"
         return {
-          productId: item.productId,
-          productName: product?.productName || "Unknown",
+          productId: isOutsourced ? "" : item.productId,
+          productName: isOutsourced ? item.outsourcedName || "Outsourced Item" : product?.productName || "Unknown",
           quantity: Number.parseInt(item.quantity) || 0,
           unitPrice: Number.parseFloat(item.unitPrice) || 0,
           total: (Number.parseInt(item.quantity) || 0) * (Number.parseFloat(item.unitPrice) || 0),
+          itemType: item.itemType || "stock",
+          outsourcedName: item.outsourcedName || null,
+          outsourcedDescription: item.outsourcedDescription || null,
+          outsourcedUnit: item.outsourcedUnit || null,
+          sourceSoId: item.sourceSoId || null,
+          sourceSoItemId: item.sourceSoItemId || null,
         }
       })
 
@@ -1011,6 +1077,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       bankHolderName: "",
     })
     setOrderItems([])
+    setPoSource("manual")
+    setSelectedSourceSoId("")
     setPoInvoiceFile(null)
     setPaymentType("cash")
     setPaymentDetails({
@@ -1223,7 +1291,14 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 <select
                   className="w-full border rounded px-3 py-2 mt-1"
                   value={formData.supplierId}
-                  onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, supplierId: e.target.value })
+                    // Reset SO import when supplier changes
+                    setSelectedSourceSoId("")
+                    if (poSource === "sales_order") {
+                      setOrderItems([])
+                    }
+                  }}
                 >
                   <option value="">{t("action.select-supplier")}</option>
                   {suppliers.map((s) => (
@@ -1268,6 +1343,109 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   <option value="EUR">EUR ({t("currency.eur")})</option>
                 </select>
               </div>
+            </div>
+
+            {/* PO Source: manual or from a sales order */}
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Purchase Order Source
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <label
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${poSource === "manual" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300"}`}
+                >
+                  <input
+                    type="radio"
+                    name="poSource"
+                    value="manual"
+                    checked={poSource === "manual"}
+                    onChange={() => {
+                      setPoSource("manual")
+                      setSelectedSourceSoId("")
+                      setOrderItems([])
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <div>
+                    <span className="font-medium">Manual</span>
+                    <p className="text-xs text-muted-foreground">Add products manually</p>
+                  </div>
+                </label>
+                <label
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${poSource === "sales_order" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300"}`}
+                >
+                  <input
+                    type="radio"
+                    name="poSource"
+                    value="sales_order"
+                    checked={poSource === "sales_order"}
+                    onChange={() => {
+                      setPoSource("sales_order")
+                      setSelectedSourceSoId("")
+                      setOrderItems([])
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <div>
+                    <span className="font-medium">From Sales Order</span>
+                    <p className="text-xs text-muted-foreground">Import outsourced items for this supplier</p>
+                  </div>
+                </label>
+              </div>
+
+              {poSource === "sales_order" && (
+                <div className="mt-3">
+                  {!formData.supplierId ? (
+                    <p className="text-sm text-amber-600 flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      Please select a supplier first to see their sales orders.
+                    </p>
+                  ) : (
+                    <>
+                      <label className="text-sm font-medium">Sales Order</label>
+                      {(() => {
+                        const availableSOs = getSalesOrdersForSupplier(formData.supplierId)
+                        if (availableSOs.length === 0) {
+                          return (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              No sales orders with outsourced items for this supplier.
+                            </p>
+                          )
+                        }
+                        return (
+                          <select
+                            className="w-full border rounded px-3 py-2 mt-1"
+                            value={selectedSourceSoId}
+                            onChange={(e) => {
+                              setSelectedSourceSoId(e.target.value)
+                              if (e.target.value) {
+                                loadOutsourcedItemsFromSO(e.target.value)
+                              } else {
+                                setOrderItems([])
+                              }
+                            }}
+                          >
+                            <option value="">Select a sales order</option>
+                            {availableSOs.map((so: any) => (
+                              <option key={so.id} value={so.id}>
+                                {so.soNumber || `SO-${so.id}`}
+                                {so.customerName ? ` - ${so.customerName}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        )
+                      })()}
+                      {selectedSourceSoId && orderItems.length > 0 && (
+                        <p className="text-xs text-emerald-600 mt-2 flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          {orderItems.length} outsourced item(s) imported from the sales order.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Bank Details */}
@@ -1428,22 +1606,36 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               <div className="space-y-3">
                 {orderItems.map((item, index) => (
                   <div key={index} className="grid grid-cols-4 gap-2 items-end">
-                    <select
-                      className="w-full border rounded px-3 py-2"
-                      value={item.productId}
-                      onChange={(e) => {
-                        const newItems = [...orderItems]
-                        newItems[index].productId = e.target.value
-                        setOrderItems(newItems)
-                      }}
-                    >
-                      <option value="">{t("action.select-product")}</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.productName}
-                        </option>
-                      ))}
-                    </select>
+                    {item.itemType === "outsourced" ? (
+                      <div className="w-full border rounded px-3 py-2 bg-muted/50">
+                        <div className="flex items-center gap-1 text-sm font-medium truncate">
+                          <Badge variant="secondary" className="text-[10px] px-1 py-0">
+                            Outsourced
+                          </Badge>
+                          <span className="truncate">{item.outsourcedName}</span>
+                        </div>
+                        {item.outsourcedUnit && (
+                          <p className="text-xs text-muted-foreground">Unit: {item.outsourcedUnit}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <select
+                        className="w-full border rounded px-3 py-2"
+                        value={item.productId}
+                        onChange={(e) => {
+                          const newItems = [...orderItems]
+                          newItems[index].productId = e.target.value
+                          setOrderItems(newItems)
+                        }}
+                      >
+                        <option value="">{t("action.select-product")}</option>
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.productName}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <Input
                       placeholder={t("field.quantity")}
                       type="number"
