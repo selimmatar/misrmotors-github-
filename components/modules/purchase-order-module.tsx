@@ -79,6 +79,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   // PO source: build manually or import outsourced items from a sales order
   const [poSource, setPoSource] = useState<"manual" | "sales_order">("manual")
   const [selectedSourceSoId, setSelectedSourceSoId] = useState<string>("")
+  const [soSearchTerm, setSoSearchTerm] = useState<string>("")
   const [poInvoiceFile, setPoInvoiceFile] = useState<File | null>(null)
   const [uploadingInvoice, setUploadingInvoice] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
@@ -1079,6 +1080,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     setOrderItems([])
     setPoSource("manual")
     setSelectedSourceSoId("")
+    setSoSearchTerm("")
     setPoInvoiceFile(null)
     setPaymentType("cash")
     setPaymentDetails({
@@ -1403,37 +1405,55 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     </p>
                   ) : (
                     <>
-                      <label className="text-sm font-medium">Sales Order</label>
+                      <label className="text-sm font-medium">Sales Order Number</label>
                       {(() => {
-                        const availableSOs = getSalesOrdersForSupplier(formData.supplierId)
-                        if (availableSOs.length === 0) {
+                        const allSupplierSOs = getSalesOrdersForSupplier(formData.supplierId)
+                        if (allSupplierSOs.length === 0) {
                           return (
                             <p className="text-sm text-muted-foreground mt-1">
                               No sales orders with outsourced items for this supplier.
                             </p>
                           )
                         }
+                        const term = soSearchTerm.trim().toLowerCase()
+                        const availableSOs = term
+                          ? allSupplierSOs.filter((so: any) =>
+                              (so.soNumber || `SO-${so.id}`).toLowerCase().includes(term) ||
+                              (so.customerName || "").toLowerCase().includes(term),
+                            )
+                          : allSupplierSOs
                         return (
-                          <select
-                            className="w-full border rounded px-3 py-2 mt-1"
-                            value={selectedSourceSoId}
-                            onChange={(e) => {
-                              setSelectedSourceSoId(e.target.value)
-                              if (e.target.value) {
-                                loadOutsourcedItemsFromSO(e.target.value)
-                              } else {
-                                setOrderItems([])
-                              }
-                            }}
-                          >
-                            <option value="">Select a sales order</option>
-                            {availableSOs.map((so: any) => (
-                              <option key={so.id} value={so.id}>
-                                {so.soNumber || `SO-${so.id}`}
-                                {so.customerName ? ` - ${so.customerName}` : ""}
+                          <>
+                            {/* Type the sales order number to find it */}
+                            <Input
+                              className="mt-1"
+                              placeholder="Type the sales order number (e.g. SO-1024)"
+                              value={soSearchTerm}
+                              onChange={(e) => setSoSearchTerm(e.target.value)}
+                            />
+                            <select
+                              className="w-full border rounded px-3 py-2 mt-2"
+                              value={selectedSourceSoId}
+                              onChange={(e) => {
+                                setSelectedSourceSoId(e.target.value)
+                                if (e.target.value) {
+                                  loadOutsourcedItemsFromSO(e.target.value)
+                                } else {
+                                  setOrderItems([])
+                                }
+                              }}
+                            >
+                              <option value="">
+                                {availableSOs.length === 0 ? "No matching sales orders" : "Select a sales order"}
                               </option>
-                            ))}
-                          </select>
+                              {availableSOs.map((so: any) => (
+                                <option key={so.id} value={so.id}>
+                                  {so.soNumber || `SO-${so.id}`}
+                                  {so.customerName ? ` - ${so.customerName}` : ""}
+                                </option>
+                              ))}
+                            </select>
+                          </>
                         )
                       })()}
                       {selectedSourceSoId && orderItems.length > 0 && (
