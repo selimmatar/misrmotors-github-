@@ -23,7 +23,6 @@ import {
   type PaymentScheduleEntry,
 } from "@/components/payment"
 import { DiscountFields, PricingSummaryCard, calculateDiscount, type DiscountType } from "@/components/discount"
-import { Checkbox } from "@/components/ui/checkbox"
 import * as XLSX from "xlsx"
 
 interface QuotationItem {
@@ -96,9 +95,8 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   const [discountType, setDiscountType] = useState<DiscountType>("none")
   const [discountValue, setDiscountValue] = useState<number>(0)
 
-  // VAT settings
-  const [vatEnabled, setVatEnabled] = useState(true)
-  const VAT_RATE = 0.14 // 14% VAT
+  // VAT settings (always 14%)
+  const VAT_RATE = 0.14
 
   // Payment schedule
   const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleEntry[]>([])
@@ -834,6 +832,30 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         </CardContent>
       </Card>
 
+      {/* Discount & Pricing Card - Apply discount to subtotal BEFORE payment calculations */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Discount & Pricing</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <DiscountFields
+            discountType={discountType}
+            discountValue={discountValue}
+            subtotal={subtotal}
+            onDiscountTypeChange={setDiscountType}
+            onDiscountValueChange={setDiscountValue}
+          />
+
+          <PricingSummaryCard
+            subtotal={subtotal}
+            discountType={discountType}
+            discountValue={discountValue}
+            vatEnabled={true}
+            vatRate={VAT_RATE}
+          />
+        </CardContent>
+      </Card>
+
       {/* Payment Terms Card */}
       <Card>
         <CardHeader>
@@ -904,39 +926,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           )}
 
           <PaymentSummaryCard paymentType={paymentType} paymentDetails={paymentDetails} totalAmount={subtotal} />
-        </CardContent>
-      </Card>
-
-      {/* Discount & Pricing Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Discount & VAT</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <DiscountFields
-            discountType={discountType}
-            discountValue={discountValue}
-            subtotal={subtotal}
-            onDiscountTypeChange={setDiscountType}
-            onDiscountValueChange={setDiscountValue}
-          />
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="vatEnabled"
-              checked={vatEnabled}
-              onCheckedChange={(checked) => setVatEnabled(checked === true)}
-            />
-            <Label htmlFor="vatEnabled">Apply VAT (14%)</Label>
-          </div>
-
-          <PricingSummaryCard
-            subtotal={subtotal}
-            discountType={discountType}
-            discountValue={discountValue}
-            vatEnabled={vatEnabled}
-            vatRate={VAT_RATE}
-          />
         </CardContent>
       </Card>
 
