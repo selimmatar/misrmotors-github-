@@ -791,7 +791,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
 
           {paymentType === "installments" && (
             <InstallmentFields
-              total={subtotal}
+              totalAmount={subtotal}
               installmentMonths={paymentDetails.installmentMonths || 6}
               paymentStartDate={paymentDetails.paymentStartDate || ""}
               onInstallmentMonthsChange={(months) => handlePaymentDetailChange("installmentMonths", months)}
@@ -815,7 +815,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
 
           {paymentType === "hybrid" && (
             <HybridFields
-              total={subtotal}
+              totalAmount={subtotal}
               downPaymentType={paymentDetails.downPaymentType || "cash"}
               downPaymentPercent={paymentDetails.downPaymentPercent || 50}
               downPaymentAmount={paymentDetails.downPaymentAmount || 0}
