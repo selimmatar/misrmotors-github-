@@ -81,7 +81,8 @@ export async function POST(request: NextRequest) {
         discount_amount: quotation.discount_amount || 0,
         // Payment info
         payment_type: paymentType,
-        payment_terms: paymentType,
+        // payment_terms only allows 'prepaid' or 'installment' - map accordingly
+        payment_terms: paymentType === "installments" || paymentType === "hybrid" ? "installment" : "prepaid",
         installments: paymentDetails.installmentMonths || null,
         monthly_amount: paymentDetails.monthlyAmount || null,
         payment_start_date: safeDate(paymentDetails.paymentStartDate),
