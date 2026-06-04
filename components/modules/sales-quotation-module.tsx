@@ -72,6 +72,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
     paymentType: "cash",
     installmentMonths: 6,
     monthlyAmount: 0,
+    installmentMonthlyAmount: 0,
     chequeNumber: "",
     chequeBankName: "",
     chequeDueDate: "",
@@ -98,32 +99,67 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   const VAT_RATE = 0.14 // 14% VAT
 
   const handlePaymentDetailChange = (field: string, value: string | number) => {
-    setPaymentDetails((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
+    setPaymentDetails((prev) => {
+      const updated = { ...prev, [field]: value }
+      
+      // Recalculate dependent values when key fields change
+      const currentSubtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+      
+      if (field === 'downPaymentAmount' || field === 'downPaymentPercent' || field === 'remainingInstallmentMonths') {
+        // Recalculate for hybrid payment
+        if (field === 'downPaymentAmount') {
+          updated.remainingAmount = currentSubtotal - (value as number)
+          updated.monthlyAmount = updated.remainingAmount / (prev.remainingInstallmentMonths || 6)
+        } else if (field === 'downPaymentPercent') {
+          const downPaymentAmt = (currentSubtotal * (value as number)) / 100
+          updated.downPaymentAmount = downPaymentAmt
+          updated.remainingAmount = currentSubtotal - downPaymentAmt
+          updated.monthlyAmount = updated.remainingAmount / (prev.remainingInstallmentMonths || 6)
+        } else if (field === 'remainingInstallmentMonths') {
+          updated.monthlyAmount = (prev.remainingAmount || currentSubtotal - (prev.downPaymentAmount || 0)) / (value as number)
+        }
+      } else if (field === 'installmentMonths') {
+        // Recalculate for regular installments
+        updated.monthlyAmount = currentSubtotal / (value as number)
+      }
+      
+      return updated
+    })
   }
 
-  // Recalculate payment amounts when items or payment details change
+  // Recalculate payment amounts when items change (not payment details to avoid loops)
   useEffect(() => {
     const currentSubtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
     
     setPaymentDetails((prev) => {
+      // For installments and hybrid
       const installmentMonths = prev.installmentMonths || 6
-      const monthlyAmount = currentSubtotal / installmentMonths
+      
+      // For hybrid - calculate down payment and remaining
       const downPaymentPercent = prev.downPaymentPercent || 50
-      const downPaymentAmount = (currentSubtotal * downPaymentPercent) / 100
-      const remainingAmount = currentSubtotal - downPaymentAmount
-
+      let downPaymentAmount = prev.downPaymentAmount || 0
+      let remainingAmount = currentSubtotal
+      
+      // If no downPaymentAmount set, calculate from percent
+      if (downPaymentAmount === 0 && downPaymentPercent > 0) {
+        downPaymentAmount = (currentSubtotal * downPaymentPercent) / 100
+      }
+      
+      remainingAmount = currentSubtotal - downPaymentAmount
+      
+      const remainingInstallmentMonths = prev.remainingInstallmentMonths || 6
+      const monthlyAmount = remainingAmount > 0 ? remainingAmount / remainingInstallmentMonths : 0
+      
       return {
         ...prev,
-        monthlyAmount,
-        downPaymentAmount,
-        remainingAmount,
+        installmentMonthlyAmount: currentSubtotal / installmentMonths,
+        monthlyAmount: monthlyAmount,
+        downPaymentAmount: downPaymentAmount,
+        remainingAmount: remainingAmount,
         chequeAmount: currentSubtotal,
       }
     })
-  }, [items, paymentDetails.installmentMonths, paymentDetails.downPaymentPercent, paymentDetails.remainingInstallmentMonths])
+  }, [items])
 
   // New customer form states
   const [showCustomerForm, setShowCustomerForm] = useState(false)
