@@ -19,8 +19,6 @@ import {
   ChequeFields,
   HybridFields,
   PaymentSummaryCard,
-  PaymentScheduleBuilder,
-  type PaymentScheduleEntry,
 } from "@/components/payment"
 import { DiscountFields, PricingSummaryCard, calculateDiscount, type DiscountType } from "@/components/discount"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -99,10 +97,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   // VAT settings
   const [vatEnabled, setVatEnabled] = useState(true)
   const VAT_RATE = 0.14 // 14% VAT
-
-  // Payment schedule
-  const [scheduleMode, setScheduleMode] = useState<"AUTO" | "MANUAL">("AUTO")
-  const [scheduleEntries, setScheduleEntries] = useState<PaymentScheduleEntry[]>([])
 
   const handlePaymentDetailChange = (field: string, value: string | number) => {
     setPaymentDetails((prev) => {
@@ -890,38 +884,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           <PaymentSummaryCard paymentType={paymentType} paymentDetails={paymentDetails} totalAmount={subtotal} />
         </CardContent>
       </Card>
-
-      {/* Payment Schedule Card - for Installments and Hybrid */}
-      {(paymentType === "installments" || paymentType === "hybrid") && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Payment Schedule</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PaymentScheduleBuilder
-              totalAmount={subtotal}
-              downPaymentAmount={paymentDetails.downPaymentAmount || 0}
-              downPaymentDueDate={paymentDetails.downPaymentDueDate || ""}
-              paymentStartDate={paymentDetails.paymentStartDate || ""}
-              installmentMonths={paymentType === "installments" ? (paymentDetails.installmentMonths || 6) : (paymentDetails.remainingInstallmentMonths || 6)}
-              scheduleMode={scheduleMode}
-              scheduleEntries={scheduleEntries}
-              onScheduleModeChange={setScheduleMode}
-              onEntriesChange={setScheduleEntries}
-              onPaymentStartDateChange={(date) => handlePaymentDetailChange("paymentStartDate", date)}
-              onInstallmentMonthsChange={(months) => {
-                if (paymentType === "installments") {
-                  handlePaymentDetailChange("installmentMonths", months)
-                } else {
-                  handlePaymentDetailChange("remainingInstallmentMonths", months)
-                }
-              }}
-              onDownPaymentDueDateChange={(date) => handlePaymentDetailChange("downPaymentDueDate", date)}
-              isHybrid={paymentType === "hybrid"}
-            />
-          </CardContent>
-        </Card>
-      )}
 
       {/* Discount & Pricing Card */}
       <Card>
