@@ -438,10 +438,10 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
     setIsCreatingQuotation(true)
 
     try {
-      // Save quotation to database first
+      // Save quotation to database first (VAT always applied at 14%)
       const discountResult = calculateDiscount(subtotal, discountType, discountValue)
       const discountAmount = discountResult.discountAmount
-      const taxAmount = vatEnabled ? (subtotal - discountAmount) * VAT_RATE : 0
+      const taxAmount = (subtotal - discountAmount) * VAT_RATE
       const totalAmount = subtotal - discountAmount + taxAmount
 
       const response = await fetch("/api/sales-quotations", {
