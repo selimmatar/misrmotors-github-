@@ -109,31 +109,33 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       
       // Recalculate dependent values when key fields change
       const currentSubtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+      // Calculate total with 14% tax
+      const totalWithTax = currentSubtotal * 1.14
       
       if (field === 'downPaymentAmount' || field === 'downPaymentPercent' || field === 'remainingInstallmentMonths') {
         // Recalculate for hybrid payment
         if (field === 'downPaymentAmount') {
           // When amount changes, recalculate the percent
           const newAmount = value as number
-          const newPercent = currentSubtotal > 0 ? (newAmount / currentSubtotal) * 100 : 0
+          const newPercent = totalWithTax > 0 ? (newAmount / totalWithTax) * 100 : 0
           updated.downPaymentAmount = newAmount
           updated.downPaymentPercent = Math.round(newPercent * 100) / 100 // Round to 2 decimals
-          updated.remainingAmount = currentSubtotal - newAmount
+          updated.remainingAmount = totalWithTax - newAmount
           updated.monthlyAmount = updated.remainingAmount / (prev.remainingInstallmentMonths || 6)
         } else if (field === 'downPaymentPercent') {
           // When percent changes, recalculate the amount
           const newPercent = value as number
-          const newAmount = (currentSubtotal * newPercent) / 100
+          const newAmount = (totalWithTax * newPercent) / 100
           updated.downPaymentPercent = newPercent
           updated.downPaymentAmount = Math.round(newAmount * 100) / 100 // Round to 2 decimals
-          updated.remainingAmount = currentSubtotal - newAmount
+          updated.remainingAmount = totalWithTax - newAmount
           updated.monthlyAmount = updated.remainingAmount / (prev.remainingInstallmentMonths || 6)
         } else if (field === 'remainingInstallmentMonths') {
-          updated.monthlyAmount = (prev.remainingAmount || currentSubtotal - (prev.downPaymentAmount || 0)) / (value as number)
+          updated.monthlyAmount = (prev.remainingAmount || totalWithTax - (prev.downPaymentAmount || 0)) / (value as number)
         }
       } else if (field === 'installmentMonths') {
-        // Recalculate for regular installments
-        updated.monthlyAmount = currentSubtotal / (value as number)
+        // Recalculate for regular installments with tax included
+        updated.monthlyAmount = totalWithTax / (value as number)
       }
       
       return updated
@@ -143,33 +145,35 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   // Recalculate payment amounts when items change (not payment details to avoid loops)
   useEffect(() => {
     const currentSubtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+    // Calculate total with 14% tax
+    const totalWithTax = currentSubtotal * 1.14
     
     setPaymentDetails((prev) => {
       // For installments and hybrid
       const installmentMonths = prev.installmentMonths || 6
       
-      // For hybrid - calculate down payment and remaining
+      // For hybrid - calculate down payment and remaining (using total with tax)
       const downPaymentPercent = prev.downPaymentPercent || 50
       let downPaymentAmount = prev.downPaymentAmount || 0
-      let remainingAmount = currentSubtotal
+      let remainingAmount = totalWithTax
       
       // If no downPaymentAmount set, calculate from percent
       if (downPaymentAmount === 0 && downPaymentPercent > 0) {
-        downPaymentAmount = (currentSubtotal * downPaymentPercent) / 100
+        downPaymentAmount = (totalWithTax * downPaymentPercent) / 100
       }
       
-      remainingAmount = currentSubtotal - downPaymentAmount
+      remainingAmount = totalWithTax - downPaymentAmount
       
       const remainingInstallmentMonths = prev.remainingInstallmentMonths || 6
       const monthlyAmount = remainingAmount > 0 ? remainingAmount / remainingInstallmentMonths : 0
       
       return {
         ...prev,
-        installmentMonthlyAmount: currentSubtotal / installmentMonths,
+        installmentMonthlyAmount: totalWithTax / installmentMonths,
         monthlyAmount: monthlyAmount,
         downPaymentAmount: downPaymentAmount,
         remainingAmount: remainingAmount,
-        chequeAmount: currentSubtotal,
+        chequeAmount: totalWithTax,
       }
     })
   }, [items])
@@ -886,22 +890,22 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
             />
           )}
 
+          {/* Payment Schedule Editor - for Installments and Hybrid */}
+          {(paymentType === "installments" || paymentType === "hybrid") && (
+            <PaymentScheduleEditor
+              paymentType={paymentType}
+              totalAmount={subtotal * 1.14}
+              downPaymentAmount={paymentDetails.downPaymentAmount || 0}
+              downPaymentDueDate={paymentDetails.downPaymentDueDate || ""}
+              installmentMonths={paymentType === "installments" ? (paymentDetails.installmentMonths || 6) : (paymentDetails.remainingInstallmentMonths || 6)}
+              paymentStartDate={paymentDetails.paymentStartDate || ""}
+              onScheduleChange={setPaymentSchedule}
+            />
+          )}
+
           <PaymentSummaryCard paymentType={paymentType} paymentDetails={paymentDetails} totalAmount={subtotal} />
         </CardContent>
       </Card>
-
-      {/* Payment Schedule Editor - for Installments and Hybrid */}
-      {(paymentType === "installments" || paymentType === "hybrid") && (
-        <PaymentScheduleEditor
-          paymentType={paymentType}
-          totalAmount={subtotal}
-          downPaymentAmount={paymentDetails.downPaymentAmount || 0}
-          downPaymentDueDate={paymentDetails.downPaymentDueDate || ""}
-          installmentMonths={paymentType === "installments" ? (paymentDetails.installmentMonths || 6) : (paymentDetails.remainingInstallmentMonths || 6)}
-          paymentStartDate={paymentDetails.paymentStartDate || ""}
-          onScheduleChange={setPaymentSchedule}
-        />
-      )}
 
       {/* Discount & Pricing Card */}
       <Card>
