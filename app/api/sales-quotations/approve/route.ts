@@ -45,6 +45,12 @@ export async function POST(request: NextRequest) {
     const paymentDetails = quotation.payment_details || {}
     const paymentType = quotation.payment_type || "cash"
 
+    // Helper: convert empty strings to null for date columns (Postgres rejects "")
+    const safeDate = (value: any): string | null => {
+      if (value === undefined || value === null || value === "") return null
+      return value
+    }
+
     // Create a new sales order from the approved quotation
     const { data: salesOrder, error: soError } = await supabase
       .from("sales_orders")
@@ -56,7 +62,7 @@ export async function POST(request: NextRequest) {
         total: quotation.total,
         net_total: quotation.net_total || quotation.total,
         notes: quotation.notes,
-        order_date: quotation.order_date || new Date().toISOString().split('T')[0],
+        order_date: safeDate(quotation.order_date) || new Date().toISOString().split('T')[0],
         parent_quotation_id: quotation.id,
         approval_document_url: approval_document_url || null,
         // Quotation info
@@ -65,7 +71,7 @@ export async function POST(request: NextRequest) {
         receiver_name: quotation.receiver_name,
         so_type: quotation.so_type || 'EQUIPMENT',
         // Delivery info
-        delivery_date: quotation.delivery_date,
+        delivery_date: safeDate(quotation.delivery_date),
         delivery_address: quotation.delivery_address,
         delivery_contact_name: quotation.delivery_contact_name,
         delivery_contact_phone: quotation.delivery_contact_phone,
@@ -78,21 +84,21 @@ export async function POST(request: NextRequest) {
         payment_terms: paymentType,
         installments: paymentDetails.installmentMonths || null,
         monthly_amount: paymentDetails.monthlyAmount || null,
-        payment_start_date: paymentDetails.paymentStartDate || null,
+        payment_start_date: safeDate(paymentDetails.paymentStartDate),
         // Down payment (for hybrid)
         down_payment_type: paymentDetails.downPaymentType || null,
         down_payment_percent: paymentDetails.downPaymentPercent || null,
         down_payment_amount: paymentDetails.downPaymentAmount || null,
-        down_payment_due_date: paymentDetails.downPaymentDueDate || null,
+        down_payment_due_date: safeDate(paymentDetails.downPaymentDueDate),
         down_payment_cheque_number: paymentDetails.downPaymentChequeNumber || null,
         down_payment_cheque_bank: paymentDetails.downPaymentChequeBank || null,
-        down_payment_cheque_due_date: paymentDetails.downPaymentChequeDueDate || null,
+        down_payment_cheque_due_date: safeDate(paymentDetails.downPaymentChequeDueDate),
         remaining_installment_months: paymentDetails.remainingInstallmentMonths || null,
         remaining_amount: paymentDetails.remainingAmount || null,
         // Cheque info
         cheque_number: paymentDetails.chequeNumber || null,
         cheque_bank_name: paymentDetails.chequeBankName || null,
-        cheque_due_date: paymentDetails.chequeDueDate || null,
+        cheque_due_date: safeDate(paymentDetails.chequeDueDate),
         cheque_amount: paymentDetails.chequeAmount || null,
         cheque_notes: paymentDetails.chequeNotes || null,
         created_at: new Date().toISOString(),
