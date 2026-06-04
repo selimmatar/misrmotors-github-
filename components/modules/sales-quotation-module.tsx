@@ -19,6 +19,8 @@ import {
   ChequeFields,
   HybridFields,
   PaymentSummaryCard,
+  PaymentScheduleBuilder,
+  type PaymentScheduleEntry,
 } from "@/components/payment"
 import { DiscountFields, PricingSummaryCard, calculateDiscount, type DiscountType } from "@/components/discount"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -98,6 +100,10 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   const [vatEnabled, setVatEnabled] = useState(true)
   const VAT_RATE = 0.14 // 14% VAT
 
+  // Payment schedule
+  const [scheduleMode, setScheduleMode] = useState<"AUTO" | "MANUAL">("AUTO")
+  const [scheduleEntries, setScheduleEntries] = useState<PaymentScheduleEntry[]>([])
+
   const handlePaymentDetailChange = (field: string, value: string | number) => {
     setPaymentDetails((prev) => {
       const updated = { ...prev, [field]: value }
@@ -108,12 +114,20 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       if (field === 'downPaymentAmount' || field === 'downPaymentPercent' || field === 'remainingInstallmentMonths') {
         // Recalculate for hybrid payment
         if (field === 'downPaymentAmount') {
-          updated.remainingAmount = currentSubtotal - (value as number)
+          // When amount changes, recalculate the percent
+          const newAmount = value as number
+          const newPercent = currentSubtotal > 0 ? (newAmount / currentSubtotal) * 100 : 0
+          updated.downPaymentAmount = newAmount
+          updated.downPaymentPercent = Math.round(newPercent * 100) / 100 // Round to 2 decimals
+          updated.remainingAmount = currentSubtotal - newAmount
           updated.monthlyAmount = updated.remainingAmount / (prev.remainingInstallmentMonths || 6)
         } else if (field === 'downPaymentPercent') {
-          const downPaymentAmt = (currentSubtotal * (value as number)) / 100
-          updated.downPaymentAmount = downPaymentAmt
-          updated.remainingAmount = currentSubtotal - downPaymentAmt
+          // When percent changes, recalculate the amount
+          const newPercent = value as number
+          const newAmount = (currentSubtotal * newPercent) / 100
+          updated.downPaymentPercent = newPercent
+          updated.downPaymentAmount = Math.round(newAmount * 100) / 100 // Round to 2 decimals
+          updated.remainingAmount = currentSubtotal - newAmount
           updated.monthlyAmount = updated.remainingAmount / (prev.remainingInstallmentMonths || 6)
         } else if (field === 'remainingInstallmentMonths') {
           updated.monthlyAmount = (prev.remainingAmount || currentSubtotal - (prev.downPaymentAmount || 0)) / (value as number)
@@ -876,6 +890,38 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           <PaymentSummaryCard paymentType={paymentType} paymentDetails={paymentDetails} totalAmount={subtotal} />
         </CardContent>
       </Card>
+
+      {/* Payment Schedule Card - for Installments and Hybrid */}
+      {(paymentType === "installments" || paymentType === "hybrid") && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Schedule</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PaymentScheduleBuilder
+              totalAmount={subtotal}
+              downPaymentAmount={paymentDetails.downPaymentAmount || 0}
+              downPaymentDueDate={paymentDetails.downPaymentDueDate || ""}
+              paymentStartDate={paymentDetails.paymentStartDate || ""}
+              installmentMonths={paymentType === "installments" ? (paymentDetails.installmentMonths || 6) : (paymentDetails.remainingInstallmentMonths || 6)}
+              scheduleMode={scheduleMode}
+              scheduleEntries={scheduleEntries}
+              onScheduleModeChange={setScheduleMode}
+              onEntriesChange={setScheduleEntries}
+              onPaymentStartDateChange={(date) => handlePaymentDetailChange("paymentStartDate", date)}
+              onInstallmentMonthsChange={(months) => {
+                if (paymentType === "installments") {
+                  handlePaymentDetailChange("installmentMonths", months)
+                } else {
+                  handlePaymentDetailChange("remainingInstallmentMonths", months)
+                }
+              }}
+              onDownPaymentDueDateChange={(date) => handlePaymentDetailChange("downPaymentDueDate", date)}
+              isHybrid={paymentType === "hybrid"}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Discount & Pricing Card */}
       <Card>
