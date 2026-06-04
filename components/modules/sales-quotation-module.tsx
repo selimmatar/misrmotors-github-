@@ -470,8 +470,8 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           discount_type: discountType,
           discount_value: discountValue,
           discount_amount: discountAmount,
-          // VAT
-          vat_enabled: vatEnabled,
+          // VAT (always applied at 14%)
+          vat_enabled: true,
           tax: taxAmount,
           subtotal: subtotal,
           net_total: totalAmount,
