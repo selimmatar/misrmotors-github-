@@ -19,6 +19,8 @@ import {
   ChequeFields,
   HybridFields,
   PaymentSummaryCard,
+  PaymentScheduleEditor,
+  type PaymentScheduleEntry,
 } from "@/components/payment"
 import { DiscountFields, PricingSummaryCard, calculateDiscount, type DiscountType } from "@/components/discount"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -97,6 +99,9 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   // VAT settings
   const [vatEnabled, setVatEnabled] = useState(true)
   const VAT_RATE = 0.14 // 14% VAT
+
+  // Payment schedule
+  const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleEntry[]>([])
 
   const handlePaymentDetailChange = (field: string, value: string | number) => {
     setPaymentDetails((prev) => {
@@ -884,6 +889,19 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           <PaymentSummaryCard paymentType={paymentType} paymentDetails={paymentDetails} totalAmount={subtotal} />
         </CardContent>
       </Card>
+
+      {/* Payment Schedule Editor - for Installments and Hybrid */}
+      {(paymentType === "installments" || paymentType === "hybrid") && (
+        <PaymentScheduleEditor
+          paymentType={paymentType}
+          totalAmount={subtotal}
+          downPaymentAmount={paymentDetails.downPaymentAmount || 0}
+          downPaymentDueDate={paymentDetails.downPaymentDueDate || ""}
+          installmentMonths={paymentType === "installments" ? (paymentDetails.installmentMonths || 6) : (paymentDetails.remainingInstallmentMonths || 6)}
+          paymentStartDate={paymentDetails.paymentStartDate || ""}
+          onScheduleChange={setPaymentSchedule}
+        />
+      )}
 
       {/* Discount & Pricing Card */}
       <Card>
