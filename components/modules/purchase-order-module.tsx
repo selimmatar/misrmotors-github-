@@ -415,10 +415,13 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             },
             body: JSON.stringify({
               invoiceId: invoiceId,
-              amount: order.total,
+              // For hybrid: only schedule the remaining amount (not the full total)
+              amount: effectivePaymentType === "hybrid" ? remainingAmount : order.total,
               installmentMonths: remainingInstallmentMonths,
               startDate: paymentStartDate,
               downPaymentAmount: effectivePaymentType === "hybrid" ? downPaymentAmount : 0,
+              downPaymentDueDate: effectivePaymentType === "hybrid" ? downPaymentDueDate : null,
+              monthlyAmount: effectivePaymentType === "hybrid" ? monthlyAmount : null,
               scheduleMode: "LEGACY_MONTHLY",
               scheduleType: "payable",
               isActive: false,
@@ -1848,24 +1851,45 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 <div>
                   <h3 className="font-semibold mb-3 text-lg border-b pb-2">Payment Schedule</h3>
                   <div className="space-y-2 text-sm">
-                    {viewDetailsOrder.paymentType === "hybrid" && viewDetailsOrder.downPaymentAmount && (
+                    {viewDetailsOrder.paymentType === "hybrid" && viewDetailsOrder.downPaymentAmount > 0 && (
                       <div className="flex justify-between p-3 bg-green-50 border border-green-200 rounded">
-                        <span className="font-semibold">Down Payment (Immediate)</span>
+                        <div>
+                          <span className="font-semibold">Down Payment (Immediate)</span>
+                          {viewDetailsOrder.downPaymentDueDate && (
+                            <p className="text-xs text-muted-foreground">Due: {viewDetailsOrder.downPaymentDueDate}</p>
+                          )}
+                        </div>
                         <span className="font-bold text-green-700">{formatCurrency(Number(viewDetailsOrder.downPaymentAmount))}</span>
                       </div>
                     )}
-                    {(viewDetailsOrder.installments || viewDetailsOrder.paymentType === "hybrid") && (() => {
-                      const remainingAmount = viewDetailsOrder.paymentType === "hybrid" 
-                        ? viewDetailsOrder.total - Number(viewDetailsOrder.downPaymentAmount || 0)
-                        : viewDetailsOrder.total;
-                      const installmentCount = viewDetailsOrder.installments || 3; // Default to 3 if not specified for hybrid
-                      const installmentAmount = remainingAmount / installmentCount;
-                      return Array.from({ length: installmentCount }).map((_, i) => (
-                        <div key={i} className="flex justify-between p-3 bg-blue-50 border border-blue-200 rounded">
-                          <span>Installment {i + 1}</span>
-                          <span className="font-medium text-blue-700">{formatCurrency(installmentAmount)}</span>
-                        </div>
-                      ));
+                    {(() => {
+                      const isHybrid = viewDetailsOrder.paymentType === "hybrid"
+                      // Use remainingInstallmentMonths for hybrid, installments count for regular
+                      const installmentCount = isHybrid
+                        ? (viewDetailsOrder.remainingInstallmentMonths || viewDetailsOrder.installments || 3)
+                        : (viewDetailsOrder.installments || 3)
+                      // Use pre-calculated monthlyAmount if available, otherwise derive it
+                      const scheduleAmount = isHybrid
+                        ? (viewDetailsOrder.remainingAmount || viewDetailsOrder.total - Number(viewDetailsOrder.downPaymentAmount || 0))
+                        : viewDetailsOrder.total
+                      const monthlyAmt = viewDetailsOrder.monthlyAmount > 0
+                        ? viewDetailsOrder.monthlyAmount
+                        : scheduleAmount / installmentCount
+                      const startDate = viewDetailsOrder.paymentStartDate || viewDetailsOrder.paymentDetails?.paymentStartDate
+                      return Array.from({ length: installmentCount }).map((_, i) => {
+                        const dueDate = startDate
+                          ? new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + i)).toLocaleDateString("en-GB")
+                          : null
+                        return (
+                          <div key={i} className="flex justify-between p-3 bg-blue-50 border border-blue-200 rounded">
+                            <div>
+                              <span>Installment {i + 1} of {installmentCount}</span>
+                              {dueDate && <p className="text-xs text-muted-foreground">Due: {dueDate}</p>}
+                            </div>
+                            <span className="font-medium text-blue-700">{formatCurrency(monthlyAmt)}</span>
+                          </div>
+                        )
+                      })
                     })()}
                   </div>
                 </div>
