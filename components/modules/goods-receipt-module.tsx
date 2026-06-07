@@ -137,20 +137,23 @@ export function GoodsReceiptModule() {
     // Get default warehouse
     const defaultWh = warehouses.find((w: any) => w.isDefault) || warehouses[0]
     
-    const lines: ReceiptLineItem[] = po.items.map((item: any) => ({
-      productId: item.productId,
-      productName: item.productName,
-      quantityOrdered: item.quantity,
-      quantityReceived: item.quantity, // Default to full quantity
-      unitPrice: item.unitPrice,
-      discrepancyType: '',
-      discrepancyNotes: '',
-      warehouseAllocations: defaultWh ? [{
-        warehouseId: String(defaultWh.id),
-        warehouseName: defaultWh.name,
-        quantity: item.quantity
-      }] : []
-    }))
+    const lines: ReceiptLineItem[] = po.items.map((item: any) => {
+      const qty = Number(item.quantity) || 0
+      return {
+        productId: item.productId || item.id || String(Math.random()),
+        productName: item.productName,
+        quantityOrdered: qty,
+        quantityReceived: qty,
+        unitPrice: item.unitPrice,
+        discrepancyType: '',
+        discrepancyNotes: '',
+        warehouseAllocations: defaultWh ? [{
+          warehouseId: String(defaultWh.id),
+          warehouseName: defaultWh.name,
+          quantity: qty
+        }] : []
+      }
+    })
     
     setItemPhotos(photos)
     setReceiptLines(lines)
@@ -534,9 +537,14 @@ export function GoodsReceiptModule() {
                           value={line.quantityReceived}
                           onChange={(e) => {
                             const newQty = parseInt(e.target.value) || 0
-                            setReceiptLines(prev => prev.map((l, i) => 
-                              i === index ? { ...l, quantityReceived: newQty } : l
-                            ))
+                            setReceiptLines(prev => prev.map((l, i) => {
+                              if (i !== index) return l
+                              // Auto-sync allocation when there is only one warehouse row
+                              const updatedAllocations = l.warehouseAllocations.length === 1
+                                ? [{ ...l.warehouseAllocations[0], quantity: newQty }]
+                                : l.warehouseAllocations
+                              return { ...l, quantityReceived: newQty, warehouseAllocations: updatedAllocations }
+                            }))
                           }}
                           className="w-full"
                         />
@@ -597,20 +605,30 @@ export function GoodsReceiptModule() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            const firstWh = warehouses[0]
-                            if (firstWh) {
-                              setReceiptLines(prev => prev.map((l, i) => 
-                                i === index ? {
-                                  ...l,
-                                  warehouseAllocations: [
-                                    ...l.warehouseAllocations,
-                                    { warehouseId: String(firstWh.id), warehouseName: firstWh.name, quantity: 0 }
-                                  ]
-                                } : l
-                              ))
-                            }
+                            const availableWarehouses = warehouses.filter(
+                              w => !line.warehouseAllocations.some(a => a.warehouseId === String(w.id))
+                            )
+                            const nextWh = availableWarehouses[0] || warehouses[0]
+                            if (!nextWh) return
+                            // Split the last allocation's remaining qty evenly
+                            const currentAllocations = line.warehouseAllocations
+                            const lastAlloc = currentAllocations[currentAllocations.length - 1]
+                            const splitQty = Math.floor(lastAlloc.quantity / 2)
+                            const remainder = lastAlloc.quantity - splitQty
+                            setReceiptLines(prev => prev.map((l, i) =>
+                              i === index ? {
+                                ...l,
+                                warehouseAllocations: [
+                                  ...currentAllocations.slice(0, -1),
+                                  { ...lastAlloc, quantity: remainder },
+                                  { warehouseId: String(nextWh.id), warehouseName: nextWh.name, quantity: splitQty }
+                                ]
+                              } : l
+                            ))
                           }}
                           className="h-7 text-xs"
+                          disabled={warehouses.length < 2}
+                          title={warehouses.length < 2 ? "Add more warehouses in Warehouse Management to enable splitting" : ""}
                         >
                           <Plus className="w-3 h-3 mr-1" />
                           Split to Another Warehouse
