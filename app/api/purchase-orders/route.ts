@@ -239,9 +239,9 @@ export async function POST(request: Request) {
           po_id: order.po_id,
           // Outsourced items have no product; keep product_id null
           product_id: isOutsourced ? null : rawProductId || null,
-          quantity: item.quantity,
-          unit_price: item.unitPrice || item.unit_price,
-          total: item.total,
+          quantity: Number(item.quantity) || 0,
+          unit_price: Number(item.unitPrice ?? item.unit_price ?? 0),
+          total: Number(item.total ?? 0),
           item_type: itemType,
           outsourced_name: item.outsourcedName || item.outsourced_name || null,
           outsourced_description: item.outsourcedDescription || item.outsourced_description || null,
