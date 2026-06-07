@@ -514,42 +514,58 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   setOrderItems(orderItems.filter((_, i) => i !== index))
   }
 
+  // Supplier name embedded in outsourced_description as "Supplier: NAME"
+  const extractSupplierFromDesc = (description: string): string => {
+    if (!description) return ""
+    const match = description.match(/^Supplier:\s*(.+)$/i)
+    return match ? match[1].trim().toLowerCase() : ""
+  }
+
+  // Match item to supplier by id (new orders) OR by name in outsourced_description (legacy orders)
+  const itemBelongsToSupplier = (item: any, supplierId: string): boolean => {
+    const isOutsourced = item.itemType === "outsourced" || item.item_type === "outsourced"
+    if (!isOutsourced) return false
+    // New orders: supplier_id is set
+    if (item.supplierId && item.supplierId.toString() === supplierId.toString()) return true
+    // Legacy orders: supplier stored as "Supplier: NAME" in outsourced_description
+    const supplier = (suppliers || []).find((s: any) => s.id?.toString() === supplierId.toString())
+    if (!supplier) return false
+    const descName = extractSupplierFromDesc(item.outsourcedDescription || "")
+    const supplierName = (supplier.name || "").trim().toLowerCase()
+    return descName !== "" && supplierName !== "" && (supplierName.includes(descName) || descName.includes(supplierName))
+  }
+
   // Returns sales orders that contain outsourced items assigned to the selected supplier
   const getSalesOrdersForSupplier = (supplierId: string) => {
     if (!supplierId) return []
     return (salesOrders || []).filter((so: any) =>
-      (so.items || []).some(
-        (item: any) =>
-          (item.itemType === "outsourced" || item.item_type === "outsourced") &&
-          item.supplierId?.toString() === supplierId.toString(),
-      ),
+      (so.items || []).some((item: any) => itemBelongsToSupplier(item, supplierId)),
     )
   }
 
   // Load the outsourced items of a sales order that belong to the selected supplier
   const loadOutsourcedItemsFromSO = (soId: string) => {
-    const so = (salesOrders || []).find((s: any) => s.id?.toString() === soId.toString())
+    const so = (salesOrders || []).find(
+      (s: any) => s.id?.toString() === soId.toString() || s.soId?.toString() === soId.toString(),
+    )
     if (!so) {
       setOrderItems([])
       return
     }
 
-    const matchingItems = (so.items || []).filter(
-      (item: any) =>
-        (item.itemType === "outsourced" || item.item_type === "outsourced") &&
-        item.supplierId?.toString() === formData.supplierId.toString(),
+    const matchingItems = (so.items || []).filter((item: any) =>
+      itemBelongsToSupplier(item, formData.supplierId),
     )
 
     const importedItems = matchingItems.map((item: any) => ({
       productId: "",
       quantity: (item.quantity ?? "").toString(),
-      // Default the PO cost to the SO unit price; the buyer can adjust it
       unitPrice: (item.unitPrice ?? "").toString(),
       itemType: "outsourced" as const,
       outsourcedName: item.outsourcedName || item.productName || "",
       outsourcedDescription: item.outsourcedDescription || "",
       outsourcedUnit: item.outsourcedUnit || "",
-      sourceSoId: so.id?.toString() || "",
+      sourceSoId: (so.id || so.soId)?.toString() || "",
       sourceSoItemId: item.id?.toString() || "",
     }))
 
