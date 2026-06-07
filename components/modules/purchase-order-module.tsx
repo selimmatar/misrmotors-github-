@@ -1641,17 +1641,17 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
               <div className="space-y-3">
                 {orderItems.map((item, index) => (
-                  <div key={index} className="grid grid-cols-4 gap-2 items-end">
+                  <div key={index} className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-center">
                     {item.itemType === "outsourced" ? (
-                      <div className="w-full border rounded px-3 py-2 bg-muted/50">
-                        <div className="flex items-center gap-1 text-sm font-medium truncate">
-                          <Badge variant="secondary" className="text-[10px] px-1 py-0">
+                      <div className="w-full border rounded px-3 py-2 bg-muted/50 min-w-0">
+                        <div className="flex items-center gap-1.5 text-sm font-medium">
+                          <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0">
                             Outsourced
                           </Badge>
                           <span className="truncate">{item.outsourcedName}</span>
                         </div>
                         {item.outsourcedUnit && (
-                          <p className="text-xs text-muted-foreground">Unit: {item.outsourcedUnit}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Unit: {item.outsourcedUnit}</p>
                         )}
                       </div>
                     ) : (
