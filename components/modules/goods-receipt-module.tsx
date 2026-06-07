@@ -44,6 +44,7 @@ interface WarehouseAllocation {
 interface ReceiptLineItem {
   productId: string
   productName: string
+  itemType: 'stock' | 'outsourced'
   quantityOrdered: number
   quantityReceived: number
   unitPrice: number
@@ -139,19 +140,22 @@ export function GoodsReceiptModule() {
     
     const lines: ReceiptLineItem[] = po.items.map((item: any) => {
       const qty = Number(item.quantity) || 0
+      const isOutsourced = item.itemType === 'outsourced' || !item.productId
       return {
         productId: item.productId || item.id || String(Math.random()),
-        productName: item.productName,
+        productName: item.productName || item.outsourcedName || 'Unknown',
+        itemType: isOutsourced ? 'outsourced' : 'stock',
         quantityOrdered: qty,
         quantityReceived: qty,
         unitPrice: item.unitPrice,
         discrepancyType: '',
         discrepancyNotes: '',
-        warehouseAllocations: defaultWh ? [{
+        // Outsourced items don't need warehouse allocation
+        warehouseAllocations: isOutsourced ? [] : (defaultWh ? [{
           warehouseId: String(defaultWh.id),
           warehouseName: defaultWh.name,
           quantity: qty
-        }] : []
+        }] : [])
       }
     })
     
@@ -232,8 +236,9 @@ export function GoodsReceiptModule() {
   }
 
   const handleAcceptWithPhotos = async () => {
-    // Validate that all items have warehouse allocations
+    // Only validate warehouse allocation for stock items (not outsourced)
     for (const line of receiptLines) {
+      if (line.itemType === 'outsourced') continue
       const totalAllocated = line.warehouseAllocations.reduce((sum, a) => sum + a.quantity, 0)
       if (totalAllocated !== line.quantityReceived) {
         alert(`${line.productName}: Allocated quantity (${totalAllocated}) doesn't match received quantity (${line.quantityReceived})`)
@@ -246,16 +251,38 @@ export function GoodsReceiptModule() {
       await uploadPhotos()
     }
 
-    // Create goods receipt using the new API - one line per warehouse allocation
     try {
       const allLines: any[] = []
-      
+
       for (const line of receiptLines) {
+        const poItem = selectedPOForPhotos.items.find(
+          (item: any) => item.productId === line.productId || item.outsourcedName === line.productName
+        )
+
+        if (line.itemType === 'outsourced') {
+          // Outsourced services: single line, no warehouse, mark fulfilled
+          allLines.push({
+            poItemId: poItem?.id || null,
+            productId: null,
+            outsourcedName: line.productName,
+            itemType: 'outsourced',
+            sourceSoItemId: poItem?.sourceSoItemId || null,
+            quantityOrdered: line.quantityOrdered,
+            quantityReceived: line.quantityReceived,
+            discrepancyType: null,
+            discrepancyNotes: null,
+            warehouseId: null,
+            unitCost: line.unitPrice,
+          })
+        } else {
+          // Stock items: one line per warehouse allocation
           for (const allocation of line.warehouseAllocations) {
             if (allocation.quantity > 0) {
               allLines.push({
-                poItemId: selectedPOForPhotos.items.find((item: any) => item.productId === line.productId)?.id,
+                poItemId: poItem?.id || null,
                 productId: line.productId,
+                itemType: 'stock',
+                sourceSoItemId: null,
                 quantityOrdered: line.quantityOrdered,
                 quantityReceived: allocation.quantity,
                 discrepancyType: line.discrepancyType && line.discrepancyType !== 'none' ? line.discrepancyType : null,
@@ -265,6 +292,7 @@ export function GoodsReceiptModule() {
               })
             }
           }
+        }
       }
 
       const response = await fetch('/api/goods-receipts', {
@@ -509,14 +537,63 @@ export function GoodsReceiptModule() {
             <p className="text-sm text-muted-foreground">{t("gr.receive-po-description")}</p>
 
             <div className="space-y-4">
-              <h4 className="font-semibold text-sm flex items-center gap-2">
-                <Package className="w-4 h-4" />
-                Review Items, Assign Warehouses & Report Issues
-              </h4>
-              <p className="text-sm text-muted-foreground">
-                For each item, select which warehouse(s) to receive the quantity into. You can split quantities across multiple warehouses.
-              </p>
-              {receiptLines.map((line, index) => (
+              {/* Outsourced Services Section */}
+              {receiptLines.some(l => l.itemType === 'outsourced') && (
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-sm flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-amber-600" />
+                    Outsourced Services
+                    <span className="text-xs font-normal text-muted-foreground">(no warehouse allocation needed)</span>
+                  </h4>
+                  {receiptLines
+                    .filter(l => l.itemType === 'outsourced')
+                    .map((line, index) => {
+                      const globalIndex = receiptLines.indexOf(line)
+                      return (
+                        <Card key={line.productId} className="p-4 border-amber-200 bg-amber-50/50">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1">
+                              <p className="font-medium">{line.productName}</p>
+                              <p className="text-sm text-muted-foreground">Outsourced service — Ordered: {line.quantityOrdered}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <Label htmlFor={`outsourced-qty-${globalIndex}`} className="text-sm">Qty Received</Label>
+                              <Input
+                                id={`outsourced-qty-${globalIndex}`}
+                                type="number"
+                                min="0"
+                                value={line.quantityReceived}
+                                onChange={(e) => {
+                                  const newQty = parseInt(e.target.value) || 0
+                                  setReceiptLines(prev => prev.map((l, i) =>
+                                    i === globalIndex ? { ...l, quantityReceived: newQty } : l
+                                  ))
+                                }}
+                                className="w-20"
+                              />
+                            </div>
+                          </div>
+                        </Card>
+                      )
+                    })}
+                </div>
+              )}
+
+              {/* Stock Items Section */}
+              {receiptLines.some(l => l.itemType !== 'outsourced') && (
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-sm flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Stock Items
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    For each item, select which warehouse(s) to receive the quantity into. You can split quantities across multiple warehouses.
+                  </p>
+                  {receiptLines
+                    .filter(l => l.itemType !== 'outsourced')
+                    .map((line) => {
+                      const globalIndex = receiptLines.indexOf(line)
+                      return (
                 <Card key={line.productId} className="p-4">
                   <div className="space-y-4">
                     <div className="flex items-start justify-between">
@@ -538,8 +615,7 @@ export function GoodsReceiptModule() {
                           onChange={(e) => {
                             const newQty = parseInt(e.target.value) || 0
                             setReceiptLines(prev => prev.map((l, i) => {
-                              if (i !== index) return l
-                              // Auto-sync allocation when there is only one warehouse row
+                              if (i !== globalIndex) return l
                               const updatedAllocations = l.warehouseAllocations.length === 1
                                 ? [{ ...l.warehouseAllocations[0], quantity: newQty }]
                                 : l.warehouseAllocations
@@ -552,11 +628,11 @@ export function GoodsReceiptModule() {
 
                       <div className="space-y-1.5">
                         <Label htmlFor={`issue-${line.productId}`}>Issue Type</Label>
-                        <Select 
-                          value={line.discrepancyType || "none"} // Updated default value
+                        <Select
+                          value={line.discrepancyType || "none"}
                           onValueChange={(value) => {
-                            setReceiptLines(prev => prev.map((l, i) => 
-                              i === index ? { ...l, discrepancyType: value as any } : l
+                            setReceiptLines(prev => prev.map((l, i) =>
+                              i === globalIndex ? { ...l, discrepancyType: value as any } : l
                             ))
                           }}
                         >
@@ -583,8 +659,8 @@ export function GoodsReceiptModule() {
                           placeholder="Describe the issue..."
                           value={line.discrepancyNotes}
                           onChange={(e) => {
-                            setReceiptLines(prev => prev.map((l, i) => 
-                              i === index ? { ...l, discrepancyNotes: e.target.value } : l
+                            setReceiptLines(prev => prev.map((l, i) =>
+                              i === globalIndex ? { ...l, discrepancyNotes: e.target.value } : l
                             ))
                           }}
                           rows={2}
@@ -642,7 +718,7 @@ export function GoodsReceiptModule() {
                             onValueChange={(value) => {
                               const wh = warehouses.find(w => String(w.id) === value)
                               setReceiptLines(prev => prev.map((l, i) => 
-                                i === index ? {
+                                i === globalIndex ? {
                                   ...l,
                                   warehouseAllocations: l.warehouseAllocations.map((a, ai) =>
                                     ai === allocIndex ? { ...a, warehouseId: value, warehouseName: wh?.name || '' } : a
@@ -670,7 +746,7 @@ export function GoodsReceiptModule() {
                             onChange={(e) => {
                               const qty = parseInt(e.target.value) || 0
                               setReceiptLines(prev => prev.map((l, i) => 
-                                i === index ? {
+                                i === globalIndex ? {
                                   ...l,
                                   warehouseAllocations: l.warehouseAllocations.map((a, ai) =>
                                     ai === allocIndex ? { ...a, quantity: qty } : a
@@ -687,12 +763,12 @@ export function GoodsReceiptModule() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                setReceiptLines(prev => prev.map((l, i) => 
-                                  i === index ? {
-                                    ...l,
-                                    warehouseAllocations: l.warehouseAllocations.filter((_, ai) => ai !== allocIndex)
-                                  } : l
-                                ))
+                              setReceiptLines(prev => prev.map((l, i) => 
+                                i === globalIndex ? {
+                                  ...l,
+                                  warehouseAllocations: l.warehouseAllocations.filter((_, ai) => ai !== allocIndex)
+                                } : l
+                              ))
                               }}
                               className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
                             >
@@ -776,6 +852,8 @@ export function GoodsReceiptModule() {
                   </div>
                 </Card>
               ))}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-4 border-t">

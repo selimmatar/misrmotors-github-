@@ -137,7 +137,11 @@ export async function POST(request: Request) {
     const linesToInsert = lines.map((line: any) => ({
       receipt_id: receipt.receipt_id,
       po_item_id: line.poItemId ? Number.parseInt(line.poItemId) : null,
-      product_id: Number.parseInt(line.productId),
+      // Outsourced items have no product_id — store null (column is now nullable)
+      product_id: line.itemType === 'outsourced' ? null : (line.productId ? Number.parseInt(line.productId) : null),
+      outsourced_name: line.outsourcedName || null,
+      item_type: line.itemType || 'stock',
+      source_so_item_id: line.sourceSoItemId ? Number.parseInt(line.sourceSoItemId) : null,
       quantity_ordered: line.quantityOrdered,
       quantity_received: line.quantityReceived,
       discrepancy_type: line.discrepancyType || null,
@@ -153,36 +157,27 @@ export async function POST(request: Request) {
 
     if (linesError) throw linesError
 
-    // Update inventory and create batches for ALL received items (including those with discrepancies)
-    // The physical items were received even if there's a quantity discrepancy
+    // Update inventory for stock items only
     for (const line of lines) {
-      if (line.quantityReceived > 0) {
+      if (line.quantityReceived > 0 && line.itemType !== 'outsourced' && line.productId) {
         const productId = Number.parseInt(line.productId)
         const warehouseId = line.warehouseId ? Number.parseInt(line.warehouseId) : null
 
-        console.log(`[v0] Updating inventory for product ${productId} in warehouse ${warehouseId}: +${line.quantityReceived} units`)
-
-        // Update or create inventory record - use maybeSingle() to avoid error when no record exists
         let query = supabase
           .from("inventory")
           .select("inventory_id, quantity")
           .eq("product_id", productId)
-        
-        // Handle null warehouse_id properly
+
         if (warehouseId !== null) {
           query = query.eq("warehouse_id", warehouseId)
         } else {
           query = query.is("warehouse_id", null)
         }
-        
-        const { data: existingInv, error: invError } = await query.maybeSingle()
-        
-        if (invError) {
-          console.error(`[v0] Error checking existing inventory for product ${productId}:`, invError)
-        }
+
+        const { data: existingInv } = await query.maybeSingle()
 
         if (existingInv) {
-          const { error: updateError } = await supabase
+          await supabase
             .from("inventory")
             .update({
               quantity: existingInv.quantity + line.quantityReceived,
@@ -190,30 +185,17 @@ export async function POST(request: Request) {
               last_updated: new Date().toISOString(),
             })
             .eq("inventory_id", existingInv.inventory_id)
-          
-          if (updateError) {
-            console.error(`[v0] Error updating inventory for product ${productId}:`, updateError)
-          } else {
-            console.log(`[v0] Updated existing inventory ${existingInv.inventory_id}: ${existingInv.quantity} + ${line.quantityReceived} = ${existingInv.quantity + line.quantityReceived}`)
-          }
         } else {
-          const { data: newInv, error: insertError } = await supabase.from("inventory").insert({
+          await supabase.from("inventory").insert({
             product_id: productId,
             quantity: line.quantityReceived,
             unit_cost: line.unitCost,
             warehouse_id: warehouseId,
             reorder_point: 0,
             last_updated: new Date().toISOString(),
-          }).select()
-          
-          if (insertError) {
-            console.error(`[v0] Error creating inventory for product ${productId}:`, insertError)
-          } else {
-            console.log(`[v0] Created new inventory record for product ${productId} with ${line.quantityReceived} units`, newInv)
-          }
+          })
         }
 
-        // Get the next batch sequence for this product
         const { data: lastBatch } = await supabase
           .from("inventory_batches")
           .select("batch_sequence")
@@ -224,7 +206,6 @@ export async function POST(request: Request) {
 
         const nextSequence = (lastBatch?.batch_sequence || 0) + 1
 
-        // Create inventory batch
         await supabase.from("inventory_batches").insert({
           product_id: productId,
           po_id: poId,
@@ -237,7 +218,21 @@ export async function POST(request: Request) {
           warehouse_id: warehouseId,
           batch_sequence: nextSequence,
         })
-        console.log(`[v0] Created inventory batch ${nextSequence} for product ${productId}, PO ${po.po_number}`)
+      }
+    }
+
+    // Mark linked SO items as fulfilled for outsourced lines
+    const outsourcedLines = lines.filter((l: any) => l.itemType === 'outsourced' && l.sourceSoItemId)
+    if (outsourcedLines.length > 0) {
+      const soItemIds = outsourcedLines.map((l: any) => Number.parseInt(l.sourceSoItemId))
+      const { error: soUpdateError } = await supabase
+        .from("sales_order_items")
+        .update({ fulfilled_at: new Date().toISOString() })
+        .in("so_item_id", soItemIds)
+      if (soUpdateError) {
+        console.error("[v0] Error marking SO items as fulfilled:", soUpdateError)
+      } else {
+        console.log("[v0] Marked", soItemIds.length, "SO items as fulfilled")
       }
     }
 
