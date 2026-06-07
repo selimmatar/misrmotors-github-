@@ -692,12 +692,15 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       const items = orderItems.map((item) => {
         const product = products.find((p) => p.id === item.productId)
         const isOutsourced = item.itemType === "outsourced"
+        const qty = Number.parseInt(item.quantity) || 0
+        // unit_price is NOT NULL in DB — default to 0 if blank (user can update later)
+        const unitPrice = Number.parseFloat(item.unitPrice) || 0
         return {
           productId: isOutsourced ? "" : item.productId,
           productName: isOutsourced ? item.outsourcedName || "Outsourced Item" : product?.productName || "Unknown",
-          quantity: Number.parseInt(item.quantity) || 0,
-          unitPrice: Number.parseFloat(item.unitPrice) || 0,
-          total: (Number.parseInt(item.quantity) || 0) * (Number.parseFloat(item.unitPrice) || 0),
+          quantity: qty,
+          unitPrice,
+          total: qty * unitPrice,
           itemType: item.itemType || "stock",
           outsourcedName: item.outsourcedName || null,
           outsourcedDescription: item.outsourcedDescription || null,
@@ -1851,10 +1854,11 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 <div>
                   <h3 className="font-semibold mb-3 text-lg border-b pb-2">Payment Schedule</h3>
                   <div className="space-y-2 text-sm">
-                    {viewDetailsOrder.paymentType === "hybrid" && viewDetailsOrder.downPaymentAmount > 0 && (
+                    {/* Down payment row for hybrid */}
+                    {viewDetailsOrder.paymentType === "hybrid" && Number(viewDetailsOrder.downPaymentAmount) > 0 && (
                       <div className="flex justify-between p-3 bg-green-50 border border-green-200 rounded">
                         <div>
-                          <span className="font-semibold">Down Payment (Immediate)</span>
+                          <span className="font-semibold">Down Payment</span>
                           {viewDetailsOrder.downPaymentDueDate && (
                             <p className="text-xs text-muted-foreground">Due: {viewDetailsOrder.downPaymentDueDate}</p>
                           )}
@@ -1862,35 +1866,52 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         <span className="font-bold text-green-700">{formatCurrency(Number(viewDetailsOrder.downPaymentAmount))}</span>
                       </div>
                     )}
-                    {(() => {
-                      const isHybrid = viewDetailsOrder.paymentType === "hybrid"
-                      // Use remainingInstallmentMonths for hybrid, installments count for regular
-                      const installmentCount = isHybrid
-                        ? (viewDetailsOrder.remainingInstallmentMonths || viewDetailsOrder.installments || 3)
-                        : (viewDetailsOrder.installments || 3)
-                      // Use pre-calculated monthlyAmount if available, otherwise derive it
-                      const scheduleAmount = isHybrid
-                        ? (viewDetailsOrder.remainingAmount || viewDetailsOrder.total - Number(viewDetailsOrder.downPaymentAmount || 0))
-                        : viewDetailsOrder.total
-                      const monthlyAmt = viewDetailsOrder.monthlyAmount > 0
-                        ? viewDetailsOrder.monthlyAmount
-                        : scheduleAmount / installmentCount
-                      const startDate = viewDetailsOrder.paymentStartDate || viewDetailsOrder.paymentDetails?.paymentStartDate
-                      return Array.from({ length: installmentCount }).map((_, i) => {
-                        const dueDate = startDate
-                          ? new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + i)).toLocaleDateString("en-GB")
-                          : null
-                        return (
-                          <div key={i} className="flex justify-between p-3 bg-blue-50 border border-blue-200 rounded">
-                            <div>
-                              <span>Installment {i + 1} of {installmentCount}</span>
-                              {dueDate && <p className="text-xs text-muted-foreground">Due: {dueDate}</p>}
-                            </div>
-                            <span className="font-medium text-blue-700">{formatCurrency(monthlyAmt)}</span>
+
+                    {/* MANUAL mode: render each saved schedule entry as-is */}
+                    {viewDetailsOrder.scheduleMode === "MANUAL" && Array.isArray(viewDetailsOrder.scheduleEntries) && viewDetailsOrder.scheduleEntries.length > 0 ? (
+                      viewDetailsOrder.scheduleEntries.map((entry: any, i: number) => (
+                        <div key={entry.id || i} className="flex justify-between p-3 bg-blue-50 border border-blue-200 rounded">
+                          <div>
+                            <span>{entry.note || `Installment ${i + 1}`}</span>
+                            {entry.dueDate && (
+                              <p className="text-xs text-muted-foreground">
+                                Due: {new Date(entry.dueDate).toLocaleDateString("en-GB")}
+                              </p>
+                            )}
                           </div>
-                        )
-                      })
-                    })()}
+                          <span className="font-medium text-blue-700">{formatCurrency(Number(entry.amount))}</span>
+                        </div>
+                      ))
+                    ) : (
+                      /* AUTO mode: compute evenly from stored monthlyAmount / installment count */
+                      (() => {
+                        const isHybrid = viewDetailsOrder.paymentType === "hybrid"
+                        const installmentCount = isHybrid
+                          ? (viewDetailsOrder.remainingInstallmentMonths || viewDetailsOrder.installments || 3)
+                          : (viewDetailsOrder.installments || 3)
+                        const scheduleAmount = isHybrid
+                          ? (viewDetailsOrder.remainingAmount || viewDetailsOrder.total - Number(viewDetailsOrder.downPaymentAmount || 0))
+                          : viewDetailsOrder.total
+                        const monthlyAmt = viewDetailsOrder.monthlyAmount > 0
+                          ? viewDetailsOrder.monthlyAmount
+                          : scheduleAmount / installmentCount
+                        const startDate = viewDetailsOrder.paymentStartDate
+                        return Array.from({ length: installmentCount }).map((_, i) => {
+                          const dueDate = startDate
+                            ? new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + i)).toLocaleDateString("en-GB")
+                            : null
+                          return (
+                            <div key={i} className="flex justify-between p-3 bg-blue-50 border border-blue-200 rounded">
+                              <div>
+                                <span>Installment {i + 1} of {installmentCount}</span>
+                                {dueDate && <p className="text-xs text-muted-foreground">Due: {dueDate}</p>}
+                              </div>
+                              <span className="font-medium text-blue-700">{formatCurrency(monthlyAmt)}</span>
+                            </div>
+                          )
+                        })
+                      })()
+                    )}
                   </div>
                 </div>
               )}
