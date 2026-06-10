@@ -594,264 +594,258 @@ export function GoodsReceiptModule() {
                     .map((line) => {
                       const globalIndex = receiptLines.indexOf(line)
                       return (
-                <Card key={line.productId} className="p-4">
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium">{line.productName}</p>
-                        <p className="text-sm text-muted-foreground">Ordered: {line.quantityOrdered} units</p>
-                      </div>
-                    </div>
+                        <Card key={line.productId} className="p-4">
+                          <div className="space-y-4">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <p className="font-medium">{line.productName}</p>
+                                <p className="text-sm text-muted-foreground">Ordered: {line.quantityOrdered} units</p>
+                              </div>
+                            </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label htmlFor={`qty-${line.productId}`}>Quantity Received *</Label>
-                        <Input
-                          id={`qty-${line.productId}`}
-                          type="number"
-                          min="0"
-                          max={line.quantityOrdered}
-                          value={line.quantityReceived}
-                          onChange={(e) => {
-                            const newQty = parseInt(e.target.value) || 0
-                            setReceiptLines(prev => prev.map((l, i) => {
-                              if (i !== globalIndex) return l
-                              const updatedAllocations = l.warehouseAllocations.length === 1
-                                ? [{ ...l.warehouseAllocations[0], quantity: newQty }]
-                                : l.warehouseAllocations
-                              return { ...l, quantityReceived: newQty, warehouseAllocations: updatedAllocations }
-                            }))
-                          }}
-                          className="w-full"
-                        />
-                      </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label htmlFor={`qty-${line.productId}`}>Quantity Received *</Label>
+                                <Input
+                                  id={`qty-${line.productId}`}
+                                  type="number"
+                                  min="0"
+                                  max={line.quantityOrdered}
+                                  value={line.quantityReceived}
+                                  onChange={(e) => {
+                                    const newQty = parseInt(e.target.value) || 0
+                                    setReceiptLines(prev => prev.map((l, i) => {
+                                      if (i !== globalIndex) return l
+                                      const updatedAllocations = l.warehouseAllocations.length === 1
+                                        ? [{ ...l.warehouseAllocations[0], quantity: newQty }]
+                                        : l.warehouseAllocations
+                                      return { ...l, quantityReceived: newQty, warehouseAllocations: updatedAllocations }
+                                    }))
+                                  }}
+                                  className="w-full"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label htmlFor={`issue-${line.productId}`}>Issue Type</Label>
+                                <Select
+                                  value={line.discrepancyType || "none"}
+                                  onValueChange={(value) => {
+                                    setReceiptLines(prev => prev.map((l, i) =>
+                                      i === globalIndex ? { ...l, discrepancyType: value as any } : l
+                                    ))
+                                  }}
+                                >
+                                  <SelectTrigger id={`issue-${line.productId}`}>
+                                    <SelectValue placeholder="No issue" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No issue</SelectItem>
+                                    <SelectItem value="missing">Missing</SelectItem>
+                                    <SelectItem value="damaged">Damaged</SelectItem>
+                                    <SelectItem value="wrong_item">Wrong Item</SelectItem>
+                                    <SelectItem value="quantity_mismatch">Quantity Mismatch</SelectItem>
+                                    <SelectItem value="other">Other</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
 
-                      <div className="space-y-1.5">
-                        <Label htmlFor={`issue-${line.productId}`}>Issue Type</Label>
-                        <Select
-                          value={line.discrepancyType || "none"}
-                          onValueChange={(value) => {
-                            setReceiptLines(prev => prev.map((l, i) =>
-                              i === globalIndex ? { ...l, discrepancyType: value as any } : l
-                            ))
-                          }}
-                        >
-                          <SelectTrigger id={`issue-${line.productId}`}>
-                            <SelectValue placeholder="No issue" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">No issue</SelectItem>
-                            <SelectItem value="missing">Missing</SelectItem>
-                            <SelectItem value="damaged">Damaged</SelectItem>
-                            <SelectItem value="wrong_item">Wrong Item</SelectItem>
-                            <SelectItem value="quantity_mismatch">Quantity Mismatch</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {line.discrepancyType && line.discrepancyType !== 'none' && (
-                      <div className="space-y-1.5">
-                        <Label htmlFor={`notes-${line.productId}`}>Issue Details *</Label>
-                        <Textarea
-                          id={`notes-${line.productId}`}
-                          placeholder="Describe the issue..."
-                          value={line.discrepancyNotes}
-                          onChange={(e) => {
-                            setReceiptLines(prev => prev.map((l, i) =>
-                              i === globalIndex ? { ...l, discrepancyNotes: e.target.value } : l
-                            ))
-                          }}
-                          rows={2}
-                          className="resize-none"
-                        />
-                      </div>
-                    )}
-
-                    {/* Warehouse Allocation Section */}
-                    <div className="space-y-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-center justify-between">
-                        <Label className="flex items-center gap-2 font-medium">
-                          <Warehouse className="w-4 h-4" />
-                          Warehouse Allocation
-                        </Label>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const availableWarehouses = warehouses.filter(
-                              w => !line.warehouseAllocations.some(a => a.warehouseId === String(w.id))
-                            )
-                            const nextWh = availableWarehouses[0] || warehouses[0]
-                            if (!nextWh) return
-                            // Split the last allocation's remaining qty evenly
-                            const currentAllocations = line.warehouseAllocations
-                            const lastAlloc = currentAllocations[currentAllocations.length - 1]
-                            const splitQty = Math.floor(lastAlloc.quantity / 2)
-                            const remainder = lastAlloc.quantity - splitQty
-                            setReceiptLines(prev => prev.map((l, i) =>
-                              i === index ? {
-                                ...l,
-                                warehouseAllocations: [
-                                  ...currentAllocations.slice(0, -1),
-                                  { ...lastAlloc, quantity: remainder },
-                                  { warehouseId: String(nextWh.id), warehouseName: nextWh.name, quantity: splitQty }
-                                ]
-                              } : l
-                            ))
-                          }}
-                          className="h-7 text-xs"
-                          disabled={warehouses.length < 2}
-                          title={warehouses.length < 2 ? "Add more warehouses in Warehouse Management to enable splitting" : ""}
-                        >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Split to Another Warehouse
-                        </Button>
-                      </div>
-                      
-                      {line.warehouseAllocations.map((allocation, allocIndex) => (
-                        <div key={allocIndex} className="flex items-center gap-2">
-                          <Select
-                            value={allocation.warehouseId}
-                            onValueChange={(value) => {
-                              const wh = warehouses.find(w => String(w.id) === value)
-                              setReceiptLines(prev => prev.map((l, i) => 
-                                i === globalIndex ? {
-                                  ...l,
-                                  warehouseAllocations: l.warehouseAllocations.map((a, ai) =>
-                                    ai === allocIndex ? { ...a, warehouseId: value, warehouseName: wh?.name || '' } : a
-                                  )
-                                } : l
-                              ))
-                            }}
-                          >
-                            <SelectTrigger className="flex-1">
-                              <SelectValue placeholder="Select warehouse" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {warehouses.map((wh) => (
-                                <SelectItem key={wh.id} value={String(wh.id)}>
-                                  {wh.name} {wh.isDefault && "(Default)"}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            type="number"
-                            min="0"
-                            max={line.quantityReceived}
-                            value={allocation.quantity}
-                            onChange={(e) => {
-                              const qty = parseInt(e.target.value) || 0
-                              setReceiptLines(prev => prev.map((l, i) => 
-                                i === globalIndex ? {
-                                  ...l,
-                                  warehouseAllocations: l.warehouseAllocations.map((a, ai) =>
-                                    ai === allocIndex ? { ...a, quantity: qty } : a
-                                  )
-                                } : l
-                              ))
-                            }}
-                            className="w-24"
-                            placeholder="Qty"
-                          />
-                          {line.warehouseAllocations.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                              setReceiptLines(prev => prev.map((l, i) => 
-                                i === globalIndex ? {
-                                  ...l,
-                                  warehouseAllocations: l.warehouseAllocations.filter((_, ai) => ai !== allocIndex)
-                                } : l
-                              ))
-                              }}
-                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                      
-                      {/* Show allocation summary */}
-                      {(() => {
-                        const totalAllocated = line.warehouseAllocations.reduce((sum, a) => sum + a.quantity, 0)
-                        const remaining = line.quantityReceived - totalAllocated
-                        return remaining !== 0 ? (
-                          <p className={`text-xs ${remaining > 0 ? 'text-amber-600' : 'text-red-600'}`}>
-                            {remaining > 0 
-                              ? `${remaining} units not yet allocated to a warehouse`
-                              : `Over-allocated by ${Math.abs(remaining)} units`
-                            }
-                          </p>
-                        ) : (
-                          <p className="text-xs text-green-600">All {totalAllocated} units allocated</p>
-                        )
-                      })()}
-                    </div>
-
-                    {/* Photo Upload Section */}
-                    <div className="flex items-start gap-3 pt-2 border-t">
-                      <div className="flex-shrink-0">
-                        {itemPhotos.find(p => p.productId === line.productId)?.preview ? (
-                          <div className="relative w-20 h-20">
-                            <img
-                              src={itemPhotos.find(p => p.productId === line.productId)?.preview || "/placeholder.svg"}
-                              alt={line.productName}
-                              className="w-20 h-20 object-cover rounded border"
-                            />
-                            {!itemPhotos.find(p => p.productId === line.productId)?.uploaded && (
-                              <button
-                                onClick={() => removePhoto(line.productId)}
-                                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
+                            {line.discrepancyType && line.discrepancyType !== 'none' && (
+                              <div className="space-y-1.5">
+                                <Label htmlFor={`notes-${line.productId}`}>Issue Details *</Label>
+                                <Textarea
+                                  id={`notes-${line.productId}`}
+                                  placeholder="Describe the issue..."
+                                  value={line.discrepancyNotes}
+                                  onChange={(e) => {
+                                    setReceiptLines(prev => prev.map((l, i) =>
+                                      i === globalIndex ? { ...l, discrepancyNotes: e.target.value } : l
+                                    ))
+                                  }}
+                                  rows={2}
+                                  className="resize-none"
+                                />
+                              </div>
                             )}
+
+                            {/* Warehouse Allocation Section */}
+                            <div className="space-y-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="flex items-center justify-between">
+                                <Label className="flex items-center gap-2 font-medium">
+                                  <Warehouse className="w-4 h-4" />
+                                  Warehouse Allocation
+                                </Label>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const availableWarehouses = warehouses.filter(
+                                      w => !line.warehouseAllocations.some(a => a.warehouseId === String(w.id))
+                                    )
+                                    const nextWh = availableWarehouses[0] || warehouses[0]
+                                    if (!nextWh) return
+                                    const currentAllocations = line.warehouseAllocations
+                                    const lastAlloc = currentAllocations[currentAllocations.length - 1]
+                                    const splitQty = Math.floor(lastAlloc.quantity / 2)
+                                    const remainder = lastAlloc.quantity - splitQty
+                                    setReceiptLines(prev => prev.map((l, i) =>
+                                      i === globalIndex ? {
+                                        ...l,
+                                        warehouseAllocations: [
+                                          ...currentAllocations.slice(0, -1),
+                                          { ...lastAlloc, quantity: remainder },
+                                          { warehouseId: String(nextWh.id), warehouseName: nextWh.name, quantity: splitQty }
+                                        ]
+                                      } : l
+                                    ))
+                                  }}
+                                  className="h-7 text-xs"
+                                  disabled={warehouses.length < 2}
+                                  title={warehouses.length < 2 ? "Add more warehouses to enable splitting" : ""}
+                                >
+                                  <Plus className="w-3 h-3 mr-1" />
+                                  Split to Another Warehouse
+                                </Button>
+                              </div>
+
+                              {line.warehouseAllocations.map((allocation, allocIndex) => (
+                                <div key={allocIndex} className="flex items-center gap-2">
+                                  <Select
+                                    value={allocation.warehouseId}
+                                    onValueChange={(value) => {
+                                      const wh = warehouses.find(w => String(w.id) === value)
+                                      setReceiptLines(prev => prev.map((l, i) =>
+                                        i === globalIndex ? {
+                                          ...l,
+                                          warehouseAllocations: l.warehouseAllocations.map((a, ai) =>
+                                            ai === allocIndex ? { ...a, warehouseId: value, warehouseName: wh?.name || '' } : a
+                                          )
+                                        } : l
+                                      ))
+                                    }}
+                                  >
+                                    <SelectTrigger className="flex-1">
+                                      <SelectValue placeholder="Select warehouse" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {warehouses.map((wh) => (
+                                        <SelectItem key={wh.id} value={String(wh.id)}>
+                                          {wh.name} {wh.isDefault && "(Default)"}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    max={line.quantityReceived}
+                                    value={allocation.quantity}
+                                    onChange={(e) => {
+                                      const qty = parseInt(e.target.value) || 0
+                                      setReceiptLines(prev => prev.map((l, i) =>
+                                        i === globalIndex ? {
+                                          ...l,
+                                          warehouseAllocations: l.warehouseAllocations.map((a, ai) =>
+                                            ai === allocIndex ? { ...a, quantity: qty } : a
+                                          )
+                                        } : l
+                                      ))
+                                    }}
+                                    className="w-24"
+                                    placeholder="Qty"
+                                  />
+                                  {line.warehouseAllocations.length > 1 && (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setReceiptLines(prev => prev.map((l, i) =>
+                                          i === globalIndex ? {
+                                            ...l,
+                                            warehouseAllocations: l.warehouseAllocations.filter((_, ai) => ai !== allocIndex)
+                                          } : l
+                                        ))
+                                      }}
+                                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              ))}
+
+                              {(() => {
+                                const totalAllocated = line.warehouseAllocations.reduce((sum, a) => sum + a.quantity, 0)
+                                const remaining = line.quantityReceived - totalAllocated
+                                return remaining !== 0 ? (
+                                  <p className={`text-xs ${remaining > 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                                    {remaining > 0
+                                      ? `${remaining} units not yet allocated to a warehouse`
+                                      : `Over-allocated by ${Math.abs(remaining)} units`}
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-green-600">All {totalAllocated} units allocated</p>
+                                )
+                              })()}
+                            </div>
+
+                            {/* Photo Upload Section */}
+                            <div className="flex items-start gap-3 pt-2 border-t">
+                              <div className="flex-shrink-0">
+                                {itemPhotos.find(p => p.productId === line.productId)?.preview ? (
+                                  <div className="relative w-20 h-20">
+                                    <img
+                                      src={itemPhotos.find(p => p.productId === line.productId)?.preview || "/placeholder.svg"}
+                                      alt={line.productName}
+                                      className="w-20 h-20 object-cover rounded border"
+                                    />
+                                    {!itemPhotos.find(p => p.productId === line.productId)?.uploaded && (
+                                      <button
+                                        onClick={() => removePhoto(line.productId)}
+                                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => fileInputRefs.current[line.productId]?.click()}
+                                    className="w-20 h-20 border-2 border-dashed rounded flex flex-col items-center justify-center gap-1 hover:bg-muted/50 transition-colors"
+                                  >
+                                    <Camera className="w-4 h-4 text-muted-foreground" />
+                                    <span className="text-[10px] text-muted-foreground">Add Photo</span>
+                                  </button>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  ref={(el) => { fileInputRefs.current[line.productId] = el }}
+                                  onChange={(e) => handlePhotoSelect(line.productId, e.target.files?.[0] || null)}
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <Label htmlFor={`photo-notes-${line.productId}`} className="text-xs">Photo Notes</Label>
+                                <Input
+                                  id={`photo-notes-${line.productId}`}
+                                  placeholder="Optional notes about photo..."
+                                  value={photoNotes[line.productId] || ""}
+                                  onChange={(e) =>
+                                    setPhotoNotes((prev) => ({ ...prev, [line.productId]: e.target.value }))
+                                  }
+                                  className="text-sm mt-1"
+                                />
+                              </div>
+                            </div>
                           </div>
-                        ) : (
-                          <button
-                            onClick={() => fileInputRefs.current[line.productId]?.click()}
-                            className="w-20 h-20 border-2 border-dashed rounded flex flex-col items-center justify-center gap-1 hover:bg-muted/50 transition-colors"
-                          >
-                            <Camera className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-[10px] text-muted-foreground">Add Photo</span>
-                          </button>
-                        )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          ref={(el) => {
-                            fileInputRefs.current[line.productId] = el
-                          }}
-                          onChange={(e) => handlePhotoSelect(line.productId, e.target.files?.[0] || null)}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <Label htmlFor={`photo-notes-${line.productId}`} className="text-xs">Photo Notes</Label>
-                        <Input
-                          id={`photo-notes-${line.productId}`}
-                          placeholder="Optional notes about photo..."
-                          value={photoNotes[line.productId] || ""}
-                          onChange={(e) =>
-                            setPhotoNotes((prev) => ({
-                              ...prev,
-                              [line.productId]: e.target.value,
-                            }))
-                          }
-                          className="text-sm mt-1"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+                        </Card>
+                      )
+                    })}
+                </div>
+              )}
             </div>
           )}
         </div>
