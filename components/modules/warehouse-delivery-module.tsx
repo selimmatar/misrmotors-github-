@@ -1226,6 +1226,8 @@ export function WarehouseDeliveryModule() {
                         condition: item.condition,
                         reason: item.reason,
                         isOutsourced: item.isOutsourced || false,
+                        supplierName: item.supplierName || null,
+                        unitCost: item.unitCost || item.unit_cost || null,
                       }
                     })
                     console.log("[v0] Warehouse assignments being sent:", JSON.stringify(warehouseAssignments, null, 2))

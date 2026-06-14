@@ -83,6 +83,8 @@ export async function GET(request: Request) {
           condition: item.item_condition,
           restocked: item.restocked,
           isOutsourced: item.is_outsourced || !item.product_id,
+          supplierName: item.supplier_name || null,
+          unitCost: item.unit_cost || null,
         })),
       }
     })
@@ -146,6 +148,8 @@ export async function POST(request: Request) {
           return_reason: ["damaged", "wrong_item", "customer_refused", "excess_quantity", "quality_issue", "other"].includes(item.reason) ? item.reason : "other",
           item_condition: item.condition || "good",
           is_outsourced: item.isOutsourced || !item.productId || false,
+          supplier_name: item.supplierName || null,
+          unit_cost: item.unitCost ? Number(item.unitCost) : null,
         }))
       
       const { error: itemsError } = await getAdmin()
@@ -242,7 +246,7 @@ export async function PUT(request: Request) {
         }
         
         if (isOutsourced) {
-          // Handle outsourced items - check if outsourced item with same name exists
+          // Handle outsourced items
           const { data: existingOutsourced } = await getAdmin()
             .from("inventory")
             .select("*")
@@ -252,21 +256,16 @@ export async function PUT(request: Request) {
             .maybeSingle()
           
           if (existingOutsourced) {
-            // Update existing outsourced inventory
             const newQuantity = (existingOutsourced.quantity || 0) + (assignment.quantityReturned || 0)
-            const { error: updateError } = await getAdmin()
+            await getAdmin()
               .from("inventory")
-              .update({ quantity: newQuantity })
+              .update({
+                quantity: newQuantity,
+                supplier_name: assignment.supplierName || existingOutsourced.supplier_name,
+              })
               .eq("inventory_id", existingOutsourced.inventory_id)
-            
-            if (updateError) {
-              console.error("[v0] Outsourced inventory update error:", updateError)
-            } else {
-              console.log("[v0] Updated outsourced inventory:", assignment.productName, "new qty:", newQuantity)
-            }
           } else {
-            // Create new outsourced inventory record
-            const { error: insertError } = await getAdmin()
+            await getAdmin()
               .from("inventory")
               .insert({
                 product_id: null,
@@ -276,59 +275,98 @@ export async function PUT(request: Request) {
                 is_outsourced: true,
                 outsourced_name: assignment.productName || "Outsourced Item",
                 outsourced_description: `Returned item - ${assignment.reason || "customer return"}`,
+                supplier_name: assignment.supplierName || null,
               })
-            
-            if (insertError) {
-              console.error("[v0] Outsourced inventory insert error:", insertError)
-            } else {
-              console.log("[v0] Created outsourced inventory record:", assignment.productName)
-            }
           }
         } else {
-          // Regular product - find or create inventory record
-          const { data: invData } = await getAdmin()
+          // Regular product — look up existing unit_cost from inventory or last batch
+          let unitCost = assignment.unitCost ? Number(assignment.unitCost) : 0
+          
+          const { data: existingInv } = await getAdmin()
             .from("inventory")
             .select("*")
             .eq("product_id", productId)
             .eq("warehouse_id", warehouseId)
             .maybeSingle()
-          
-          if (invData) {
-            // Update existing inventory - just update quantity
-            const newQuantity = (invData.quantity || 0) + (assignment.quantityReturned || 0)
-            const { error: updateError } = await getAdmin()
-              .from("inventory")
-              .update({ quantity: newQuantity })
-              .eq("inventory_id", invData.inventory_id)
-            
-            if (updateError) {
-              console.error("[v0] Inventory update error:", updateError)
+
+          // If unitCost not passed from UI, pull from existing inventory or latest batch
+          if (!unitCost) {
+            if (existingInv?.unit_cost) {
+              unitCost = Number(existingInv.unit_cost)
             } else {
-              console.log("[v0] Updated inventory for product:", productId, "new qty:", newQuantity)
+              const { data: lastBatch } = await getAdmin()
+                .from("inventory_batches")
+                .select("unit_cost")
+                .eq("product_id", productId)
+                .order("received_date", { ascending: false })
+                .limit(1)
+                .maybeSingle()
+              unitCost = lastBatch?.unit_cost ? Number(lastBatch.unit_cost) : 0
             }
+          }
+          
+          if (existingInv) {
+            const newQuantity = (existingInv.quantity || 0) + (assignment.quantityReturned || 0)
+            await getAdmin()
+              .from("inventory")
+              .update({
+                quantity: newQuantity,
+                unit_cost: unitCost || existingInv.unit_cost,
+                supplier_name: assignment.supplierName || existingInv.supplier_name,
+              })
+              .eq("inventory_id", existingInv.inventory_id)
           } else {
-            // Create new inventory record
-            const { error: insertError } = await getAdmin()
+            await getAdmin()
               .from("inventory")
               .insert({
                 product_id: productId,
                 warehouse_id: warehouseId,
                 quantity: assignment.quantityReturned || 0,
+                unit_cost: unitCost,
                 reorder_point: 10,
                 is_outsourced: false,
+                supplier_name: assignment.supplierName || null,
               })
-            
-            if (insertError) {
-              console.error("[v0] Inventory insert error:", insertError)
-            } else {
-              console.log("[v0] Created inventory record for product:", productId)
-            }
           }
+
+          // Create a return batch so it appears in inventory history with is_returned = true
+          const { data: lastBatch } = await getAdmin()
+            .from("inventory_batches")
+            .select("batch_sequence")
+            .eq("product_id", productId)
+            .order("batch_sequence", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          await getAdmin()
+            .from("inventory_batches")
+            .insert({
+              product_id: productId,
+              quantity_received: assignment.quantityReturned || 0,
+              quantity_available: assignment.quantityReturned || 0,
+              unit_cost: unitCost,
+              landed_cost_per_unit: unitCost,
+              received_date: new Date().toISOString().split("T")[0],
+              warehouse_id: warehouseId,
+              batch_sequence: (lastBatch?.batch_sequence || 0) + 1,
+              is_returned: true,
+              supplier_name: assignment.supplierName || null,
+            })
         }
       }
+      // Mark all processed items as restocked
+      const processedItemIds = (warehouseAssignments as any[])
+        .filter(a => a.condition === "good" && a.warehouseId)
+        .map((_a, idx) => idx)
+
+      if (processedItemIds.length > 0) {
+        await getAdmin()
+          .from("return_items")
+          .update({ restocked: true })
+          .eq("return_id", returnId)
+          .eq("item_condition", "good")
+      }
     }
-    
-    // Legacy format: If status is "restocked", update inventory
     if (status === "restocked" && restockItems && restockItems.length > 0) {
       const warehouseIdNum = assignedWarehouseId ? Number(assignedWarehouseId) : null
       
