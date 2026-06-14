@@ -1402,17 +1402,37 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       return
     }
 
-    // Block DP creation if any outsourced item has not been received (no fulfilled_at)
+    // Separate outsourced items into received vs still-pending
     const outsourcedItems = (order.items || []).filter(
       (item: any) => item.itemType === "outsourced" || item.item_type === "outsourced"
     )
     const unreceivedOutsourced = outsourcedItems.filter((item: any) => !item.fulfilledAt)
-    if (unreceivedOutsourced.length > 0) {
-      const names = unreceivedOutsourced.map((i: any) => i.productName || i.outsourcedName || "Unnamed item").join(", ")
+
+    // If ALL items (including stock) are unreceived outsourced, nothing to ship yet
+    const allItemsUnreceived =
+      (order.items || []).length > 0 &&
+      (order.items || []).every(
+        (item: any) =>
+          (item.itemType === "outsourced" || item.item_type === "outsourced") && !item.fulfilledAt
+      )
+    if (allItemsUnreceived) {
       alert(
-        `Cannot create delivery permit. The following outsourced items have not been received yet:\n\n${names}\n\nPlease create a purchase order and receive the goods first.`
+        `Cannot create delivery permit — none of the outsourced items on this order have been received yet.\n\nPlease create a purchase order and receive the goods first.`
       )
       return
+    }
+
+    // Build order with only available items — exclude unreceived outsourced items
+    const availableItems = (order.items || []).filter((item: any) => {
+      const isOutsourced = item.itemType === "outsourced" || item.item_type === "outsourced"
+      if (isOutsourced && !item.fulfilledAt) return false
+      return true
+    })
+
+    const orderForDp = {
+      ...order,
+      items: availableItems,
+      _excludedItems: unreceivedOutsourced,
     }
 
     // Initialize delivery info from SO
@@ -1454,8 +1474,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       setExistingDPsForSO([])
     }
 
-    setSelectedSOForDP(order)
-    setCreateDPDialogOpen(true)
+    setSelectedSOForDP(orderForDp)
   }
 
   const handleCreateDpFromDialog = async () => {
@@ -2243,7 +2262,21 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Delivery Address Section */}
+            {/* Warning banner for excluded unreceived outsourced items */}
+            {(selectedSOForDP as any)?._excludedItems?.length > 0 && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+                <p className="font-semibold mb-1">Some items excluded — not received yet:</p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {(selectedSOForDP as any)._excludedItems.map((item: any, i: number) => (
+                    <li key={i}>
+                      {item.productName || item.outsourcedName || "Unnamed item"}
+                      {item.supplierName ? ` (${item.supplierName})` : ""}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-xs">Create a purchase order and receive these goods to include them in a future delivery permit.</p>
+              </div>
+            )}
             <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
               <h3 className="font-semibold text-sm">Delivery Information</h3>
               <div className="grid grid-cols-2 gap-4">
