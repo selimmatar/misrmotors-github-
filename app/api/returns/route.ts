@@ -229,7 +229,15 @@ export async function PUT(request: Request) {
     const soNumber = returnRecord?.so_number || (returnRecord?.so_id ? `SO-${returnRecord.so_id}` : null)
 
     if ((status === "completed" || status === "received") && warehouseAssignments && warehouseAssignments.length > 0) {
-        
+
+      for (const assignment of warehouseAssignments) {
+        const productId = assignment.productId ? Number(assignment.productId) : null
+        const warehouseId = assignment.warehouseId ? Number(assignment.warehouseId) : null
+        const isOutsourced = !productId || assignment.isOutsourced
+
+        // Skip if no warehouse assigned or condition is not good
+        if (assignment.condition !== "good" || !warehouseId) continue
+
         if (isOutsourced) {
           // Handle outsourced items
           const { data: existingOutsourced } = await getAdmin()
@@ -239,7 +247,7 @@ export async function PUT(request: Request) {
             .eq("is_outsourced", true)
             .eq("outsourced_name", assignment.productName || "Outsourced Item")
             .maybeSingle()
-          
+
           if (existingOutsourced) {
             const newQuantity = (existingOutsourced.quantity || 0) + (assignment.quantityReturned || 0)
             await getAdmin()
@@ -266,13 +274,12 @@ export async function PUT(request: Request) {
                 is_returned: true,
                 so_number: soNumber || null,
               })
-              .select("inventory_id")
-              .single()
             if (insertErr) console.error("[v0] Outsourced insert error:", insertErr)
+          }
         } else {
           // Regular product — look up existing unit_cost from inventory or last batch
           let unitCost = assignment.unitCost ? Number(assignment.unitCost) : 0
-          
+
           const { data: existingInv } = await getAdmin()
             .from("inventory")
             .select("*")
@@ -295,7 +302,7 @@ export async function PUT(request: Request) {
               unitCost = lastBatch?.unit_cost ? Number(lastBatch.unit_cost) : 0
             }
           }
-          
+
           if (existingInv) {
             const newQuantity = (existingInv.quantity || 0) + (assignment.quantityReturned || 0)
             await getAdmin()
@@ -325,7 +332,7 @@ export async function PUT(request: Request) {
           }
 
           // Create a return batch so it appears in inventory history with is_returned = true
-          const { data: lastBatch } = await getAdmin()
+          const { data: lastBatchSeq } = await getAdmin()
             .from("inventory_batches")
             .select("batch_sequence")
             .eq("product_id", productId)
@@ -343,18 +350,18 @@ export async function PUT(request: Request) {
               landed_cost_per_unit: unitCost,
               received_date: new Date().toISOString().split("T")[0],
               warehouse_id: warehouseId,
-              batch_sequence: (lastBatch?.batch_sequence || 0) + 1,
+              batch_sequence: (lastBatchSeq?.batch_sequence || 0) + 1,
               is_returned: true,
               supplier_name: assignment.supplierName || null,
             })
         }
-      }
-      // Mark all processed items as restocked
-      const processedItemIds = (warehouseAssignments as any[])
-        .filter(a => a.condition === "good" && a.warehouseId)
-        .map((_a, idx) => idx)
+      } // end for loop
 
-      if (processedItemIds.length > 0) {
+      // Mark all processed items as restocked
+      const processedCount = (warehouseAssignments as any[])
+        .filter((a: any) => a.condition === "good" && a.warehouseId).length
+
+      if (processedCount > 0) {
         await getAdmin()
           .from("return_items")
           .update({ restocked: true })
