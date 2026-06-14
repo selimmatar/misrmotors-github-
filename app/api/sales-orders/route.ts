@@ -106,6 +106,7 @@ export async function GET() {
           itemCategory: item.item_category || "EQUIPMENT",
           supplierId: item.supplier_id?.toString() || "",
           supplierName: item.suppliers?.supplier_name || "",
+          fulfilledAt: item.fulfilled_at || null,
         })),
         deliveryPermits: (order.delivery_permits || []).map((dp: any) => ({
           permitId: dp.permit_id,

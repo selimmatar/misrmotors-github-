@@ -1402,6 +1402,19 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       return
     }
 
+    // Block DP creation if any outsourced item has not been received (no fulfilled_at)
+    const outsourcedItems = (order.items || []).filter(
+      (item: any) => item.itemType === "outsourced" || item.item_type === "outsourced"
+    )
+    const unreceivedOutsourced = outsourcedItems.filter((item: any) => !item.fulfilledAt)
+    if (unreceivedOutsourced.length > 0) {
+      const names = unreceivedOutsourced.map((i: any) => i.productName || i.outsourcedName || "Unnamed item").join(", ")
+      alert(
+        `Cannot create delivery permit. The following outsourced items have not been received yet:\n\n${names}\n\nPlease create a purchase order and receive the goods first.`
+      )
+      return
+    }
+
     // Initialize delivery info from SO
     setDpDeliveryInfo({
       recipientName: order.delivery_contact_name || order.deliveryContactName || "",
