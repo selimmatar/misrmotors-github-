@@ -17,7 +17,9 @@ export async function GET() {
         reorder_point,
         unit_cost,
         location,
-        warehouse_id
+        warehouse_id,
+        is_outsourced,
+        outsourced_name
       `)
       .order("product_id")
 
@@ -39,11 +41,15 @@ export async function GET() {
     // Merge inventory with product details
     const inventoryWithProducts =
       inventory?.map((item) => {
+        const isOutsourced = item.is_outsourced || !item.product_id
         const product = products?.find((p) => p.product_id === item.product_id)
         return {
           ...item,
-          productName: product?.product_name || "Unknown",
-          sku: product?.sku || "N/A",
+          productName: isOutsourced
+            ? item.outsourced_name || "Outsourced Item"
+            : product?.product_name || "Unknown",
+          sku: isOutsourced ? "OUTSOURCED" : product?.sku || "N/A",
+          isOutsourced,
         }
       }) || []
 
