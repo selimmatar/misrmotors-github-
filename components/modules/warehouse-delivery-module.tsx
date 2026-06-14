@@ -1202,6 +1202,27 @@ export function WarehouseDeliveryModule() {
                 </Button>
                 <Button
                   onClick={async () => {
+                    // Validate all "good" condition items have a warehouse selected
+                    const goodItems = (selectedReturn.items || []).filter((item: any) => item.condition === "good")
+                    const missing = goodItems.filter((_: any, idx: number) => !returnWarehouseSelections[`${idx}`])
+                    if (missing.length > 0) {
+                      alert(`Please select a warehouse for all good-condition items before processing.`)
+                      return
+                    }
+
+                    // Build the assignments array from the selections state
+                    const builtAssignments = (selectedReturn.items || []).map((item: any, idx: number) => ({
+                      productId: item.productId || null,
+                      productName: item.productName,
+                      isOutsourced: item.isOutsourced || !item.productId,
+                      warehouseId: returnWarehouseSelections[`${idx}`] || null,
+                      condition: item.condition || "good",
+                      quantityReturned: item.quantityReturned || 0,
+                      reason: item.reason || "other",
+                      supplierName: item.supplierName || null,
+                      unitCost: item.unitCost || null,
+                    }))
+
                     setProcessingReturn(true)
                     try {
                       const response = await fetch("/api/returns", {
@@ -1211,7 +1232,7 @@ export function WarehouseDeliveryModule() {
                           returnId: selectedReturn.id,
                           status: "completed",
                           processedBy: user?.name || "warehouse_manager",
-                          warehouseAssignments,
+                          warehouseAssignments: builtAssignments,
                         }),
                       })
                       
@@ -1219,8 +1240,8 @@ export function WarehouseDeliveryModule() {
                         alert("Return processed successfully! Inventory has been updated.")
                         setShowReturnProcessDialog(false)
                         setSelectedReturn(null)
+                        setReturnWarehouseSelections({})
                         fetchPendingReturns()
-                        // Refresh inventory to show updated quantities and returned items
                         await refreshInventory()
                       } else {
                         const error = await response.json()
