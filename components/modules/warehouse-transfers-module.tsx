@@ -15,9 +15,11 @@ import { Plus, ArrowRight, Package, Trash2, CheckCircle, Eye, Loader2 } from "lu
 import type { UserRole } from "@/lib/types"
 
 interface TransferItem {
-  productId: string
+  inventoryId: number
+  productId: string | null
   productName: string
   sku: string
+  isOutsourced: boolean
   quantity: number
   availableQty: number
 }
@@ -95,23 +97,26 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
   const handleAddItem = () => {
     if (!selectedProductId) return
 
+    // selectedProductId now holds the inventoryId (works for both products and outsourced items)
     const product = getAvailableProducts().find(
-      (p: any) => p.productId?.toString() === selectedProductId
+      (p: any) => p.inventoryId?.toString() === selectedProductId
     )
     if (!product) return
 
     // Check if already added
-    if (transferItems.find((item) => item.productId === selectedProductId)) {
-      alert("Product already added to transfer")
+    if (transferItems.find((item) => item.inventoryId?.toString() === selectedProductId)) {
+      alert("Item already added to transfer")
       return
     }
 
     setTransferItems([
       ...transferItems,
       {
-        productId: selectedProductId,
-        productName: product.productName,
+        inventoryId: product.inventoryId,
+        productId: product.productId || null,
+        productName: product.isOutsourced ? (product.outsourcedName || product.productName) : product.productName,
         sku: product.sku || "",
+        isOutsourced: product.isOutsourced || false,
         quantity: transferQty,
         availableQty: product.quantity,
       },
@@ -120,8 +125,8 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
     setTransferQty(1)
   }
 
-  const handleRemoveItem = (productId: string) => {
-    setTransferItems(transferItems.filter((item) => item.productId !== productId))
+  const handleRemoveItem = (inventoryId: any) => {
+    setTransferItems(transferItems.filter((item) => item.inventoryId !== inventoryId))
   }
 
   const handleCreateTransfer = async () => {
@@ -139,8 +144,10 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
           fromWarehouseId: parseInt(fromWarehouseId),
           toWarehouseId: parseInt(toWarehouseId),
           items: transferItems.map((item) => ({
-            productId: parseInt(item.productId),
+            inventoryId: item.inventoryId,
+            productId: item.productId ? parseInt(item.productId) : null,
             productName: item.productName,
+            isOutsourced: item.isOutsourced || false,
             quantity: item.quantity,
           })),
           notes,
@@ -338,9 +345,10 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                       <SelectValue placeholder="Select product" />
                     </SelectTrigger>
                     <SelectContent>
-                      {getAvailableProducts().filter((product: any) => product.productId && product.productId.toString().trim() !== "").map((product: any) => (
-                        <SelectItem key={product.productId} value={product.productId.toString()}>
-                          {product.productName} (Avail: {product.quantity})
+                      {getAvailableProducts().filter((product: any) => product.inventoryId != null).map((product: any) => (
+                        <SelectItem key={product.inventoryId} value={product.inventoryId.toString()}>
+                          {product.isOutsourced ? (product.outsourcedName || product.productName) : product.productName}
+                          {product.isOutsourced ? " (Outsourced)" : ""} (Avail: {product.quantity})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -361,17 +369,20 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                 {transferItems.length > 0 && (
                   <div className="border rounded-lg divide-y">
                     {transferItems.map((item) => (
-                      <div key={item.productId} className="flex justify-between items-center p-3">
+                      <div key={item.inventoryId} className="flex justify-between items-center p-3">
                         <div>
-                          <p className="font-medium">{item.productName}</p>
+                          <p className="font-medium">
+                            {item.productName}
+                            {item.isOutsourced ? <span className="ml-2 text-xs text-amber-600">(Outsourced)</span> : null}
+                          </p>
                           <p className="text-sm text-muted-foreground">
-                            SKU: {item.sku} | Qty: {item.quantity} (Avail: {item.availableQty})
+                            {item.sku ? `SKU: ${item.sku} | ` : ""}Qty: {item.quantity} (Avail: {item.availableQty})
                           </p>
                         </div>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRemoveItem(item.productId)}
+                          onClick={() => handleRemoveItem(item.inventoryId)}
                         >
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </Button>

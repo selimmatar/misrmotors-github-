@@ -73,18 +73,17 @@ export async function POST(request: Request) {
       )
     }
 
-    // Validate inventory availability in source warehouse
+    // Validate inventory availability in source warehouse by inventory_id
     for (const item of items) {
       const { data: inventory, error: invError } = await supabase
         .from("inventory")
         .select("quantity")
-        .eq("product_id", item.productId)
-        .eq("warehouse_id", fromWarehouseId)
+        .eq("inventory_id", item.inventoryId)
         .single()
 
       if (invError || !inventory) {
         return NextResponse.json(
-          { error: `Product ${item.productName} not found in source warehouse` },
+          { error: `${item.productName} not found in source warehouse` },
           { status: 400 }
         )
       }
@@ -117,9 +116,12 @@ export async function POST(request: Request) {
     // Create transfer items
     const transferItems = items.map((item: any) => ({
       transfer_id: transfer.transfer_id,
-      product_id: item.productId,
+      source_inventory_id: item.inventoryId,
+      product_id: item.isOutsourced ? null : item.productId,
       product_name: item.productName,
-      sku: item.sku,
+      sku: item.sku || null,
+      is_outsourced: item.isOutsourced || false,
+      outsourced_name: item.isOutsourced ? item.productName : null,
       quantity_requested: item.quantity,
       quantity_sent: item.quantity,
       quantity_received: 0,
