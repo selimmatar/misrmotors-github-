@@ -221,10 +221,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // Mark linked SO items as fulfilled for outsourced lines
-    const outsourcedLines = lines.filter((l: any) => l.itemType === 'outsourced' && l.sourceSoItemId)
-    if (outsourcedLines.length > 0) {
-      const soItemIds = outsourcedLines.map((l: any) => Number.parseInt(l.sourceSoItemId))
+    // Mark ALL linked SO items as fulfilled (both stock and outsourced lines)
+    const soLinkedLines = lines.filter((l: any) => l.sourceSoItemId && l.quantityReceived > 0)
+    if (soLinkedLines.length > 0) {
+      const soItemIds = soLinkedLines.map((l: any) => Number.parseInt(l.sourceSoItemId))
       const { error: soUpdateError } = await supabase
         .from("sales_order_items")
         .update({ fulfilled_at: new Date().toISOString() })
@@ -233,6 +233,32 @@ export async function POST(request: Request) {
         console.error("[v0] Error marking SO items as fulfilled:", soUpdateError)
       } else {
         console.log("[v0] Marked", soItemIds.length, "SO items as fulfilled")
+      }
+
+      // Find which sales orders these items belong to
+      const { data: affectedItems } = await supabase
+        .from("sales_order_items")
+        .select("so_id")
+        .in("so_item_id", soItemIds)
+
+      const affectedSoIds = [...new Set((affectedItems || []).map((i: any) => i.so_id))]
+
+      // For each affected SO, if ALL its items are now fulfilled, mark it ready for delivery
+      for (const soId of affectedSoIds) {
+        const { data: allItems } = await supabase
+          .from("sales_order_items")
+          .select("so_item_id, fulfilled_at")
+          .eq("so_id", soId)
+
+        const allFulfilled = (allItems || []).length > 0 && (allItems || []).every((i: any) => i.fulfilled_at)
+
+        if (allFulfilled) {
+          await supabase
+            .from("sales_orders")
+            .update({ fulfillment_status: "READY_FOR_FULFILLMENT" })
+            .eq("so_id", soId)
+          console.log("[v0] SO", soId, "fully received — marked READY_FOR_FULFILLMENT")
+        }
       }
     }
 
