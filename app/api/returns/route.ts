@@ -219,7 +219,6 @@ export async function PUT(request: Request) {
     
     // Handle warehouse assignments from warehouse module (new format)
     // Use admin client to bypass RLS for inventory operations
-    console.log("[v0] Returns PUT: status =", status, ", warehouseAssignments =", JSON.stringify(warehouseAssignments, null, 2))
     
     // Fetch the return's SO number for stamping onto inventory rows
     const { data: returnRecord } = await getAdmin()
@@ -228,33 +227,8 @@ export async function PUT(request: Request) {
       .eq("return_id", returnId)
       .maybeSingle()
     const soNumber = returnRecord?.so_number || (returnRecord?.so_id ? `SO-${returnRecord.so_id}` : null)
-    console.log("[v0] Returns PUT: soNumber resolved to:", soNumber, "from return record:", returnRecord)
 
     if ((status === "completed" || status === "received") && warehouseAssignments && warehouseAssignments.length > 0) {
-      console.log("[v0] Returns: Processing", warehouseAssignments.length, "warehouse assignments, soNumber:", soNumber)
-      
-      for (const assignment of warehouseAssignments) {
-        // Only restock items with "good" condition and assigned warehouse
-        const productId = assignment.productId ? Number(assignment.productId) : null
-        const warehouseId = assignment.warehouseId ? Number(assignment.warehouseId) : null
-        const isOutsourced = !productId || assignment.isOutsourced
-        
-        console.log("[v0] Returns: Processing assignment #", warehouseAssignments.indexOf(assignment) + 1, "of", warehouseAssignments.length, ":", {
-          productId,
-          productName: assignment.productName,
-          warehouseId,
-          isOutsourced,
-          condition: assignment.condition,
-          quantity: assignment.quantityReturned,
-          supplierName: assignment.supplierName,
-          unitCost: assignment.unitCost
-        })
-        
-        // Skip if no warehouse assigned or condition is not good
-        if (assignment.condition !== "good" || !warehouseId) {
-          console.log("[v0] Skipping assignment - condition:", assignment.condition, "warehouseId:", warehouseId)
-          continue
-        }
         
         if (isOutsourced) {
           // Handle outsourced items
@@ -268,13 +242,6 @@ export async function PUT(request: Request) {
           
           if (existingOutsourced) {
             const newQuantity = (existingOutsourced.quantity || 0) + (assignment.quantityReturned || 0)
-            console.log("[v0] Updating existing outsourced:", {
-              inventory_id: existingOutsourced.inventory_id,
-              newQuantity,
-              supplier_name: assignment.supplierName,
-              is_returned: true,
-              so_number: soNumber
-            })
             await getAdmin()
               .from("inventory")
               .update({
@@ -285,14 +252,7 @@ export async function PUT(request: Request) {
               })
               .eq("inventory_id", existingOutsourced.inventory_id)
           } else {
-            console.log("[v0] Inserting new outsourced:", {
-              outsourced_name: assignment.productName,
-              quantity: assignment.quantityReturned,
-              supplier_name: assignment.supplierName,
-              is_returned: true,
-              so_number: soNumber
-            })
-            const { data: inserted, error: insertErr } = await getAdmin()
+            const { error: insertErr } = await getAdmin()
               .from("inventory")
               .insert({
                 product_id: null,
@@ -308,9 +268,7 @@ export async function PUT(request: Request) {
               })
               .select("inventory_id")
               .single()
-            if (insertErr) console.error("[v0] Insert error:", insertErr)
-            else console.log("[v0] Inserted outsourced inventory row:", inserted?.inventory_id)
-          }
+            if (insertErr) console.error("[v0] Outsourced insert error:", insertErr)
         } else {
           // Regular product — look up existing unit_cost from inventory or last batch
           let unitCost = assignment.unitCost ? Number(assignment.unitCost) : 0
@@ -397,14 +355,12 @@ export async function PUT(request: Request) {
         .map((_a, idx) => idx)
 
       if (processedItemIds.length > 0) {
-        console.log("[v0] Updating restocked flag for", processedItemIds.length, "items with returnId:", returnId)
         await getAdmin()
           .from("return_items")
           .update({ restocked: true })
           .eq("return_id", returnId)
           .eq("item_condition", "good")
       }
-      console.log("[v0] Returns PUT completed successfully - processed", (warehouseAssignments || []).length, "warehouse assignments, soNumber:", soNumber)
     }
     if (status === "restocked" && restockItems && restockItems.length > 0) {
       const warehouseIdNum = assignedWarehouseId ? Number(assignedWarehouseId) : null

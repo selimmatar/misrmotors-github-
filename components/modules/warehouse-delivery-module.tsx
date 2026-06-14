@@ -1202,37 +1202,6 @@ export function WarehouseDeliveryModule() {
                 </Button>
                 <Button
                   onClick={async () => {
-                    // Validate all good condition items have warehouse assigned
-                    // We need to check the original indices since returnWarehouseSelections uses original indices
-                    const missingSelections = selectedReturn.items?.some((item: any, idx: number) => 
-                      item.condition === "good" && !returnWarehouseSelections[`${idx}`]
-                    ) || false
-                    
-                    if (missingSelections) {
-                      alert("Please assign a warehouse for all items that can be restocked")
-                      return
-                    }
-                    
-                    // Debug: Log the warehouse assignments being sent
-                    const warehouseAssignments = selectedReturn.items?.map((item: any, idx: number) => {
-                      const selectedWarehouse = returnWarehouseSelections[`${idx}`]
-                      return {
-                        itemIndex: idx,
-                        productId: item.productId,
-                        productName: item.productName,
-                        sku: item.sku,
-                        quantityReturned: item.quantityReturned,
-                        warehouseId: selectedWarehouse && selectedWarehouse !== "" ? selectedWarehouse : null,
-                        condition: item.condition,
-                        reason: item.reason,
-                        isOutsourced: item.isOutsourced || false,
-                        supplierName: item.supplierName || null,
-                        unitCost: item.unitCost || item.unit_cost || null,
-                      }
-                    })
-                    console.log("[v0] Warehouse assignments being sent:", JSON.stringify(warehouseAssignments, null, 2))
-                    console.log("[v0] returnWarehouseSelections:", JSON.stringify(returnWarehouseSelections, null, 2))
-                    
                     setProcessingReturn(true)
                     try {
                       const response = await fetch("/api/returns", {
@@ -1246,14 +1215,14 @@ export function WarehouseDeliveryModule() {
                         }),
                       })
                       
-  if (response.ok) {
-  alert("Return processed successfully! Inventory has been updated.")
-  setShowReturnProcessDialog(false)
-  setSelectedReturn(null)
-  fetchPendingReturns()
-  // Refresh inventory to show updated quantities
-  refreshInventory()
-  } else {
+                      if (response.ok) {
+                        alert("Return processed successfully! Inventory has been updated.")
+                        setShowReturnProcessDialog(false)
+                        setSelectedReturn(null)
+                        fetchPendingReturns()
+                        // Refresh inventory to show updated quantities and returned items
+                        await refreshInventory()
+                      } else {
                         const error = await response.json()
                         alert(`Failed to process return: ${error.error || "Unknown error"}`)
                       }
