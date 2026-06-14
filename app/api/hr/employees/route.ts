@@ -63,6 +63,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to generate employee number" }, { status: 500 })
     }
     
+    // If email provided, check it isn't already taken
+    if (body.email) {
+      const { data: existing } = await adminClient
+        .from("hr_employees")
+        .select("employee_id, full_name")
+        .eq("email", body.email)
+        .maybeSingle()
+
+      if (existing) {
+        return NextResponse.json(
+          { error: `This email is already used by employee "${existing.full_name}". Please use a different email or leave it blank.` },
+          { status: 409 }
+        )
+      }
+    }
+
     // Create employee
     const { data, error } = await adminClient
       .from("hr_employees")

@@ -2054,7 +2054,7 @@ function AddEmployeeForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="emp_email">Email</Label>
+          <Label htmlFor="emp_email">Email <span className="text-muted-foreground font-normal">(optional — must be unique)</span></Label>
           <Input
             id="emp_email"
             type="email"
