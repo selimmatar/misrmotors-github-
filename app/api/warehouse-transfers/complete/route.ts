@@ -48,176 +48,139 @@ export async function POST(request: Request) {
     // Process each item - deduct from source, add to destination
     for (const item of transfer.warehouse_transfer_items) {
       const transferQuantity = item.quantity_sent || item.quantity_requested || 0
-      
+      const isOutsourced = item.is_outsourced || !item.product_id
+
       console.log("[v0] Processing transfer item:", {
+        sourceInventoryId: item.source_inventory_id,
         productId: item.product_id,
+        isOutsourced,
         quantity: transferQuantity,
         fromWarehouse: transfer.source_warehouse_id,
-        toWarehouse: transfer.destination_warehouse_id
-      })
-      
-      // Deduct from source warehouse
-      const { error: deductError } = await supabase.rpc("decrement_inventory", {
-        p_product_id: item.product_id,
-        p_warehouse_id: transfer.source_warehouse_id,
-        p_quantity: transferQuantity,
+        toWarehouse: transfer.destination_warehouse_id,
       })
 
+      // 1) Find the source inventory row. Prefer source_inventory_id; fall back to product+warehouse.
+      let sourceInv: any = null
+      if (item.source_inventory_id) {
+        const { data } = await supabase
+          .from("inventory")
+          .select("inventory_id, quantity, unit_cost, reorder_point, is_outsourced, outsourced_name, outsourced_description, supplier_name")
+          .eq("inventory_id", item.source_inventory_id)
+          .maybeSingle()
+        sourceInv = data
+      }
+      if (!sourceInv && item.product_id) {
+        const { data } = await supabase
+          .from("inventory")
+          .select("inventory_id, quantity, unit_cost, reorder_point, is_outsourced, outsourced_name, outsourced_description, supplier_name")
+          .eq("product_id", item.product_id)
+          .eq("warehouse_id", transfer.source_warehouse_id)
+          .maybeSingle()
+        sourceInv = data
+      }
+
+      if (!sourceInv) {
+        return NextResponse.json(
+          { error: `Cannot find source inventory for ${item.product_name || "item"}` },
+          { status: 404 }
+        )
+      }
+
+      // 2) Deduct from source
+      const { error: deductError } = await supabase
+        .from("inventory")
+        .update({ quantity: Math.max(0, (sourceInv.quantity || 0) - transferQuantity) })
+        .eq("inventory_id", sourceInv.inventory_id)
+
       if (deductError) {
-        console.log("[v0] RPC decrement failed, trying manual update:", deductError)
-        // Try manual update
-        const { data: sourceInv, error: selectError } = await supabase
+        console.error("[v0] Error deducting from source:", deductError)
+        return NextResponse.json({ error: `Failed to deduct from source: ${deductError.message}` }, { status: 500 })
+      }
+
+      // 3) Find matching destination inventory row
+      let destInv: any = null
+      if (isOutsourced) {
+        const { data } = await supabase
+          .from("inventory")
+          .select("inventory_id, quantity")
+          .eq("warehouse_id", transfer.destination_warehouse_id)
+          .eq("is_outsourced", true)
+          .eq("outsourced_name", sourceInv.outsourced_name || item.outsourced_name || item.product_name || "Outsourced Item")
+          .maybeSingle()
+        destInv = data
+      } else {
+        const { data } = await supabase
           .from("inventory")
           .select("inventory_id, quantity")
           .eq("product_id", item.product_id)
-          .eq("warehouse_id", transfer.source_warehouse_id)
-          .single()
-
-        if (selectError) {
-          console.error("[v0] Error fetching source inventory:", selectError)
-          return NextResponse.json({ error: `Cannot find source inventory: ${selectError.message}` }, { status: 404 })
-        }
-
-        if (sourceInv) {
-          console.log("[v0] Deducting from source:", sourceInv.quantity, "-", transferQuantity)
-          const { error: updateError } = await supabase
-            .from("inventory")
-            .update({ quantity: sourceInv.quantity - transferQuantity })
-            .eq("inventory_id", sourceInv.inventory_id)
-          
-          if (updateError) {
-            console.error("[v0] Error updating source inventory:", updateError)
-            return NextResponse.json({ error: `Failed to deduct from source: ${updateError.message}` }, { status: 500 })
-          }
-          console.log("[v0] Successfully deducted from source")
-        } else {
-          console.log("[v0] No source inventory found for product:", item.product_id)
-          return NextResponse.json({ error: `No inventory found for product ${item.product_id} in source warehouse` }, { status: 404 })
-        }
-      } else {
-        console.log("[v0] Successfully decremented source inventory via RPC")
+          .eq("warehouse_id", transfer.destination_warehouse_id)
+          .maybeSingle()
+        destInv = data
       }
 
-      // Add to destination warehouse using increment RPC to handle concurrency
-      console.log("[v0] Adding to destination warehouse:", transfer.destination_warehouse_id)
-      
-      // Use the increment RPC function which handles upsert logic
-      const { data: destResult, error: destError } = await supabase.rpc("increment_inventory_quantity", {
-        p_product_id: item.product_id,
-        p_warehouse_id: transfer.destination_warehouse_id,
-        p_quantity_change: transferQuantity,
-        p_unit_cost: sourceInvForCost?.unit_cost || item.unit_cost || 0,
-        p_reorder_point: sourceInvForCost?.reorder_point || 10,
-      })
-
-      if (destError) {
-        console.error("[v0] Error adding to destination inventory:", destError)
-        return NextResponse.json({ error: `Failed to add to destination: ${destError.message}` }, { status: 500 })
-      }
-      
-      console.log("[v0] Successfully added", transferQuantity, "to destination warehouse, new quantity:", destResult)
-
+      // 4) Add to destination (update existing or insert new)
       if (destInv) {
-        console.log("[v0] Found existing destination inventory:", destInv.quantity, "adding:", transferQuantity)
         const newQty = (destInv.quantity || 0) + transferQuantity
         const { error: destUpdateError } = await supabase
           .from("inventory")
           .update({ quantity: newQty })
           .eq("inventory_id", destInv.inventory_id)
-        
+
         if (destUpdateError) {
           console.error("[v0] Error updating destination inventory:", destUpdateError)
           return NextResponse.json({ error: `Failed to add to destination: ${destUpdateError.message}` }, { status: 500 })
         }
-        console.log("[v0] Successfully updated destination inventory to:", newQty)
-        destUpdated = true
-      }
-      
-      if (!destUpdated) {
-        console.log("[v0] No existing destination inventory - creating new record")
-        // No existing record - get unit cost from source and insert new
-        const { data: sourceInvForCost } = await supabase
-          .from("inventory")
-          .select("unit_cost, reorder_point")
-          .eq("product_id", item.product_id)
-          .eq("warehouse_id", transfer.source_warehouse_id)
-          .maybeSingle()
-        
-        const { error: insertError } = await supabase.from("inventory").insert({
-          product_id: item.product_id,
+      } else {
+        const insertPayload: any = {
           warehouse_id: transfer.destination_warehouse_id,
           quantity: transferQuantity,
-          reorder_point: sourceInvForCost?.reorder_point || 10,
-          unit_cost: sourceInvForCost?.unit_cost || item.unit_cost || 0,
+          reorder_point: sourceInv.reorder_point ?? (isOutsourced ? 0 : 10),
+          unit_cost: sourceInv.unit_cost || 0,
           location: "Transfer",
-        })
-        
-        if (insertError) {
-          // Duplicate key - record already exists
-          if (insertError.code === "23505") {
-            console.log("[v0] Duplicate key - inventory record already exists, updating instead")
-            const { data: existingInv, error: fetchErr } = await supabase
-              .from("inventory")
-              .select("inventory_id, quantity")
-              .eq("product_id", item.product_id)
-              .eq("warehouse_id", transfer.destination_warehouse_id)
-              .maybeSingle()
-            
-            if (fetchErr) {
-              console.error("[v0] Error fetching existing inventory:", fetchErr)
-              return NextResponse.json({ error: `Failed to fetch existing inventory: ${fetchErr.message}` }, { status: 500 })
-            }
-            
-            if (existingInv) {
-              const newQty = (existingInv.quantity || 0) + transferQuantity
-              console.log("[v0] Updating existing inventory from", existingInv.quantity, "to", newQty)
-              const { error: raceUpdateError } = await supabase
-                .from("inventory")
-                .update({ quantity: newQty })
-                .eq("inventory_id", existingInv.inventory_id)
-              
-              if (raceUpdateError) {
-                console.error("[v0] Error updating after duplicate key:", raceUpdateError)
-                return NextResponse.json({ error: `Failed to update destination inventory: ${raceUpdateError.message}` }, { status: 500 })
-              }
-              console.log("[v0] Successfully handled duplicate key and updated destination to quantity:", newQty)
-            } else {
-              console.error("[v0] Duplicate key error but record not found - data inconsistency")
-              return NextResponse.json({ error: "Inventory data inconsistency - record exists but cannot be fetched" }, { status: 500 })
-            }
-          } else {
-            console.error("[v0] Error inserting destination inventory:", insertError)
-            return NextResponse.json({ error: `Failed to create destination inventory: ${insertError.message}` }, { status: 500 })
-          }
+          is_outsourced: isOutsourced,
+          supplier_name: sourceInv.supplier_name || null,
+        }
+        if (isOutsourced) {
+          insertPayload.product_id = null
+          insertPayload.outsourced_name = sourceInv.outsourced_name || item.outsourced_name || item.product_name || "Outsourced Item"
+          insertPayload.outsourced_description = sourceInv.outsourced_description || "Transferred outsourced item"
         } else {
-          console.log("[v0] Successfully created new destination inventory record with quantity:", transferQuantity)
+          insertPayload.product_id = item.product_id
+        }
+
+        const { error: insertError } = await supabase.from("inventory").insert(insertPayload)
+        if (insertError) {
+          console.error("[v0] Error inserting destination inventory:", insertError)
+          return NextResponse.json({ error: `Failed to create destination inventory: ${insertError.message}` }, { status: 500 })
         }
       }
 
-      // Log the transfer transaction for audit (non-blocking - table may not exist)
-      try {
-        await supabase.from("inventory_transactions").insert([
-          {
-            product_id: item.product_id,
-            transaction_type: "TRANSFER_OUT",
-            quantity_change: -transferQuantity,
-            reference_type: "WAREHOUSE_TRANSFER",
-            reference_number: transfer.transfer_number,
-            reference_id: transfer.transfer_id,
-            notes: `Transfer to warehouse ${transfer.destination_warehouse_id}`,
-          },
-          {
-            product_id: item.product_id,
-            transaction_type: "TRANSFER_IN",
-            quantity_change: transferQuantity,
-            reference_type: "WAREHOUSE_TRANSFER",
-            reference_number: transfer.transfer_number,
-            reference_id: transfer.transfer_id,
-            notes: `Transfer from warehouse ${transfer.source_warehouse_id}`,
-          },
-        ])
-      } catch {
-        // Audit logging is best-effort - do not fail the transfer if this table doesn't exist
+      // 5) Audit log (best-effort; skip for outsourced since product_id is null)
+      if (item.product_id) {
+        try {
+          await supabase.from("inventory_transactions").insert([
+            {
+              product_id: item.product_id,
+              transaction_type: "TRANSFER_OUT",
+              quantity_change: -transferQuantity,
+              reference_type: "WAREHOUSE_TRANSFER",
+              reference_number: transfer.transfer_number,
+              reference_id: transfer.transfer_id,
+              notes: `Transfer to warehouse ${transfer.destination_warehouse_id}`,
+            },
+            {
+              product_id: item.product_id,
+              transaction_type: "TRANSFER_IN",
+              quantity_change: transferQuantity,
+              reference_type: "WAREHOUSE_TRANSFER",
+              reference_number: transfer.transfer_number,
+              reference_id: transfer.transfer_id,
+              notes: `Transfer from warehouse ${transfer.source_warehouse_id}`,
+            },
+          ])
+        } catch {
+          // best-effort
+        }
       }
     }
 
