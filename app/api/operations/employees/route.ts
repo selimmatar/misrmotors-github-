@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const adminClient = createAdminClient()
 
-    // Fetch employees with "operations" position
+    // Fetch employees with "operations" department or position
     const { data: employees, error: empError } = await adminClient
       .from("hr_employees")
       .select(`
@@ -20,6 +20,11 @@ export async function GET() {
         position:job_positions!hr_employees_position_id_fkey (
           position_title,
           position_code
+        ),
+        department:departments!hr_employees_department_id_fkey (
+          department_id,
+          department_name,
+          department_code
         )
       `)
       .eq("employment_status", "active")
@@ -29,11 +34,19 @@ export async function GET() {
       return NextResponse.json({ error: empError.message }, { status: 500 })
     }
 
-    // Filter to operations employees
+    // Filter to operations employees — by department name OR position title/code
     const operationsEmployees = (employees || []).filter((emp: any) => {
       const title = emp.position?.position_title?.toLowerCase() || ""
       const code = emp.position?.position_code?.toLowerCase() || ""
-      return title.includes("operations") || code.includes("operations")
+      const deptName = emp.department?.department_name?.toLowerCase() || ""
+      const deptCode = emp.department?.department_code?.toLowerCase() || ""
+      return (
+        title.includes("operations") ||
+        code.includes("operations") ||
+        deptName.includes("operations") ||
+        deptName.includes("opertaions") || // handle common typo
+        deptCode.includes("ope")
+      )
     })
 
     const employeeIds = operationsEmployees.map((e: any) => e.employee_id)
