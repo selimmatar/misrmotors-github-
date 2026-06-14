@@ -623,6 +623,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                       <TableHead>{t("inventory.reorder-point")}</TableHead>
                       <TableHead>{t("field.unit-cost")}</TableHead>
                       <TableHead>{t("field.total-value")}</TableHead>
+                      <TableHead>{t("field.supplier")}</TableHead>
+                      <TableHead>{t("field.so-number")}</TableHead>
                       {warehouseFilter !== "all" && <TableHead>{t("warehouse.warehouse")}</TableHead>}
                       <TableHead>{t("field.status")}</TableHead>
                       <TableHead>{t("photo.photos")}</TableHead>
@@ -644,8 +646,14 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                         <TableCell>{item.sku}</TableCell>
                         <TableCell>{formatNumber(item.quantity)}</TableCell>
                         <TableCell>{formatNumber(item.reorderPoint)}</TableCell>
-                        <TableCell>{formatCurrency(item.unitCost || 0)}</TableCell>
-                        <TableCell>{formatCurrency(item.quantity * (item.unitCost || 0))}</TableCell>
+                        <TableCell>{formatCurrency(item.unitCost ?? 0)}</TableCell>
+                        <TableCell>{formatCurrency(item.quantity * (item.unitCost ?? 0))}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {item.supplierName || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {item.soNumber || "—"}
+                        </TableCell>
                         {warehouseFilter !== "all" && (
                           <TableCell>
                             <Badge variant="outline" className="gap-1">
@@ -655,13 +663,20 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                           </TableCell>
                         )}
                         <TableCell>
-                          {item.quantity == null || Number(item.quantity) === 0 ? (
-                            <Badge variant="destructive">{t("status.out-of-stock")}</Badge>
-                          ) : Number(item.quantity) <= Number(item.reorderPoint || 0) ? (
-                            <Badge className="bg-yellow-500">{t("status.low-stock")}</Badge>
-                          ) : (
-                            <Badge variant="secondary">{t("status.in-stock")}</Badge>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            {item.isReturned && (
+                              <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs w-fit">
+                                Returned
+                              </Badge>
+                            )}
+                            {item.quantity == null || Number(item.quantity) === 0 ? (
+                              <Badge variant="destructive">{t("status.out-of-stock")}</Badge>
+                            ) : Number(item.quantity) <= Number(item.reorderPoint || 0) ? (
+                              <Badge className="bg-yellow-500">{t("status.low-stock")}</Badge>
+                            ) : (
+                              <Badge variant="secondary">{t("status.in-stock")}</Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Button variant="outline" size="sm" onClick={() => handleViewPhotos(item)} className="gap-1">
