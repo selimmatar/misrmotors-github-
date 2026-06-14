@@ -1450,7 +1450,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       if (!response.ok) {
         console.error("[v0] DP fetch failed with status:", response.status)
         setExistingDPsForSO([])
-        setSelectedSOForDP(order)
+        setSelectedSOForDP(orderForDp)
         setCreateDPDialogOpen(true)
         return
       }
@@ -1475,6 +1475,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
     }
 
     setSelectedSOForDP(orderForDp)
+    setCreateDPDialogOpen(true)
   }
 
   const handleCreateDpFromDialog = async () => {
