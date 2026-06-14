@@ -221,6 +221,14 @@ export async function PUT(request: Request) {
     // Use admin client to bypass RLS for inventory operations
     console.log("[v0] Returns PUT: status =", status, ", warehouseAssignments =", JSON.stringify(warehouseAssignments, null, 2))
     
+    // Fetch the return's SO number for stamping onto inventory rows
+    const { data: returnRecord } = await getAdmin()
+      .from("product_returns")
+      .select("so_number, so_id")
+      .eq("return_id", returnId)
+      .maybeSingle()
+    const soNumber = returnRecord?.so_number || (returnRecord?.so_id ? `SO-${returnRecord.so_id}` : null)
+
     if ((status === "completed" || status === "received") && warehouseAssignments && warehouseAssignments.length > 0) {
       console.log("[v0] Returns: Processing", warehouseAssignments.length, "warehouse assignments")
       
@@ -262,6 +270,8 @@ export async function PUT(request: Request) {
               .update({
                 quantity: newQuantity,
                 supplier_name: assignment.supplierName || existingOutsourced.supplier_name,
+                is_returned: true,
+                so_number: soNumber || existingOutsourced.so_number,
               })
               .eq("inventory_id", existingOutsourced.inventory_id)
           } else {
@@ -276,6 +286,8 @@ export async function PUT(request: Request) {
                 outsourced_name: assignment.productName || "Outsourced Item",
                 outsourced_description: `Returned item - ${assignment.reason || "customer return"}`,
                 supplier_name: assignment.supplierName || null,
+                is_returned: true,
+                so_number: soNumber || null,
               })
           }
         } else {
@@ -313,6 +325,8 @@ export async function PUT(request: Request) {
                 quantity: newQuantity,
                 unit_cost: unitCost || existingInv.unit_cost,
                 supplier_name: assignment.supplierName || existingInv.supplier_name,
+                is_returned: true,
+                so_number: soNumber || existingInv.so_number,
               })
               .eq("inventory_id", existingInv.inventory_id)
           } else {
@@ -326,6 +340,8 @@ export async function PUT(request: Request) {
                 reorder_point: 10,
                 is_outsourced: false,
                 supplier_name: assignment.supplierName || null,
+                is_returned: true,
+                so_number: soNumber || null,
               })
           }
 
