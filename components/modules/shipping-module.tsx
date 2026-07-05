@@ -27,6 +27,8 @@ interface ReturnItem {
   condition: string
   isOutsourced: boolean
   itemType?: string
+  supplierName?: string | null
+  unitCost?: number | null
 }
 
 export function ShippingModule() {
@@ -275,6 +277,8 @@ export function ShippingModule() {
         condition: "good",
         isOutsourced,
         itemType: item.itemType || (isOutsourced ? "outsourced" : "stock"),
+        supplierName: item.supplierName || null,
+        unitCost: item.unitCost ? Number(item.unitCost) : null,
       }
     })
     setReturnItems(items)
@@ -347,6 +351,8 @@ export function ShippingModule() {
             condition: item.condition,
             isOutsourced: item.isOutsourced,
             itemType: item.itemType,
+            supplierName: item.supplierName || null,
+            unitCost: item.unitCost || null,
           })),
         }),
       })

@@ -239,43 +239,26 @@ export async function PUT(request: Request) {
         if (assignment.condition !== "good" || !warehouseId) continue
 
         if (isOutsourced) {
-          // Handle outsourced items
-          const { data: existingOutsourced } = await getAdmin()
+          // Each returned outsourced line always gets its own inventory row so
+          // multiple items with the same name don't collapse into one.
+          // We key uniqueness by outsourced_name + so_number + return_id.
+          const unitCost = assignment.unitCost ? Number(assignment.unitCost) : 0
+          const { error: insertErr } = await getAdmin()
             .from("inventory")
-            .select("*")
-            .eq("warehouse_id", warehouseId)
-            .eq("is_outsourced", true)
-            .eq("outsourced_name", assignment.productName || "Outsourced Item")
-            .maybeSingle()
-
-          if (existingOutsourced) {
-            const newQuantity = (existingOutsourced.quantity || 0) + (assignment.quantityReturned || 0)
-            await getAdmin()
-              .from("inventory")
-              .update({
-                quantity: newQuantity,
-                supplier_name: assignment.supplierName || existingOutsourced.supplier_name,
-                is_returned: true,
-                so_number: soNumber || existingOutsourced.so_number,
-              })
-              .eq("inventory_id", existingOutsourced.inventory_id)
-          } else {
-            const { error: insertErr } = await getAdmin()
-              .from("inventory")
-              .insert({
-                product_id: null,
-                warehouse_id: warehouseId,
-                quantity: assignment.quantityReturned || 0,
-                reorder_point: 0,
-                is_outsourced: true,
-                outsourced_name: assignment.productName || "Outsourced Item",
-                outsourced_description: `Returned item - ${assignment.reason || "customer return"}`,
-                supplier_name: assignment.supplierName || null,
-                is_returned: true,
-                so_number: soNumber || null,
-              })
-            if (insertErr) console.error("[v0] Outsourced insert error:", insertErr)
-          }
+            .insert({
+              product_id: null,
+              warehouse_id: warehouseId,
+              quantity: assignment.quantityReturned || 0,
+              unit_cost: unitCost,
+              reorder_point: 0,
+              is_outsourced: true,
+              outsourced_name: assignment.productName || "Outsourced Item",
+              outsourced_description: `Returned from ${soNumber || "order"} — ${assignment.reason || "customer return"}`,
+              supplier_name: assignment.supplierName || null,
+              is_returned: true,
+              so_number: soNumber || null,
+            })
+          if (insertErr) console.error("[v0] Outsourced insert error:", insertErr)
         } else {
           // Regular product — look up existing unit_cost from inventory or last batch
           let unitCost = assignment.unitCost ? Number(assignment.unitCost) : 0
