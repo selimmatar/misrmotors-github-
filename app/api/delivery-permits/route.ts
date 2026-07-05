@@ -186,16 +186,20 @@ export async function GET(request: NextRequest) {
     })
 
     // Fetch returned quantities for each permit
-    // Get the link table first (invoice_delivery_permits maps returns to deliveries)
-    const { data: returnLinkData, error: linkError } = await supabase
-      .from("invoice_delivery_permits")
+    // product_returns.permit_id links returns to delivery permits
+    const { data: productReturnsData } = await supabase
+      .from("product_returns")
       .select("permit_id, return_id")
+      .eq("status", "completed")
     
-    const permitReturnMap: Record<number, number[]> = {} // permit_id -> [return_ids]
-    if (!linkError && returnLinkData) {
-      returnLinkData.forEach((link: any) => {
-        if (!permitReturnMap[link.permit_id]) permitReturnMap[link.permit_id] = []
-        permitReturnMap[link.permit_id].push(link.return_id)
+    const permitReturnMap: Record<string, number[]> = {} // permit_id -> [return_ids]
+    if (productReturnsData) {
+      productReturnsData.forEach((ret: any) => {
+        const permitId = ret.permit_id
+        if (permitId) {
+          if (!permitReturnMap[permitId]) permitReturnMap[permitId] = []
+          permitReturnMap[permitId].push(ret.return_id)
+        }
       })
     }
 
@@ -205,10 +209,10 @@ export async function GET(request: NextRequest) {
       if (returnIds.length > 0) {
         const { data: returnItems } = await supabase
           .from("return_items")
-          .select("quantity_returned")
+          .select("returned_quantity")
           .in("return_id", returnIds)
         
-        const totalReturned = returnItems?.reduce((sum: number, item: any) => sum + (item.quantity_returned || 0), 0) || 0
+        const totalReturned = returnItems?.reduce((sum: number, item: any) => sum + (item.returned_quantity || 0), 0) || 0
         returnsByPermit[permitId] = totalReturned
       }
     }
@@ -216,7 +220,7 @@ export async function GET(request: NextRequest) {
     // Update permit records with returned quantities
     const finalPermits = permitsWithItems.map((permit: any) => ({
       ...permit,
-      returnedQuantity: returnsByPermit[permit.id] || 0,
+      returnedQuantity: returnsByPermit[permit.id] || returnsByPermit[String(permit.id)] || 0,
     }))
 
     console.log(`[v0] Delivery Permits GET: Successfully fetched ${finalPermits.length} permits`)
