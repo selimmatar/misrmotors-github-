@@ -234,8 +234,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Process inventory
   const inventory: InventoryItem[] = (inventoryData || []).map((inv: any) => ({
     id: inv.inventory_id?.toString() || inv.id,
+    inventoryId: inv.inventory_id ?? inv.inventoryId,
     productId: inv.product_id?.toString() || inv.productId,
-    productName: inv.products?.product_name || inv.productName || "Unknown",
+    productName: inv.products?.product_name || inv.productName || inv.outsourcedName || inv.outsourced_name || "Unknown",
     sku: inv.products?.sku || inv.sku || "",
     unit: inv.products?.unit || inv.unit || "unit",
     quantity: inv.quantity,
@@ -245,6 +246,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     warehouseName: inv.warehouses?.warehouse_name || inv.warehouseName,
     lastUpdated: inv.last_updated || inv.lastUpdated,
     unitCost: inv.unit_cost ?? inv.unitCost ?? 0,
+    isReturned: inv.is_returned ?? inv.isReturned ?? false,
+    isOutsourced: inv.is_outsourced ?? inv.isOutsourced ?? false,
+    supplierName: inv.supplier_name ?? inv.supplierName ?? null,
+    soNumber: inv.so_number ?? inv.soNumber ?? null,
+    outsourcedName: inv.outsourced_name ?? inv.outsourcedName ?? null,
   }))
 
   // Process purchase orders
