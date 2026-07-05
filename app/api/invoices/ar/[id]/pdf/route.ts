@@ -19,7 +19,7 @@ function formatEnglishNumber(num: number | string): string {
   return String(num)
 }
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     console.log("[v0] AR Invoice PDF - Raw params:", { id, type: typeof id })
