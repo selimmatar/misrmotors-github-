@@ -139,19 +139,25 @@ export interface GRItem {
 
 export interface InventoryItem {
   id: string
+  inventoryId?: number
   productId: string
   productName: string
   sku: string
-  category: string
+  category?: string
   quantity: number
   unit: string
   reorderPoint: number
   unitCost: number
-  totalValue: number
+  totalValue?: number
   location: string
   warehouseId: number
   warehouseName?: string
   lastUpdated: string
+  isReturned?: boolean
+  isOutsourced?: boolean
+  supplierName?: string | null
+  soNumber?: string | null
+  outsourcedName?: string | null
 }
 
 export interface SupplierProduct {
