@@ -1045,17 +1045,38 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         {(userRole === "ceo" || userRole === "accountant") && (
           <>
             {console.log("[v0] AR Module - User Role:", userRole)}
-            <Button
-              size="lg"
-              className="shadow-lg hover:shadow-xl transition-all"
-              onClick={() => {
-                fetchAvailableSOs()
-                setSoSelectDialogOpen(true)
-              }}
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              {t("ar.create-invoice")}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="lg"
+                  className="shadow-lg hover:shadow-xl transition-all"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  {t("ar.create-invoice")}
+                  <ChevronDown className="w-4 h-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={() => {
+                    fetchAvailableSOs()
+                    setSoSelectDialogOpen(true)
+                  }}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  From Sales Order
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    fetchAvailableDPs()
+                    setDpSelectDialogOpen(true)
+                  }}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  From Delivery Items
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
       </div>
