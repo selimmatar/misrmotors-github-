@@ -187,10 +187,10 @@ export async function GET(request: NextRequest) {
 
     // Fetch returned quantities for each permit
     // product_returns.permit_id links returns to delivery permits
+    // product_returns has no status column — fetch all and filter by restocked items
     const { data: productReturnsData } = await supabase
       .from("product_returns")
       .select("permit_id, return_id")
-      .eq("status", "completed")
     
     const permitReturnMap: Record<string, number[]> = {} // permit_id -> [return_ids]
     if (productReturnsData) {

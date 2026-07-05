@@ -296,26 +296,33 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     if (warehouseFilter !== "all") {
       filtered = filtered.filter((item) => String(item.warehouseId) === warehouseFilter)
     } else {
-      // When "All Warehouses" is selected, aggregate items by productId
+      // When "All Warehouses" is selected, aggregate regular products by productId.
+      // Outsourced and returned items each have their own inventory row (no product_id),
+      // so they must never be collapsed — use inventory_id as their unique key.
       const aggregatedMap = new Map<string, any>()
-      
+
       filtered.forEach((item) => {
-        const productKey = String(item.productId)
-        if (aggregatedMap.has(productKey)) {
+        // Outsourced or returned items: key by inventory_id so every row is kept separate
+        const isUniqueRow = item.isOutsourced || item.isReturned || !item.productId
+        const productKey = isUniqueRow
+          ? `inv-${item.inventoryId || item.id}`
+          : String(item.productId)
+
+        if (!isUniqueRow && aggregatedMap.has(productKey)) {
           const existing = aggregatedMap.get(productKey)
           existing.quantity += item.quantity || 0
           existing.reorderPoint = Math.max(existing.reorderPoint || 0, item.reorderPoint || 0)
         } else {
           aggregatedMap.set(productKey, {
             ...item,
-            id: `aggregated-${productKey}`,
+            id: isUniqueRow ? item.id : `aggregated-${productKey}`,
             quantity: item.quantity || 0,
-            warehouseName: "All Warehouses",
-            location: "All Warehouses",
+            warehouseName: isUniqueRow ? (item.warehouseName || "Main Warehouse") : "All Warehouses",
+            location: isUniqueRow ? (item.location || "Warehouse") : "All Warehouses",
           })
         }
       })
-      
+
       filtered = Array.from(aggregatedMap.values())
     }
 
