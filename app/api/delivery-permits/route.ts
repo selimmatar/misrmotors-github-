@@ -164,12 +164,13 @@ export async function GET(request: NextRequest) {
           unitSnapshot: item.unit_snapshot,
           quantity: item.quantity,
           unitPrice: item.unit_price,
+          unitCost: item.unit_cost ?? item.unit_price ?? null,
           total: item.total,
           warehouseId: item.warehouse_id,
           allocatedQuantity: item.allocated_quantity,
           allocationNotes: item.allocation_notes,
           supplierId: item.supplier_id?.toString() || "",
-          supplierName: item.outsourced_name || "", // outsourced_name stores the supplier name
+          supplierName: item.suppliers?.supplier_name || item.outsourced_name || "",
           outsourcedName: item.outsourced_name || "",
         })),
         files: files.map((file: any) => ({
