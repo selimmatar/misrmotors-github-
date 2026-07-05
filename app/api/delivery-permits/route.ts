@@ -185,21 +185,32 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Fetch returned quantities for each permit by joining with product_returns
-    const { data: returns, error: returnsError } = await supabase
-      .from("product_returns")
-      .select("invoice_delivery_permits(permit_id), return_items(quantity_returned)")
-      .eq("status", "completed")
+    // Fetch returned quantities for each permit
+    // Get the link table first (invoice_delivery_permits maps returns to deliveries)
+    const { data: returnLinkData, error: linkError } = await supabase
+      .from("invoice_delivery_permits")
+      .select("permit_id, return_id")
     
-    const returnsByPermit: Record<string, number> = {}
-    if (!returnsError && returns) {
-      returns.forEach((ret: any) => {
-        const permit = ret.invoice_delivery_permits
-        if (permit && ret.return_items) {
-          const permitId = String(permit.permit_id || permit[0]?.permit_id)
-          returnsByPermit[permitId] = (returnsByPermit[permitId] || 0) + (ret.return_items.quantity_returned || 0)
-        }
+    const permitReturnMap: Record<number, number[]> = {} // permit_id -> [return_ids]
+    if (!linkError && returnLinkData) {
+      returnLinkData.forEach((link: any) => {
+        if (!permitReturnMap[link.permit_id]) permitReturnMap[link.permit_id] = []
+        permitReturnMap[link.permit_id].push(link.return_id)
       })
+    }
+
+    // For each permit, get the sum of returned quantities from its returns
+    const returnsByPermit: Record<string, number> = {}
+    for (const [permitId, returnIds] of Object.entries(permitReturnMap)) {
+      if (returnIds.length > 0) {
+        const { data: returnItems } = await supabase
+          .from("return_items")
+          .select("quantity_returned")
+          .in("return_id", returnIds)
+        
+        const totalReturned = returnItems?.reduce((sum: number, item: any) => sum + (item.quantity_returned || 0), 0) || 0
+        returnsByPermit[permitId] = totalReturned
+      }
     }
 
     // Update permit records with returned quantities
