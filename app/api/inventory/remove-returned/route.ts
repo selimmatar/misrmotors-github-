@@ -63,21 +63,12 @@ export async function POST(request: Request) {
         })
 
       if (creditError) {
-        console.error("[v0] Error creating supplier credit:", creditError)
+        console.error("Error creating supplier credit:", creditError)
         return NextResponse.json(
           { message: "Item removed but failed to create supplier credit" },
           { status: 400 }
         )
       }
-
-      console.log("[v0] Removed returned item and created supplier credit:", {
-        inventoryId,
-        supplierId,
-        creditAmount,
-        productName,
-      })
-    } else {
-      console.warn("[v0] Could not find supplier for credit memo:", supplierName)
     }
 
     return NextResponse.json(

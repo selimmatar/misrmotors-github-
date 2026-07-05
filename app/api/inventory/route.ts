@@ -29,28 +29,15 @@ export async function GET() {
 
       if (error) throw error
 
-      console.log("[v0] Inventory GET: Fetched", data?.length || 0, "inventory records")
-
       return data || []
     })
 
     const transformed = result.map((item: any) => {
-      // Handle outsourced items - they have is_outsourced flag and outsourced_name
       const isOutsourced = item.is_outsourced || !item.product_id
-      const productName = isOutsourced 
-        ? (item.outsourced_name || "Outsourced Item") 
+      const productName = isOutsourced
+        ? (item.outsourced_name || "Outsourced Item")
         : (item.products?.product_name || "Unknown")
-      
-      // Debug outsourced items
-      if (isOutsourced) {
-        console.log("[v0] Inventory GET - Outsourced item:", {
-          inventory_id: item.inventory_id,
-          is_outsourced: item.is_outsourced,
-          outsourced_name: item.outsourced_name,
-          computed_productName: productName
-        })
-      }
-      
+
       return {
         id: item.inventory_id?.toString() || "",
         inventoryId: item.inventory_id,

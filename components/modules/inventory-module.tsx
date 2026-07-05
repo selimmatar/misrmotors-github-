@@ -29,6 +29,7 @@ import {
   Eye,
   Warehouse,
   Search,
+  RotateCcw,
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useI18n } from "@/lib/i18n-context"
@@ -326,8 +327,16 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       filtered = Array.from(aggregatedMap.values())
     }
 
+    // Exclude returned items from On Hand — they go into the Returns tab
+    filtered = filtered.filter((item) => !item.isReturned)
+
     return filtered
   }, [inventory, categoryFilter, warehouseFilter, products, searchQuery])
+
+  const returnedItems = useMemo(() => {
+    if (!inventory) return []
+    return inventory.filter((item: any) => item.isReturned === true)
+  }, [inventory])
 
   const lowStockItems = filteredInventory.filter((item) => item.quantity <= item.reorderPoint && item.quantity > 0)
 
@@ -605,7 +614,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       </div>
 
       <Tabs defaultValue="on-hand" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="on-hand" className="gap-2">
             <Package className="w-4 h-4" />
             {t("inventory.on-hand")} ({formatNumber(filteredInventory.length)})
@@ -617,6 +626,10 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           <TabsTrigger value="sold" className="gap-2">
             <CheckCircle className="w-4 h-4" />
             {t("inventory.sold")} ({formatNumber(soldItems.length)})
+          </TabsTrigger>
+          <TabsTrigger value="returns" className="gap-2">
+            <RotateCcw className="w-4 h-4" />
+            Returns ({formatNumber(returnedItems.length)})
           </TabsTrigger>
         </TabsList>
 
@@ -922,6 +935,84 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                             <Button variant="ghost" size="sm" onClick={() => handleViewSODetails(item)}>
                               <Eye className="w-4 h-4 mr-1" />
                               {t("action.view")}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Returns Tab */}
+        <TabsContent value="returns" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5" />
+                Returned Items
+              </CardTitle>
+              <CardDescription>
+                Items returned from customers currently held in the warehouse. Remove an item to write it off and add a credit to the supplier account.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {returnedItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <RotateCcw className="w-12 h-12 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No returned items in inventory</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t("field.product-name")}</TableHead>
+                        <TableHead>{t("field.sku")}</TableHead>
+                        <TableHead>{t("field.quantity")}</TableHead>
+                        <TableHead>{t("field.unit-cost")}</TableHead>
+                        <TableHead>Total Value</TableHead>
+                        <TableHead>Supplier</TableHead>
+                        <TableHead>SO Number</TableHead>
+                        <TableHead>{t("warehouse.warehouse")}</TableHead>
+                        <TableHead>{t("field.actions")}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {returnedItems.map((item: any) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <span>{item.productName}</span>
+                              {item.isOutsourced && (
+                                <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
+                                  Outsourced
+                                </Badge>
+                              )}
+                              <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 border-amber-200">
+                                Returned
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell>{item.sku || "—"}</TableCell>
+                          <TableCell>{formatNumber(item.quantity)}</TableCell>
+                          <TableCell>{formatCurrency(item.unitCost || 0)}</TableCell>
+                          <TableCell>{formatCurrency((item.quantity || 0) * (item.unitCost || 0))}</TableCell>
+                          <TableCell>{item.supplierName || "—"}</TableCell>
+                          <TableCell>{item.soNumber || "—"}</TableCell>
+                          <TableCell>{item.warehouseName || "—"}</TableCell>
+                          <TableCell>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleRemoveReturnedItem(item)}
+                              className="gap-1"
+                            >
+                              <X className="w-4 h-4" />
+                              Remove & Credit
                             </Button>
                           </TableCell>
                         </TableRow>
