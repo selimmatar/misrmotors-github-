@@ -74,6 +74,9 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const [availableDPs, setAvailableDPs] = useState<any[]>([])
   const [selectedDPs, setSelectedDPs] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [dpReturnHandling, setDpReturnHandling] = useState<Record<string, "exclude" | "credit">>({})
+  const [showCreditMemoForm, setShowCreditMemoForm] = useState(false)
+  const [creditMemoDP, setCreditMemoDP] = useState<string | null>(null)
 
   useEffect(() => {
     if (soSelectDialogOpen && availableSOs.length > 0) {
@@ -1924,7 +1927,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   }}
                 >
                   <div className="flex justify-between items-start">
-                    <div className="space-y-1">
+                    <div className="space-y-1 flex-1">
                       <p className="font-semibold">{permitNo}</p>
                       <p className="text-sm text-muted-foreground">Customer: {customerName}</p>
                       <p className="text-sm text-muted-foreground">SO: {soNumber}</p>
@@ -1932,6 +1935,17 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         Date: {deliveryDate ? formatDate(deliveryDate) : "N/A"}
                       </p>
                       <p className="text-xs text-muted-foreground">Payment: {paymentType}</p>
+                      {/* Show returned items warning if any */}
+                      {dp.returnedQuantity && Number(dp.returnedQuantity) > 0 && (
+                        <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs">
+                          <p className="text-amber-800 font-medium">
+                            ⚠️ {dp.returnedQuantity} item(s) returned from this delivery
+                          </p>
+                          <p className="text-amber-700 text-xs mt-1">
+                            You can exclude returned items or create a credit memo
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div className="text-right flex items-center gap-2">
                       <Checkbox
@@ -1947,6 +1961,54 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               <p className="text-center text-muted-foreground py-8">No delivery permits available for invoicing</p>
             )}
           </div>
+
+          {/* Returned Items Handling Section */}
+          {availableDPs.some((dp) => dp.returnedQuantity && Number(dp.returnedQuantity) > 0) && (
+            <div className="border-t pt-4 mt-4">
+              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600" />
+                Items Returned from Selected Deliveries
+              </h4>
+              <div className="space-y-3 bg-amber-50 p-4 rounded-lg border border-amber-200">
+                {availableDPs
+                  .filter((dp) => dp.returnedQuantity && Number(dp.returnedQuantity) > 0)
+                  .map((dp) => (
+                    <div key={dp.id} className="flex justify-between items-center">
+                      <div className="text-sm">
+                        <p className="font-medium">{dp.permitNo || `DP-${dp.id}`}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {dp.returnedQuantity} item(s) returned
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant={dpReturnHandling[dp.id] === "exclude" ? "default" : "outline"}
+                          onClick={() =>
+                            setDpReturnHandling({
+                              ...dpReturnHandling,
+                              [dp.id]: "exclude",
+                            })
+                          }
+                        >
+                          Exclude from Invoice
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={dpReturnHandling[dp.id] === "credit" ? "default" : "outline"}
+                          onClick={() => {
+                            setCreditMemoDP(dp.id)
+                            setShowCreditMemoForm(true)
+                          }}
+                        >
+                          Create Credit Memo
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDpSelectDialogOpen(false)}>
               {t("button.cancel")}

@@ -146,6 +146,7 @@ export async function GET(request: NextRequest) {
         createdBy: permit.created_by,
         createdAt: permit.created_at,
         updatedAt: permit.updated_at,
+        returnedQuantity: 0, // Will be populated below after fetching returns
         quotationRequest: permit.sales_orders?.quotation_request_number
           ? {
               qrNumber: permit.sales_orders.quotation_request_number,
@@ -184,8 +185,31 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    console.log(`[v0] Delivery Permits GET: Successfully fetched ${permitsWithItems.length} permits`)
-    return NextResponse.json(permitsWithItems)
+    // Fetch returned quantities for each permit by joining with product_returns
+    const { data: returns, error: returnsError } = await supabase
+      .from("product_returns")
+      .select("invoice_delivery_permits(permit_id), return_items(quantity_returned)")
+      .eq("status", "completed")
+    
+    const returnsByPermit: Record<string, number> = {}
+    if (!returnsError && returns) {
+      returns.forEach((ret: any) => {
+        const permit = ret.invoice_delivery_permits
+        if (permit && ret.return_items) {
+          const permitId = String(permit.permit_id || permit[0]?.permit_id)
+          returnsByPermit[permitId] = (returnsByPermit[permitId] || 0) + (ret.return_items.quantity_returned || 0)
+        }
+      })
+    }
+
+    // Update permit records with returned quantities
+    const finalPermits = permitsWithItems.map((permit: any) => ({
+      ...permit,
+      returnedQuantity: returnsByPermit[permit.id] || 0,
+    }))
+
+    console.log(`[v0] Delivery Permits GET: Successfully fetched ${finalPermits.length} permits`)
+    return NextResponse.json(finalPermits)
   } catch (error: any) {
     console.error("[v0] Delivery Permits GET error:", error)
     return NextResponse.json({ error: error.message || "Failed to fetch delivery permits" }, { status: 500 })
