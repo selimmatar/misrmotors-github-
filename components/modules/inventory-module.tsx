@@ -97,6 +97,9 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const [newWarehouseLocation, setNewWarehouseLocation] = useState("")
   const [newWarehouseAddress, setNewWarehouseAddress] = useState("")
   const [isCreatingWarehouse, setIsCreatingWarehouse] = useState(false)
+  const [removeReturnedItemDialog, setRemoveReturnedItemDialog] = useState(false)
+  const [selectedReturnedItem, setSelectedReturnedItem] = useState<any>(null)
+  const [isRemovingItem, setIsRemovingItem] = useState(false)
 
   const [uniqueCategories, setUniqueCategories] = useState<Array<{ category_id: number; category_name: string }>>([])
   const [searchQuery, setSearchQuery] = useState("")
@@ -333,6 +336,48 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       console.error("Error analyzing inventory:", error)
     } finally {
       setIsAnalyzing(false)
+    }
+  }
+
+  const handleRemoveReturnedItem = (item: any) => {
+    setSelectedReturnedItem(item)
+    setRemoveReturnedItemDialog(true)
+  }
+
+  const handleConfirmRemoveReturnedItem = async () => {
+    if (!selectedReturnedItem) return
+
+    setIsRemovingItem(true)
+    try {
+      const response = await fetch("/api/inventory/remove-returned", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inventoryId: selectedReturnedItem.inventoryId || selectedReturnedItem.id,
+          quantity: selectedReturnedItem.quantity,
+          unitCost: selectedReturnedItem.unitCost,
+          supplierName: selectedReturnedItem.supplierName,
+          supplierNameId: selectedReturnedItem.supplierId,
+          soNumber: selectedReturnedItem.soNumber,
+          productName: selectedReturnedItem.productName,
+        }),
+      })
+
+      if (response.ok) {
+        alert("Returned item removed successfully. Supplier credit has been created.")
+        setRemoveReturnedItemDialog(false)
+        setSelectedReturnedItem(null)
+        // Refresh inventory
+        location.reload()
+      } else {
+        const error = await response.json()
+        alert("Error: " + (error.message || "Failed to remove returned item"))
+      }
+    } catch (error) {
+      console.error("Error removing returned item:", error)
+      alert("Error removing returned item")
+    } finally {
+      setIsRemovingItem(false)
     }
   }
 
@@ -627,6 +672,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                       <TableHead>{t("field.so-number")}</TableHead>
                       {warehouseFilter !== "all" && <TableHead>{t("warehouse.warehouse")}</TableHead>}
                       <TableHead>{t("field.status")}</TableHead>
+                      <TableHead>Returned Items</TableHead>
                       <TableHead>{t("photo.photos")}</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -677,6 +723,22 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                               <Badge variant="secondary">{t("status.in-stock")}</Badge>
                             )}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {item.isReturned && (
+                            <Button 
+                              variant="destructive" 
+                              size="sm" 
+                              onClick={() => handleRemoveReturnedItem(item)}
+                              className="gap-1"
+                            >
+                              <X className="w-4 h-4" />
+                              Remove
+                            </Button>
+                          )}
+                          {!item.isReturned && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Button variant="outline" size="sm" onClick={() => handleViewPhotos(item)} className="gap-1">
@@ -975,6 +1037,64 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Returned Item Dialog */}
+      <Dialog open={removeReturnedItemDialog} onOpenChange={setRemoveReturnedItemDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Returned Item</DialogTitle>
+          </DialogHeader>
+          {selectedReturnedItem && (
+            <div className="space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p className="text-sm text-amber-900">
+                  <strong>Item:</strong> {selectedReturnedItem.productName}
+                </p>
+                <p className="text-sm text-amber-900 mt-2">
+                  <strong>Quantity:</strong> {formatNumber(selectedReturnedItem.quantity)}
+                </p>
+                <p className="text-sm text-amber-900 mt-2">
+                  <strong>Unit Cost:</strong> {formatCurrency(selectedReturnedItem.unitCost || 0)}
+                </p>
+                <p className="text-sm text-amber-900 mt-2 font-semibold">
+                  <strong>Total Credit:</strong> {formatCurrency((selectedReturnedItem.quantity || 0) * (selectedReturnedItem.unitCost || 0))}
+                </p>
+                {selectedReturnedItem.supplierName && (
+                  <p className="text-sm text-amber-900 mt-2">
+                    <strong>Supplier:</strong> {selectedReturnedItem.supplierName}
+                  </p>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                This will remove the item from inventory and create a credit memo with the supplier for the total value.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setRemoveReturnedItemDialog(false)}
+                  disabled={isRemovingItem}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmRemoveReturnedItem}
+                  disabled={isRemovingItem}
+                >
+                  {isRemovingItem ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    "Remove & Create Credit"
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
