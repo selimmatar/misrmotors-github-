@@ -72,7 +72,7 @@ interface WarehouseType {
 
 export function InventoryModule({ userRole }: InventoryModuleProps) {
   const { t, formatNumber, formatCurrency, formatDate, language } = useI18n()
-  const { inventory, salesOrders, customers, products, suppliers, warehouses: appWarehouses } = useAppContext()
+  const { inventory, salesOrders, customers, products, suppliers, warehouses: appWarehouses, refreshInventory } = useAppContext()
 
   const [aiAnalysis, setAiAnalysis] = useState<any>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -385,8 +385,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         alert("Returned item removed successfully. Supplier credit has been created.")
         setRemoveReturnedItemDialog(false)
         setSelectedReturnedItem(null)
-        // Refresh inventory
-        location.reload()
+        await refreshInventory()
       } else {
         const error = await response.json()
         alert("Error: " + (error.message || "Failed to remove returned item"))

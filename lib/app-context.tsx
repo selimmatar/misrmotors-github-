@@ -189,7 +189,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ...REFERENCE_DATA_SWR_OPTIONS,
     dedupingInterval: 300000, // 5 minutes
   })
-  const { data: inventoryData, mutate: mutateInventory } = useSWR<any[]>("/api/inventory", swrFetcher, SWR_OPTIONS)
+  const { data: inventoryData, mutate: mutateInventory } = useSWR<any[]>("/api/inventory", swrFetcher, {
+    ...SWR_OPTIONS,
+    revalidateOnMount: true,
+    revalidateIfStale: true,
+    dedupingInterval: 5000, // short dedup so fresh data always loads
+  })
   const { data: purchaseOrdersData, mutate: mutatePurchaseOrders } = useSWR<any[]>(
     "/api/purchase-orders",
     swrFetcher,
