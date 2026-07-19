@@ -32,7 +32,6 @@ export async function withRetry<T>(operation: () => Promise<T>, maxRetries = 5, 
         const delay = backoff + jitter
 
         const reason = isRateLimit ? "Rate limit" : "Network error"
-        console.log(`[v0] ${reason} hit, retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${maxRetries})`)
         await new Promise((resolve) => setTimeout(resolve, delay))
         continue
       }

@@ -18,7 +18,7 @@ export async function GET() {
     const supabase = getAdminClient()
 
     // Get all lost sales
-    const { data: lostSales, error } = await supabase.from("lost_sales").select("*")
+    const { data: lostSales, error } = await (supabase as any).from("lost_sales").select("*")
 
     if (error) throw error
 

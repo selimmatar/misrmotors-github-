@@ -80,10 +80,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
   useEffect(() => {
     if (soSelectDialogOpen && availableSOs.length > 0) {
-      console.log("[v0] First SO sample:", JSON.stringify(availableSOs[0], null, 2))
     }
     if (dpSelectDialogOpen && availableDPs.length > 0) {
-      console.log("[v0] First DP sample:", JSON.stringify(availableDPs[0], null, 2))
     }
   }, [soSelectDialogOpen, dpSelectDialogOpen, availableSOs, availableDPs])
 
@@ -94,7 +92,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       const response = await fetch("/api/sales-orders")
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] AR - Fetched SOs for invoice creation:", data.length)
         
         // Filter out SOs that already have invoices
         const soIdsWithInvoices = new Set(allInvoices.map((invoice) => String(invoice.soId)))
@@ -103,7 +100,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           return !soIdsWithInvoices.has(soId)
         })
         
-        console.log("[v0] AR - SOs without invoices:", filteredSOs.length, "out of", data.length)
         setAvailableSOs(filteredSOs)
       }
     } catch (error) {
@@ -117,14 +113,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       // Get full SO details first
       const soDetails = availableSOs.find((so) => String(so.soId) === soId || String(so.so_id) === soId)
       setSelectedSODetails(soDetails)
-      console.log("[v0] AR - Selected SO details:", soDetails)
       
       // Fetch delivery permits for this SO
-      console.log("[v0] AR - Fetching DPs for SO:", soId)
       const dpResponse = await fetch(`/api/delivery-permits?so_id=${soId}`)
       if (dpResponse.ok) {
         const dpData = await dpResponse.json()
-        console.log("[v0] AR - Fetched DPs:", dpData.length, "permits")
         setSODeliveryPermits(dpData || [])
       } else {
         console.error("[v0] AR - Failed to fetch DPs:", await dpResponse.text())
@@ -143,7 +136,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       const response = await fetch("/api/delivery-permits")
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] AR - Fetched DPs for invoice creation:", data.length)
         setAvailableDPs(data)
       }
     } catch (error) {
@@ -157,7 +149,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       const response = await fetch("/api/accounts-receivable")
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] AR - Fetched invoices:", data.length)
         // Assuming useAppContext has a way to update customerInvoices, or we pass it back
         // For now, let's assume loadData does this
         await loadData()
@@ -173,7 +164,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     if (!selectedSO) return
 
     try {
-      console.log("[v0] AR - Creating invoice from SO:", selectedSO, "Type:", typeof selectedSO)
       const response = await fetch("/api/accounts-receivable/create-from-so", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -204,7 +194,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       return so?.payment_type || so?.paymentType || so?.payment_terms || "cash"
     })
 
-    console.log("[v0] Payment terms for selected DPs:", paymentTerms)
 
     // Check if all payment terms are the same
     const uniqueTerms = [...new Set(paymentTerms)]
@@ -254,7 +243,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       }
 
       const result = await response.json()
-      console.log("[v0] Invoice created successfully:", result)
       alert(`Invoice created from ${selectedDPs.length} delivery permits`)
       setDpSelectDialogOpen(false)
       setSelectedDPs([])
@@ -266,9 +254,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   }
 
   const getCustomerName = (customerId: number | string | undefined) => {
-    console.log("[v0] Looking for customer:", customerId, "in", customers?.length, "customers")
     const customer = customers?.find((c: any) => c.customer_id === customerId || c.id === customerId)
-    console.log("[v0] Found customer:", customer?.customer_name || customer?.name || "Unknown")
     return (
       customer?.customer_name ||
       customer?.name ||
@@ -311,13 +297,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       return
     }
     
-    console.log("[v0] Generating AR invoice PDF - Invoice:", {
-      id: invoiceId,
-      invoiceNumber: invoice.invoiceNumber,
-      fullInvoice: invoice
-    })
     const pdfUrl = `/api/invoices/ar/${invoiceId}/pdf`
-    console.log("[v0] Opening PDF URL:", pdfUrl)
     window.open(pdfUrl, "_blank")
   }
 
@@ -707,20 +687,17 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
     // Capture invoice ID immediately to avoid closure issues
     const invoiceId = invoice.id
-    console.log("[v0] Starting VAT invoice upload for invoice:", invoiceId, "file:", file.name)
 
     try {
       // Upload to Vercel Blob
       const formData = new FormData()
       formData.append('file', file)
 
-      console.log("[v0] Uploading file to /api/upload...")
       const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       })
 
-      console.log("[v0] Upload response status:", uploadResponse.status)
 
       if (!uploadResponse.ok) {
         const errorData = await uploadResponse.json()
@@ -729,10 +706,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       }
 
       const { url } = await uploadResponse.json()
-      console.log("[v0] File uploaded successfully to:", url)
 
       // Update invoice with VAT invoice URL
-      console.log("[v0] Updating invoice with VAT URL, invoiceId:", invoiceId)
       const response = await fetch('/api/accounts-receivable', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -742,7 +717,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         }),
       })
 
-      console.log("[v0] Update invoice response status:", response.status)
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -750,7 +724,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         throw new Error(errorData.error || 'Failed to update invoice')
       }
 
-      console.log("[v0] VAT invoice uploaded and saved successfully!")
       alert(t("success.vat-invoice-uploaded") || "VAT Invoice Uploaded Successfully!")
 
       // Refresh invoices
@@ -1047,7 +1020,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         {/* Show +Add button only for CEO and Accountant */}
         {(userRole === "ceo" || userRole === "accountant") && (
           <>
-            {console.log("[v0] AR Module - User Role:", userRole)}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -1697,7 +1669,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         className="group p-5 border-2 rounded-xl cursor-pointer transition-all hover:border-primary hover:shadow-lg hover:scale-[1.01]"
                         onClick={() => {
                           const soId = String(so.soId || so.so_id)
-                          console.log("[v0] AR - SO clicked:", so.soNumber, "ID:", soId)
                           setSelectedSO(soId)
                           fetchSODetails(soId)
                         }}

@@ -14,7 +14,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Sales Order ID is required" }, { status: 400 })
     }
 
-    console.log("[v0] SO Attachments GET: Fetching for SO ID:", soId)
 
     const supabase = createAdminClient()
     const { data, error } = await supabase
@@ -29,7 +28,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    console.log("[v0] SO Attachments GET: Found", data?.length || 0, "attachments")
     return NextResponse.json(data || [])
   } catch (error: any) {
     console.error("[v0] SO Attachments GET: Error", error)
@@ -54,14 +52,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Sales Order ID is required" }, { status: 400 })
     }
 
-    console.log("[v0] SO Attachments POST: Uploading file:", file.name, "for SO:", soId)
 
     // Upload to Vercel Blob
     const blob = await put(`so-attachments/${soId}/${Date.now()}-${file.name}`, file, {
       access: "public",
     })
 
-    console.log("[v0] SO Attachments POST: File uploaded to Blob:", blob.url)
 
     // Store metadata in database
     const supabase = createAdminClient()
@@ -85,7 +81,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: dbError.message }, { status: 500 })
     }
 
-    console.log("[v0] SO Attachments POST: Attachment saved to database")
 
     // Log workflow event
     await supabase.from("workflow_events").insert({
@@ -118,7 +113,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Attachment ID is required" }, { status: 400 })
     }
 
-    console.log("[v0] SO Attachments DELETE: Soft deleting attachment:", attachmentId)
 
     const supabase = createAdminClient()
     const { error } = await supabase
@@ -134,7 +128,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    console.log("[v0] SO Attachments DELETE: Attachment soft deleted")
     return NextResponse.json({ message: "Attachment deleted successfully" })
   } catch (error: any) {
     console.error("[v0] SO Attachments DELETE: Error:", error)

@@ -245,7 +245,6 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
 
   const canAddSupplier = userRole === "ceo" || userRole === "po-rep"
 
-  console.log("[v0] SupplierModule - userRole:", userRole, "canAddSupplier:", canAddSupplier)
 
   const getProductName = (productId: string | number): string => {
     const product = products.find(

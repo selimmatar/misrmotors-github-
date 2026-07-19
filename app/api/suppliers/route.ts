@@ -6,7 +6,6 @@ export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    console.log("[v0] Suppliers GET: Starting fetch")
 
     const result = await withRetry(async () => {
       const supabase = createAdminClient()
@@ -17,14 +16,12 @@ export async function GET() {
         .order("created_at", { ascending: false })
 
       if (error) {
-        console.log("[v0] Suppliers GET error:", error)
         throw error
       }
 
       return data
     })
 
-    console.log("[v0] Suppliers GET: Fetched", result?.length, "suppliers")
 
     const transformed = result?.map((item: any) => {
       return {
@@ -51,7 +48,6 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    console.log("[v0] Suppliers POST: Received data", body)
 
     const supabase = createAdminClient()
 
@@ -67,16 +63,13 @@ export async function POST(request: Request) {
       lead_time_days: body.leadTimeDays || 7,
     }
 
-    console.log("[v0] Suppliers POST: Inserting to DB", dbData)
 
     const { data, error } = await supabase.from("suppliers").insert(dbData).select().single()
 
     if (error) {
-      console.log("[v0] Suppliers POST error:", error)
       throw error
     }
 
-    console.log("[v0] Suppliers POST: Success, created supplier", data)
 
     const transformed = {
       id: data.supplier_id.toString(),

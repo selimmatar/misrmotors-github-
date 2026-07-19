@@ -1,14 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
-import { revalidateTag } from "next/cache"
-import { CACHE_TAGS } from "@/lib/cache-config"
+import { revalidatePath } from "next/cache"
 
 export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    console.log("[v0] Customers GET: Starting fetch")
 
     const result = await withRetry(async () => {
       const supabase = createAdminClient()
@@ -16,14 +14,12 @@ export async function GET() {
       const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: false })
 
       if (error) {
-        console.log("[v0] Customers GET error:", error)
         throw error
       }
 
       return data
     })
 
-    console.log("[v0] Customers GET: Fetched", result?.length, "customers")
 
     const transformed = result?.map((item: any) => {
       return {
@@ -51,7 +47,6 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    console.log("[v0] Customers POST: Received data", body)
 
     const supabase = createAdminClient()
 
@@ -65,18 +60,15 @@ export async function POST(request: Request) {
       country: body.country || "",
     }
 
-    console.log("[v0] Customers POST: Inserting to DB", dbData)
 
     const { data, error } = await supabase.from("customers").insert(dbData).select().single()
 
     if (error) {
-      console.log("[v0] Customers POST error:", error)
       throw error
     }
 
-    console.log("[v0] Customers POST: Success, created customer", data)
 
-    revalidateTag(CACHE_TAGS.CUSTOMERS)
+    revalidatePath("/api/customers")
 
     const transformed = {
       id: data.customer_id.toString(),
@@ -123,7 +115,7 @@ export async function PUT(request: Request) {
 
     if (error) throw error
 
-    revalidateTag(CACHE_TAGS.CUSTOMERS)
+    revalidatePath("/api/customers")
 
     const transformed = {
       id: data.customer_id.toString(),
@@ -160,7 +152,7 @@ export async function DELETE(request: Request) {
       if (error) throw error
     }
 
-    revalidateTag(CACHE_TAGS.CUSTOMERS)
+    revalidatePath("/api/customers")
 
     return NextResponse.json({ success: true })
   } catch (error) {

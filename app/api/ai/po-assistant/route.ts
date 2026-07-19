@@ -10,7 +10,6 @@ export async function POST(req: Request) {
     const { messages, suppliers, products }: { messages: Message[]; suppliers: any[]; products: any[] } =
       await req.json()
 
-    console.log("[v0] PO Assistant processing request")
 
     const lastMessage = messages[messages.length - 1]
     if (!lastMessage || lastMessage.role !== "user") {

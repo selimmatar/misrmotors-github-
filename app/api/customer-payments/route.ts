@@ -39,8 +39,6 @@ export async function POST(request: Request) {
     const supabase = createAdminClient()
     const body = await request.json()
 
-    console.log("[v0] Customer Payments API - Received body:", body)
-    console.log("[v0] Customer Payments API - invoiceId value:", body.invoiceId, "Type:", typeof body.invoiceId)
     
     let invoiceIdNumeric: number
     const invoiceIdStr = String(body.invoiceId)
@@ -60,7 +58,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid invoiceId format" }, { status: 400 })
     }
 
-    console.log("[v0] Customer Payments API - Parsed invoice_id:", invoiceIdNumeric)
 
     const dbData = {
       invoice_id: invoiceIdNumeric,
@@ -72,7 +69,6 @@ export async function POST(request: Request) {
       recorded_by: body.recordedBy ? Number.parseInt(body.recordedBy) : null,
     }
 
-    console.log("[v0] Customer Payments API - Inserting:", dbData)
 
     const { data, error } = await supabase.from("customer_payments").insert(dbData).select().single()
 
@@ -81,7 +77,6 @@ export async function POST(request: Request) {
       throw error
     }
 
-    console.log("[v0] Customer Payments API - Success:", data)
     return NextResponse.json(data)
   } catch (error: any) {
     console.error("Error creating customer payment:", error.message)

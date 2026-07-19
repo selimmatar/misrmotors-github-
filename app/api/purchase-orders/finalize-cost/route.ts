@@ -4,7 +4,6 @@ import { checkIdempotency, completeIdempotency } from "@/lib/idempotency"
 
 export async function POST(request: Request) {
   try {
-    console.log("[v0] PO Cost Finalization: Starting")
     const supabase = createAdminClient()
     const body = await request.json()
 
@@ -26,7 +25,6 @@ export async function POST(request: Request) {
 
     if (!idempotencyCheck.success) {
       if (idempotencyCheck.isRetry) {
-        console.log("[v0] PO Cost Finalization: Already finalized")
         return NextResponse.json({
           message: "Purchase order costs have already been finalized",
           isDuplicate: true,
@@ -147,7 +145,6 @@ export async function POST(request: Request) {
 
       await completeIdempotency("po_finalize_cost", finalizeCostKey, true)
 
-      console.log("[v0] PO Cost Finalization: Success for PO", po.po_number)
 
       return NextResponse.json({
         success: true,

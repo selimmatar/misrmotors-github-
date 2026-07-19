@@ -2,7 +2,6 @@ export async function POST(req: Request) {
   try {
     const { inventory, salesOrders, products } = await req.json()
 
-    console.log("[v0] Starting inventory analysis")
 
     // Analyze low stock items
     const lowStockItems: any[] = []
@@ -43,7 +42,7 @@ export async function POST(req: Request) {
     })
 
     // Sort by urgency
-    const urgencyOrder = { critical: 0, high: 1, medium: 2 }
+    const urgencyOrder: Record<string, number> = { critical: 0, high: 1, medium: 2 }
     lowStockItems.sort((a, b) => urgencyOrder[a.urgency] - urgencyOrder[b.urgency])
 
     // Analyze stock movement trends
@@ -104,7 +103,6 @@ export async function POST(req: Request) {
           : ["Inventory levels are well-balanced. Continue current ordering practices."],
     }
 
-    console.log("[v0] Inventory analysis completed")
 
     return Response.json({ analysis })
   } catch (error: any) {

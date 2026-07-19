@@ -131,7 +131,6 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         if (response.ok) {
           const data = await response.json()
           setDeliveryPermits(data)
-          console.log("[v0] Inventory: Refreshed delivery permits, count:", data.length)
         }
       } catch (error) {
         console.error("Error fetching delivery permits:", error)
@@ -168,7 +167,6 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     deliveryPermits.forEach((dp) => {
       const dpStatus = dp.status || "NO_DP"
 
-      console.log(`[v0] Inventory Pending - DP ${dp.permitNo || dp.permit_no}: status = ${dpStatus}, DP ID = ${dp.id}`)
 
       // Only show pending if DP status is NOT SUBMITTED_SIGNED or APPROVED
       if (dpStatus !== "SUBMITTED_SIGNED" && dpStatus !== "APPROVED") {
@@ -434,7 +432,6 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           const images = await imagesResponse.json()
           setProductImages(images)
           setSelectedImageIndex(0) // Show the newly uploaded image (most recent)
-          console.log("[v0] Image uploaded successfully, fetched images:", images)
         }
       }
     } catch (error) {

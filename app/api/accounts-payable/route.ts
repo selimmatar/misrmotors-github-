@@ -77,7 +77,6 @@ export async function GET() {
       }
     })
 
-    console.log(`[v0] AP GET: Fetched ${transformed.length} invoices`)
     return NextResponse.json(transformed)
   } catch (error: any) {
     console.error("Error fetching accounts payable:", error)
@@ -87,7 +86,6 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    console.log("[v0] AP POST: Starting")
     const supabase = createAdminClient()
 
     const body = await request.json()
@@ -103,7 +101,6 @@ export async function POST(request: Request) {
     const paymentType =
       body.payment_type || body.paymentType || body.payment_terms || body.paymentTerms || "installments"
 
-    console.log("[v0] AP POST: Resolved payment_type:", paymentType)
 
     const dbData: any = {
       invoice_number: body.invoice_number || body.invoiceNumber,
@@ -147,7 +144,6 @@ export async function POST(request: Request) {
       dbData.payment_start_date = body.payment_start_date ?? body.paymentStartDate ?? null
     }
 
-    console.log("[v0] AP POST: Inserting with payment_type:", dbData.payment_type)
     const { data, error } = await supabase.from("accounts_payable").insert(dbData).select().single()
 
     if (error) {
@@ -160,7 +156,6 @@ export async function POST(request: Request) {
       throw new Error("Invoice created but invoice_id was not returned")
     }
 
-    console.log("[v0] AP POST: Success - invoice_id:", data.invoice_id, "payment_type:", data.payment_type)
     return NextResponse.json({
       invoice_id: data.invoice_id,
       invoiceId: data.invoice_id,
@@ -219,7 +214,6 @@ export async function PUT(request: Request) {
     if (updates.monthlyAmount !== undefined) dbUpdates.monthly_amount = updates.monthlyAmount
     if (updates.paymentStartDate !== undefined) dbUpdates.payment_start_date = updates.paymentStartDate
 
-    console.log("[v0] AP PUT: Updating invoice", id, "with", dbUpdates)
 
     const { data, error } = await supabase
       .from("accounts_payable")
@@ -233,7 +227,6 @@ export async function PUT(request: Request) {
       throw error
     }
 
-    console.log("[v0] AP PUT: Success", data)
     return NextResponse.json(data)
   } catch (error: any) {
     console.error("Error updating accounts payable:", error.message)

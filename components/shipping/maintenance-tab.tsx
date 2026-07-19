@@ -46,11 +46,9 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
 
   const fetchWorkOrders = async () => {
     try {
-      console.log("[v0] Shipping Maintenance Tab: Fetching work orders...")
       const response = await fetch("/api/maintenance/work-orders")
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Shipping Maintenance Tab: Fetched work orders:", data)
         setWorkOrders(data)
       } else {
         console.error("[v0] Shipping Maintenance Tab: Failed to fetch work orders:", response.status)

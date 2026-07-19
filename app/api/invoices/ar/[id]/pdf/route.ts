@@ -22,10 +22,8 @@ function formatEnglishNumber(num: number | string): string {
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    console.log("[v0] AR Invoice PDF - Raw params:", { id, type: typeof id })
     
     const invoiceId = Number.parseInt(id)
-    console.log("[v0] AR Invoice PDF - Received ID:", id, "Parsed:", invoiceId, "isNaN:", isNaN(invoiceId))
 
     if (!id || !invoiceId || isNaN(invoiceId)) {
       console.error("[v0] AR Invoice PDF - Invalid invoice ID. Raw:", id, "Parsed:", invoiceId)
@@ -79,7 +77,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const so = invoice.sales_orders || {}
     const qrNumber = so.quotation_request_number || null
     
-    console.log("[v0] AR Invoice PDF - QR Number from SO:", qrNumber, "SO ID:", so.so_id, "SO Number:", so.so_number)
 
     // Fetch delivery permits separately using sales_order_id
     let deliveryPermits: any[] = []

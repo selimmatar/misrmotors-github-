@@ -179,9 +179,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
   const getOrderPaymentStatus = (order: SalesOrder) => {
     const invoice = orderInvoices[order.id]
 
-    console.log("[v0] Customer Module - Order:", order.soNumber, "order.id:", order.id, "Invoice exists:", !!invoice)
     if (invoice) {
-      console.log("[v0] Invoice data:", {
         monthsPaid: invoice.monthsPaid,
         installmentMonths: invoice.installmentMonths,
         collectedAmount: invoice.collectedAmount,
@@ -209,7 +207,6 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
     const totalAmount = invoice.amount || order.total
     const amountDue = totalAmount - amountPaid
 
-    console.log("[v0] Calculated values:", {
       monthsPaid,
       totalMonths: `${totalMonths} (from order.installments: ${order.installments}, invoice.installmentMonths: ${invoice.installmentMonths})`,
       amountPaid,
@@ -232,7 +229,6 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
       color = "bg-green-100 text-green-800"
     }
 
-    console.log("[v0] Final status:", status)
 
     return {
       status,
@@ -315,7 +311,6 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                   {customerOrders.map((order) => {
                     const paymentStatus = getOrderPaymentStatus(order)
                     
-                    console.log("[v0] Rendering order:", order.soNumber, "status:", order.status, "installments:", order.installments, "deliveryPermits:", order.deliveryPermits)
 
                     return (
                       <div key={order.id} className="border rounded-lg p-4">

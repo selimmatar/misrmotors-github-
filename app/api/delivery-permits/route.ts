@@ -224,7 +224,6 @@ export async function GET(request: NextRequest) {
       returnedQuantity: returnsByPermit[permit.id] || returnsByPermit[String(permit.id)] || 0,
     }))
 
-    console.log(`[v0] Delivery Permits GET: Successfully fetched ${finalPermits.length} permits`)
     return NextResponse.json(finalPermits)
   } catch (error: any) {
     console.error("[v0] Delivery Permits GET error:", error)
@@ -263,7 +262,6 @@ export async function POST(request: NextRequest) {
     }
     const permitNo = `DP-${year}-${String(nextNumber).padStart(4, "0")}`
 
-    console.log(`[v0] Generated permit number: ${permitNo}`)
 
     // Create the permit
     const { data: permit, error: permitError } = await withRetry(() =>
@@ -290,7 +288,6 @@ export async function POST(request: NextRequest) {
 
     // Create permit items (snapshot of SO items)
     if (items && items.length > 0) {
-      console.log("[v0] DP POST - Creating items:", JSON.stringify(items.slice(0, 2), null, 2))
       
       const permitItems = items.map((item: any) => ({
         permit_id: permit.permit_id,
@@ -305,7 +302,6 @@ export async function POST(request: NextRequest) {
         outsourced_name: item.supplierName || null, // Store supplier name here (item name is in item_name_snapshot)
       }))
 
-      console.log("[v0] DP POST - Permit items to insert:", JSON.stringify(permitItems, null, 2))
 
       const { error: itemsError } = await withRetry(() => supabase.from("delivery_permit_items").insert(permitItems))
 
@@ -386,7 +382,6 @@ export async function PUT(request: NextRequest) {
     const supabase = createAdminClient()
     const body = await request.json()
 
-    console.log("[v0] Delivery Permits PUT - Received:", JSON.stringify(body))
 
     const {
       permitId,
@@ -416,7 +411,6 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Permit not found" }, { status: 404 })
     }
 
-    console.log("[v0] Delivery Permits PUT - Current permit status:", currentPermit.status)
 
     const updates: any = { updated_at: new Date().toISOString() }
     let newStatus = currentPermit.status
@@ -453,7 +447,6 @@ export async function PUT(request: NextRequest) {
         updates.allocated_at = new Date().toISOString()
         updates.allocated_by = userId ? Number.parseInt(userId) : null
         soUpdates.fulfillment_status = "READY_FOR_SHIPMENT"
-        console.log("[v0] Delivery Permits PUT - Allocating warehouses and marking READY_FOR_SHIPMENT")
         break
 
       case "MARK_READY_FOR_PICKUP":
@@ -463,7 +456,6 @@ export async function PUT(request: NextRequest) {
         updates.printed_by = userId ? Number.parseInt(userId) : null
         soUpdates.fulfillment_status = "READY_FOR_PICKUP"
         soUpdates.status = "ready_for_delivery"
-        console.log("[v0] Delivery Permits PUT - Marking READY_FOR_PICKUP")
         break
 
       case "MARK_PRINTED":
@@ -513,9 +505,7 @@ export async function PUT(request: NextRequest) {
         if (allDelivered) {
           soUpdates.status = "delivered"
           soUpdates.fulfillment_status = "DELIVERED"
-          console.log("[v0] Delivery Permits PUT - All DPs delivered, marking SO as delivered")
         } else {
-          console.log("[v0] Delivery Permits PUT - Not all DPs delivered yet, keeping SO status")
         }
       }
       break
@@ -533,7 +523,6 @@ export async function PUT(request: NextRequest) {
 
         if (!idempotencyCheck.success) {
           if (idempotencyCheck.isRetry) {
-            console.log("[v0] DP Approve: Duplicate approval detected")
             return NextResponse.json({
               message: "Delivery permit has already been approved",
               isDuplicate: true,
@@ -570,13 +559,10 @@ export async function PUT(request: NextRequest) {
             if (allDelivered) {
               soUpdates.fulfillment_status = "DELIVERED"
               soUpdates.status = "delivered"
-              console.log("[v0] Delivery Permits PUT - All DPs approved/delivered, marking SO as delivered")
             } else {
-              console.log("[v0] Delivery Permits PUT - Not all DPs delivered yet, keeping SO status")
             }
           }
 
-          console.log("[v0] Delivery Permits PUT - APPROVING, creating AR invoice")
 
           if (currentPermit.sales_order_id) {
             const { data: soData, error: soError } = await withRetry(() =>
@@ -592,7 +578,6 @@ export async function PUT(request: NextRequest) {
             if (soError) {
               console.error("[v0] Delivery Permits PUT - Failed to fetch SO:", soError.message)
             } else if (soData) {
-              console.log("[v0] Delivery Permits PUT - SO data fetched successfully, SO ID:", soData.so_id)
               // NOTE: AR Invoice creation has been removed from here.
               // Invoices should only be created manually by the accountant 
               // through the Accounts Receivable module using "Create from DPs" button.
@@ -630,7 +615,6 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
-    console.log("[v0] Delivery Permits PUT - Updated permit to status:", updatedPermit.status)
 
     // Update sales order if needed
     if (Object.keys(soUpdates).length > 0 && currentPermit.sales_order_id) {
@@ -640,7 +624,6 @@ export async function PUT(request: NextRequest) {
       if (soError) {
         console.error("[v0] Delivery Permits PUT - SO update error:", soError.message)
       } else {
-        console.log("[v0] Delivery Permits PUT - Updated SO with:", soUpdates)
       }
     }
 

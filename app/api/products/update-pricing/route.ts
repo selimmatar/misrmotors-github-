@@ -3,7 +3,6 @@ import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
   try {
-    console.log("[v0] Product Pricing Update: Starting")
     const supabase = createAdminClient()
     const body = await request.json()
 
@@ -38,7 +37,6 @@ export async function POST(request: Request) {
         console.error("[v0] Product Pricing Update: Error updating product", productId, error)
         results.push({ productId, success: false, error: error.message })
       } else {
-        console.log("[v0] Product Pricing Update: Updated product", productId)
         results.push({ productId, success: true, data })
       }
     }

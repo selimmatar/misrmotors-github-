@@ -11,7 +11,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Sales order ID is required" }, { status: 400 })
     }
 
-    console.log("[v0] Creating AR invoice from SO:", so_id, "Type:", typeof so_id)
 
     // Check if invoice already exists for this SO
     const { data: existingInvoice } = await supabase
@@ -21,7 +20,6 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (existingInvoice) {
-      console.log("[v0] AR Invoice already exists:", existingInvoice.invoice_number)
       return NextResponse.json(
         { 
           error: `Invoice ${existingInvoice.invoice_number} already exists for this Sales Order`,
@@ -33,7 +31,6 @@ export async function POST(request: Request) {
     }
 
     // Fetch SO with items
-    console.log("[v0] Fetching sales order with so_id:", so_id)
     const { data: so, error: soError } = await supabase
       .from("sales_orders")
       .select(`
@@ -57,7 +54,6 @@ export async function POST(request: Request) {
       }, { status: 404 })
     }
 
-    console.log("[v0] AR - Found SO:", so.so_number, "Total:", so.total)
 
     // Fetch delivery permits associated with this SO
     const { data: deliveryPermits } = await supabase
@@ -97,7 +93,6 @@ export async function POST(request: Request) {
       invoiceNumber = `INV-${currentYear}-${(maxSeq + 1).toString().padStart(3, "0")}`
     }
     
-    console.log("[v0] Generated invoice number:", invoiceNumber)
 
     // Create invoice
     const { data: invoice, error: invoiceError } = await supabase
@@ -120,7 +115,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: invoiceError.message }, { status: 500 })
     }
 
-    console.log("[v0] Invoice created successfully:", invoice.invoice_id, "with", deliveryPermits?.length || 0, "delivery permits")
     return NextResponse.json({
       ...invoice,
       invoiceNumber: invoice.invoice_number,

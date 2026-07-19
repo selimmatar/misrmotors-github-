@@ -359,7 +359,6 @@ export async function PUT(request: Request) {
         const productId = item.productId ? Number(item.productId) : null
         
         if (!productId || !warehouseIdNum) {
-          console.log("[v0] Skipping restock - invalid productId or warehouseId")
           continue
         }
         
@@ -381,7 +380,6 @@ export async function PUT(request: Request) {
           if (updateErr) {
             console.error("[v0] Restock inventory update error:", updateErr)
           } else {
-            console.log("[v0] Restocked inventory for product:", productId, "new qty:", (invData.quantity || 0) + (item.quantityReturned || 0))
           }
         } else {
           // Create new inventory record
@@ -397,7 +395,6 @@ export async function PUT(request: Request) {
           if (insertErr) {
             console.error("[v0] Restock inventory insert error:", insertErr)
           } else {
-            console.log("[v0] Created inventory for product:", productId, "qty:", item.quantityReturned)
           }
         }
         

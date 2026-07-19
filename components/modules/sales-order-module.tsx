@@ -307,7 +307,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
   })
 
   const handleQRUploadComplete = (data: { qrNumber: string; fileUrl: string }) => {
-    console.log("[v0] SO Module - QR upload complete:", data)
     setQrData(data)
   }
 
@@ -420,16 +419,13 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
     // NOTE: Invoice creation removed from here.
     // Accountant must manually create invoices through the Accounts Receivable module
     // after delivery permits are approved using "Create from DPs" button.
-    console.log("[v0] Invoice creation is now handled by Accountant through AR module for SO:", order.soNumber)
   }
 
   const handleApprove = async (id: string) => {
     const order = salesOrders.find((o) => o.id === id)
     if (order) {
-      console.log("[v0] Approving sales order:", order.soNumber)
 
       // This function should not be called anymore as CEO doesn't approve SOs in new workflow
-      console.log("[v0] ERROR: CEO approval is deprecated. Use Accountant module instead.")
       alert("Sales orders are now approved by the Accountant. Please use the Accountant module.")
     }
   }
@@ -582,7 +578,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
     e.stopPropagation() // Prevent event bubbling to avoid duplicate submissions
 
     if (isSubmitting) {
-      console.log("[v0] Already submitting, ignoring duplicate call")
       return
     }
     setIsSubmitting(true)
@@ -707,7 +702,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
     // Calculate pre-tax subtotal from items
     const itemsSubtotal = currentOrderItems.reduce((sum, item) => sum + item.total, 0)
     
-    console.log("[v0] SO Pricing Calculation:", {
       items: currentOrderItems.map(i => ({ name: i.productName, qty: i.quantity, unitPrice: i.unitPrice, total: i.total })),
       itemsSubtotal,
       vatEnabled
@@ -798,7 +792,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       receiver_name: formData.receiverName || null,
     }
 
-    console.log("[v0] Creating sales order with QR:", newOrder.quotation_request_number)
 
     // We only update local state AFTER the API succeeds
 
@@ -810,16 +803,13 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
           for (const item of newOrder.items) {
             // Skip inventory updates for outsourced items (no productId)
             if (!item.productId || item.productId === "") {
-              console.log(`[v0] Skipping inventory update for outsourced item: ${item.productName}`)
               continue
             }
             
-            console.log(`[v0] Updating local inventory state for ${item.productName}`)
             // Find the corresponding orderItem to get the warehouseId
             const orderItem = orderItems.find(oi => oi.productId === item.productId)
             await updateInventoryQuantity(item.productId, -item.quantity, orderItem?.warehouseId)
           }
-          console.log("[v0] Local inventory state updated successfully")
         } catch (invError) {
           console.error("[v0] Error updating local inventory state:", invError)
           // Note: The API already deducted inventory, this is just for local state sync
@@ -851,7 +841,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       return
     }
 
-    console.log("[v0] Opening AR invoice PDF for invoice_id:", invoiceId)
     const pdfUrl = `/api/invoices/ar/${invoiceId}/pdf`
     window.open(pdfUrl, "_blank")
   }
@@ -1381,7 +1370,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
   }
 
   const handleOpenCreateDpDialog = async (order: SalesOrder) => {
-    console.log("[v0] Opening Create DP Dialog for SO:", order.so_number || order.soNumber)
 
     // Prevent DP creation for draft orders (unapproved quotations)
     if (order.status === "draft") {
@@ -1444,7 +1432,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
     try {
       const soIdValue = order.so_id || order.id
-      console.log("[v0] Fetching existing DPs for SO ID:", soIdValue)
       const response = await fetch(`/api/delivery-permits?soId=${soIdValue}`)
 
       if (!response.ok) {
@@ -1456,8 +1443,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       }
 
       const existingDPs = await response.json()
-      console.log("[v0] API Response - Raw data:", existingDPs)
-      console.log("[v0] Found", existingDPs?.length || 0, "existing DPs for SO")
 
       // Filter DPs to only include those for this SO
       const filteredDPs = Array.isArray(existingDPs)
@@ -1467,7 +1452,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
           )
         : []
 
-      console.log("[v0] Filtered DPs for this SO:", filteredDPs.length)
       setExistingDPsForSO(filteredDPs)
     } catch (error) {
       console.error("[v0] Error fetching existing DPs:", error)
@@ -1581,7 +1565,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       }
 
       const data = await response.json()
-      console.log("[v0] Delivery Permit created:", data)
       alert(`Delivery Permit ${data.permitNo} created successfully!`)
       setCreateDPDialogOpen(false)
       setSelectedSOForDP(null)
@@ -2186,7 +2169,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                       const supplierMatch = supplierInfo.match(/Supplier:\s*([^|]+)/)
                       const supplierName = supplierMatch ? supplierMatch[1].trim() : null
                       
-                      console.log("[v0] Item:", item.productName, "isOutsourced:", isOutsourced, "supplierInfo:", supplierInfo, "supplierName:", supplierName)
                       
                       return (
                         <div key={item.productId || idx} className="flex justify-between items-start gap-2">

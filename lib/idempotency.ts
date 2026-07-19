@@ -47,7 +47,6 @@ export async function checkIdempotency(
 
     // If operation exists and is completed, return the previous result
     if (existing && existing.status === "completed") {
-      console.log(`[v0] Idempotency: Operation ${operationType} with key ${idempotencyKey} already completed`)
       return {
         success: false,
         isRetry: true,

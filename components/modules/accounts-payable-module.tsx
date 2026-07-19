@@ -98,7 +98,6 @@ export function AccountsPayableModule() {
       return
     }
 
-    console.log("[v0] Generating AP invoice PDF for invoice_id:", invoiceId)
     const pdfUrl = `/api/invoices/ap/${invoiceId}/pdf`
     window.open(pdfUrl, "_blank")
   }
@@ -221,7 +220,6 @@ export function AccountsPayableModule() {
     const effectivePaymentType =
       invoice.paymentType || po?.paymentType || po?.paymentTerms || invoice.paymentTerms || "installments"
 
-    console.log("[v0] AP Module - generateSchedule - payment type:", effectivePaymentType, "for invoice", invoice.id)
 
     const totalAmount = invoice.totalAmount || invoice.amount || 0
     const paidAmount = invoice.paidAmount || 0
@@ -240,21 +238,12 @@ export function AccountsPayableModule() {
       const paymentStartDate =
         invoice.paymentStartDate || po?.paymentStartDate || new Date().toISOString().split("T")[0]
 
-      console.log("[v0] AP Module - Hybrid schedule:", {
-        downPaymentAmount,
-        remainingAmount,
-        remainingMonths,
-        monthlyAmount,
-        totalAmount,
-      })
-      
       // Validation: Ensure amounts are sensible for hybrid payment
       if (downPaymentAmount === 0 && remainingAmount === 0) {
         console.error("[v0] AP Module - ERROR: Hybrid payment with 0 amounts detected! Invoice:", invoice.id)
         // Fallback: treat as regular installments
         const installmentMonths = invoice.remainingInstallmentMonths || po?.remainingInstallmentMonths || po?.installments || 6
         const monthlyAmt = Math.round((totalAmount / installmentMonths) * 100) / 100
-        console.log("[v0] AP Module - Falling back to installments with", installmentMonths, "months @", monthlyAmt)
         
         for (let i = 1; i <= installmentMonths; i++) {
           const dueDate = new Date(paymentStartDate)
@@ -277,7 +266,6 @@ export function AccountsPayableModule() {
       // If schedule_entries exists, use custom schedule
       const savedScheduleEntries = invoice.scheduleEntries || po?.scheduleEntries
       if (savedScheduleEntries && Array.isArray(savedScheduleEntries) && savedScheduleEntries.length > 0) {
-        console.log("[v0] AP Module - Using saved custom schedule entries:", savedScheduleEntries.length)
         return schedules
       }
 

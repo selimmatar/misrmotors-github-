@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic"
 export async function GET() {
   try {
     const supabase = getAdminClient()
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("couriers")
       .select("*")
       .order("courier_name", { ascending: true })
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const supabase = getAdminClient()
     const body = await request.json()
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("couriers")
       .insert({
         courier_name: body.name,
@@ -96,7 +96,7 @@ export async function PUT(request: Request) {
     if (body.isActive !== undefined) updateData.is_active = body.isActive
     if (body.notes !== undefined) updateData.notes = body.notes
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("couriers")
       .update(updateData)
       .eq("courier_id", Number.parseInt(body.id))
@@ -136,7 +136,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Courier ID required" }, { status: 400 })
     }
 
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("couriers")
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("courier_id", Number.parseInt(id))

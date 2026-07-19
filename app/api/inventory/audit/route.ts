@@ -70,7 +70,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No adjustments provided" }, { status: 400 })
     }
 
-    console.log("[v0] Inventory Audit: Starting audit with", adjustments.length, "items")
 
     const auditDate = new Date().toISOString()
     const auditRecords = []
@@ -113,7 +112,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: auditError.message }, { status: 500 })
       }
 
-      console.log("[v0] Inventory Audit: Inserted", auditRecords.length, "audit records")
     }
 
     let updatedCount = 0

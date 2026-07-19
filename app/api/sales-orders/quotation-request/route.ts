@@ -5,7 +5,6 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("[v0] QR Upload: Starting")
     const formData = await request.formData()
     const file = formData.get("file") as File
     const soId = formData.get("soId") as string
@@ -19,13 +18,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Sales Order ID is required" }, { status: 400 })
     }
 
-    console.log("[v0] QR Upload: File:", file.name, "SO ID:", soId)
 
     const blob = await put(`quotation-requests/${soId}/${Date.now()}-${file.name}`, file, {
       access: "public",
     })
 
-    console.log("[v0] QR Upload: File uploaded to Blob:", blob.url)
 
     const supabase = createAdminClient()
 
@@ -37,7 +34,6 @@ export async function POST(request: NextRequest) {
     }
 
     const qrNumber = qrData as string
-    console.log("[v0] QR Upload: Generated QR number:", qrNumber)
 
     const { data: soUpdate, error: soError } = await withRetry(() =>
       supabase
@@ -60,7 +56,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: soError.message }, { status: 500 })
     }
 
-    console.log("[v0] QR Upload: SO updated successfully")
 
     await withRetry(() =>
       supabase.from("workflow_events").insert({

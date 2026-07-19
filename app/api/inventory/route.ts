@@ -81,7 +81,6 @@ export async function POST(request: Request) {
   try {
     const supabase = createAdminClient()
     const body = await request.json()
-    console.log("[v0] Inventory POST: Request body", body)
 
     const productId = body.productId || body.product_id
     const warehouseId = body.warehouseId || body.warehouse_id
@@ -104,7 +103,6 @@ export async function POST(request: Request) {
     }
 
     if (existing) {
-      console.log("[v0] Inventory POST: Product already exists at this warehouse, should use PUT to update")
       return NextResponse.json(
         { error: "Inventory for this product already exists at this warehouse. Use PUT to update." },
         { status: 409 },
@@ -130,7 +128,6 @@ export async function POST(request: Request) {
       throw error
     }
 
-    console.log("[v0] Inventory POST: Success", data)
     return NextResponse.json(data)
   } catch (error: any) {
     console.error("Error creating inventory:", error.message || error)
@@ -142,7 +139,6 @@ export async function PUT(request: Request) {
   try {
     const supabase = createAdminClient()
     const body = await request.json()
-    console.log("[v0] Inventory PUT: Request body", body)
 
     const productId = body.productId || body.product_id
     const warehouseId = body.warehouseId || body.warehouse_id
@@ -169,7 +165,6 @@ export async function PUT(request: Request) {
       }
 
       if (!existing) {
-        console.log("[v0] Inventory PUT: No existing record found for increment")
         return NextResponse.json({ error: "Inventory record not found. Cannot increment quantity." }, { status: 404 })
       }
 
@@ -208,7 +203,6 @@ export async function PUT(request: Request) {
         throw error
       }
 
-      console.log("[v0] Inventory PUT: Success with increment", data)
       return NextResponse.json(data)
     }
 
@@ -224,7 +218,6 @@ export async function PUT(request: Request) {
     if (body.location !== undefined) updates.location = body.location
     if (warehouseId !== undefined) updates.warehouse_id = warehouseId ? Number.parseInt(warehouseId) : null
 
-    console.log("[v0] Inventory PUT: Updating product_id", productId, "with", updates)
 
     let updateQuery = supabase.from("inventory").update(updates).eq("product_id", Number.parseInt(productId))
 
@@ -239,7 +232,6 @@ export async function PUT(request: Request) {
       throw error
     }
 
-    console.log("[v0] Inventory PUT: Success", data)
     return NextResponse.json(data)
   } catch (error: any) {
     console.error("Error updating inventory:", error.message || error)

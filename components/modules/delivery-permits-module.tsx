@@ -93,15 +93,10 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
 
   const handlePrintPDF = (permit: DeliveryPermit) => {
     const url = `${window.location.origin}/api/delivery-permits/pdf?permitId=${permit.id}`
-    console.log("[v0] Opening DP print URL:", url)
     window.open(url, "_blank")
   }
 
   const handleOpenReviewDialog = (permit: DeliveryPermit) => {
-    console.log("[v0] Opening review dialog for permit:", permit.id)
-    console.log("[v0] Permit files:", permit.files)
-    console.log("[v0] Permit signedDocumentUrl:", permit.signedDocumentUrl)
-    console.log("[v0] Full permit object:", permit)
     setPermitToReview(permit)
     setShowReviewDialog(true)
   }
@@ -396,8 +391,6 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                         onClick={() => {
                           const signedFile = permitToReview.files?.find((f) => f.fileType === "SIGNED_PERMIT")
                           const url = permitToReview.signedDocumentUrl || signedFile?.fileUrl
-                          console.log("[v0] View button clicked - URL:", url)
-                          console.log("[v0] Signed file found:", signedFile)
                           if (url) window.open(url, "_blank")
                         }}
                       >
@@ -425,9 +418,6 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                   const signedFile = permitToReview.files?.find((f) => f.fileType === "SIGNED_PERMIT")
                   const documentUrl = permitToReview.signedDocumentUrl || signedFile?.fileUrl
 
-                  console.log("[v0] Signed document preview - signedFile:", signedFile)
-                  console.log("[v0] Signed document preview - documentUrl:", documentUrl)
-                  console.log("[v0] All files:", permitToReview.files)
 
                   if (documentUrl) {
                     return (

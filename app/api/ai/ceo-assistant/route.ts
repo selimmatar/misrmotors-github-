@@ -5,7 +5,6 @@ export async function POST(request: NextRequest) {
   try {
     const { message, businessData } = await request.json()
 
-    console.log("[v0] CEO Assistant processing request with Gemini:", message)
 
     const {
       purchaseOrders,

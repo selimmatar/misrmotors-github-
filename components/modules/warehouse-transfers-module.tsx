@@ -179,7 +179,6 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
   const handleCompleteTransfer = async (transferId: number) => {
     if (!confirm("Complete this transfer? This will move inventory between warehouses.")) return
 
-    console.log("[v0] Completing transfer, ID:", transferId)
     
     try {
       setActionLoading(true)
@@ -189,7 +188,6 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
         body: JSON.stringify({ transferId }),
       })
 
-      console.log("[v0] Transfer complete response status:", response.status)
 
       if (!response.ok) {
         const error = await response.json()
@@ -198,7 +196,6 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
       }
 
       const result = await response.json()
-      console.log("[v0] Transfer completed successfully:", result)
       
       alert("Transfer completed successfully!")
       await fetchTransfers()

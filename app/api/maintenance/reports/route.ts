@@ -10,7 +10,6 @@ export async function GET(request: Request) {
     const status = searchParams.get("status")
     const workOrderId = searchParams.get("work_order_id")
 
-    console.log("[v0] Fetching maintenance reports - status:", status, "workOrderId:", workOrderId)
 
     let query = adminClient
       .from("maintenance_reports")
@@ -63,7 +62,6 @@ export async function GET(request: Request) {
       }
     })
 
-    console.log("[v0] Fetched", transformedData.length, "reports")
     return NextResponse.json(transformedData)
   } catch (error) {
     console.error("[v0] Error in reports GET:", error)
@@ -101,8 +99,6 @@ export async function POST(request: Request) {
     const adminClient = createAdminClient()
     const body = await request.json()
     
-    console.log("[v0] Creating maintenance report for work order:", body.work_order_id)
-    console.log("[v0] Report body:", body)
     
     const { data, error } = await adminClient
       .from("maintenance_reports")
@@ -143,7 +139,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
-    console.log("[v0] ✅ Maintenance report created successfully - awaiting sales approval")
     
     return NextResponse.json(data)
   } catch (error) {

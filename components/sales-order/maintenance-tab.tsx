@@ -49,14 +49,12 @@ export function SalesOrderMaintenanceTab({
   salesOrder: SalesOrder
   userRole: string
   }) {
-  console.log("[v0] SalesOrderMaintenanceTab rendered for order:", salesOrder?.soNumber, "userRole:", userRole)
   
   const [workOrder, setWorkOrder] = useState<MaintenanceWorkOrder | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
   
-  console.log("[v0] Component state - showCreateForm:", showCreateForm, "workOrder:", workOrder, "requiresMaintenance:", salesOrder?.requiresMaintenance)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [priority, setPriority] = useState<string>("medium")
@@ -107,9 +105,6 @@ export function SalesOrderMaintenanceTab({
       return
     }
 
-    console.log("[v0] ========== CREATING MAINTENANCE WORK ORDER ==========")
-    console.log("[v0] Sales Order ID:", salesOrder.id, "Type:", typeof salesOrder.id)
-    console.log("[v0] Sales Order customerId:", salesOrder.customerId)
 
     setLoading(true)
     try {
@@ -122,8 +117,6 @@ export function SalesOrderMaintenanceTab({
         assignedTo: selectedEmployee ? parseInt(selectedEmployee) : null,
       }
       
-      console.log("[v0] Request body with salesOrderId:", requestBody.salesOrderId)
-      console.log("[v0] Full request body:", JSON.stringify(requestBody, null, 2))
       
       const response = await fetch("/api/maintenance/work-orders", {
         method: "POST",
@@ -133,8 +126,6 @@ export function SalesOrderMaintenanceTab({
 
       if (response.ok) {
         const newWorkOrder = await response.json()
-        console.log("[v0] ✅ Work order created successfully!")
-        console.log("[v0] Created work order data:", {
           work_order_id: newWorkOrder.work_order_id,
           work_order_number: newWorkOrder.work_order_number,
           sales_order_id: newWorkOrder.sales_order_id,
@@ -218,7 +209,6 @@ export function SalesOrderMaintenanceTab({
             <CardContent>
               <Button 
                 onClick={() => {
-                  console.log("[v0] Create Maintenance Work Order button clicked!")
                   setShowCreateForm(true)
                 }} 
                 size="lg" 

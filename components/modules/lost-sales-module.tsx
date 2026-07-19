@@ -91,7 +91,6 @@ export function LostSalesModule() {
         }
       }
 
-      console.log("[v0] Lost sales data fetched:", {
         detailCount: detailData.length,
         summaryData: summaryData,
       })
@@ -132,7 +131,6 @@ export function LostSalesModule() {
     try {
       await addLostSale(newLostSale)
 
-      console.log("[v0] Lost sale added successfully")
 
       // Reset form
       setNewLostSale({
@@ -163,7 +161,6 @@ export function LostSalesModule() {
     try {
       await deleteLostSale(id)
 
-      console.log("[v0] Lost sale deleted successfully")
 
       // Refresh data to show updated record
       await fetchData()

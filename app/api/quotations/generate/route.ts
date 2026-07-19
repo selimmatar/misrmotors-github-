@@ -23,7 +23,6 @@ export async function GET(request: NextRequest) {
       notes,
     } = JSON.parse(decodeURIComponent(dataParam))
 
-    console.log("[v0] Quotation Generation - Request received:", { customer_name, items: items?.length })
 
     if (!customer_name || !items || items.length === 0) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -42,13 +41,6 @@ export async function GET(request: NextRequest) {
       const quantity = item.quantity || 0
       const itemTotal = quantity * unitPrice
       
-      console.log("[v0] Quotation Item:", {
-        product_name: item.product_name || product?.product_name,
-        quantity,
-        unit_price: unitPrice,
-        item_total: itemTotal
-      })
-      
       return {
         product_name: item.product_name || product?.product_name || "Unknown Product",
         quantity: quantity,
@@ -62,12 +54,6 @@ export async function GET(request: NextRequest) {
     const tax = subtotal * 0.14
     const total = subtotal + tax
     
-    console.log("[v0] Quotation Calculation:", {
-      subtotal: subtotal.toFixed(2),
-      tax: tax.toFixed(2),
-      total: total.toFixed(2)
-    })
-
     // Use English date format to avoid Arabic numerals that show as 2022
     const quotationDate = new Date().toLocaleDateString("en-GB", { day: '2-digit', month: '2-digit', year: 'numeric' })
     const validUntil = new Date(Date.now() + validity_days * 24 * 60 * 60 * 1000).toLocaleDateString("en-GB", { day: '2-digit', month: '2-digit', year: 'numeric' })

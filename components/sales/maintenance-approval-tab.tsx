@@ -53,13 +53,11 @@ export function MaintenanceApprovalTab({ userRole }: { userRole: string }) {
   const fetchPendingReports = async () => {
     try {
       setLoading(true)
-      console.log("[v0] Fetching pending maintenance reports for sales approval...")
       
       const response = await fetch("/api/maintenance/reports")
       
       if (response.ok) {
         const allReports = await response.json()
-        console.log("[v0] Fetched all reports:", allReports)
         setReports(allReports)
       } else {
         const errorText = await response.text()

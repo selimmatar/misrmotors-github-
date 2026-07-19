@@ -27,7 +27,6 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
     if (!permit) return
     setIsLoading(true)
     try {
-      console.log("[v0] DeliveryPermitCard - Updating permit:", permit.id, "Action:", action)
       const response = await fetch("/api/delivery-permits", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -46,7 +45,6 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
       }
 
       const result = await response.json()
-      console.log("[v0] DeliveryPermitCard - Update success:", result)
       onRefresh?.()
     } catch (error) {
       console.error("[v0] DeliveryPermitCard - Error updating permit:", error)
@@ -59,7 +57,6 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
   const handlePrintPDF = async () => {
     if (!permit) return
     const url = `${window.location.origin}/api/delivery-permits/pdf?permitId=${permit.id}`
-    console.log("[v0] Opening DP print URL:", url)
     window.open(url, "_blank")
     // Mark as printed if still draft
     if (permit.status === "DRAFT") {

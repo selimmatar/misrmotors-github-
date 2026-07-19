@@ -72,7 +72,6 @@ export async function POST(request: Request) {
     const adminClient = createAdminClient()
     const body = await request.json()
     
-    console.log("[v0] Creating compensation for employee:", body.employee_id)
     
     // Deactivate previous active compensation records for this employee
     const { error: deactivateError } = await adminClient
@@ -146,7 +145,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Compensation ID is required" }, { status: 400 })
     }
     
-    console.log("[v0] Updating compensation:", compensation_id)
     
     const { data, error } = await adminClient
       .from("employee_compensation")

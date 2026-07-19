@@ -158,7 +158,6 @@ export async function PUT(request: Request) {
       if (arError) {
         console.error("[v0] AR update error:", arError)
       } else {
-        console.log("[v0] Successfully updated AR invoice_id:", requestData.invoice_id, "with data:", updateData)
       }
     }
     

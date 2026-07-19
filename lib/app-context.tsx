@@ -323,7 +323,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       couriersRetryCountRef.current < 2 &&
       Date.now() - couriersLastRetryRef.current > 5000
     ) {
-      console.log("[v0] App Context - Couriers fetch failed (undefined), retry", couriersRetryCountRef.current + 1)
       couriersRetryCountRef.current++
       couriersLastRetryRef.current = Date.now()
 
@@ -332,7 +331,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         mutateCouriers()
       }, delay)
     } else if (couriersData !== undefined && couriersData.length === 0) {
-      console.log("[v0] App Context - Couriers is empty array (VALID, no retry needed)")
     }
   }, [couriersData, mutateCouriers])
 
@@ -677,7 +675,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const soId = (order as any).soId || (order as any).so_id || order.id
       
-      console.log("[v0] updateSalesOrder called with:", { soId, order })
       
       if (!soId) {
         throw new Error("Sales order ID is required for update")
@@ -692,7 +689,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         invoice_file_url: (order as any).invoiceFileUrl,
       }
       
-      console.log("[v0] Sending PUT request to /api/sales-orders with payload:", payload)
       
       const response = await fetch("/api/sales-orders", {
         method: "PUT",
@@ -712,7 +708,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(errorData.error || `Failed to update sales order (${response.status})`)
       }
 
-      console.log("[v0] Sales order updated successfully")
       await Promise.all([mutateSalesOrders(), mutateCustomerInvoices()])
     } catch (error) {
       console.error("[v0] Error updating sales order:", error)

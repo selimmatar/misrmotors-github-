@@ -323,7 +323,6 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       const { data: existingInvoice } = await response.json()
 
       if (existingInvoice && existingInvoice.length > 0) {
-        console.log("[v0] AP Invoice already exists for PO", order.poNumber, "- skipping creation")
         return
       }
 
@@ -397,7 +396,6 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         throw new Error("Invoice created but invoice_id was not returned")
       }
 
-      console.log("[v0] AP Invoice created for PO:", order.poNumber, "Invoice ID:", invoiceId)
 
       const savedScheduleEntries = order.scheduleEntries || []
       const savedScheduleMode = order.scheduleMode || "AUTO"
@@ -405,7 +403,6 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       // Create payment schedules based on payment type
       if (effectivePaymentType === "installments" || effectivePaymentType === "hybrid") {
         try {
-          console.log("[v0] Creating payment schedules for AP invoice", invoiceId)
 
           const scheduleResponse = await fetch("/api/payment-schedules", {
             method: "POST",
@@ -431,9 +428,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           if (scheduleResponse.ok) {
             const scheduleData = await scheduleResponse.json()
             if (scheduleData.alreadyExists) {
-              console.log("[v0] Payment schedules already exist for invoice", invoiceId, "- skipping (idempotent)")
             } else {
-              console.log("[v0] Created payment schedules for AP invoice:", scheduleData)
             }
           } else {
             const errorText = await scheduleResponse.text()
@@ -483,7 +478,6 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       return
     }
 
-    console.log("[v0] CEO Approval - Order details:", {
       poNumber: order.poNumber,
       poType: order.poType,
       paymentType: order.paymentType,

@@ -3,13 +3,8 @@ export async function POST(req: Request) {
     const { prepaidBalance, accountsPayable, accountsReceivable, inventoryValue, supplierInvoices, customerInvoices } =
       await req.json()
 
-    console.log("[v0] Starting financial analysis with data:", {
       prepaidBalance,
       accountsPayable,
-      accountsReceivable,
-      inventoryValue,
-    })
-
     // Calculate key financial metrics
     const totalAssets = prepaidBalance + accountsReceivable + inventoryValue
     const liquidityRatio = accountsPayable > 0 ? (prepaidBalance + accountsReceivable) / accountsPayable : 999
@@ -164,7 +159,6 @@ export async function POST(req: Request) {
       recommendations: recommendations.slice(0, 3),
     }
 
-    console.log("[v0] Financial analysis completed successfully")
 
     return Response.json({ analysis })
   } catch (error: any) {

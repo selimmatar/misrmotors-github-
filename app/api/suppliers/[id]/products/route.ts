@@ -5,11 +5,11 @@ export const dynamic = "force-dynamic"
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const supplierId = params.id
+    const { id: supplierId } = await params
 
     // Fetch supplier products with product details
     const { data: supplierProducts, error } = await supabase
@@ -67,11 +67,11 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const supplierId = params.id
+    const { id: supplierId } = await params
     const body = await request.json()
 
     const {
@@ -130,11 +130,11 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const supplierId = params.id
+    const { id: supplierId } = await params
     const { searchParams } = new URL(request.url)
     const productId = searchParams.get("productId")
 
@@ -169,11 +169,11 @@ export async function DELETE(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const supplierId = params.id
+    const { id: supplierId } = await params
     const body = await request.json()
 
     const {

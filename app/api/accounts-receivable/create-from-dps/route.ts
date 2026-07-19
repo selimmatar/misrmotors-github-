@@ -11,7 +11,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "At least one delivery permit ID is required" }, { status: 400 })
     }
 
-    console.log("[v0] Creating AR invoice(s) from DPs:", permit_ids)
 
     const { data: permits, error: permitsError } = await supabase
       .from("delivery_permits")

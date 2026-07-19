@@ -159,7 +159,6 @@ export function PORequestModule() {
 
       if (suppliersRes.ok) {
         const data = await suppliersRes.json()
-        console.log("[v0] PO Request - Suppliers loaded:", data?.length)
         setSuppliers(Array.isArray(data) ? data : [])
       }
     } catch (error) {

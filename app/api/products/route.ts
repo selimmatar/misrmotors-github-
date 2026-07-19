@@ -15,7 +15,6 @@ export async function GET() {
         .order("created_at", { ascending: false })
 
       if (error) {
-        console.log("[v0] Products GET error:", error)
         throw error
       }
 
@@ -97,7 +96,6 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.log("[v0] Products POST error:", error)
       throw error
     }
 

@@ -8,7 +8,6 @@ export async function POST(request: Request) {
     
     const { report_id, work_order_id, approved, rejection_reason } = body
     
-    console.log("[v0] Processing report approval:", { report_id, work_order_id, approved })
 
     if (approved) {
       // Fetch the report to get materials/parts_used
@@ -27,7 +26,6 @@ export async function POST(request: Request) {
       const materials = report.parts_used || []
       const inventoryItems = materials.filter((m: any) => m.type === "inventory" && m.productId)
       
-      console.log("[v0] Inventory items to deduct:", inventoryItems.length)
       
       for (const item of inventoryItems) {
         const { productId, quantity } = item
@@ -60,7 +58,6 @@ export async function POST(request: Request) {
           continue
         }
 
-        console.log("[v0] Deducted", quantity, "from product", productId, "| Old:", inv.quantity, "-> New:", newQty)
 
         // Log the inventory transaction
         await adminClient
@@ -103,7 +100,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Failed to update work order" }, { status: 500 })
       }
 
-      console.log("[v0] Report approved, inventory deducted, work order completed")
       
       return NextResponse.json({ 
         success: true, 
@@ -127,7 +123,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Failed to update work order" }, { status: 500 })
       }
 
-      console.log("[v0] Report rejected, work order sent back to shipping")
       
       return NextResponse.json({ 
         success: true, 

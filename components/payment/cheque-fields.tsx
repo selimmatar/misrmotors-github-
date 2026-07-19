@@ -31,12 +31,10 @@ export function ChequeFields({
 }: ChequeFieldsProps) {
   const { t, formatCurrency } = useI18n()
 
-  console.log("[v0] ChequeFields render - chequeNumber:", chequeNumber, "bankName:", bankName, "prefix:", prefix)
 
   const handleChange = (fieldName: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const value = e.target.type === "number" ? Number.parseFloat(e.target.value) || 0 : e.target.value
 
-    console.log("[v0] ChequeFields handleChange - fieldName:", fieldName, "value:", value, "type:", e.target.type)
 
     // Map UI field names to PaymentDetails field names
     let mappedField: string
@@ -63,7 +61,6 @@ export function ChequeFields({
       mappedField = fieldMap[fieldName] || fieldName
     }
 
-    console.log("[v0] ChequeFields calling onChange with mappedField:", mappedField, "value:", value)
     onChange(mappedField, value)
   }
 

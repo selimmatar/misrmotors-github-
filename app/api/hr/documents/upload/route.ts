@@ -10,7 +10,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Filename is required" }, { status: 400 })
     }
     
-    console.log("[v0] Uploading document:", filename)
     
     // Get content-length from request headers
     const contentLength = request.headers.get("content-length")
@@ -19,7 +18,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Content-Length header is required" }, { status: 400 })
     }
     
-    console.log("[v0] File size:", contentLength, "bytes")
     
     // Upload with proper options including content-length
     const blob = await put(`hr-documents/${Date.now()}-${filename}`, request.body!, {
@@ -28,7 +26,6 @@ export async function POST(request: Request) {
       contentType: request.headers.get("content-type") || "application/octet-stream",
     })
     
-    console.log("[v0] Document uploaded successfully:", blob.url)
     
     return NextResponse.json({ url: blob.url })
   } catch (error) {

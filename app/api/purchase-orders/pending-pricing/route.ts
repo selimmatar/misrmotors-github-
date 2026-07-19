@@ -5,7 +5,6 @@ export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    console.log("[v0] Pending Pricing Review: Starting fetch")
     const supabase = createAdminClient()
 
     // Also include approved POs with costs finalized (in case goods not yet received but costs known)
@@ -21,13 +20,11 @@ export async function GET() {
       throw posError
     }
 
-    console.log("[v0] Pending Pricing Review: Found", pos?.length || 0, "cost-finalized POs")
 
     // Get all items from these POs with product details
     const poIds = (pos || []).map((po) => po.po_id)
 
     if (poIds.length === 0) {
-      console.log("[v0] Pending Pricing Review: No cost-finalized POs found")
       return NextResponse.json([])
     }
 
@@ -41,7 +38,6 @@ export async function GET() {
       throw itemsError
     }
 
-    console.log("[v0] Pending Pricing Review: Found", items?.length || 0, "items across", poIds.length, "POs")
 
     // We want to show products where landed_cost > 0 but price hasn't been reviewed yet
     const productMap = new Map()
@@ -62,16 +58,6 @@ export async function GET() {
         )
         continue
       }
-
-      console.log("[v0] Pending Pricing Review: Processing item", {
-        productId: item.product_id,
-        productName: item.products?.product_name,
-        landedCost: item.landed_cost,
-        landedCostPerUnit,
-        allocatedTax: item.allocated_tax,
-        allocatedOverhead: item.allocated_overhead,
-        poStatus: po.status,
-      })
 
       if (!productMap.has(item.product_id)) {
         productMap.set(item.product_id, {
@@ -98,7 +84,6 @@ export async function GET() {
     }
 
     const result = Array.from(productMap.values())
-    console.log("[v0] Pending Pricing Review: Found", result.length, "products for pricing review")
 
     return NextResponse.json(result)
   } catch (error) {

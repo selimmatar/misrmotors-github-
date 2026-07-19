@@ -11,7 +11,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    console.log("[v0] Upload API: Uploading file", file.name, file.type, file.size)
 
     const maxSize = 10 * 1024 * 1024 // 10MB
     if (file.size > maxSize) {
@@ -27,7 +26,6 @@ export async function POST(request: Request) {
     const timestamp = Date.now()
     const safeName = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
 
-    console.log("[v0] Upload API: Starting Vercel Blob upload for", safeName)
 
     const blob = await put(safeName, buffer, {
       access: "public",
@@ -35,7 +33,6 @@ export async function POST(request: Request) {
       contentType: file.type,
     })
 
-    console.log("[v0] Upload API: File uploaded successfully to", blob.url)
 
     return NextResponse.json({ url: blob.url })
   } catch (error: any) {

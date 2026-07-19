@@ -82,7 +82,6 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { poId, lines, receivedBy, notes } = body
 
-    console.log("[v0] Creating goods receipt for PO:", poId, "with", lines?.length, "lines")
 
     // Fetch PO details
     const { data: po, error: poError } = await supabase
@@ -232,7 +231,6 @@ export async function POST(request: Request) {
       if (soUpdateError) {
         console.error("[v0] Error marking SO items as fulfilled:", soUpdateError)
       } else {
-        console.log("[v0] Marked", soItemIds.length, "SO items as fulfilled")
       }
 
       // Find which sales orders these items belong to
@@ -257,7 +255,6 @@ export async function POST(request: Request) {
             .from("sales_orders")
             .update({ fulfillment_status: "READY_FOR_FULFILLMENT" })
             .eq("so_id", soId)
-          console.log("[v0] SO", soId, "fully received — marked READY_FOR_FULFILLMENT")
         }
       }
     }
@@ -271,7 +268,6 @@ export async function POST(request: Request) {
         .eq("po_id", poId)
     }
 
-    console.log("[v0] Goods receipt created:", grnNumber, "status:", receiptStatus)
 
     return NextResponse.json({
       success: true,

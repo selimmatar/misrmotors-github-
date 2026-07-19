@@ -11,7 +11,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Event and data are required" }, { status: 400 })
     }
 
-    console.log("[v0] Incoming webhook trigger:", event)
 
     // Process the incoming webhook data
     // You can add custom logic here to handle different events

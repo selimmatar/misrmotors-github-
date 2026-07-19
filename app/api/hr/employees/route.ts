@@ -52,7 +52,6 @@ export async function POST(request: Request) {
     const adminClient = createAdminClient()
     const body = await request.json()
     
-    console.log("[v0] Creating employee:", body.full_name)
     
     // Generate employee number
     const { data: employeeNumberData, error: employeeNumberError } = await adminClient
@@ -133,7 +132,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Employee ID is required" }, { status: 400 })
     }
     
-    console.log("[v0] Updating employee:", employee_id)
     
     // Add updated_at timestamp
     updates.updated_at = new Date().toISOString()
@@ -171,7 +169,6 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Employee ID is required" }, { status: 400 })
     }
     
-    console.log("[v0] Terminating employee:", employee_id)
     
     // Soft delete: Update status to terminated
     const { data, error } = await adminClient

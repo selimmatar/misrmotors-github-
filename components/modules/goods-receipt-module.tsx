@@ -84,7 +84,6 @@ export function GoodsReceiptModule() {
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("default")
 
   const approvedPOs = purchaseOrders.filter((po) => po.status === "approved" && po.status !== "received")
-  console.log("[v0] Goods Receipt - Approved POs:", approvedPOs.length, "Total POs:", purchaseOrders.length)
 
   useEffect(() => {
     // Set default warehouse if available
@@ -312,7 +311,6 @@ export function GoodsReceiptModule() {
       }
 
       const result = await response.json()
-      console.log('[v0] Goods receipt created:', result)
 
       await loadData()
       alert(`Goods received successfully! GRN: ${result.receipt.grnNumber}`)

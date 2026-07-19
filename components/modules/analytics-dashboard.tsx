@@ -126,7 +126,6 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
   const loadAllAnalytics = async () => {
     setLoading(true)
     try {
-      console.log("[v0] Fetching all data in parallel...")
       const promises = []
 
       if (visibleTabs.includes("executive") || visibleTabs.includes("financial")) {
@@ -160,11 +159,6 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
       }
 
       const [kpis, sales, inventory, financial, suppliers] = await Promise.all(promises)
-
-      console.log("[v0] Data load complete:", {
-        suppliersCount: suppliers?.scorecard?.length || 0,
-        inventoryItems: inventory?.abcAnalysis?.details?.length || 0,
-      })
 
       setKpiData(kpis)
       setSalesData(sales)

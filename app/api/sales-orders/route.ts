@@ -6,7 +6,6 @@ export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    console.log("[v0] Sales Orders GET: Starting fetch")
 
     const result = await withRetry(async () => {
       const supabase = createAdminClient()
@@ -35,11 +34,9 @@ export async function GET() {
       }
 
       if (!ordersData) {
-        console.log("[v0] Sales Orders GET: No orders found")
         return []
       }
 
-      console.log("[v0] Sales Orders GET: Fetched", ordersData.length, "orders with items")
 
       const ordersWithItems = ordersData.map((order: any) => ({
         id: order.so_id.toString(),
@@ -137,11 +134,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    console.log("[v0] Sales Orders POST: Starting")
     const supabase = createAdminClient()
 
     const body = await request.json()
-    console.log("[v0] Sales Orders POST: Received body")
 
     const {
       items,
@@ -244,14 +239,10 @@ export async function POST(request: Request) {
             )
           }
         }
-        console.log("[v0] Sales Orders POST: Inventory validation passed")
       } else {
-        console.log("[v0] Sales Orders POST: No inventory items to validate (all custom/outsourced)")
       }
     }
 
-    console.log("[v0] Sales Orders POST: Payment type:", finalPaymentType)
-    console.log("[v0] Sales Orders POST: Payment details:", JSON.stringify(paymentDetails, null, 2))
 
     let finalPaymentTerms = paymentTerms
     if (!finalPaymentTerms) {
@@ -304,17 +295,6 @@ export async function POST(request: Request) {
       receiver_name: body.receiver_name || null,
     }
     
-    console.log("[v0] Sales Orders POST - Critical fields:", {
-      quotation_request_number: orderData.quotation_request_number,
-      department_name: orderData.department_name,
-      receiver_name: orderData.receiver_name,
-      delivery_contact_name: orderData.delivery_contact_name,
-      delivery_contact_phone: orderData.delivery_contact_phone,
-      "body.quotation_request_number": body.quotation_request_number,
-      "body.department_name": body.department_name,
-      "body.receiver_name": body.receiver_name,
-    })
-
     if (finalPaymentType === "installments") {
       orderData.installments = paymentDetails?.installmentMonths || installments || 6
       orderData.monthly_amount = paymentDetails?.monthlyAmount || total / (paymentDetails?.installmentMonths || 6)
@@ -371,7 +351,6 @@ export async function POST(request: Request) {
         orderData.down_payment_cheque_due_date = paymentDetails.downPaymentChequeDueDate
     }
 
-    console.log("[v0] Sales Orders POST: Inserting order", JSON.stringify(orderData, null, 2))
 
     const { data: order, error: orderError } = await supabase.from("sales_orders").insert(orderData).select().single()
 
@@ -380,19 +359,11 @@ export async function POST(request: Request) {
       throw orderError
     }
 
-    console.log("[v0] Sales Orders POST: Order created", order)
 
     if (items && items.length > 0) {
       const itemsWithSoId = items.map((item: any) => {
         const hasProductId = item.productId && item.productId !== ""
         const isOutsourced = item.itemCategory === "OUTSOURCED" || !hasProductId
-        
-        console.log("[v0] SO POST - Processing item:", {
-          productName: item.productName,
-          isOutsourced,
-          supplierId: item.supplierId,
-          supplierName: item.supplier_name || item.supplierName,
-        })
         
         // Map item categories - OUTSOURCED is treated as EQUIPMENT
         let validItemCategory = "EQUIPMENT"
@@ -422,7 +393,6 @@ export async function POST(request: Request) {
         }
       })
 
-      console.log("[v0] Sales Orders POST: Inserting items", JSON.stringify(itemsWithSoId, null, 2))
 
       const { error: itemsError } = await supabase.from("sales_order_items").insert(itemsWithSoId)
 
@@ -431,7 +401,6 @@ export async function POST(request: Request) {
         throw itemsError
       }
 
-      console.log("[v0] Sales Orders POST: Items inserted successfully")
     }
 
     if (quotationRequests && quotationRequests.length > 0) {
@@ -443,7 +412,6 @@ export async function POST(request: Request) {
         requested_by: request.requested_by,
       }))
 
-      console.log("[v0] Sales Orders POST: Inserting quotation requests", requestsWithOrderId)
 
       const { error: requestsError } = await supabase.from("quotation_requests").insert(requestsWithOrderId)
 
@@ -452,12 +420,10 @@ export async function POST(request: Request) {
         throw requestsError
       }
 
-      console.log("[v0] Sales Orders POST: Quotation requests inserted successfully")
     }
 
     // Create payment schedules if this is an installment order
     if ((finalPaymentType === "installments" || finalPaymentType === "hybrid") && schedule_entries) {
-      console.log("[v0] Sales Orders POST: Creating payment schedules for SO", order.so_id)
       
       try {
         const scheduleEntries = typeof schedule_entries === "string" 
@@ -493,7 +459,6 @@ export async function POST(request: Request) {
           // Don't throw - payment schedules can be created manually later
         } else {
           const scheduleData = await scheduleResponse.json()
-          console.log("[v0] Sales Orders POST: Payment schedules created successfully", scheduleData)
         }
       } catch (scheduleError) {
         console.error("[v0] Sales Orders POST: Exception creating payment schedules", scheduleError)
@@ -532,11 +497,9 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    console.log("[v0] Sales Orders PUT: Starting")
     const supabase = createAdminClient()
 
     const body = await request.json()
-    console.log("[v0] Sales Orders PUT: Received body", body)
 
     const {
       id,
@@ -586,7 +549,6 @@ export async function PUT(request: Request) {
     const finalId = so_id || id
     const finalInvoiceFileUrl = invoiceFileUrl || invoice_file_url
     
-    console.log("[v0] Sales Orders PUT: Using ID", finalId, "from so_id:", so_id, "or id:", id)
 
     const finalPaymentType = paymentType || payment_type
     const finalDeliveryAddress = deliveryAddress || delivery_address
@@ -685,7 +647,6 @@ export async function PUT(request: Request) {
     // Ensure so_id is a number for the query
     const numericId = typeof finalId === "string" ? parseInt(finalId, 10) : finalId
     
-    console.log("[v0] Sales Orders PUT: Updating order with numeric ID", numericId, "dbUpdates:", JSON.stringify(dbUpdates))
 
     const { data: order, error: orderError } = await supabase
       .from("sales_orders")
@@ -704,7 +665,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: `Sales order ${numericId} not found or update blocked by RLS policy` }, { status: 404 })
     }
 
-    console.log("[v0] Sales Orders PUT: Order updated", order)
 
     if (items) {
       await supabase.from("sales_order_items").delete().eq("so_id", finalId)
@@ -742,12 +702,10 @@ export async function PUT(request: Request) {
       const { data: currentOrder } = await supabase.from("sales_orders").select("*").eq("so_id", finalId).single()
 
       if (currentOrder) {
-        console.log("[v0] Sales Orders PUT: Processing approved order, payment_type:", currentOrder.payment_type)
 
         // NOTE: Auto-invoice creation removed.
         // Accountant must manually create invoices through the Accounts Receivable module
         // after delivery permits are approved using "Create from DPs" button.
-        console.log("[v0] Sales Orders PUT: Invoice creation deferred to Accountant module")
 
         const invoiceData: any = {}
 
@@ -795,7 +753,6 @@ export async function PUT(request: Request) {
             if (dpError) {
               console.error("[v0] Sales Orders PUT: Error creating down payment invoice", dpError)
             } else {
-              console.log("[v0] Sales Orders PUT: Created down payment invoice", dpInvoice)
             }
           }
         } else if (paymentType === "cheque") {
@@ -813,7 +770,6 @@ export async function PUT(request: Request) {
         if (invoiceError) {
           console.error("[v0] Sales Orders PUT: Error creating AR invoice", invoiceError)
         } else {
-          console.log("[v0] Sales Orders PUT: Created AR invoice", newInvoice)
         }
       }
     }
@@ -829,7 +785,6 @@ export async function PUT(request: Request) {
         .eq("customer_id", order.customer_id)
         .single()
 
-      console.log("[v0] Sales Orders PUT: Webhook service loaded, triggering sales_order.approved")
       await webhookService.trigger("sales_order.approved", {
         orderId: order.so_id,
         orderNumber: order.so_number,
@@ -838,13 +793,11 @@ export async function PUT(request: Request) {
         customerName: customer?.customer_name || "Unknown",
         customerEmail: customer?.email || "",
       })
-      console.log("[v0] Sales Orders PUT: Webhook triggered successfully")
     } catch (webhookError) {
       console.error("[v0] Sales Orders PUT: Webhook trigger failed", webhookError)
     }
 
     // Return success response
-    console.log("[v0] Sales Orders PUT: Success for order", numericId)
     return NextResponse.json({ success: true, order })
   } catch (error: any) {
     console.error("[v0] Sales Orders PUT: Error", error)

@@ -216,9 +216,6 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
     (so) => so.status === "pending" || so.status === "pending_accountant" || so.status === "pending_ceo",
   )
 
-  console.log("[v0] Financial Dashboard - salesOrders count:", salesOrders.length)
-  console.log("[v0] Financial Dashboard - All statuses:", [...new Set(salesOrders.map((so) => so.status))])
-  console.log("[v0] Financial Dashboard - pendingSalesOrders count:", pendingSalesOrders.length)
 
   const completedSalesOrders = salesOrders.filter((so) => so.status === "completed" || so.status === "shipped")
 
@@ -539,8 +536,6 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
   useEffect(() => {
     if (salesOrders.length > 0) {
       const statuses = [...new Set(salesOrders.map((so) => so.status))]
-      console.log("[v0] Financial Dashboard - Total SOs:", salesOrders.length, "Statuses:", statuses)
-      console.log("[v0] Financial Dashboard - Pending count:", pendingSalesOrders.length)
     }
   }, [salesOrders, pendingSalesOrders.length])
 

@@ -6,11 +6,10 @@ export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    console.log("[v0] Balance API - GET request received")
 
     const result = await withRetry(async () => {
       const supabase = getAdminClient()
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("balance_entries")
         .select("*")
         .order("created_at", { ascending: false })
@@ -18,7 +17,6 @@ export async function GET() {
       return data || []
     })
 
-    console.log("[v0] Balance API - Returning", result?.length || 0, "entries")
     return NextResponse.json(result)
   } catch (error) {
     console.error("[v0] Balance API - Error fetching balance entries:", error)
@@ -28,13 +26,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    console.log("[v0] Balance API - POST request received")
     const body = await request.json()
-    console.log("[v0] Balance API - Request body:", body)
 
     const result = await withRetry(async () => {
       const supabase = getAdminClient()
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("balance_entries")
         .insert([
           {

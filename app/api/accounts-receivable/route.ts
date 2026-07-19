@@ -42,7 +42,6 @@ export async function GET() {
 
         dpLinks = linksData || []
       } catch (dpError) {
-        console.log("[v0] AR GET: invoice_delivery_permits table not found yet, skipping DP links")
       }
 
       const dataWithDPs = data.map((invoice: any) => ({
@@ -93,7 +92,6 @@ export async function GET() {
         vatInvoiceUrl: invoice.vat_invoice_url,
       })) || []
 
-    console.log(`[v0] AR GET: Successfully fetched ${transformed.length} invoices`)
     return NextResponse.json(transformed)
   } catch (error: any) {
     console.error("[v0] AR GET: Final error after all retries:", error?.message || error)
@@ -155,7 +153,6 @@ export async function PUT(request: Request) {
     }
     // balance is auto-calculated as (amount - collected_amount) by the database
 
-    console.log("[v0] AR PUT: Updating invoice", id, "with", JSON.stringify(dbUpdates))
 
     const { data, error } = await supabase
       .from("accounts_receivable")
@@ -169,7 +166,6 @@ export async function PUT(request: Request) {
       throw error
     }
 
-    console.log("[v0] AR PUT: Success", data)
     return NextResponse.json(data)
   } catch (error: any) {
     console.error("Error updating customer invoice:", error?.message || error)

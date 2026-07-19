@@ -7,7 +7,6 @@ export const dynamic = "force-dynamic"
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    console.log("[v0] QR Download: SO ID:", id)
 
     const supabase = createAdminClient()
     const { data: so, error } = await withRetry(() =>
@@ -28,7 +27,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "No quotation request file found" }, { status: 404 })
     }
 
-    console.log("[v0] QR Download: Redirecting to:", so.quotation_request_file_path)
 
     return NextResponse.redirect(so.quotation_request_file_path)
   } catch (error) {

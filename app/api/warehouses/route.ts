@@ -74,7 +74,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    console.log("[v0] Warehouse created:", data.warehouse_name)
 
     return NextResponse.json({
       id: data.warehouse_id,

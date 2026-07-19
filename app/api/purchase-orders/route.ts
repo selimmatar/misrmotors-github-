@@ -6,7 +6,6 @@ export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    console.log("[v0] Purchase Orders GET: Starting fetch")
 
     const result = await withRetry(async () => {
       const supabase = createAdminClient()
@@ -39,7 +38,6 @@ export async function GET() {
         // Don't throw, just continue with empty items
       }
 
-      console.log("[v0] Purchase Orders GET: Fetched", orders?.length || 0, "orders")
 
       const itemsByPoId: Record<number, any[]> = {}
       for (const item of allItems || []) {
@@ -151,11 +149,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    console.log("[v0] Purchase Orders POST: Starting")
     const supabase = createAdminClient()
 
     const body = await request.json()
-    console.log("[v0] Purchase Orders POST: Request body", JSON.stringify(body).substring(0, 500))
     const { items, ...orderData } = body
 
     let scheduleEntriesValue = null
@@ -214,7 +210,6 @@ export async function POST(request: Request) {
       bank_holder_name: orderData.bank_holder_name || orderData.bankHolderName || null,
     }
 
-    console.log("[v0] Purchase Orders POST: Order data with payment details:", orderWithCurrency)
 
     const { data: order, error: orderError } = await supabase
       .from("purchase_orders")
@@ -227,7 +222,6 @@ export async function POST(request: Request) {
       throw orderError
     }
 
-    console.log("[v0] Purchase Orders POST: Order created", order)
 
     // Insert items if provided
     if (items && items.length > 0) {
@@ -325,11 +319,9 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    console.log("[v0] Purchase Orders PUT: Starting")
     const supabase = createAdminClient()
 
     const body = await request.json()
-    console.log("[v0] Purchase Orders PUT: Request body", body)
     const { id, items, ...updates } = body
 
     if (updates.poInvoiceUrl !== undefined) {
@@ -517,7 +509,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: orderError?.message || "Failed to update purchase order" }, { status: 500 })
     }
 
-    console.log("[v0] Purchase Orders PUT: Order updated", order)
 
     if (items) {
       await supabase.from("purchase_order_items").delete().eq("po_id", id)
@@ -541,7 +532,6 @@ export async function PUT(request: Request) {
           throw itemsError
         }
 
-        console.log("[v0] Purchase Orders PUT: Items updated")
       }
     }
 
@@ -550,7 +540,6 @@ export async function PUT(request: Request) {
       const { data: currentOrder } = await supabase.from("purchase_orders").select("*").eq("po_id", id).single()
 
       if (currentOrder && currentOrder.payment_terms === "prepaid") {
-        console.log("[v0] Purchase Orders PUT: Processing prepaid order automation")
 
         // 1. Check if invoice already exists
         const { data: existingInvoice } = await supabase
@@ -582,7 +571,6 @@ export async function PUT(request: Request) {
           if (invoiceError) {
             console.error("[v0] Purchase Orders PUT: Error creating prepaid invoice", invoiceError)
           } else {
-            console.log("[v0] Purchase Orders PUT: Created prepaid invoice", newInvoice)
 
             // 3. Create Supplier Payment
             const paymentData = {
@@ -600,7 +588,6 @@ export async function PUT(request: Request) {
             if (paymentError) {
               console.error("[v0] Purchase Orders PUT: Error creating prepaid payment", paymentError)
             } else {
-              console.log("[v0] Purchase Orders PUT: Created prepaid payment")
 
               // 4. Update Balance History
               const balanceData = {
@@ -618,7 +605,6 @@ export async function PUT(request: Request) {
               if (balanceError) {
                 console.error("[v0] Purchase Orders PUT: Error updating balance for prepaid order", balanceError)
               } else {
-                console.log("[v0] Purchase Orders PUT: Updated balance for prepaid order")
               }
             }
           }

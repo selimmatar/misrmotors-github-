@@ -129,7 +129,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     amount: number
     description: string
   }) => {
-    console.log("[v0] Adding balance entry:", entry)
     try {
       const response = await fetch("/api/balance", {
         method: "POST",
@@ -143,12 +142,10 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
         }),
       })
 
-      console.log("[v0] Balance API response status:", response.status)
       if (!response.ok) {
         const errorText = await response.text()
         console.error("[v0] Failed to add balance entry:", errorText)
       } else {
-        console.log("[v0] Balance entry added successfully")
       }
     } catch (error) {
       console.error("[v0] Error adding balance entry:", error)
@@ -184,7 +181,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
   }
 
   const handleMarkCustomerReceived = (id: string) => {
-    console.log("[v0] handleMarkCustomerReceived called for invoice:", id)
     const invoice = customerInvoices.find((i) => i.id === id)
     if (!invoice) return
 
@@ -193,7 +189,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     const currentMonthsPaid = invoice.monthsPaid || 0
     const newMonthsPaid = currentMonthsPaid + 1
 
-    console.log("[v0] Updating invoice monthsPaid from", currentMonthsPaid, "to", newMonthsPaid)
 
     const updatedInvoice = {
       ...invoice,
@@ -203,10 +198,8 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     updateCustomerInvoice(updatedInvoice)
 
     const monthlyAmount = installmentMonths ? invoice.amount / installmentMonths : 0
-    console.log("[v0] Monthly amount for balance:", monthlyAmount)
 
     if (so) {
-      console.log("[v0] Calling addBalanceEntry for AR payment")
       addBalanceEntry({
         type: "ar_payment",
         referenceId: invoice.id,
@@ -255,7 +248,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
       }
 
       const { url } = await response.json()
-      console.log("[v0] Uploaded invoice file:", url)
 
       // Update sales order with invoice file URL
       const order = salesOrders.find((so) => so.id === orderId || so.soId === orderId)
@@ -264,7 +256,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
       }
       
       const finalId = order.soId || order.id
-      console.log("[v0] Updating order", finalId, "with invoice URL:", url)
       
       // Only send the ID and invoice URL - don't spread the entire order object
       await updateSalesOrder({
@@ -273,7 +264,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
         status: order.status, // Keep existing status
       })
       
-      console.log("[v0] Successfully updated order with invoice URL")
       alert("Invoice uploaded successfully!")
       
       // Force a page refresh to ensure UI shows updated data
@@ -299,7 +289,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     const approvalDate = new Date()
     const approvalDateString = approvalDate.toISOString().split("T")[0]
 
-    console.log("[v0] Approving sales order:", order.id || order.soId)
     
     // Update status to accountant_approved
     const finalId = order.soId || order.id
@@ -308,7 +297,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
       status: "accountant_approved",
     })
 
-    console.log("[v0] Successfully approved sales order")
     
     // NOTE: Invoice creation removed from here.
     // Accountant must manually create invoices through the Accounts Receivable module

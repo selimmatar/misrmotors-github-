@@ -17,7 +17,6 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    console.log(`[v0] Supplier Payments GET: Fetched ${payments?.length || 0} payments`)
 
     return NextResponse.json(payments || [])
   } catch (error) {
@@ -48,7 +47,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    console.log("[v0] Supplier Payments POST: Created payment", data)
 
     return NextResponse.json(data)
   } catch (error) {

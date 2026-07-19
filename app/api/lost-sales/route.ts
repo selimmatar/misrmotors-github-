@@ -36,7 +36,6 @@ export async function GET(request: Request) {
       !endDate &&
       !view
     ) {
-      console.log("[v0] Lost Sales GET: Returning cached data")
       return NextResponse.json(cachedLostSales, {
         headers: { ...corsHeaders, "X-Cache": "HIT" },
       })
@@ -74,7 +73,6 @@ export async function GET(request: Request) {
 
       if (errorMessage.includes("Too") || errorMessage.includes("rate") || errorMessage.includes("429")) {
         if (cachedLostSales !== null) {
-          console.log("[v0] Lost Sales GET: Rate limited, returning stale cache")
           return NextResponse.json(cachedLostSales, {
             headers: { ...corsHeaders, "X-Cache": "STALE", "X-Rate-Limited": "true" },
           })

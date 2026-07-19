@@ -55,10 +55,8 @@ export class WebhookService {
     const envWebhookUrls = this.getEnvWebhooks(event)
 
     const totalWebhooks = activeWebhooks.length + envWebhookUrls.length
-    console.log(`[v0] Webhook: Triggering ${event} for ${totalWebhooks} webhook(s)`)
 
     if (totalWebhooks === 0) {
-      console.log(`[v0] Webhook: No webhooks configured for ${event}`)
       return
     }
 
@@ -82,7 +80,6 @@ export class WebhookService {
         if (!response.ok) {
           console.error(`[v0] Webhook ${webhook.name} failed:`, response.statusText)
         } else {
-          console.log(`[v0] Webhook ${webhook.name} triggered successfully`)
         }
       } catch (error) {
         console.error(`[v0] Webhook ${webhook.name} error:`, error)
@@ -91,7 +88,6 @@ export class WebhookService {
 
     const envPromises = envWebhookUrls.map(async (url) => {
       try {
-        console.log(`[v0] Webhook: Calling env webhook ${url.substring(0, 50)}...`)
         const response = await fetch(url, {
           method: "POST",
           headers: {
@@ -103,7 +99,6 @@ export class WebhookService {
         if (!response.ok) {
           console.error(`[v0] Env webhook failed:`, response.statusText)
         } else {
-          console.log(`[v0] Env webhook triggered successfully for ${event}`)
         }
       } catch (error) {
         console.error(`[v0] Env webhook error:`, error)

@@ -42,7 +42,6 @@ export async function POST(request: Request) {
     const adminClient = createAdminClient()
     const body = await request.json()
     
-    console.log("[v0] Creating position:", body)
     
     const { data, error } = await adminClient
       .from("job_positions")

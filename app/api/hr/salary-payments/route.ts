@@ -69,7 +69,6 @@ export async function POST(request: Request) {
     const adminClient = createAdminClient()
     const body = await request.json()
     
-    console.log("[v0] Creating salary payment for employee:", body.employee_id)
     
     const { data, error } = await adminClient
       .from("salary_payments")
@@ -127,7 +126,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "payment_id is required" }, { status: 400 })
     }
     
-    console.log("[v0] Updating salary payment:", payment_id)
     
     const { data, error } = await adminClient
       .from("salary_payments")

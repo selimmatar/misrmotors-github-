@@ -159,7 +159,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
               order.paymentTerms?.toLowerCase() === "installments" ||
               (order.installments && Number(order.installments) > 1),
           )
-          console.log("[v0] Installment filter:", {
             total: orders.length,
             filtered: filtered.length,
             sample: filtered[0],
@@ -791,7 +790,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
     dateRange?: { startDate?: string; endDate?: string },
   ) => {
     try {
-      console.log("[v0] generatePDF called with:", {
         title,
         groupingLevel: groupByFields.filter((f) => f !== "none").length,
         dataType: typeof processedData,
@@ -816,7 +814,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
         try {
           const fieldsToShow = selectedFieldsConfig.filter((field) => !groupedFields.includes(field.key))
 
-          console.log("[v0] renderTable called with:", {
             itemCount: items?.length,
             firstItem: items?.[0],
             fieldsToShow: fieldsToShow.map((f) => ({ key: f.key, label: f.label })),
@@ -835,7 +832,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
                   let val = item[field.key]
 
                   if (idx === 0) {
-                    console.log(`[v0] Field ${field.key}:`, val)
                   }
 
                   if (val === null || val === undefined) return "-"
@@ -1015,7 +1011,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
         }
       }
 
-      console.log("[v0] Starting HTML generation...")
       const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -1148,9 +1143,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
       </html>
     `
 
-      console.log("[v0] HTML generated, setting preview state...")
       setReportPreview({ open: true, html: htmlContent, title: title })
-      console.log("[v0] Report preview state set successfully")
     } catch (error) {
       console.error("[v0] Error in generatePDF:", error)
       alert(`Failed to generate PDF report: ${error instanceof Error ? error.message : "Unknown error"}`)
@@ -1202,9 +1195,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
       return
     }
 
-    console.log("[v0] Starting report generation...")
-    console.log("[v0] Report type:", type)
-    console.log("[v0] Selected fields:", selectedFields)
 
     setGenerating(true)
 
@@ -1233,7 +1223,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
           if (fromDate) params.set("startDate", fromDate)
           if (toDate) params.set("endDate", toDate)
 
-          console.log("[v0] Fetching lost sales with params:", {
             view,
             startDate: fromDate,
             endDate: toDate,
@@ -1245,7 +1234,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
 
           const rawData = await response.json()
 
-          console.log("[v0] Lost sales data received:", {
             count: Array.isArray(rawData) ? rawData.length : "not an array",
             firstItem: Array.isArray(rawData) && rawData.length > 0 ? rawData[0] : null,
           })
@@ -1301,9 +1289,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
       // Existing code for other report types
       switch (type) {
         case "sales": {
-          console.log("[v0] Sales report - Total sales orders:", salesData.length)
-          console.log("[v0] Sales report - Total customers:", customersData.length)
-          console.log("[v0] Sales report - First customer:", customersData[0])
 
           reportData = salesData.map((order: any) => {
             const customer = customersData.find((c: any) => {
@@ -1313,7 +1298,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
             })
 
             if (!customer && order.customerId) {
-              console.log("[v0] Customer not found for order:", {
                 orderId: order.soId,
                 customerId: order.customerId,
                 availableCustomerIds: customersData.map((c: any) => c.id || c.customer_id).slice(0, 5),
@@ -1343,7 +1327,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
             }
           })
 
-          console.log("[v0] First 3 mapped sales orders:", reportData.slice(0, 3))
           title = selectedPreset || "Sales Report"
           break
         }
@@ -1585,7 +1568,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
         iframe.contentWindow.focus()
         iframe.contentWindow.print()
       } catch (e) {
-        console.log("[v0] iframe print failed, creating download")
         const blob = new Blob([reportPreview.html], { type: "text/html" })
         const url = URL.createObjectURL(blob)
         const a = document.createElement("a")
@@ -1601,7 +1583,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
         )
       }
     } else {
-      console.log("[v0] No iframe, creating download")
       const blob = new Blob([reportPreview.html], { type: "text/html" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")

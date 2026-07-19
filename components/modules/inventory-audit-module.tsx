@@ -163,7 +163,6 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
         refreshInventory(), // Invalidate global inventory cache
       ])
 
-      console.log("[v0] Inventory audit saved and cache refreshed")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save adjustments")
     } finally {

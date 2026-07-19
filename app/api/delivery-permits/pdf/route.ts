@@ -29,18 +29,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const permitId = searchParams.get("permit_id") || searchParams.get("permitId")
 
-    console.log("[v0] Delivery Permit PDF - Received request")
-    console.log("[v0] Delivery Permit PDF - Full URL:", request.url)
-    console.log("[v0] Delivery Permit PDF - permitId from query:", permitId)
 
     if (!permitId) {
-      console.log("[v0] Delivery Permit PDF - No permit ID provided")
       return NextResponse.json({ error: "Permit ID is required" }, { status: 400 })
     }
 
     const supabase = createAdminClient()
 
-    console.log("[v0] Delivery Permit PDF - Querying DB for permit_id:", Number.parseInt(permitId))
 
     // Fetch permit with all related data
     const { data: permit, error: permitError } = await withRetry(() =>
@@ -71,15 +66,6 @@ export async function GET(request: NextRequest) {
         .eq("permit_id", Number.parseInt(permitId))
         .single(),
     )
-
-    console.log("[v0] Delivery Permit PDF - Query result:", { permit: !!permit, error: permitError })
-    console.log("[v0] Delivery Permit PDF - Recipient fields:", {
-      recipient_name: permit?.recipient_name,
-      recipient_phone: permit?.recipient_phone,
-      delivery_address: permit?.delivery_address,
-      so_delivery_contact: permit?.sales_orders?.delivery_contact_name,
-      so_delivery_address: permit?.sales_orders?.delivery_address,
-    })
 
     if (permitError || !permit) {
       console.error("[v0] Permit not found:", permitId, permitError)
@@ -141,7 +127,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    console.log("[v0] Delivery Permit PDF - Found permit:", permit.permit_no)
 
     // Fetch logo and convert to base64 for embedding in HTML
     let logoDataUrl = ""

@@ -2,13 +2,11 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
-  console.log("[v0] Complete transfer API called")
   try {
     const supabase = createAdminClient()
     const body = await request.json()
 
     const { transferId } = body
-    console.log("[v0] Transfer ID to complete:", transferId)
 
     if (!transferId) {
       return NextResponse.json({ error: "Transfer ID is required" }, { status: 400 })
@@ -29,7 +27,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Transfer not found" }, { status: 404 })
     }
 
-    console.log("[v0] Transfer fetched:", {
       id: transfer.transfer_id,
       status: transfer.status,
       itemsCount: transfer.warehouse_transfer_items?.length || 0,
@@ -38,7 +35,6 @@ export async function POST(request: Request) {
     })
 
     if (transfer.status !== "pending" && transfer.status !== "in_transit") {
-      console.log("[v0] Cannot complete - invalid status:", transfer.status)
       return NextResponse.json(
         { error: `Cannot complete transfer with status: ${transfer.status}` },
         { status: 400 }
@@ -50,7 +46,6 @@ export async function POST(request: Request) {
       const transferQuantity = item.quantity_sent || item.quantity_requested || 0
       const isOutsourced = item.is_outsourced || !item.product_id
 
-      console.log("[v0] Processing transfer item:", {
         sourceInventoryId: item.source_inventory_id,
         productId: item.product_id,
         isOutsourced,
@@ -198,7 +193,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to complete transfer" }, { status: 500 })
     }
 
-    console.log("[v0] Transfer completed successfully:", transferId)
 
     return NextResponse.json({
       success: true,

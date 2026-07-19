@@ -119,7 +119,6 @@ export function PermitPreviewDialog({ permit, open, onOpenChange }: PermitPrevie
               variant="outline"
               onClick={() => {
                 const url = `${window.location.origin}/api/delivery-permits/pdf?permitId=${permit.id}`
-                console.log("[v0] Opening DP print URL:", url)
                 window.open(url, "_blank")
               }}
               className="gap-2"

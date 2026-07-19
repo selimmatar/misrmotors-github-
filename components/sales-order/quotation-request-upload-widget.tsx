@@ -48,7 +48,6 @@ export function QuotationRequestUploadWidget({
         formData.append("soId", soId)
       }
 
-      console.log("[v0] QR Upload - Uploading file:", selectedFile.name)
 
       const response = await fetch("/api/sales-orders/quotation-request", {
         method: "POST",
@@ -61,7 +60,6 @@ export function QuotationRequestUploadWidget({
       }
 
       const result = await response.json()
-      console.log("[v0] QR Upload - Success:", result)
 
       onUploadComplete({
         qrNumber: result.qrNumber,

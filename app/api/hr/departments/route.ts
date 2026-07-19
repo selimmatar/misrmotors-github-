@@ -30,7 +30,6 @@ export async function POST(request: Request) {
     const adminClient = createAdminClient()
     const body = await request.json()
     
-    console.log("[v0] Creating department:", body)
     
     const { data, error } = await adminClient
       .from("departments")
@@ -49,7 +48,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
-    console.log("[v0] Department created successfully:", data)
     return NextResponse.json(data)
   } catch (error) {
     console.error("[v0] Error in create department API:", error)

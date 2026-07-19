@@ -4,12 +4,10 @@ export async function POST(request: NextRequest) {
   try {
     const { businessData, category } = await request.json()
 
-    console.log("[v0] Generating recommendations for category:", category)
 
     // Generate smart recommendations based on actual business data
     const recommendations = generateSmartRecommendations(category, businessData)
 
-    console.log("[v0] Generated", recommendations.length, "recommendations")
     return NextResponse.json({ recommendations })
   } catch (error) {
     console.error("[v0] Error generating recommendations:", error)

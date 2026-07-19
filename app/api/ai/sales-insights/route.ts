@@ -2,7 +2,6 @@ export async function POST(req: Request) {
   try {
     const { salesOrders, customers, products, inventory } = await req.json()
 
-    console.log("[v0] Starting sales insights analysis")
 
     // Calculate product sales
     const productStats: { [key: string]: { quantity: number; revenue: number; orders: number[] } } = {}
@@ -177,7 +176,6 @@ export async function POST(req: Request) {
       recommendations: recommendations.length > 0 ? recommendations : [],
     }
 
-    console.log("[v0] Sales insights completed")
 
     return Response.json({ insights: salesInsights })
   } catch (error: any) {

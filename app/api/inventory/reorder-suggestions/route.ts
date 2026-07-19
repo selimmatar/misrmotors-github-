@@ -60,7 +60,6 @@ export async function GET() {
       `)
 
     if (spError) {
-      console.log("[v0] supplier_products error:", spError.message)
     }
 
     const { data: poItems, error: poError } = await supabase.from("purchase_order_items").select(`
@@ -77,7 +76,6 @@ export async function GET() {
       `)
 
     if (poError) {
-      console.log("[v0] purchase_order_items error:", poError.message)
     }
 
     // Build product -> supplier mapping
@@ -109,7 +107,6 @@ export async function GET() {
       }
     })
 
-    console.log("[v0] Product supplier mappings found:", Object.keys(productLeadTimes).length)
 
     // Get sales order items from last 90 days for demand analysis
     const ninetyDaysAgo = new Date()

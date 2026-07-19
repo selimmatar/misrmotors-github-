@@ -8,7 +8,6 @@ export async function POST(request: Request) {
     
     const { work_order_id, customer_id, amount, notes, payment_terms, due_days } = body
     
-    console.log("[v0] Creating maintenance invoice:", { work_order_id, customer_id, amount })
 
     // Get work order details for invoice number
     const { data: workOrder } = await adminClient
@@ -32,7 +31,6 @@ export async function POST(request: Request) {
       .maybeSingle()
     
     if (existingInvoice) {
-      console.log("[v0] Invoice already exists:", invoiceNumber)
       return NextResponse.json({ error: "Invoice already exists for this work order" }, { status: 409 })
     }
     

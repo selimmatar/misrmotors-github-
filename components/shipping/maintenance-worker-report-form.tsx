@@ -66,7 +66,6 @@ export function MaintenanceWorkerReportForm({
         if (uploadResponse.ok) {
           const uploadData = await uploadResponse.json()
           uploadedPdfUrl = uploadData.url
-          console.log("[v0] PDF uploaded:", uploadedPdfUrl)
         }
         setUploading(false)
       }

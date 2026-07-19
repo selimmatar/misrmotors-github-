@@ -65,10 +65,6 @@ export function ProductSearchCombobox({
   // Debug logging
   React.useEffect(() => {
     if (warehouseId && inventory) {
-      console.log("[v0] ProductSearchCombobox - warehouseId:", warehouseId)
-      console.log("[v0] ProductSearchCombobox - inventory count:", inventory.length)
-      console.log("[v0] ProductSearchCombobox - first 3 inventory items:", inventory.slice(0, 3))
-      console.log("[v0] ProductSearchCombobox - products count:", products.length)
     }
   }, [warehouseId, inventory, products])
 

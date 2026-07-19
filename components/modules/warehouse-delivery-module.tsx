@@ -111,7 +111,6 @@ export function WarehouseDeliveryModule() {
         const productId = item.productId || item.product_id
         const isOutsourced = !productId || productId === "" || productId === "null"
         
-        console.log(`[v0] Item ${item.itemNameSnapshot}:`, {
           isOutsourced,
           productId,
           outsourcedName: item.outsourced_name || item.outsourcedName,
@@ -147,7 +146,6 @@ export function WarehouseDeliveryModule() {
           const supplierName = item.supplierName || "External Supplier"
           const supplierId = item.supplierId || "outsourced"
           
-          console.log("[v0] Outsourced item data:", { supplierName: item.supplierName, outsourcedName: item.outsourcedName, supplierId: item.supplierId, productName: item.itemNameSnapshot })
           
           availableWarehouses = [{
             warehouseId: `supplier_${supplierId}`,
@@ -156,7 +154,6 @@ export function WarehouseDeliveryModule() {
           }]
           defaultWh = availableWarehouses[0]
           
-          console.log(`[v0] Outsourced item using supplier: ${supplierName}`)
         }
         
         return {
@@ -517,7 +514,6 @@ export function WarehouseDeliveryModule() {
                         <div className="space-y-2">
                           {(() => {
                             // Group items by product
-                            console.log("[v0] Permit items:", permit.items)
                             const groupedItems: Record<string, any[]> = {}
                             ;(permit.items || []).forEach((item: any) => {
                               const key = `${item.productId}-${item.itemNameSnapshot}`
@@ -526,10 +522,8 @@ export function WarehouseDeliveryModule() {
                               }
                               groupedItems[key].push(item)
                             })
-                            console.log("[v0] Grouped items:", groupedItems)
                             
                             return Object.values(groupedItems).map((itemGroup: any[], idx: number) => {
-                              console.log("[v0] Item group length:", itemGroup.length, "items:", itemGroup)
                               const firstItem = itemGroup[0]
                               const totalQty = itemGroup.reduce((sum, i) => sum + (i.allocatedQuantity || i.quantity), 0)
                               const isOutsourced = !firstItem.productId || firstItem.productId === "" || firstItem.productId === "null"

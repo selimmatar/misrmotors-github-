@@ -261,8 +261,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
 
         // Log the column names from Excel to help debug
         if (jsonData.length > 0) {
-          console.log("[v0] Excel columns found:", Object.keys(jsonData[0]))
-          console.log("[v0] First row data:", jsonData[0])
         }
 
         // Map Excel rows to quotation items

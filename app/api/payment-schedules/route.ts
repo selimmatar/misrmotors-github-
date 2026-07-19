@@ -314,7 +314,6 @@ export async function PUT(request: NextRequest) {
         paymentDate ? new Date(paymentDate).getTime() : Date.now(),
       )
 
-      console.log("[v0] Payment Schedule: Checking idempotency for", idempotencyKey)
 
       const idempotencyCheck = await checkIdempotency(
         "payment",
@@ -326,7 +325,6 @@ export async function PUT(request: NextRequest) {
 
       if (!idempotencyCheck.success) {
         if (idempotencyCheck.isRetry) {
-          console.log("[v0] Payment Schedule: Duplicate payment detected, returning previous result")
           return NextResponse.json({
             message: "Payment already recorded",
             isDuplicate: true,
@@ -460,7 +458,6 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
 
-      console.log("[v0] Payment Schedules - Activated schedules for", invoiceId || soId || poId)
       return NextResponse.json({ message: "Schedules activated successfully" })
     }
 
@@ -485,7 +482,6 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
 
-      console.log("[v0] Payment Schedules - Linked to invoice", invoiceId)
       return NextResponse.json({ message: "Schedules linked to invoice successfully" })
     }
 
@@ -636,7 +632,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    console.log("[v0] Payment Schedules - Deleted inactive schedules for", soId || poId)
     return NextResponse.json({ message: "Inactive schedules deleted successfully" })
   } catch (error) {
     console.error("[v0] Payment Schedules DELETE exception:", error)

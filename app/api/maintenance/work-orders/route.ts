@@ -72,12 +72,6 @@ export async function POST(request: Request) {
     const adminClient = createAdminClient()
     const body = await request.json()
     
-    console.log("[v0] Creating work order with data:", {
-      salesOrderId: body.salesOrderId || body.sales_order_id,
-      customerId: body.customerId || body.customer_id,
-      title: body.title
-    })
-    
     // Generate work order number
     const { data: woNumberData } = await adminClient.rpc("generate_work_order_number")
     
@@ -96,7 +90,6 @@ export async function POST(request: Request) {
       notes: body.notes || null,
     }
     
-    console.log("[v0] Inserting work order with sales_order_id:", insertData.sales_order_id)
     
     const { data, error } = await adminClient
       .from("maintenance_work_orders")
@@ -108,13 +101,6 @@ export async function POST(request: Request) {
       console.error("[v0] Error creating work order:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    
-    console.log("[v0] Work order created successfully:", {
-      work_order_id: data.work_order_id,
-      work_order_number: data.work_order_number,
-      sales_order_id: data.sales_order_id,
-      status: data.status
-    })
     
     return NextResponse.json(data)
   } catch (error) {
@@ -133,7 +119,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "work_order_id is required" }, { status: 400 })
     }
     
-    console.log("[v0] Updating work order:", work_order_id)
     
     const { data, error } = await adminClient
       .from("maintenance_work_orders")

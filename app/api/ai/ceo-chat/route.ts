@@ -5,6 +5,7 @@ export const maxDuration = 60
 async function getBusinessContext() {
   const supabase = getAdminClient()
 
+  const db = supabase as any
   const [
     { data: inventory },
     { data: apInvoices },
@@ -15,14 +16,14 @@ async function getBusinessContext() {
     { data: customers },
     { data: suppliers },
   ] = await Promise.all([
-    supabase.from("inventory").select("*, products(product_name)"),
-    supabase.from("accounts_payable").select("*, suppliers(supplier_name)"),
-    supabase.from("accounts_receivable").select("*, customers(customer_name)"),
-    supabase.from("balance_entries").select("*").order("created_at", { ascending: false }).limit(1),
-    supabase.from("purchase_orders").select("*"),
-    supabase.from("sales_orders").select("*, customers(customer_name)"),
-    supabase.from("customers").select("*"),
-    supabase.from("suppliers").select("*"),
+    db.from("inventory").select("*, products(product_name)"),
+    db.from("accounts_payable").select("*, suppliers(supplier_name)"),
+    db.from("accounts_receivable").select("*, customers(customer_name)"),
+    db.from("balance_entries").select("*").order("created_at", { ascending: false }).limit(1),
+    db.from("purchase_orders").select("*"),
+    db.from("sales_orders").select("*, customers(customer_name)"),
+    db.from("customers").select("*"),
+    db.from("suppliers").select("*"),
   ])
 
   const today = new Date().toISOString().split("T")[0]
@@ -246,7 +247,7 @@ Communication style:
         role: "model",
         parts: [{ text: "I understand. I'm ready to assist you as the CEO Assistant for Misr Motors." }],
       },
-      ...geminiMessages.map((m) => ({
+      ...geminiMessages.map((m: { role: string; content: string }) => ({
         role: m.role,
         parts: [{ text: m.content }],
       })),
@@ -344,7 +345,6 @@ Communication style:
                   if (functionCall) {
                     try {
                       const args = functionCall.functionCall.args
-                      console.log("[v0] CEO Chat - Generating quotation:", args)
 
                       // Generate quotation number
                       const quotationNumber = `QT-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`
