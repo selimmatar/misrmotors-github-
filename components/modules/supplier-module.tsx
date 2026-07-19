@@ -330,37 +330,41 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
               </div>
             </div>
 
-            {/* Supplier Credits Section */}
-            {supplierCredits[selectedSupplier.id] && supplierCredits[selectedSupplier.id] > 0 && (
-              <div className="border-t pt-6 mt-6">
-                <h3 className="text-lg font-semibold mb-4">Account Credits from Returns</h3>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                  <p className="text-sm text-green-700 mb-3">
-                    The following credits have been applied to this supplier account from returned items. These can be deducted from future purchase orders.
+            {/* Supplier Credits Section — always visible */}
+            <div className="border-t pt-6 mt-2">
+              <h3 className="text-lg font-semibold mb-4">Account Credits from Returns</h3>
+              {(!creditsDetail[selectedSupplier.id] || creditsDetail[selectedSupplier.id].length === 0) ? (
+                <p className="text-sm text-muted-foreground py-3">No return credits on this supplier account yet.</p>
+              ) : (
+                <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                  <p className="text-sm text-green-700 dark:text-green-400 mb-3">
+                    Credits from returned items — deduct from future purchase orders.
                   </p>
                   <div className="space-y-2">
-                    {creditsDetail[selectedSupplier.id]?.map((credit: any, idx: number) => (
-                      <div key={idx} className="flex justify-between items-start text-sm border-b border-green-200 pb-2 last:border-0">
+                    {creditsDetail[selectedSupplier.id].map((credit: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-start text-sm border-b border-green-200 dark:border-green-800 pb-2 last:border-0">
                         <div className="flex-1">
-                          <p className="font-medium text-green-900">{credit.description || credit.product_name || "Return Credit"}</p>
-                          <p className="text-xs text-green-700 mt-1">
-                            Created: {new Date(credit.created_at).toLocaleDateString()}
-                            {credit.credit_type && ` • Type: ${credit.credit_type}`}
+                          <p className="font-medium text-green-900 dark:text-green-300">{credit.description || "Return Credit"}</p>
+                          <p className="text-xs text-green-700 dark:text-green-500 mt-1">
+                            {new Date(credit.created_at).toLocaleDateString()}
+                            {credit.credit_type && ` • ${credit.credit_type}`}
                           </p>
                         </div>
-                        <p className="font-semibold text-green-700">${Number(credit.amount).toLocaleString()}</p>
+                        <p className="font-semibold text-green-700 dark:text-green-400 ml-4">
+                          EGP {Number(credit.amount).toLocaleString()}
+                        </p>
                       </div>
                     ))}
                   </div>
-                  <div className="border-t border-green-200 mt-3 pt-3 flex justify-between items-center font-semibold">
+                  <div className="border-t border-green-200 dark:border-green-800 mt-3 pt-3 flex justify-between items-center font-semibold">
                     <span>Total Available Credit:</span>
-                    <span className="text-lg text-green-700">
-                      ${(supplierCredits[selectedSupplier.id] || 0).toLocaleString()}
+                    <span className="text-lg text-green-700 dark:text-green-400">
+                      EGP {(supplierCredits[selectedSupplier.id] || 0).toLocaleString()}
                     </span>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">{t("supplier.purchase-history")}</h3>

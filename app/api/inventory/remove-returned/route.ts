@@ -29,20 +29,47 @@ export async function POST(request: Request) {
       )
     }
 
-    // 2. Find the supplier by name to get supplier_id
+    // 2. Find the supplier_id via multiple strategies
     let supplierId: number | null = null
 
+    // Strategy 1: use explicit supplier ID if passed
     if (supplierNameId) {
       supplierId = Number(supplierNameId)
-    } else if (supplierName) {
-      const { data: supplier, error: supplierError } = await supabase
+    }
+
+    // Strategy 2: look up by supplier name
+    if (!supplierId && supplierName) {
+      const { data: supplier } = await supabase
         .from("suppliers")
         .select("supplier_id")
-        .ilike("supplier_name", supplierName)
+        .ilike("supplier_name", `%${supplierName}%`)
+        .limit(1)
         .single()
+      if (supplier) supplierId = supplier.supplier_id
+    }
 
-      if (!supplierError && supplier) {
-        supplierId = supplier.supplier_id
+    // Strategy 3: look up via SO number → purchase_orders → supplier_id
+    if (!supplierId && soNumber) {
+      const { data: poRows } = await supabase
+        .from("purchase_orders")
+        .select("supplier_id, purchase_order_items!inner(outsourced_name)")
+        .eq("purchase_order_items.outsourced_name", productName || "")
+        .limit(1)
+      if (poRows && poRows.length > 0 && poRows[0].supplier_id) {
+        supplierId = poRows[0].supplier_id
+      }
+
+      // Strategy 4: just get any PO supplier linked to the same SO items
+      if (!supplierId) {
+        const { data: poRows2 } = await supabase
+          .from("purchase_order_items")
+          .select("po_id, purchase_orders!inner(supplier_id)")
+          .ilike("outsourced_name", `%${(productName || "").trim()}%`)
+          .limit(1)
+        if (poRows2 && poRows2.length > 0) {
+          const po = poRows2[0].purchase_orders as any
+          supplierId = po?.supplier_id || null
+        }
       }
     }
 
