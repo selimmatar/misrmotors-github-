@@ -31,7 +31,7 @@ export async function GET(
       .order("product_id", { ascending: true })
 
     if (error) {
-      console.error("[v0] Error fetching supplier products:", error)
+      console.error("Error fetching supplier products:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -57,7 +57,7 @@ export async function GET(
 
     return NextResponse.json({ supplierProducts: formatted })
   } catch (error: any) {
-    console.error("[v0] Supplier products API error:", error)
+    console.error("Supplier products API error:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -114,13 +114,13 @@ export async function POST(
           { status: 409 }
         )
       }
-      console.error("[v0] Error adding supplier product:", error)
+      console.error("Error adding supplier product:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ supplierProduct: data }, { status: 201 })
   } catch (error: any) {
-    console.error("[v0] Supplier product POST error:", error)
+    console.error("Supplier product POST error:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -153,13 +153,13 @@ export async function DELETE(
       .eq("product_id", productId)
 
     if (error) {
-      console.error("[v0] Error removing supplier product:", error)
+      console.error("Error removing supplier product:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ message: "Product relationship removed" })
   } catch (error: any) {
-    console.error("[v0] Supplier product DELETE error:", error)
+    console.error("Supplier product DELETE error:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -209,13 +209,13 @@ export async function PUT(
       .single()
 
     if (error) {
-      console.error("[v0] Error updating supplier product:", error)
+      console.error("Error updating supplier product:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ supplierProduct: data })
   } catch (error: any) {
-    console.error("[v0] Supplier product PUT error:", error)
+    console.error("Supplier product PUT error:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

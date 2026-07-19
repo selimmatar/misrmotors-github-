@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       .single()
 
     if (soError || !so) {
-      console.error("[v0] AR - Sales order not found. Error:", soError, "SO ID:", so_id)
+      console.error("AR - Sales order not found. Error:", soError, "SO ID:", so_id)
       return NextResponse.json({ 
         error: "Sales order not found", 
         details: { so_id, soError: soError?.message }
@@ -111,7 +111,7 @@ export async function POST(request: Request) {
       .single()
 
     if (invoiceError) {
-      console.error("[v0] Error creating invoice:", invoiceError)
+      console.error("Error creating invoice:", invoiceError)
       return NextResponse.json({ error: invoiceError.message }, { status: 500 })
     }
 
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
       deliveryPermits: deliveryPermits || [],
     })
   } catch (error: any) {
-    console.error("[v0] Error creating invoice from SO:", error)
+    console.error("Error creating invoice from SO:", error)
     return NextResponse.json({ error: error.message || "Failed to create invoice" }, { status: 500 })
   }
 }

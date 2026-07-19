@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const { data, error } = await query
   
   if (error) {
-    console.error("[v0] Product Returns GET error:", error)
+    console.error("Product Returns GET error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
   
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     .single()
   
   if (returnError) {
-    console.error("[v0] Product Returns POST error:", returnError)
+    console.error("Product Returns POST error:", returnError)
     return NextResponse.json({ error: returnError.message }, { status: 500 })
   }
   
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
       .insert(returnItems)
     
     if (itemsError) {
-      console.error("[v0] Return Items insert error:", itemsError)
+      console.error("Return Items insert error:", itemsError)
     }
   }
   
@@ -200,7 +200,7 @@ export async function PUT(request: Request) {
     .eq("return_id", returnId)
   
   if (error) {
-    console.error("[v0] Product Returns PUT error:", error)
+    console.error("Product Returns PUT error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
   

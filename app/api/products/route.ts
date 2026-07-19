@@ -37,7 +37,7 @@ export async function GET() {
 
     return NextResponse.json(transformed)
   } catch (error) {
-    console.error("[v0] Error fetching products:", error)
+    console.error("Error fetching products:", error)
     return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 })
   }
 }
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
           throw lookupError
         }
       } catch (categoryError) {
-        console.error("[v0] Category handling error:", categoryError)
+        console.error("Category handling error:", categoryError)
         // Continue without category if there's an error
         categoryId = null
       }
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(transformed)
   } catch (error) {
-    console.error("[v0] Error creating product:", error)
+    console.error("Error creating product:", error)
     return NextResponse.json({ error: "Failed to create product" }, { status: 500 })
   }
 }
@@ -182,7 +182,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(transformed)
   } catch (error) {
-    console.error("[v0] Error updating product:", error)
+    console.error("Error updating product:", error)
     return NextResponse.json({ error: "Failed to update product" }, { status: 500 })
   }
 }

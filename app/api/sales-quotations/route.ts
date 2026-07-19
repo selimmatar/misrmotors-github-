@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const { data: numberData, error: numberError } = await supabase.rpc("generate_quotation_number")
 
     if (numberError) {
-      console.error("[v0] Generate quotation number error:", numberError)
+      console.error("Generate quotation number error:", numberError)
       return NextResponse.json({ error: "Failed to generate quotation number" }, { status: 500 })
     }
 
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (quotationError) {
-      console.error("[v0] Insert quotation error:", quotationError)
+      console.error("Insert quotation error:", quotationError)
       return NextResponse.json({ error: "Failed to create quotation" }, { status: 500 })
     }
 
@@ -117,13 +117,13 @@ export async function POST(request: NextRequest) {
     const { error: itemsError } = await supabase.from("sales_quotation_items").insert(itemsData)
 
     if (itemsError) {
-      console.error("[v0] Insert items error:", itemsError)
+      console.error("Insert items error:", itemsError)
       return NextResponse.json({ error: "Failed to create quotation items" }, { status: 500 })
     }
 
     return NextResponse.json({ quotation }, { status: 201 })
   } catch (error) {
-    console.error("[v0] Sales quotation POST error:", error)
+    console.error("Sales quotation POST error:", error)
     return NextResponse.json({ error: "Failed to create sales quotation" }, { status: 500 })
   }
 }
@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (quotationError) {
-        console.error("[v0] Fetch quotation error:", quotationError)
+        console.error("Fetch quotation error:", quotationError)
         return NextResponse.json({ error: "Failed to fetch quotation" }, { status: 500 })
       }
 
@@ -157,13 +157,13 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] Fetch quotations error:", error)
+      console.error("Fetch quotations error:", error)
       return NextResponse.json({ error: "Failed to fetch quotations" }, { status: 500 })
     }
 
     return NextResponse.json({ quotations })
   } catch (error) {
-    console.error("[v0] Sales quotation GET error:", error)
+    console.error("Sales quotation GET error:", error)
     return NextResponse.json({ error: "Failed to fetch sales quotations" }, { status: 500 })
   }
 }

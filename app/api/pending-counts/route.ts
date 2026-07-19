@@ -117,7 +117,7 @@ export async function GET(request: Request) {
     }
     return NextResponse.json(counts)
   } catch (error) {
-    console.error("[v0] Error fetching pending counts:", error)
+    console.error("Error fetching pending counts:", error)
     return NextResponse.json({})
   }
 }

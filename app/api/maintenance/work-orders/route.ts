@@ -56,13 +56,13 @@ export async function GET(request: Request) {
     const { data, error } = await query
     
     if (error) {
-      console.error("[v0] Error fetching work orders:", error)
+      console.error("Error fetching work orders:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data || [])
   } catch (error) {
-    console.error("[v0] Error in work orders API:", error)
+    console.error("Error in work orders API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -98,13 +98,13 @@ export async function POST(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error creating work order:", error)
+      console.error("Error creating work order:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in create work order API:", error)
+    console.error("Error in create work order API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -128,13 +128,13 @@ export async function PUT(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error updating work order:", error)
+      console.error("Error updating work order:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in update work order API:", error)
+    console.error("Error in update work order API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

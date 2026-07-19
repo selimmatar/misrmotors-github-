@@ -127,7 +127,7 @@ export async function GET() {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("[v0] Sales Orders GET: Failed after all retries", error)
+    console.error("Sales Orders GET: Failed after all retries", error)
     return NextResponse.json({ error: "Failed to fetch sales orders" }, { status: 500 })
   }
 }
@@ -216,7 +216,7 @@ export async function POST(request: Request) {
           .in("product_id", productIds)
 
         if (inventoryError) {
-          console.error("[v0] Sales Orders POST: Error fetching inventory", inventoryError)
+          console.error("Sales Orders POST: Error fetching inventory", inventoryError)
           return Response.json({ error: "Failed to validate inventory" }, { status: 500 })
         }
 
@@ -355,7 +355,7 @@ export async function POST(request: Request) {
     const { data: order, error: orderError } = await supabase.from("sales_orders").insert(orderData).select().single()
 
     if (orderError) {
-      console.error("[v0] Sales Orders POST: Error inserting order", orderError)
+      console.error("Sales Orders POST: Error inserting order", orderError)
       throw orderError
     }
 
@@ -397,7 +397,6 @@ export async function POST(request: Request) {
       const { error: itemsError } = await supabase.from("sales_order_items").insert(itemsWithSoId)
 
       if (itemsError) {
-        console.error("[v0] Sales Orders POST: Error inserting items", itemsError)
         throw itemsError
       }
 
@@ -416,7 +415,7 @@ export async function POST(request: Request) {
       const { error: requestsError } = await supabase.from("quotation_requests").insert(requestsWithOrderId)
 
       if (requestsError) {
-        console.error("[v0] Sales Orders POST: Error inserting quotation requests", requestsError)
+        console.error("Sales Orders POST: Error inserting quotation requests", requestsError)
         throw requestsError
       }
 
@@ -455,13 +454,13 @@ export async function POST(request: Request) {
 
         if (!scheduleResponse.ok) {
           const scheduleError = await scheduleResponse.json()
-          console.error("[v0] Sales Orders POST: Error creating payment schedules", scheduleError)
+          console.error("Sales Orders POST: Error creating payment schedules", scheduleError)
           // Don't throw - payment schedules can be created manually later
         } else {
           const scheduleData = await scheduleResponse.json()
         }
       } catch (scheduleError) {
-        console.error("[v0] Sales Orders POST: Exception creating payment schedules", scheduleError)
+        console.error("Sales Orders POST: Exception creating payment schedules", scheduleError)
         // Don't throw - payment schedules can be created manually later
       }
     }
@@ -490,7 +489,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ...order, items, quotationRequests })
   } catch (error: any) {
-    console.error("[v0] Sales Orders POST: Error", error)
+    console.error("Sales Orders POST: Error", error)
     return NextResponse.json({ error: error.message || "Failed to create sales order" }, { status: 500 })
   }
 }
@@ -640,7 +639,7 @@ export async function PUT(request: Request) {
 
     // Ensure we have something to update
     if (Object.keys(dbUpdates).length === 0) {
-      console.error("[v0] Sales Orders PUT: No updates to apply for ID:", finalId)
+      console.error("Sales Orders PUT: No updates to apply for ID:", finalId)
       return NextResponse.json({ error: "No fields to update" }, { status: 400 })
     }
 
@@ -656,12 +655,12 @@ export async function PUT(request: Request) {
       .maybeSingle()
 
     if (orderError) {
-      console.error("[v0] Sales Orders PUT: Error updating order", JSON.stringify(orderError), "ID:", numericId, "Updates:", JSON.stringify(dbUpdates))
+      console.error("Sales Orders PUT: Error updating order", JSON.stringify(orderError), "ID:", numericId, "Updates:", JSON.stringify(dbUpdates))
       return NextResponse.json({ error: `Database error: ${orderError.message || orderError.code || "Unknown"}` }, { status: 500 })
     }
 
     if (!order || !order.so_id) {
-      console.error("[v0] Sales Orders PUT: No order data returned for ID:", numericId)
+      console.error("Sales Orders PUT: No order data returned for ID:", numericId)
       return NextResponse.json({ error: `Sales order ${numericId} not found or update blocked by RLS policy` }, { status: 404 })
     }
 
@@ -751,7 +750,7 @@ export async function PUT(request: Request) {
               .single()
 
             if (dpError) {
-              console.error("[v0] Sales Orders PUT: Error creating down payment invoice", dpError)
+              console.error("Sales Orders PUT: Error creating down payment invoice", dpError)
             } else {
             }
           }
@@ -768,7 +767,7 @@ export async function PUT(request: Request) {
           .single()
 
         if (invoiceError) {
-          console.error("[v0] Sales Orders PUT: Error creating AR invoice", invoiceError)
+          console.error("Sales Orders PUT: Error creating AR invoice", invoiceError)
         } else {
         }
       }
@@ -794,13 +793,13 @@ export async function PUT(request: Request) {
         customerEmail: customer?.email || "",
       })
     } catch (webhookError) {
-      console.error("[v0] Sales Orders PUT: Webhook trigger failed", webhookError)
+      console.error("Sales Orders PUT: Webhook trigger failed", webhookError)
     }
 
     // Return success response
     return NextResponse.json({ success: true, order })
   } catch (error: any) {
-    console.error("[v0] Sales Orders PUT: Error", error)
+    console.error("Sales Orders PUT: Error", error)
     return NextResponse.json({ error: error.message || "Failed to update sales order" }, { status: 500 })
   }
 }

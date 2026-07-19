@@ -521,7 +521,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
       setAiAnalysis(analysis)
       setShowAiInsights(true)
     } catch (error) {
-      console.error("[v0] Failed to fetch AI insights:", error)
+      console.error("Failed to fetch AI insights:", error)
     } finally {
       setIsAnalyzing(false)
     }

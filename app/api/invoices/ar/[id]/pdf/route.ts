@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const invoiceId = Number.parseInt(id)
 
     if (!id || !invoiceId || isNaN(invoiceId)) {
-      console.error("[v0] AR Invoice PDF - Invalid invoice ID. Raw:", id, "Parsed:", invoiceId)
+      console.error("AR Invoice PDF - Invalid invoice ID. Raw:", id, "Parsed:", invoiceId)
       return NextResponse.json({ error: "Invalid invoice ID", details: { received: id, parsed: invoiceId } }, { status: 400 })
     }
 
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .single()
 
     if (invoiceError || !invoice) {
-      console.error("[v0] AR Invoice PDF - Invoice not found:", invoiceId, invoiceError)
+      console.error("AR Invoice PDF - Invoice not found:", invoiceId, invoiceError)
       return new NextResponse(generateErrorHtml("فاتورة العميل غير موجودة", `Invoice ID: ${id}`), {
         status: 404,
         headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         logoDataUrl = `data:image/png;base64,${base64}`
       }
     } catch (e) {
-      console.error("[v0] Failed to load logo:", e)
+      console.error("Failed to load logo:", e)
     }
 
     // Generate HTML invoice
@@ -481,7 +481,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       headers: { "Content-Type": "text/html; charset=utf-8" },
     })
   } catch (error) {
-    console.error("[v0] AR Invoice PDF error:", error)
+    console.error("AR Invoice PDF error:", error)
     return NextResponse.json({ error: "Failed to generate PDF" }, { status: 500 })
   }
 }

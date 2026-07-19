@@ -47,7 +47,7 @@ export function GoodsReceiptTrackingModule() {
       const data = await response.json()
       setReceipts(data)
     } catch (error) {
-      console.error("[v0] Error loading goods receipts:", error)
+      console.error("Error loading goods receipts:", error)
     } finally {
       setLoading(false)
     }

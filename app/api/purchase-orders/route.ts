@@ -16,7 +16,7 @@ export async function GET() {
         .order("created_at", { ascending: false })
 
       if (ordersError) {
-        console.error("[v0] Purchase Orders GET: Error fetching orders", ordersError)
+        console.error("Purchase Orders GET: Error fetching orders", ordersError)
         throw ordersError
       }
 
@@ -34,7 +34,7 @@ export async function GET() {
         .in("po_id", orderIds)
 
       if (itemsError) {
-        console.error("[v0] Purchase Orders GET: Error fetching items", itemsError)
+        console.error("Purchase Orders GET: Error fetching items", itemsError)
         // Don't throw, just continue with empty items
       }
 
@@ -56,7 +56,7 @@ export async function GET() {
             scheduleEntries =
               typeof order.schedule_entries === "string" ? JSON.parse(order.schedule_entries) : order.schedule_entries
           } catch (e) {
-            console.error("[v0] Error parsing schedule_entries for PO:", order.po_id)
+            console.error("Error parsing schedule_entries for PO:", order.po_id)
           }
         }
 
@@ -142,7 +142,7 @@ export async function GET() {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("[v0] Purchase Orders GET: Error", error)
+    console.error("Purchase Orders GET: Error", error)
     return NextResponse.json({ error: "Failed to fetch purchase orders" }, { status: 500 })
   }
 }
@@ -218,7 +218,7 @@ export async function POST(request: Request) {
       .single()
 
     if (orderError) {
-      console.error("[v0] Purchase Orders POST: Error inserting order", orderError)
+      console.error("Purchase Orders POST: Error inserting order", orderError)
       throw orderError
     }
 
@@ -248,7 +248,7 @@ export async function POST(request: Request) {
       const { error: itemsInsertError } = await supabase.from("purchase_order_items").insert(itemsWithPoId)
 
       if (itemsInsertError) {
-        console.error("[v0] Purchase Orders POST: Error inserting items", itemsInsertError)
+        console.error("Purchase Orders POST: Error inserting items", itemsInsertError)
       }
     }
 
@@ -312,7 +312,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(createdOrder)
   } catch (error) {
-    console.error("[v0] Purchase Orders POST: Error", error)
+    console.error("Purchase Orders POST: Error", error)
     return NextResponse.json({ error: "Failed to create purchase order" }, { status: 500 })
   }
 }
@@ -505,7 +505,7 @@ export async function PUT(request: Request) {
       .single()
 
     if (orderError || !order) {
-      console.error("[v0] Purchase Orders PUT: Error updating order", orderError)
+      console.error("Purchase Orders PUT: Error updating order", orderError)
       return NextResponse.json({ error: orderError?.message || "Failed to update purchase order" }, { status: 500 })
     }
 
@@ -528,7 +528,7 @@ export async function PUT(request: Request) {
         const { error: itemsError } = await supabase.from("purchase_order_items").insert(itemsWithPoId)
 
         if (itemsError) {
-          console.error("[v0] Purchase Orders PUT: Error updating items", itemsError)
+          console.error("Purchase Orders PUT: Error updating items", itemsError)
           throw itemsError
         }
 
@@ -569,7 +569,7 @@ export async function PUT(request: Request) {
             .single()
 
           if (invoiceError) {
-            console.error("[v0] Purchase Orders PUT: Error creating prepaid invoice", invoiceError)
+            console.error("Purchase Orders PUT: Error creating prepaid invoice", invoiceError)
           } else {
 
             // 3. Create Supplier Payment
@@ -586,7 +586,7 @@ export async function PUT(request: Request) {
             const { error: paymentError } = await supabase.from("supplier_payments").insert(paymentData)
 
             if (paymentError) {
-              console.error("[v0] Purchase Orders PUT: Error creating prepaid payment", paymentError)
+              console.error("Purchase Orders PUT: Error creating prepaid payment", paymentError)
             } else {
 
               // 4. Update Balance History
@@ -603,7 +603,7 @@ export async function PUT(request: Request) {
               const { error: balanceError } = await supabase.from("balance_entries").insert(balanceData)
 
               if (balanceError) {
-                console.error("[v0] Purchase Orders PUT: Error updating balance for prepaid order", balanceError)
+                console.error("Purchase Orders PUT: Error updating balance for prepaid order", balanceError)
               } else {
               }
             }
@@ -625,7 +625,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json({ ...order, id: order.po_id.toString(), items })
   } catch (error) {
-    console.error("[v0] Purchase Orders PUT: Error", error)
+    console.error("Purchase Orders PUT: Error", error)
     return NextResponse.json({ error: "Failed to update purchase order" }, { status: 500 })
   }
 }

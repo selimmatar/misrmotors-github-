@@ -83,7 +83,7 @@ export function MaintenanceInvoiceTab() {
         alert(`Error: ${error.error}`)
       }
     } catch (error) {
-      console.error("[v0] Error creating invoice:", error)
+      console.error("Error creating invoice:", error)
       alert("Failed to create invoice")
     } finally {
       setLoading(false)

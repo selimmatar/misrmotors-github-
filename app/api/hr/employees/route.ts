@@ -36,13 +36,13 @@ export async function GET(request: Request) {
     const { data, error } = await query
     
     if (error) {
-      console.error("[v0] Error fetching employees:", error)
+      console.error("Error fetching employees:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data || [])
   } catch (error) {
-    console.error("[v0] Error in employees API:", error)
+    console.error("Error in employees API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       .rpc("generate_employee_number")
     
     if (employeeNumberError) {
-      console.error("[v0] Error generating employee number:", employeeNumberError)
+      console.error("Error generating employee number:", employeeNumberError)
       return NextResponse.json({ error: "Failed to generate employee number" }, { status: 500 })
     }
     
@@ -111,13 +111,13 @@ export async function POST(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error creating employee:", error)
+      console.error("Error creating employee:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in create employee API:", error)
+    console.error("Error in create employee API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -148,13 +148,13 @@ export async function PUT(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error updating employee:", error)
+      console.error("Error updating employee:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in update employee API:", error)
+    console.error("Error in update employee API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -184,13 +184,13 @@ export async function DELETE(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error terminating employee:", error)
+      console.error("Error terminating employee:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json({ success: true, message: "Employee terminated successfully", data })
   } catch (error) {
-    console.error("[v0] Error in terminate employee API:", error)
+    console.error("Error in terminate employee API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

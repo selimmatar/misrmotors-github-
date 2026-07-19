@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ recommendations })
   } catch (error) {
-    console.error("[v0] Error generating recommendations:", error)
+    console.error("Error generating recommendations:", error)
 
     return NextResponse.json({ error: "Failed to generate recommendations" }, { status: 500 })
   }

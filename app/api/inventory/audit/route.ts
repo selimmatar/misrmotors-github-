@@ -24,7 +24,7 @@ export async function GET() {
       .order("product_id")
 
     if (error) {
-      console.error("[v0] Error fetching inventory for audit:", error)
+      console.error("Error fetching inventory for audit:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -34,7 +34,7 @@ export async function GET() {
       .select("product_id, product_name, sku")
 
     if (productsError) {
-      console.error("[v0] Error fetching products:", productsError)
+      console.error("Error fetching products:", productsError)
       return NextResponse.json({ error: productsError.message }, { status: 500 })
     }
 
@@ -55,7 +55,7 @@ export async function GET() {
 
     return NextResponse.json(inventoryWithProducts)
   } catch (error) {
-    console.error("[v0] Error in inventory audit GET:", error)
+    console.error("Error in inventory audit GET:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       const { error: auditError } = await supabase.from("inventory_audits").insert(auditRecords)
 
       if (auditError) {
-        console.error("[v0] Inventory Audit: Error inserting audit records:", auditError)
+        console.error("Inventory Audit: Error inserting audit records:", auditError)
         return NextResponse.json({ error: auditError.message }, { status: 500 })
       }
 
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
       const { error: updateError } = await query
 
       if (updateError) {
-        console.error("[v0] Inventory Audit: Error updating inventory for product", update.productId, ":", updateError)
+        console.error("Inventory Audit: Error updating inventory for product", update.productId, ":", updateError)
         return NextResponse.json({ error: updateError.message }, { status: 500 })
       }
 
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
-    console.error("[v0] Inventory Audit: Error in POST:", error)
+    console.error("Inventory Audit: Error in POST:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

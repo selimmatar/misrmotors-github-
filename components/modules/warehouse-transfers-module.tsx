@@ -81,7 +81,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
       const data = await response.json()
       setTransfers(data)
     } catch (error) {
-      console.error("[v0] Error fetching transfers:", error)
+      console.error("Error fetching transfers:", error)
     } finally {
       setLoading(false)
     }
@@ -191,7 +191,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
       if (!response.ok) {
         const error = await response.json()
-        console.error("[v0] Transfer complete error:", error)
+        console.error("Transfer complete error:", error)
         throw new Error(error.error || "Failed to complete transfer")
       }
 
@@ -202,7 +202,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
       await refreshInventory()
       setShowDetailsDialog(false)
     } catch (error: any) {
-      console.error("[v0] Transfer completion failed:", error)
+      console.error("Transfer completion failed:", error)
       alert(error.message || "Failed to complete transfer")
     } finally {
       setActionLoading(false)

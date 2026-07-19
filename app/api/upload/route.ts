@@ -7,14 +7,14 @@ export async function POST(request: Request) {
     const file = formData.get("file") as File
 
     if (!file) {
-      console.error("[v0] Upload API: No file provided in request")
+      console.error("Upload API: No file provided in request")
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
 
     const maxSize = 10 * 1024 * 1024 // 10MB
     if (file.size > maxSize) {
-      console.error("[v0] Upload API: File too large", file.size, "max:", maxSize)
+      console.error("Upload API: File too large", file.size, "max:", maxSize)
       return NextResponse.json(
         { error: `File too large. Maximum size is ${maxSize / 1024 / 1024}MB` },
         { status: 413 }
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url: blob.url })
   } catch (error: any) {
-    console.error("[v0] Upload API: Error occurred", {
+    console.error("Upload API: Error occurred", {
       message: error?.message,
       code: error?.code,
       status: error?.status,

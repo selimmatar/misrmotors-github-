@@ -18,7 +18,7 @@ export async function POST(request: Request) {
         .single()
 
       if (reportError || !report) {
-        console.error("[v0] Report not found:", reportError)
+        console.error("Report not found:", reportError)
         return NextResponse.json({ error: "Report not found" }, { status: 404 })
       }
 
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
           .eq("product_id", productId)
         
         if (invError || !invRecords || invRecords.length === 0) {
-          console.error("[v0] Inventory not found for product:", productId)
+          console.error("Inventory not found for product:", productId)
           continue
         }
 
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
           .eq("inventory_id", inv.inventory_id)
         
         if (updateError) {
-          console.error("[v0] Failed to deduct inventory:", updateError)
+          console.error("Failed to deduct inventory:", updateError)
           continue
         }
 
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
         .eq("work_order_id", work_order_id)
 
       if (woError) {
-        console.error("[v0] Error updating work order:", woError)
+        console.error("Error updating work order:", woError)
         return NextResponse.json({ error: "Failed to update work order" }, { status: 500 })
       }
 
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
         .eq("work_order_id", work_order_id)
 
       if (woError) {
-        console.error("[v0] Error updating work order:", woError)
+        console.error("Error updating work order:", woError)
         return NextResponse.json({ error: "Failed to update work order" }, { status: 500 })
       }
 
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
       })
     }
   } catch (error) {
-    console.error("[v0] Error in approval process:", error)
+    console.error("Error in approval process:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

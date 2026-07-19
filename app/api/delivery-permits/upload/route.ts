@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (error) {
-      console.error("[v0] File record save error:", error)
+      console.error("File record save error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       message: "File uploaded successfully",
     })
   } catch (error) {
-    console.error("[v0] Delivery Permit file upload error:", error)
+    console.error("Delivery Permit file upload error:", error)
     return NextResponse.json({ error: "Failed to upload file" }, { status: 500 })
   }
 }

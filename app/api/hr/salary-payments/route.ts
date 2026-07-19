@@ -47,13 +47,13 @@ export async function GET(request: Request) {
       .order("payment_date", { ascending: false })
     
     if (error) {
-      console.error("[v0] Error fetching salary payments:", error)
+      console.error("Error fetching salary payments:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data || [])
   } catch (error) {
-    console.error("[v0] Error in salary payments API:", error)
+    console.error("Error in salary payments API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -99,13 +99,13 @@ export async function POST(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error creating salary payment:", error)
+      console.error("Error creating salary payment:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in create salary payment API:", error)
+    console.error("Error in create salary payment API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -135,13 +135,13 @@ export async function PUT(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error updating salary payment:", error)
+      console.error("Error updating salary payment:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in update salary payment API:", error)
+    console.error("Error in update salary payment API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

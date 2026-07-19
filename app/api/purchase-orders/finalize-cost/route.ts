@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         .single()
 
       if (poError || !po) {
-        console.error("[v0] PO Cost Finalization: PO not found", poError)
+        console.error("PO Cost Finalization: PO not found", poError)
         await completeIdempotency("po_finalize_cost", finalizeCostKey, false, "Purchase order not found")
         return NextResponse.json({ error: "Purchase order not found" }, { status: 404 })
       }
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
           .eq("po_item_id", update.po_item_id)
 
         if (itemError) {
-          console.error("[v0] PO Cost Finalization: Error updating item", itemError)
+          console.error("PO Cost Finalization: Error updating item", itemError)
           throw itemError
         }
       }
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
         .single()
 
       if (updateError) {
-        console.error("[v0] PO Cost Finalization: Error updating PO", updateError)
+        console.error("PO Cost Finalization: Error updating PO", updateError)
         throw updateError
       }
 
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
       throw error
     }
   } catch (error) {
-    console.error("[v0] PO Cost Finalization: Error", error)
+    console.error("PO Cost Finalization: Error", error)
     return NextResponse.json({ error: "Failed to finalize purchase order costs" }, { status: 500 })
   }
 }

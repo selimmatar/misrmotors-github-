@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (requestError || !poRequest) {
-      console.error("[v0] PO Request PDF fetch error:", requestError)
+      console.error("PO Request PDF fetch error:", requestError)
       return new NextResponse(
         generateErrorHTML(`PO Request not found. ID: ${requestId}`, requestError?.message),
         { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } }
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
         logoDataUrl = `data:image/png;base64,${base64}`
       }
     } catch (e) {
-      console.error("[v0] Failed to load logo:", e)
+      console.error("Failed to load logo:", e)
     }
 
     const supplier = poRequest.suppliers || {}
@@ -446,7 +446,7 @@ export async function GET(request: NextRequest) {
       headers: { "Content-Type": "text/html; charset=utf-8" },
     })
   } catch (error) {
-    console.error("[v0] PO Request PDF error:", error)
+    console.error("PO Request PDF error:", error)
     return new NextResponse(generateErrorHTML("Internal server error"), {
       status: 500,
       headers: { "Content-Type": "text/html; charset=utf-8" },

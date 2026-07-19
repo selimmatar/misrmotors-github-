@@ -7,7 +7,7 @@ export async function testSupabaseConnection() {
     const response = await fetch("/api/products")
     const data = await response.json()
   } catch (error) {
-    console.error("[v0] Products API error:", error)
+    console.error("Products API error:", error)
   }
 
   // Test 3: Test adding a product
@@ -30,10 +30,10 @@ export async function testSupabaseConnection() {
 
     if (response.ok) {
     } else {
-      console.error("[v0] ❌ FAILED! Could not add product")
+      console.error("❌ FAILED! Could not add product")
     }
   } catch (error) {
-    console.error("[v0] Add product error:", error)
+    console.error("Add product error:", error)
   }
 
 }

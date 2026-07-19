@@ -15,7 +15,7 @@ export async function GET() {
       .order("warehouse_name", { ascending: true })
 
     if (error) {
-      console.error("[v0] Warehouses GET error:", error)
+      console.error("Warehouses GET error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
@@ -34,7 +34,7 @@ export async function GET() {
 
     return NextResponse.json(warehouses)
   } catch (error: any) {
-    console.error("[v0] Warehouses GET exception:", error)
+    console.error("Warehouses GET exception:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error("[v0] Warehouses POST error:", error)
+      console.error("Warehouses POST error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
       isDefault: data.is_default,
     })
   } catch (error: any) {
-    console.error("[v0] Warehouses POST exception:", error)
+    console.error("Warehouses POST exception:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -124,7 +124,7 @@ export async function PUT(request: Request) {
       .single()
 
     if (error) {
-      console.error("[v0] Warehouses PUT error:", error)
+      console.error("Warehouses PUT error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
@@ -139,7 +139,7 @@ export async function PUT(request: Request) {
       isDefault: data.is_default,
     })
   } catch (error: any) {
-    console.error("[v0] Warehouses PUT exception:", error)
+    console.error("Warehouses PUT exception:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -161,13 +161,13 @@ export async function DELETE(request: Request) {
       .eq("warehouse_id", id)
 
     if (error) {
-      console.error("[v0] Warehouses DELETE error:", error)
+      console.error("Warehouses DELETE error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error("[v0] Warehouses DELETE exception:", error)
+    console.error("Warehouses DELETE exception:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

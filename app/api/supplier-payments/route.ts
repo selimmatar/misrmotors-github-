@@ -13,14 +13,14 @@ export async function GET() {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] Supplier Payments GET error:", error)
+      console.error("Supplier Payments GET error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
 
     return NextResponse.json(payments || [])
   } catch (error) {
-    console.error("[v0] Supplier Payments GET exception:", error)
+    console.error("Supplier Payments GET exception:", error)
     return NextResponse.json({ error: "Failed to fetch supplier payments" }, { status: 500 })
   }
 }
@@ -43,14 +43,14 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error("[v0] Supplier Payments POST error:", error)
+      console.error("Supplier Payments POST error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Supplier Payments POST exception:", error)
+    console.error("Supplier Payments POST exception:", error)
     return NextResponse.json({ error: "Failed to create supplier payment" }, { status: 500 })
   }
 }

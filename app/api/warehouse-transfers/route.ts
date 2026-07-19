@@ -21,7 +21,7 @@ export async function GET() {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] Error fetching transfers:", error)
+      console.error("Error fetching transfers:", error)
       return NextResponse.json({ error: "Failed to fetch transfers" }, { status: 500 })
     }
 
@@ -47,7 +47,7 @@ export async function GET() {
 
     return NextResponse.json(formattedTransfers)
   } catch (error) {
-    console.error("[v0] Error in warehouse transfers GET:", error)
+    console.error("Error in warehouse transfers GET:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       .single()
 
     if (transferError || !transfer) {
-      console.error("[v0] Error creating transfer:", transferError)
+      console.error("Error creating transfer:", transferError)
       return NextResponse.json({ error: "Failed to create transfer" }, { status: 500 })
     }
 
@@ -132,7 +132,7 @@ export async function POST(request: Request) {
       .insert(transferItems)
 
     if (itemsError) {
-      console.error("[v0] Error creating transfer items:", itemsError)
+      console.error("Error creating transfer items:", itemsError)
       // Rollback transfer
       await supabase.from("warehouse_transfers").delete().eq("transfer_id", transfer.transfer_id)
       return NextResponse.json({ error: "Failed to create transfer items" }, { status: 500 })
@@ -146,7 +146,7 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
-    console.error("[v0] Error in warehouse transfers POST:", error)
+    console.error("Error in warehouse transfers POST:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

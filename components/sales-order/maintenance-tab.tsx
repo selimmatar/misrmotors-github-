@@ -78,7 +78,7 @@ export function SalesOrderMaintenanceTab({
         }
       }
     } catch (error) {
-      console.error("[v0] Error fetching work order:", error)
+      console.error("Error fetching work order:", error)
     }
   }
 
@@ -95,7 +95,7 @@ export function SalesOrderMaintenanceTab({
         setEmployees(operationsEmployees)
       }
     } catch (error) {
-      console.error("[v0] Error fetching employees:", error)
+      console.error("Error fetching employees:", error)
     }
   }
 
@@ -126,12 +126,6 @@ export function SalesOrderMaintenanceTab({
 
       if (response.ok) {
         const newWorkOrder = await response.json()
-          work_order_id: newWorkOrder.work_order_id,
-          work_order_number: newWorkOrder.work_order_number,
-          sales_order_id: newWorkOrder.sales_order_id,
-          customer_id: newWorkOrder.customer_id,
-          status: newWorkOrder.status
-        })
         setWorkOrder(newWorkOrder)
         setShowCreateForm(false)
         setTitle("")
@@ -140,11 +134,11 @@ export function SalesOrderMaintenanceTab({
         alert(`Maintenance work order ${newWorkOrder.work_order_number} created successfully! The shipping team can print the work order template from their Maintenance tab.`)
       } else {
         const error = await response.json()
-        console.error("[v0] ❌ Failed to create work order:", error)
+        console.error("❌ Failed to create work order:", error)
         alert(error.error || "Failed to create work order")
       }
     } catch (error) {
-      console.error("[v0] Error creating work order:", error)
+      console.error("Error creating work order:", error)
       alert("Failed to create work order")
     } finally {
       setLoading(false)
@@ -169,7 +163,7 @@ export function SalesOrderMaintenanceTab({
         alert("Employee assigned successfully!")
       }
     } catch (error) {
-      console.error("[v0] Error assigning employee:", error)
+      console.error("Error assigning employee:", error)
       alert("Failed to assign employee")
     } finally {
       setLoading(false)

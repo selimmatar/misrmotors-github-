@@ -106,7 +106,7 @@ export async function POST(req: Request) {
 
     return Response.json({ analysis })
   } catch (error: any) {
-    console.error("[v0] Inventory analysis error:", error)
+    console.error("Inventory analysis error:", error)
     return Response.json({ error: "Failed to analyze inventory" }, { status: 500 })
   }
 }

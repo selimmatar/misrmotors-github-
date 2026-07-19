@@ -57,7 +57,7 @@ export function PORequestsSection({ soId }: PORequestsSectionProps) {
         setPORequests(data.poRequests || [])
       }
     } catch (error) {
-      console.error("[v0] Error fetching PO requests:", error)
+      console.error("Error fetching PO requests:", error)
     } finally {
       setLoading(false)
     }
@@ -104,7 +104,7 @@ export function PORequestsSection({ soId }: PORequestsSectionProps) {
         toast({ title: "Error", description: data.error || "Upload failed", variant: "destructive" })
       }
     } catch (error) {
-      console.error("[v0] Upload error:", error)
+      console.error("Upload error:", error)
       toast({ title: "Error", description: "Upload failed", variant: "destructive" })
     } finally {
       setUploading(false)
@@ -127,7 +127,7 @@ export function PORequestsSection({ soId }: PORequestsSectionProps) {
         toast({ title: "Error", description: data.error || "Delete failed", variant: "destructive" })
       }
     } catch (error) {
-      console.error("[v0] Delete error:", error)
+      console.error("Delete error:", error)
       toast({ title: "Error", description: "Delete failed", variant: "destructive" })
     }
   }

@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: "Invalid prediction type" }, { status: 400 })
   } catch (error) {
-    console.error("[v0] Error generating predictions:", error)
+    console.error("Error generating predictions:", error)
     return NextResponse.json({ error: "Failed to generate predictions" }, { status: 500 })
   }
 }

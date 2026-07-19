@@ -70,7 +70,7 @@ export async function POST(request: Request) {
       .single()
 
     if (arError) {
-      console.error("[v0] Error creating AR entry:", arError)
+      console.error("Error creating AR entry:", arError)
       return NextResponse.json({ error: "Failed to create invoice" }, { status: 500 })
     }
 
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       message: "Invoice created successfully",
     })
   } catch (error) {
-    console.error("[v0] Error creating maintenance invoice:", error)
+    console.error("Error creating maintenance invoice:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

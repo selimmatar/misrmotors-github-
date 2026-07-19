@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       error = result.error
     } catch (parseError: any) {
       if (parseError.message?.includes("JSON Parse") || parseError.message?.includes("Unexpected identifier")) {
-        console.error("[v0] Delivery Permits GET error: Rate limited (JSON parse failed):", parseError.message)
+        console.error("Delivery Permits GET error: Rate limited (JSON parse failed):", parseError.message)
         return NextResponse.json(
           { error: "Service temporarily unavailable - too many requests", code: "RATE_LIMITED" },
           { status: 503 },
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
         )
         return NextResponse.json([])
       }
-      console.error("[v0] Delivery Permits GET error:", error.message)
+      console.error("Delivery Permits GET error:", error.message)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -226,7 +226,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(finalPermits)
   } catch (error: any) {
-    console.error("[v0] Delivery Permits GET error:", error)
+    console.error("Delivery Permits GET error:", error)
     return NextResponse.json({ error: error.message || "Failed to fetch delivery permits" }, { status: 500 })
   }
 }
@@ -252,7 +252,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (lastPermitError) {
-      console.error("[v0] Error fetching last permit:", lastPermitError)
+      console.error("Error fetching last permit:", lastPermitError)
     }
 
     let nextNumber = 1
@@ -282,7 +282,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (permitError) {
-      console.error("[v0] Delivery Permit creation error:", permitError.message)
+      console.error("Delivery Permit creation error:", permitError.message)
       return NextResponse.json({ error: permitError.message }, { status: 409 })
     }
 
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
       const { error: itemsError } = await withRetry(() => supabase.from("delivery_permit_items").insert(permitItems))
 
       if (itemsError) {
-        console.error("[v0] Delivery Permit items error:", itemsError)
+        console.error("Delivery Permit items error:", itemsError)
       }
     }
 
@@ -371,7 +371,7 @@ export async function POST(request: NextRequest) {
       message: "Delivery permit created successfully",
     })
   } catch (error) {
-    console.error("[v0] Delivery Permit POST exception:", error)
+    console.error("Delivery Permit POST exception:", error)
     return NextResponse.json({ error: "Failed to create delivery permit" }, { status: 500 })
   }
 }
@@ -407,7 +407,7 @@ export async function PUT(request: NextRequest) {
     )
 
     if (fetchError || !currentPermit) {
-      console.error("[v0] Delivery Permits PUT - Permit not found:", JSON.stringify(fetchError))
+      console.error("Delivery Permits PUT - Permit not found:", JSON.stringify(fetchError))
       return NextResponse.json({ error: "Permit not found" }, { status: 404 })
     }
 
@@ -438,7 +438,7 @@ export async function PUT(request: NextRequest) {
               .eq("item_id", alloc.itemId)
             
             if (allocError) {
-              console.error("[v0] Error updating item allocation:", allocError)
+              console.error("Error updating item allocation:", allocError)
             }
           }
         }
@@ -576,7 +576,7 @@ export async function PUT(request: NextRequest) {
             )
 
             if (soError) {
-              console.error("[v0] Delivery Permits PUT - Failed to fetch SO:", soError.message)
+              console.error("Delivery Permits PUT - Failed to fetch SO:", soError.message)
             } else if (soData) {
               // NOTE: AR Invoice creation has been removed from here.
               // Invoices should only be created manually by the accountant 
@@ -611,7 +611,7 @@ export async function PUT(request: NextRequest) {
     )
 
     if (updateError) {
-      console.error("[v0] Delivery Permit update error:", updateError)
+      console.error("Delivery Permit update error:", updateError)
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
@@ -622,7 +622,7 @@ export async function PUT(request: NextRequest) {
         supabase.from("sales_orders").update(soUpdates).eq("so_id", currentPermit.sales_order_id),
       )
       if (soError) {
-        console.error("[v0] Delivery Permits PUT - SO update error:", soError.message)
+        console.error("Delivery Permits PUT - SO update error:", soError.message)
       } else {
       }
     }
@@ -647,7 +647,7 @@ export async function PUT(request: NextRequest) {
       message: `Permit ${action.toLowerCase().replace(/_/g, " ")} successfully`,
     })
   } catch (error) {
-    console.error("[v0] Delivery Permit PUT exception:", error)
+    console.error("Delivery Permit PUT exception:", error)
     return NextResponse.json({ error: "Failed to update delivery permit" }, { status: 500 })
   }
 }

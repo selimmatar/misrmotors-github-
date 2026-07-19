@@ -73,7 +73,7 @@ export function QuotationRequestUploadWidget({
 
       alert("Quotation request uploaded successfully!")
     } catch (error) {
-      console.error("[v0] QR Upload error:", error)
+      console.error("QR Upload error:", error)
       alert(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
       setIsUploading(false)

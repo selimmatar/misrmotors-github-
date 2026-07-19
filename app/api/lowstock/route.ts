@@ -20,7 +20,7 @@ export async function GET() {
       `)
 
     if (error) {
-      console.error("[v0] Low stock API error:", error)
+      console.error("Low stock API error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -50,7 +50,7 @@ export async function GET() {
       items: lowStockItems,
     })
   } catch (error) {
-    console.error("[v0] Low stock API error:", error)
+    console.error("Low stock API error:", error)
     return NextResponse.json({ error: "Failed to fetch low stock items" }, { status: 500 })
   }
 }

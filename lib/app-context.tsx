@@ -101,7 +101,7 @@ const swrFetcher = async (url: string) => {
 
   if (response.status === 429) {
     const text = await response.text()
-    console.error("[v0] Rate limited (429):", text)
+    console.error("Rate limited (429):", text)
     throw new Error("Rate limited")
   }
 
@@ -120,7 +120,7 @@ const swrFetcher = async (url: string) => {
   }
 
   if (!isJson) {
-    console.warn("[v0] Non-JSON response for", url, "Content-Type:", contentType)
+    console.warn("Non-JSON response for", url, "Content-Type:", contentType)
     return null
   }
 
@@ -132,7 +132,7 @@ const swrFetcher = async (url: string) => {
   try {
     return JSON.parse(text)
   } catch (err) {
-    console.error("[v0] JSON parse error for", url, ":", text.substring(0, 100))
+    console.error("JSON parse error for", url, ":", text.substring(0, 100))
     throw new Error("Invalid JSON response")
   }
 }
@@ -698,19 +698,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("[v0] Sales order update failed:", response.status, errorText)
+        console.error("Sales order update failed:", response.status, errorText)
         let errorData: any = {}
         try {
           errorData = JSON.parse(errorText)
         } catch (e) {
-          console.error("[v0] Could not parse error response as JSON")
+          console.error("Could not parse error response as JSON")
         }
         throw new Error(errorData.error || `Failed to update sales order (${response.status})`)
       }
 
       await Promise.all([mutateSalesOrders(), mutateCustomerInvoices()])
     } catch (error) {
-      console.error("[v0] Error updating sales order:", error)
+      console.error("Error updating sales order:", error)
       throw error
     }
   }

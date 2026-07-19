@@ -240,7 +240,7 @@ export function AccountsPayableModule() {
 
       // Validation: Ensure amounts are sensible for hybrid payment
       if (downPaymentAmount === 0 && remainingAmount === 0) {
-        console.error("[v0] AP Module - ERROR: Hybrid payment with 0 amounts detected! Invoice:", invoice.id)
+        console.error("AP Module - ERROR: Hybrid payment with 0 amounts detected! Invoice:", invoice.id)
         // Fallback: treat as regular installments
         const installmentMonths = invoice.remainingInstallmentMonths || po?.remainingInstallmentMonths || po?.installments || 6
         const monthlyAmt = Math.round((totalAmount / installmentMonths) * 100) / 100

@@ -179,15 +179,6 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
   const getOrderPaymentStatus = (order: SalesOrder) => {
     const invoice = orderInvoices[order.id]
 
-    if (invoice) {
-        monthsPaid: invoice.monthsPaid,
-        installmentMonths: invoice.installmentMonths,
-        collectedAmount: invoice.collectedAmount,
-        amount: invoice.amount,
-        orderInstallments: order.installments
-      })
-    }
-
     if (!invoice) {
       return {
         status: "No Invoice",
@@ -206,13 +197,6 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
     const amountPaid = invoice.collectedAmount || 0
     const totalAmount = invoice.amount || order.total
     const amountDue = totalAmount - amountPaid
-
-      monthsPaid,
-      totalMonths: `${totalMonths} (from order.installments: ${order.installments}, invoice.installmentMonths: ${invoice.installmentMonths})`,
-      amountPaid,
-      totalAmount,
-      amountDue
-    })
 
     let status = "Not Paid"
     let color = "bg-red-100 text-red-800"

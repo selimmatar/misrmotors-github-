@@ -88,7 +88,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       
       setQuotations(pendingQuotations)
     } catch (error) {
-      console.error("[v0] Failed to fetch quotations:", error)
+      console.error("Failed to fetch quotations:", error)
     } finally {
       setLoading(false)
     }
@@ -116,7 +116,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       } as QuotationDetails)
       setShowDetailsDialog(true)
     } catch (error) {
-      console.error("[v0] Error fetching quotation details:", error)
+      console.error("Error fetching quotation details:", error)
       alert("Failed to load quotation details")
     }
   }
@@ -177,7 +177,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       await fetchQuotations()
       await refreshSalesOrders()
     } catch (error) {
-      console.error("[v0] Error approving quotation:", error)
+      console.error("Error approving quotation:", error)
       alert(error instanceof Error ? error.message : "Failed to approve quotation")
     } finally {
       setActionLoading(false)
@@ -216,7 +216,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       setShowRejectDialog(false)
       setRejectionReason("")
     } catch (error) {
-      console.error("[v0] Error rejecting quotation:", error)
+      console.error("Error rejecting quotation:", error)
       alert(error instanceof Error ? error.message : "Failed to reject quotation")
     } finally {
       setActionLoading(false)
@@ -251,7 +251,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       await fetchQuotations()
       await refreshSalesOrders()
     } catch (error) {
-      console.error("[v0] Error approving quotation:", error)
+      console.error("Error approving quotation:", error)
       alert(error instanceof Error ? error.message : "Failed to approve quotation")
     } finally {
       setActionLoading(false)

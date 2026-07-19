@@ -82,7 +82,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
         setSupplierProducts(data.supplierProducts || [])
       }
     } catch (error) {
-      console.error("[v0] Error fetching supplier products:", error)
+      console.error("Error fetching supplier products:", error)
       toast({
         title: "Error",
         description: "Failed to load supplier products",
@@ -133,7 +133,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
         })
       }
     } catch (error) {
-      console.error("[v0] Error adding supplier product:", error)
+      console.error("Error adding supplier product:", error)
       toast({
         title: "Error",
         description: "Failed to add product",
@@ -176,7 +176,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
         })
       }
     } catch (error) {
-      console.error("[v0] Error updating supplier product:", error)
+      console.error("Error updating supplier product:", error)
       toast({
         title: "Error",
         description: "Failed to update product",
@@ -208,7 +208,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
         })
       }
     } catch (error) {
-      console.error("[v0] Error removing supplier product:", error)
+      console.error("Error removing supplier product:", error)
       toast({
         title: "Error",
         description: "Failed to remove product",

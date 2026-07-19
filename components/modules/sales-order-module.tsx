@@ -185,7 +185,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       setShowCustomerForm(false)
       alert("Customer created successfully!")
     } catch (error) {
-      console.error("[v0] Error creating customer:", error)
+      console.error("Error creating customer:", error)
       alert("Failed to create customer. Please try again.")
     }
   }
@@ -327,7 +327,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       setAiInsights(insights)
       setShowAiInsights(true)
     } catch (error) {
-      console.error("[v0] Failed to fetch AI insights:", error)
+      console.error("Failed to fetch AI insights:", error)
       alert("Failed to generate AI insights. Please try again.")
     } finally {
       setIsAnalyzing(false)
@@ -702,11 +702,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
     // Calculate pre-tax subtotal from items
     const itemsSubtotal = currentOrderItems.reduce((sum, item) => sum + item.total, 0)
     
-      items: currentOrderItems.map(i => ({ name: i.productName, qty: i.quantity, unitPrice: i.unitPrice, total: i.total })),
-      itemsSubtotal,
-      vatEnabled
-    })
-
     const { discountAmount: finalDiscountAmount, netTotal: subtotalAfterDiscount } = calculateDiscount(
       itemsSubtotal,
       discountType,
@@ -811,7 +806,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
             await updateInventoryQuantity(item.productId, -item.quantity, orderItem?.warehouseId)
           }
         } catch (invError) {
-          console.error("[v0] Error updating local inventory state:", invError)
+          console.error("Error updating local inventory state:", invError)
           // Note: The API already deducted inventory, this is just for local state sync
         }
 
@@ -821,7 +816,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
         await refreshInventory()
       }
     } catch (error: any) {
-      console.error("[v0] Error creating sales order:", error)
+      console.error("Error creating sales order:", error)
       alert(error.message || t("error.create-failed"))
     } finally {
       setIsSubmitting(false) // Always reset submitting state
@@ -1364,7 +1359,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       alert("Quotation sent to accountant for approval")
       setSelectedOrder(null)
     } catch (error) {
-      console.error("[v0] Error approving quotation:", error)
+      console.error("Error approving quotation:", error)
       alert("Failed to approve quotation")
     }
   }
@@ -1435,7 +1430,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       const response = await fetch(`/api/delivery-permits?soId=${soIdValue}`)
 
       if (!response.ok) {
-        console.error("[v0] DP fetch failed with status:", response.status)
+        console.error("DP fetch failed with status:", response.status)
         setExistingDPsForSO([])
         setSelectedSOForDP(orderForDp)
         setCreateDPDialogOpen(true)
@@ -1454,7 +1449,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
       setExistingDPsForSO(filteredDPs)
     } catch (error) {
-      console.error("[v0] Error fetching existing DPs:", error)
+      console.error("Error fetching existing DPs:", error)
       setExistingDPsForSO([])
     }
 
@@ -1573,7 +1568,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       // Refresh data
       await loadData()
     } catch (error: any) {
-      console.error("[v0] Error creating DP:", error)
+      console.error("Error creating DP:", error)
       alert(`Failed to create delivery permit: ${error.message}`)
     } finally {
       setIsSubmittingDP(false)

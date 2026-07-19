@@ -91,7 +91,7 @@ export async function GET(request: Request) {
     
     return NextResponse.json(transformed)
   } catch (error: any) {
-    console.error("[v0] Returns GET error:", error)
+    console.error("Returns GET error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -161,7 +161,7 @@ export async function POST(request: Request) {
     
     return NextResponse.json({ success: true, returnId: returnData.return_id })
   } catch (error: any) {
-    console.error("[v0] Returns POST error:", error)
+    console.error("Returns POST error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -213,7 +213,7 @@ export async function PUT(request: Request) {
       .single()
     
     if (returnError) {
-      console.error("[v0] Returns PUT error:", returnError)
+      console.error("Returns PUT error:", returnError)
       throw returnError
     }
     
@@ -258,7 +258,7 @@ export async function PUT(request: Request) {
               is_returned: true,
               so_number: soNumber || null,
             })
-          if (insertErr) console.error("[v0] Outsourced insert error:", insertErr)
+          if (insertErr) console.error("Outsourced insert error:", insertErr)
         } else {
           // Regular product — look up existing unit_cost from inventory or last batch
           let unitCost = assignment.unitCost ? Number(assignment.unitCost) : 0
@@ -378,7 +378,7 @@ export async function PUT(request: Request) {
             .eq("inventory_id", invData.inventory_id)
           
           if (updateErr) {
-            console.error("[v0] Restock inventory update error:", updateErr)
+            console.error("Restock inventory update error:", updateErr)
           } else {
           }
         } else {
@@ -393,7 +393,7 @@ export async function PUT(request: Request) {
             })
           
           if (insertErr) {
-            console.error("[v0] Restock inventory insert error:", insertErr)
+            console.error("Restock inventory insert error:", insertErr)
           } else {
           }
         }
@@ -408,7 +408,7 @@ export async function PUT(request: Request) {
     
     return NextResponse.json({ success: true, data: returnData })
   } catch (error: any) {
-    console.error("[v0] Returns PUT error:", error)
+    console.error("Returns PUT error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

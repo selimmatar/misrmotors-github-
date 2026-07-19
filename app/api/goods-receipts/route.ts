@@ -68,7 +68,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(formattedReceipts)
   } catch (error) {
-    console.error("[v0] Error fetching goods receipts:", error)
+    console.error("Error fetching goods receipts:", error)
     return NextResponse.json(
       { error: "Failed to fetch goods receipts" },
       { status: 500 },
@@ -229,7 +229,7 @@ export async function POST(request: Request) {
         .update({ fulfilled_at: new Date().toISOString() })
         .in("so_item_id", soItemIds)
       if (soUpdateError) {
-        console.error("[v0] Error marking SO items as fulfilled:", soUpdateError)
+        console.error("Error marking SO items as fulfilled:", soUpdateError)
       } else {
       }
 
@@ -278,7 +278,7 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
-    console.error("[v0] Error creating goods receipt:", error)
+    console.error("Error creating goods receipt:", error)
     return NextResponse.json(
       { error: "Failed to create goods receipt" },
       { status: 500 },

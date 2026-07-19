@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
         logoDataUrl = `data:image/png;base64,${base64}`
       }
     } catch (e) {
-      console.error("[v0] Failed to load logo:", e)
+      console.error("Failed to load logo:", e)
     }
 
     const html = `<!DOCTYPE html>
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error: any) {
-    console.error("[v0] Quotation error:", error)
+    console.error("Quotation error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       })
 
     if (uploadError) {
-      console.error("[v0] Supabase storage upload error:", uploadError)
+      console.error("Supabase storage upload error:", uploadError)
       // If bucket doesn't exist, store URL as placeholder
       const placeholderUrl = `document://${filename}`
       
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       filename: uploadData.path,
     })
   } catch (error) {
-    console.error("[v0] Error uploading document:", error)
+    console.error("Error uploading document:", error)
     return NextResponse.json({ error: "Failed to upload document" }, { status: 500 })
   }
 }

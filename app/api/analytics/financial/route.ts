@@ -109,7 +109,7 @@ export async function GET() {
       },
     })
   } catch (error) {
-    console.error("[v0] Error fetching financial analytics:", error)
+    console.error("Error fetching financial analytics:", error)
     return NextResponse.json({ error: "Failed to fetch financial analytics" }, { status: 500 })
   }
 }

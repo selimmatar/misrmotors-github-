@@ -13,7 +13,7 @@ export async function GET() {
       .order("created_at", { ascending: false })
     
     if (error) {
-      console.error("[v0] Reschedule Requests GET error:", error)
+      console.error("Reschedule Requests GET error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
@@ -44,7 +44,7 @@ export async function GET() {
     
     return NextResponse.json(transformedData)
   } catch (error: any) {
-    console.error("[v0] Reschedule Requests GET error:", error)
+    console.error("Reschedule Requests GET error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -96,13 +96,13 @@ export async function POST(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Reschedule Request POST error:", error)
+      console.error("Reschedule Request POST error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json({ success: true, request: data })
   } catch (error: any) {
-    console.error("[v0] Reschedule Request POST error:", error)
+    console.error("Reschedule Request POST error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -129,7 +129,7 @@ export async function PUT(request: Request) {
       .single()
     
     if (requestError) {
-      console.error("[v0] Reschedule Request PUT error:", requestError)
+      console.error("Reschedule Request PUT error:", requestError)
       return NextResponse.json({ error: requestError.message }, { status: 500 })
     }
     
@@ -156,14 +156,14 @@ export async function PUT(request: Request) {
         .eq("invoice_id", requestData.invoice_id)
       
       if (arError) {
-        console.error("[v0] AR update error:", arError)
+        console.error("AR update error:", arError)
       } else {
       }
     }
     
     return NextResponse.json({ success: true, request: requestData })
   } catch (error: any) {
-    console.error("[v0] Reschedule Request PUT error:", error)
+    console.error("Reschedule Request PUT error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

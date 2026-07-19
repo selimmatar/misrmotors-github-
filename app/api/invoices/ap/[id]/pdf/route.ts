@@ -59,7 +59,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .single()
 
     if (invoiceError || !invoice) {
-      console.error("[v0] AP Invoice PDF - Invoice not found:", invoiceId, invoiceError)
+      console.error("AP Invoice PDF - Invoice not found:", invoiceId, invoiceError)
       return new NextResponse(generateErrorHtml("فاتورة المورد غير موجودة", `Invoice ID: ${id}`), {
         status: 404,
         headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -508,7 +508,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       headers: { "Content-Type": "text/html; charset=utf-8" },
     })
   } catch (error) {
-    console.error("[v0] AP Invoice PDF error:", error)
+    console.error("AP Invoice PDF error:", error)
     return NextResponse.json({ error: "Failed to generate PDF" }, { status: 500 })
   }
 }

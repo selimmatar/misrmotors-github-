@@ -41,7 +41,7 @@ export async function GET() {
       .order("created_at", { ascending: false })
     
     if (error) {
-      console.error("[v0] Error fetching work orders:", error)
+      console.error("Error fetching work orders:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -135,7 +135,7 @@ export async function GET() {
 
     return NextResponse.json(allWorkOrders)
   } catch (error) {
-    console.error("[v0] Error in ready-for-invoice endpoint:", error)
+    console.error("Error in ready-for-invoice endpoint:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

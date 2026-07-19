@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       .in("permit_id", permit_ids)
 
     if (permitsError || !permits || permits.length === 0) {
-      console.error("[v0] DPs not found:", permitsError)
+      console.error("DPs not found:", permitsError)
       return NextResponse.json({ error: "Delivery permits not found" }, { status: 404 })
     }
 
@@ -167,7 +167,7 @@ export async function POST(request: Request) {
         .single()
 
       if (invoiceError) {
-        console.error("[v0] Error creating invoice:", invoiceError)
+        console.error("Error creating invoice:", invoiceError)
         return NextResponse.json({ error: invoiceError.message }, { status: 500 })
       }
 
@@ -180,7 +180,7 @@ export async function POST(request: Request) {
       const { error: linksError } = await supabase.from("invoice_delivery_permits").insert(links)
 
       if (linksError) {
-        console.error("[v0] Error creating DP links:", linksError)
+        console.error("Error creating DP links:", linksError)
         await supabase.from("accounts_receivable").delete().eq("invoice_id", invoice.invoice_id)
         return NextResponse.json({ error: "Failed to link delivery permits" }, { status: 500 })
       }
@@ -210,7 +210,7 @@ export async function POST(request: Request) {
           : `Created ${createdInvoices.length} invoices (split by payment terms)`,
     })
   } catch (error: any) {
-    console.error("[v0] Error creating invoice from DPs:", error)
+    console.error("Error creating invoice from DPs:", error)
     return NextResponse.json({ error: error.message || "Failed to create invoice" }, { status: 500 })
   }
 }

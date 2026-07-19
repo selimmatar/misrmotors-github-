@@ -1057,7 +1057,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                     alt={selectedProductForPhoto?.productName}
                     className="w-full h-full object-contain"
                     onError={(e) => {
-                      console.error("[v0] Image failed to load:", productImages[selectedImageIndex]?.image_url)
+                      console.error("Image failed to load:", productImages[selectedImageIndex]?.image_url)
                       e.currentTarget.src = "/placeholder.svg"
                     }}
                   />

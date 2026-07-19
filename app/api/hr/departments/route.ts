@@ -14,13 +14,13 @@ export async function GET() {
       .order("department_name")
     
     if (error) {
-      console.error("[v0] Error fetching departments:", error)
+      console.error("Error fetching departments:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data || [])
   } catch (error) {
-    console.error("[v0] Error in departments API:", error)
+    console.error("Error in departments API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -44,13 +44,13 @@ export async function POST(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error creating department:", error)
+      console.error("Error creating department:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in create department API:", error)
+    console.error("Error in create department API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

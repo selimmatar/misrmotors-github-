@@ -64,7 +64,7 @@ export async function GET() {
       scorecard: topSuppliers,
     })
   } catch (error) {
-    console.error("[v0] Error fetching supplier analytics:", error)
+    console.error("Error fetching supplier analytics:", error)
     return NextResponse.json({ error: "Failed to fetch supplier analytics" }, { status: 500 })
   }
 }

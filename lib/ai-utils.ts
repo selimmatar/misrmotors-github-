@@ -11,7 +11,7 @@ export async function analyzeInventory(inventory: any[], salesOrders: any[], pro
     const data = await response.json()
     return data.analysis
   } catch (error) {
-    console.error("[v0] Inventory analysis error:", error)
+    console.error("Inventory analysis error:", error)
     throw error
   }
 }
@@ -36,7 +36,7 @@ export async function analyzeFinancials(financialData: {
     const data = await response.json()
     return data.analysis
   } catch (error) {
-    console.error("[v0] Financial analysis error:", error)
+    console.error("Financial analysis error:", error)
     throw error
   }
 }
@@ -59,7 +59,7 @@ export async function getSalesInsights(salesData: {
     const data = await response.json()
     return data.insights
   } catch (error) {
-    console.error("[v0] Sales insights error:", error)
+    console.error("Sales insights error:", error)
     throw error
   }
 }
@@ -77,7 +77,7 @@ export async function extractInvoiceData(fileData: string, mediaType: string) {
     const data = await response.json()
     return data.extractedData
   } catch (error) {
-    console.error("[v0] Invoice extraction error:", error)
+    console.error("Invoice extraction error:", error)
     throw error
   }
 }

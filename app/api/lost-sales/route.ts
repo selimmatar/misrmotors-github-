@@ -69,7 +69,7 @@ export async function GET(request: Request) {
       error = result.error
     } catch (supabaseError: any) {
       const errorMessage = supabaseError?.message || String(supabaseError)
-      console.error("[v0] Lost Sales GET: Supabase exception:", errorMessage)
+      console.error("Lost Sales GET: Supabase exception:", errorMessage)
 
       if (errorMessage.includes("Too") || errorMessage.includes("rate") || errorMessage.includes("429")) {
         if (cachedLostSales !== null) {
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
     }
 
     if (error) {
-      console.error("[v0] Lost Sales GET error:", error)
+      console.error("Lost Sales GET error:", error)
       if (cachedLostSales !== null) {
         return NextResponse.json(cachedLostSales, {
           headers: { ...corsHeaders, "X-Cache": "STALE" },
@@ -104,7 +104,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(data, { headers: { ...corsHeaders, "X-Cache": "MISS" } })
   } catch (error: any) {
-    console.error("[v0] Lost Sales GET exception:", error)
+    console.error("Lost Sales GET exception:", error)
     if (cachedLostSales !== null) {
       return NextResponse.json(cachedLostSales, {
         headers: { ...corsHeaders, "X-Cache": "STALE" },
@@ -137,7 +137,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.from("lost_sales").insert(lostSalesRecords).select()
 
     if (error) {
-      console.error("[v0] Lost Sales POST error:", error)
+      console.error("Lost Sales POST error:", error)
       return NextResponse.json({ error: error.message }, { status: 400, headers: corsHeaders })
     }
 
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
       { headers: corsHeaders },
     )
   } catch (error: any) {
-    console.error("[v0] Lost Sales POST exception:", error)
+    console.error("Lost Sales POST exception:", error)
     return NextResponse.json(
       { error: "Failed to record lost sale", details: error?.message },
       { status: 500, headers: corsHeaders },
@@ -180,7 +180,7 @@ export async function PATCH(request: Request) {
       .select()
 
     if (error) {
-      console.error("[v0] Lost Sales PATCH error:", error)
+      console.error("Lost Sales PATCH error:", error)
       return NextResponse.json({ error: error.message }, { status: 400, headers: corsHeaders })
     }
 
@@ -189,7 +189,7 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ success: true, data: data[0] }, { headers: corsHeaders })
   } catch (error: any) {
-    console.error("[v0] Lost Sales PATCH exception:", error)
+    console.error("Lost Sales PATCH exception:", error)
     return NextResponse.json({ error: "Failed to update lost sale" }, { status: 500, headers: corsHeaders })
   }
 }

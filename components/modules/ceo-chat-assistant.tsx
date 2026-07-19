@@ -169,7 +169,7 @@ export function CEOChatAssistant() {
         setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
       }
     } catch (err) {
-      console.error("[v0] Chat error:", err)
+      console.error("Chat error:", err)
       setServiceUnavailable(true)
       setChatError("Failed to connect to AI service. Please try again.")
       setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))

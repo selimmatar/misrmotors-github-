@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (poError || !po) {
-      console.error("[v0] PO PDF - Error fetching PO:", poError)
+      console.error("PO PDF - Error fetching PO:", poError)
       return new NextResponse(
         `<!DOCTYPE html><html><body style="font-family: Arial; padding: 40px; text-align: center;">
           <h2 style="color: #dc2626;">Purchase Order Not Found</h2>
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
       .eq("po_id", Number.parseInt(poId))
 
     if (itemsError) {
-      console.error("[v0] PO PDF - Error fetching items:", itemsError)
+      console.error("PO PDF - Error fetching items:", itemsError)
     }
 
     const poItems = items || []
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
         logoDataUrl = `data:image/png;base64,${base64}`
       }
     } catch (e) {
-      console.error("[v0] Failed to load logo:", e)
+      console.error("Failed to load logo:", e)
     }
 
     // Calculate totals
@@ -470,7 +470,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error: any) {
-    console.error("[v0] PO PDF error:", error)
+    console.error("PO PDF error:", error)
     return new NextResponse(
       `<!DOCTYPE html><html><body style="font-family: Arial; padding: 40px; text-align: center;">
         <h2 style="color: #dc2626;">Error Generating PO PDF</h2>

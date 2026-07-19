@@ -39,7 +39,7 @@ export async function GET() {
 
     return NextResponse.json(transformed)
   } catch (error) {
-    console.error("[v0] Error fetching customers:", error)
+    console.error("Error fetching customers:", error)
     return NextResponse.json({ error: "Failed to fetch customers" }, { status: 500 })
   }
 }
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(transformed)
   } catch (error) {
-    console.error("[v0] Error creating customer:", error)
+    console.error("Error creating customer:", error)
     return NextResponse.json({ error: "Failed to create customer" }, { status: 500 })
   }
 }
@@ -133,7 +133,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(transformed)
   } catch (error) {
-    console.error("[v0] Error updating customer:", error)
+    console.error("Error updating customer:", error)
     return NextResponse.json({ error: "Failed to update customer" }, { status: 500 })
   }
 }

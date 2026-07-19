@@ -19,7 +19,7 @@ export async function GET() {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("[v0] Balance API - Error fetching balance entries:", error)
+    console.error("Balance API - Error fetching balance entries:", error)
     return NextResponse.json({ error: "Failed to fetch balance entries" }, { status: 500 })
   }
 }
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("[v0] Balance API - Error adding balance entry:", error)
+    console.error("Balance API - Error adding balance entry:", error)
     return NextResponse.json({ error: "Failed to add balance entry" }, { status: 500 })
   }
 }

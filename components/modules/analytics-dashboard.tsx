@@ -166,7 +166,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
       setFinancialData(financial)
       setSupplierData(suppliers)
     } catch (error) {
-      console.error("[v0] Error loading analytics:", error)
+      console.error("Error loading analytics:", error)
     } finally {
       setLoading(false)
     }
@@ -223,7 +223,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
       const data = await response.json()
       setPredictions({ type, data })
     } catch (error) {
-      console.error("[v0] Error generating predictions:", error)
+      console.error("Error generating predictions:", error)
     } finally {
       setPredicting(false)
     }
@@ -251,7 +251,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
       const data = await response.json()
       setAiActions({ category, recommendations: data.recommendations })
     } catch (error) {
-      console.error("[v0] Error generating AI actions:", error)
+      console.error("Error generating AI actions:", error)
     } finally {
       setGeneratingActions(false)
     }

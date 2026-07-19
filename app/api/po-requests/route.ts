@@ -43,13 +43,13 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query
 
     if (error) {
-      console.error("[v0] PO Requests fetch error:", error)
+      console.error("PO Requests fetch error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] PO Requests error:", error)
+    console.error("PO Requests error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     const { data: numberData, error: numberError } = await supabase.rpc("generate_po_request_number")
 
     if (numberError) {
-      console.error("[v0] Generate PO request number error:", numberError)
+      console.error("Generate PO request number error:", numberError)
       return NextResponse.json({ error: "Failed to generate request number" }, { status: 500 })
     }
 
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (requestError) {
-      console.error("[v0] Create PO request error:", requestError)
+      console.error("Create PO request error:", requestError)
       return NextResponse.json({ error: requestError.message }, { status: 500 })
     }
 
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
       .insert(itemsToInsert)
 
     if (itemsError) {
-      console.error("[v0] Create PO request items error:", itemsError)
+      console.error("Create PO request items error:", itemsError)
       // Rollback the request
       await supabase.from("po_requests").delete().eq("request_id", poRequest.request_id)
       return NextResponse.json({ error: itemsError.message }, { status: 500 })
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(poRequest, { status: 201 })
   } catch (error) {
-    console.error("[v0] PO Request creation error:", error)
+    console.error("PO Request creation error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -139,13 +139,13 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error("[v0] Update PO request error:", error)
+      console.error("Update PO request error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] PO Request update error:", error)
+    console.error("PO Request update error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -85,7 +85,7 @@ Only return the JSON object, no other text.`,
 
     if (!response.ok) {
       const error = await response.text()
-      console.error("[v0] OpenAI API error:", error)
+      console.error("OpenAI API error:", error)
       return Response.json({ error: "Failed to process invoice image" }, { status: 500 })
     }
 
@@ -105,11 +105,11 @@ Only return the JSON object, no other text.`,
 
       return Response.json({ extractedData: validated })
     } catch (parseError) {
-      console.error("[v0] Failed to parse invoice response:", parseError, content)
+      console.error("Failed to parse invoice response:", parseError, content)
       return Response.json({ error: "Failed to parse invoice data" }, { status: 500 })
     }
   } catch (error) {
-    console.error("[v0] Invoice extraction error:", error)
+    console.error("Invoice extraction error:", error)
     return Response.json({ error: "Failed to extract invoice data" }, { status: 500 })
   }
 }

@@ -61,10 +61,10 @@ export function MaintenanceApprovalTab({ userRole }: { userRole: string }) {
         setReports(allReports)
       } else {
         const errorText = await response.text()
-        console.error("[v0] Error fetching reports:", errorText)
+        console.error("Error fetching reports:", errorText)
       }
     } catch (error) {
-      console.error("[v0] Error fetching pending reports:", error)
+      console.error("Error fetching pending reports:", error)
     } finally {
       setLoading(false)
     }
@@ -93,7 +93,7 @@ export function MaintenanceApprovalTab({ userRole }: { userRole: string }) {
         alert(`Error: ${error.error}`)
       }
     } catch (error) {
-      console.error("[v0] Error approving report:", error)
+      console.error("Error approving report:", error)
       alert("Failed to approve report")
     } finally {
       setLoading(false)
@@ -128,7 +128,7 @@ export function MaintenanceApprovalTab({ userRole }: { userRole: string }) {
         alert(`Error: ${error.error}`)
       }
     } catch (error) {
-      console.error("[v0] Error rejecting report:", error)
+      console.error("Error rejecting report:", error)
       alert("Failed to reject report")
     } finally {
       setLoading(false)

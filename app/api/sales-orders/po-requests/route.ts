@@ -30,13 +30,13 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query
 
     if (error) {
-      console.error("[v0] PO Requests fetch error:", error)
+      console.error("PO Requests fetch error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
     return NextResponse.json({ poRequests: data || [] })
   } catch (error: any) {
-    console.error("[v0] PO Requests GET error:", error)
+    console.error("PO Requests GET error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       const { data: generatedNumber, error: rpcError } = await supabase.rpc("generate_po_request_number")
 
       if (rpcError || !generatedNumber) {
-        console.error("[v0] PO Request number generation error:", rpcError)
+        console.error("PO Request number generation error:", rpcError)
         return NextResponse.json({ error: "Failed to generate PO Request Number" }, { status: 500 })
       }
       poRequestNumber = generatedNumber
@@ -110,13 +110,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (dbError) {
-      console.error("[v0] PO Request DB insert error:", dbError)
+      console.error("PO Request DB insert error:", dbError)
       return NextResponse.json({ error: dbError.message }, { status: 400 })
     }
 
     return NextResponse.json({ poRequest, message: "PO Request uploaded successfully" })
   } catch (error: any) {
-    console.error("[v0] PO Request POST error:", error)
+    console.error("PO Request POST error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -145,13 +145,13 @@ export async function DELETE(request: NextRequest) {
       .eq("id", id)
 
     if (error) {
-      console.error("[v0] PO Request soft delete error:", error)
+      console.error("PO Request soft delete error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
     return NextResponse.json({ message: "PO Request deleted successfully" })
   } catch (error: any) {
-    console.error("[v0] PO Request DELETE error:", error)
+    console.error("PO Request DELETE error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

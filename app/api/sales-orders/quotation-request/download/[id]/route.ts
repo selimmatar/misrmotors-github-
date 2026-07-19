@@ -18,19 +18,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     )
 
     if (error || !so) {
-      console.error("[v0] QR Download: SO not found:", error)
+      console.error("QR Download: SO not found:", error)
       return NextResponse.json({ error: "Sales order not found" }, { status: 404 })
     }
 
     if (!so.quotation_request_file_path) {
-      console.error("[v0] QR Download: No QR file for SO:", id)
+      console.error("QR Download: No QR file for SO:", id)
       return NextResponse.json({ error: "No quotation request file found" }, { status: 404 })
     }
 
 
     return NextResponse.redirect(so.quotation_request_file_path)
   } catch (error) {
-    console.error("[v0] QR Download: Error:", error)
+    console.error("QR Download: Error:", error)
     return NextResponse.json({ error: "Failed to download quotation request" }, { status: 500 })
   }
 }

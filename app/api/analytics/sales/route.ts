@@ -84,7 +84,7 @@ export async function GET(request: Request) {
       clvData: customerCLV.slice(0, 20),
     })
   } catch (error) {
-    console.error("[v0] Error fetching sales analytics:", error)
+    console.error("Error fetching sales analytics:", error)
     return NextResponse.json({ error: "Failed to fetch sales analytics" }, { status: 500 })
   }
 }

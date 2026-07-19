@@ -100,7 +100,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, allocations })
   } catch (error: any) {
-    console.error("[v0] Error allocating inventory:", error)
+    console.error("Error allocating inventory:", error)
     return NextResponse.json({ error: error.message || "Failed to allocate inventory" }, { status: 500 })
   }
 }

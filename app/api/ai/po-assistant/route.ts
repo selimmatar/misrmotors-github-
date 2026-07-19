@@ -120,7 +120,7 @@ What would you like to do?`
       action,
     })
   } catch (error: any) {
-    console.error("[v0] PO assistant error:", error)
+    console.error("PO assistant error:", error)
     return Response.json({ error: "Failed to process request" }, { status: 500 })
   }
 }

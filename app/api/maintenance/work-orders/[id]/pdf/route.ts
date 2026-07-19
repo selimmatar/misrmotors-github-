@@ -65,7 +65,7 @@ export async function GET(
         logoDataUrl = `data:image/png;base64,${base64}`
       }
     } catch (e) {
-      console.error("[v0] Failed to load logo:", e)
+      console.error("Failed to load logo:", e)
     }
 
     const html = `<!DOCTYPE html>
@@ -169,7 +169,7 @@ ${emptyRows}
       },
     })
   } catch (error) {
-    console.error("[v0] Error generating PDF template:", error)
+    console.error("Error generating PDF template:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

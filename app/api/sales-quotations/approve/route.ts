@@ -19,13 +19,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (quotationError || !quotation) {
-      console.error("[v0] Fetch quotation error:", quotationError)
+      console.error("Fetch quotation error:", quotationError)
       return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
     }
 
     // Check if it's a draft (not already processed)
     if (quotation.status !== "draft" && quotation.status !== "pending") {
-      console.error("[v0] Quotation already processed, current status:", quotation.status)
+      console.error("Quotation already processed, current status:", quotation.status)
       return NextResponse.json({ 
         error: `This quotation has already been ${quotation.status === "rejected" ? "rejected" : "approved"}. Current status: ${quotation.status}` 
       }, { status: 400 })
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const { data: soNumberData, error: soNumberError } = await supabase.rpc("generate_so_number")
     
     if (soNumberError) {
-      console.error("[v0] Generate SO number error:", soNumberError)
+      console.error("Generate SO number error:", soNumberError)
       return NextResponse.json({ error: "Failed to generate sales order number" }, { status: 500 })
     }
 
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (soError || !salesOrder) {
-      console.error("[v0] Create sales order error:", soError)
+      console.error("Create sales order error:", soError)
       return NextResponse.json({ error: "Failed to create sales order" }, { status: 500 })
     }
 
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
         .insert(soItems)
 
       if (itemsError) {
-        console.error("[v0] Create SO items error:", itemsError)
+        console.error("Create SO items error:", itemsError)
         // Don't fail the whole operation, just log it
       }
     }
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
       .eq("id", quotation_id)
 
     if (updateError) {
-      console.error("[v0] Update quotation status error:", updateError)
+      console.error("Update quotation status error:", updateError)
     }
 
     return NextResponse.json({
@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
       message: `Quotation approved! Sales Order ${salesOrder.so_number} created with status "pending_accountant".`,
     })
   } catch (error) {
-    console.error("[v0] Approve quotation error:", error)
+    console.error("Approve quotation error:", error)
     return NextResponse.json({ error: "Failed to approve quotation" }, { status: 500 })
   }
 }

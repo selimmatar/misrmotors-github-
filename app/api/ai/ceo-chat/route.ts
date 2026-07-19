@@ -301,7 +301,7 @@ Communication style:
         errorMessage = "Rate limit exceeded. Please wait a moment and try again."
       }
 
-      console.error("[v0] Gemini API error:", response.status, errorMessage)
+      console.error("Gemini API error:", response.status, errorMessage)
       return new Response(JSON.stringify({ error: errorMessage }), {
         status: response.status,
         headers: { "Content-Type": "application/json" },
@@ -354,7 +354,7 @@ Communication style:
                       const message = `\n\n📄 **Sales Quotation Generated**\n\nQuotation Number: ${quotationNumber}\nCustomer: ${args.customer_name}\nItems: ${args.items.length} product(s)\n\n[View/Download Quotation](${quotationUrl})\n\nThe quotation includes all product details, pricing, and terms.`
                       controller.enqueue(encoder.encode(`0:${JSON.stringify(message)}\n`))
                     } catch (error) {
-                      console.error("[v0] CEO Chat - Tool call error:", error)
+                      console.error("CEO Chat - Tool call error:", error)
                       controller.enqueue(
                         encoder.encode(`0:${JSON.stringify("\n\nError generating quotation. Please try again.")}\n`),
                       )
@@ -369,13 +369,13 @@ Communication style:
                   }
                 } catch (e) {
                   // Skip invalid JSON
-                  console.warn("[v0] Failed to parse Gemini response line:", e)
+                  console.warn("Failed to parse Gemini response line:", e)
                 }
               }
             }
           }
         } catch (error) {
-          console.error("[v0] Stream error:", error)
+          console.error("Stream error:", error)
         } finally {
           controller.enqueue(encoder.encode("0:\n"))
           controller.close()
@@ -391,7 +391,7 @@ Communication style:
       },
     })
   } catch (error: unknown) {
-    console.error("[v0] CEO Chat error:", error)
+    console.error("CEO Chat error:", error)
     return new Response(
       JSON.stringify({
         error: "AI service error. Please try again.",

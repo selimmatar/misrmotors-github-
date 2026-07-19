@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const { data: qrData, error: qrError } = await supabase.rpc("generate_qr_number")
 
     if (qrError) {
-      console.error("[v0] QR Upload: Error generating QR number:", qrError)
+      console.error("QR Upload: Error generating QR number:", qrError)
       return NextResponse.json({ error: "Failed to generate QR number" }, { status: 500 })
     }
 
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (soError) {
-      console.error("[v0] QR Upload: Error updating SO:", soError)
+      console.error("QR Upload: Error updating SO:", soError)
       return NextResponse.json({ error: soError.message }, { status: 500 })
     }
 
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       message: "Quotation request uploaded successfully",
     })
   } catch (error) {
-    console.error("[v0] QR Upload: Error:", error)
+    console.error("QR Upload: Error:", error)
     return NextResponse.json({ error: "Failed to upload quotation request" }, { status: 500 })
   }
 }

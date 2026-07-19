@@ -28,7 +28,7 @@ export async function GET() {
     })
 
     if (!result || !Array.isArray(result)) {
-      console.error("[v0] Accounts Payable: Invalid result format", result)
+      console.error("Accounts Payable: Invalid result format", result)
       return NextResponse.json([], { status: 200 })
     }
 
@@ -147,12 +147,12 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.from("accounts_payable").insert(dbData).select().single()
 
     if (error) {
-      console.error("[v0] AP POST: Error", error.message)
+      console.error("AP POST: Error", error.message)
       throw error
     }
 
     if (!data || !data.invoice_id) {
-      console.error("[v0] AP POST: Invoice created but invoice_id is missing", data)
+      console.error("AP POST: Invoice created but invoice_id is missing", data)
       throw new Error("Invoice created but invoice_id was not returned")
     }
 
@@ -223,7 +223,7 @@ export async function PUT(request: Request) {
       .single()
 
     if (error) {
-      console.error("[v0] AP PUT: Error", error.message)
+      console.error("AP PUT: Error", error.message)
       throw error
     }
 

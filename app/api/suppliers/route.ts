@@ -40,7 +40,7 @@ export async function GET() {
 
     return NextResponse.json(transformed)
   } catch (error) {
-    console.error("[v0] Error fetching suppliers:", error)
+    console.error("Error fetching suppliers:", error)
     return NextResponse.json({ error: "Failed to fetch suppliers" }, { status: 500 })
   }
 }
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(transformed)
   } catch (error) {
-    console.error("[v0] Error creating supplier:", error)
+    console.error("Error creating supplier:", error)
     return NextResponse.json({ error: "Failed to create supplier" }, { status: 500 })
   }
 }
@@ -133,7 +133,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(transformed)
   } catch (error) {
-    console.error("[v0] Error updating supplier:", error)
+    console.error("Error updating supplier:", error)
     return NextResponse.json({ error: "Failed to update supplier" }, { status: 500 })
   }
 }

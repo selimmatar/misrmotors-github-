@@ -50,13 +50,13 @@ export async function GET(request: Request) {
       .order("effective_date", { ascending: false })
     
     if (error) {
-      console.error("[v0] Error fetching compensation:", error)
+      console.error("Error fetching compensation:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data || [])
   } catch (error) {
-    console.error("[v0] Error in compensation API:", error)
+    console.error("Error in compensation API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       .eq("is_active", true)
     
     if (deactivateError) {
-      console.error("[v0] Error deactivating previous compensation:", deactivateError)
+      console.error("Error deactivating previous compensation:", deactivateError)
     }
     
     // Create new compensation record
@@ -118,13 +118,13 @@ export async function POST(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error creating compensation:", error)
+      console.error("Error creating compensation:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in create compensation API:", error)
+    console.error("Error in create compensation API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -157,13 +157,13 @@ export async function PUT(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error updating compensation:", error)
+      console.error("Error updating compensation:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in update compensation API:", error)
+    console.error("Error in update compensation API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

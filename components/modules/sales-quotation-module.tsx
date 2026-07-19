@@ -227,7 +227,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       setShowCustomerForm(false)
       alert("Customer created successfully!")
     } catch (error) {
-      console.error("[v0] Error creating customer:", error)
+      console.error("Error creating customer:", error)
       alert("Failed to create customer. Please try again.")
     }
   }
@@ -349,7 +349,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         setItems(prev => [...prev, ...newItems])
         alert(`Successfully imported ${newItems.length} items:\n- ${inventoryItems} matched from inventory\n- ${outsourcedItems} outsourced items`)
       } catch (error) {
-        console.error("[v0] Excel parse error:", error)
+        console.error("Excel parse error:", error)
         alert("Failed to parse Excel file. Please ensure it's a valid .xlsx or .xls file.")
       }
     }
@@ -509,7 +509,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       const queryString = `data=${encodeURIComponent(JSON.stringify(quotationData))}&qn=${quotation.quotation_number}`
       window.open(`/api/quotations/generate?${queryString}`, "_blank")
     } catch (error) {
-      console.error("[v0] Save quotation error:", error)
+      console.error("Save quotation error:", error)
       alert("Failed to save quotation. Please try again.")
     } finally {
       setIsCreatingQuotation(false)

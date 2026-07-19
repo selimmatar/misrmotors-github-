@@ -53,7 +53,7 @@ export function SalesMaintenanceReviewTab({ userRole }: { userRole: string }) {
         setWorkOrders(ordersWithReports)
       }
     } catch (error) {
-      console.error("[v0] Error fetching pending reviews:", error)
+      console.error("Error fetching pending reviews:", error)
     } finally {
       setLoading(false)
     }
@@ -87,7 +87,7 @@ export function SalesMaintenanceReviewTab({ userRole }: { userRole: string }) {
       setShowReviewDialog(false)
       fetchPendingReviews()
     } catch (error) {
-      console.error("[v0] Error approving report:", error)
+      console.error("Error approving report:", error)
       alert("Failed to approve report")
     } finally {
       setProcessing(false)
@@ -116,7 +116,7 @@ export function SalesMaintenanceReviewTab({ userRole }: { userRole: string }) {
       setReviewNotes("")
       fetchPendingReviews()
     } catch (error) {
-      console.error("[v0] Error rejecting report:", error)
+      console.error("Error rejecting report:", error)
       alert("Failed to reject report")
     } finally {
       setProcessing(false)

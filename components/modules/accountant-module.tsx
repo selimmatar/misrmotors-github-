@@ -50,7 +50,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
         const response = await fetch("/api/customer-payments")
         
         if (!response.ok) {
-          console.error("[v0] Customer payments fetch failed:", response.status, response.statusText)
+          console.error("Customer payments fetch failed:", response.status, response.statusText)
           return
         }
         
@@ -66,7 +66,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
 
         setCustomerPaymentsByCustomer(paymentsByCustomer)
       } catch (error) {
-        console.error("[v0] Error fetching customer payments:", error)
+        console.error("Error fetching customer payments:", error)
       }
     }
 
@@ -144,11 +144,11 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("[v0] Failed to add balance entry:", errorText)
+        console.error("Failed to add balance entry:", errorText)
       } else {
       }
     } catch (error) {
-      console.error("[v0] Error adding balance entry:", error)
+      console.error("Error adding balance entry:", error)
     }
   }
 
@@ -243,7 +243,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
 
       if (!response.ok) {
         const errorData = await response.json()
-        console.error("[v0] Upload failed with status:", response.status, "Error:", errorData)
+        console.error("Upload failed with status:", response.status, "Error:", errorData)
         throw new Error(errorData.error || `Failed to upload file (${response.status})`)
       }
 
@@ -269,7 +269,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
       // Force a page refresh to ensure UI shows updated data
       window.location.reload()
     } catch (error: any) {
-      console.error("[v0] Error uploading file:", error)
+      console.error("Error uploading file:", error)
       const errorMessage = error?.message || "Failed to upload invoice. Please try again."
       alert(`Upload failed: ${errorMessage}`)
     } finally {

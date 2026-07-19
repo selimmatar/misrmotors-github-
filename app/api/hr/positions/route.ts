@@ -26,13 +26,13 @@ export async function GET(request: Request) {
     const { data, error } = await query
     
     if (error) {
-      console.error("[v0] Error fetching positions:", error)
+      console.error("Error fetching positions:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data || [])
   } catch (error) {
-    console.error("[v0] Error in positions API:", error)
+    console.error("Error in positions API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -64,13 +64,13 @@ export async function POST(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error creating position:", error)
+      console.error("Error creating position:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in create position API:", error)
+    console.error("Error in create position API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const { data: schedules, error } = await withRetry(() => query)
 
     if (error) {
-      console.error("[v0] Payment Schedules GET error:", error.message)
+      console.error("Payment Schedules GET error:", error.message)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(mappedSchedules)
   } catch (error) {
-    console.error("[v0] Payment Schedules GET exception:", error)
+    console.error("Payment Schedules GET exception:", error)
     return NextResponse.json({ error: "Failed to fetch payment schedules" }, { status: 500 })
   }
 }
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     const entityType = invoiceId ? "invoice_id" : soId ? "so_id" : "po_id"
 
     if (!entityId || isNaN(entityId)) {
-      console.error("[v0] Payment Schedules POST: Invalid or missing entity ID", { invoiceId, soId, poId })
+      console.error("Payment Schedules POST: Invalid or missing entity ID", { invoiceId, soId, poId })
       return NextResponse.json({ error: "Valid invoice_id, so_id, or po_id is required" }, { status: 400 })
     }
 
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       )
 
       if (checkError) {
-        console.error("[v0] Payment Schedules - Error checking existing schedules:", checkError.message)
+        console.error("Payment Schedules - Error checking existing schedules:", checkError.message)
       } else if (existing && existing.length > 0) {
         console.log(
           `[v0] Payment Schedules - Schedules already exist for ${entityType}=${entityId}, skipping creation (idempotent)`,
@@ -248,7 +248,7 @@ export async function POST(request: NextRequest) {
 
     const invalidSchedules = schedules.filter((s) => !s.invoice_id && !s.so_id && !s.po_id)
     if (invalidSchedules.length > 0) {
-      console.error("[v0] Payment Schedules POST: Found schedules with all IDs null", invalidSchedules)
+      console.error("Payment Schedules POST: Found schedules with all IDs null", invalidSchedules)
       return NextResponse.json(
         { error: "All schedules must have at least one of: invoice_id, so_id, or po_id" },
         { status: 400 },
@@ -263,7 +263,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await withRetry(() => supabase.from("payment_schedules").insert(schedules).select())
 
     if (error) {
-      console.error("[v0] Payment Schedules POST error:", error.message)
+      console.error("Payment Schedules POST error:", error.message)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
       schedules: data,
     })
   } catch (error) {
-    console.error("[v0] Payment Schedules POST exception:", error)
+    console.error("Payment Schedules POST exception:", error)
     return NextResponse.json({ error: "Failed to create payment schedules" }, { status: 500 })
   }
 }
@@ -373,7 +373,7 @@ export async function PUT(request: NextRequest) {
         )
 
         if (updateError) {
-          console.error("[v0] Payment Schedule update error:", updateError.message)
+          console.error("Payment Schedule update error:", updateError.message)
           await completeIdempotency("payment", idempotencyKey, false, updateError.message)
           return NextResponse.json({ error: updateError.message }, { status: 500 })
         }
@@ -454,7 +454,7 @@ export async function PUT(request: NextRequest) {
       const { error } = await withRetry(() => query)
 
       if (error) {
-        console.error("[v0] Payment Schedules ACTIVATE error:", error.message)
+        console.error("Payment Schedules ACTIVATE error:", error.message)
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
 
@@ -478,7 +478,7 @@ export async function PUT(request: NextRequest) {
       const { error } = await withRetry(() => query)
 
       if (error) {
-        console.error("[v0] Payment Schedules LINK error:", error.message)
+        console.error("Payment Schedules LINK error:", error.message)
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
 
@@ -512,7 +512,7 @@ export async function PUT(request: NextRequest) {
       )
 
       if (updateError) {
-        console.error("[v0] Payment Schedule invoice file update error:", updateError.message)
+        console.error("Payment Schedule invoice file update error:", updateError.message)
         return NextResponse.json({ error: updateError.message }, { status: 500 })
       }
 
@@ -543,7 +543,7 @@ export async function PUT(request: NextRequest) {
     )
 
     if (updateError) {
-      console.error("[v0] Payment Schedule update error:", updateError.message)
+      console.error("Payment Schedule update error:", updateError.message)
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
@@ -600,7 +600,7 @@ export async function PUT(request: NextRequest) {
       schedule: updated,
     })
   } catch (error) {
-    console.error("[v0] Payment Schedule PUT exception:", error)
+    console.error("Payment Schedule PUT exception:", error)
     return NextResponse.json({ error: "Failed to update payment schedule" }, { status: 500 })
   }
 }
@@ -628,13 +628,13 @@ export async function DELETE(request: NextRequest) {
     const { error } = await withRetry(() => query)
 
     if (error) {
-      console.error("[v0] Payment Schedules DELETE error:", error.message)
+      console.error("Payment Schedules DELETE error:", error.message)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ message: "Inactive schedules deleted successfully" })
   } catch (error) {
-    console.error("[v0] Payment Schedules DELETE exception:", error)
+    console.error("Payment Schedules DELETE exception:", error)
     return NextResponse.json({ error: "Failed to delete payment schedules" }, { status: 500 })
   }
 }

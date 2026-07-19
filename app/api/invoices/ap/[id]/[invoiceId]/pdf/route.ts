@@ -288,7 +288,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
       headers: { "Content-Type": "text/html; charset=utf-8" },
     })
   } catch (err: any) {
-    console.error("[v0] AP PDF error:", err)
+    console.error("AP PDF error:", err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

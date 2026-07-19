@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       .eq("inventory_id", inventoryId)
 
     if (deleteError) {
-      console.error("[v0] Error deleting inventory:", deleteError)
+      console.error("Error deleting inventory:", deleteError)
       return NextResponse.json(
         { message: "Failed to remove item from inventory" },
         { status: 400 }

@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       _dateRange: kpis.dateRange,
     })
   } catch (error) {
-    console.error("[v0] Error fetching KPIs:", error)
+    console.error("Error fetching KPIs:", error)
     return NextResponse.json({ error: "Failed to fetch KPIs" }, { status: 500 })
   }
 }

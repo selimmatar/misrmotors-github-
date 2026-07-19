@@ -24,7 +24,7 @@ export async function GET() {
       .order("created_at", { ascending: false })
 
     if (usersError) {
-      console.error("[v0] Error fetching users:", usersError)
+      console.error("Error fetching users:", usersError)
       return NextResponse.json({ error: usersError.message }, { status: 500 })
     }
 
@@ -32,7 +32,7 @@ export async function GET() {
     const { data: authData, error: authUsersError } = await supabase.auth.admin.listUsers()
 
     if (authUsersError) {
-      console.error("[v0] Error fetching auth users:", authUsersError)
+      console.error("Error fetching auth users:", authUsersError)
       // Return users without email if we can't get auth data
       return NextResponse.json(users || [])
     }
@@ -48,7 +48,7 @@ export async function GET() {
 
     return NextResponse.json(usersWithEmail || [])
   } catch (error) {
-    console.error("[v0] Error in users API:", error)
+    console.error("Error in users API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -95,13 +95,13 @@ export async function PUT(request: Request) {
     const { error: updateError } = await supabase.from("users").update({ role }).eq("id", userId)
 
     if (updateError) {
-      console.error("[v0] Error updating user role:", updateError)
+      console.error("Error updating user role:", updateError)
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, message: "User role updated successfully" })
   } catch (error) {
-    console.error("[v0] Error in update user API:", error)
+    console.error("Error in update user API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -136,13 +136,13 @@ export async function DELETE(request: Request) {
     const { error: deleteError } = await supabase.auth.admin.deleteUser(userId)
 
     if (deleteError) {
-      console.error("[v0] Error deleting user:", deleteError)
+      console.error("Error deleting user:", deleteError)
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, message: "User deleted successfully" })
   } catch (error) {
-    console.error("[v0] Error in delete user API:", error)
+    console.error("Error in delete user API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

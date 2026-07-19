@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     
     // If it starts with "INV-CUST-", extract the timestamp and find the actual invoice_id
     if (invoiceIdStr.startsWith("INV-CUST-")) {
-      console.error("[v0] ERROR: Received invoice NUMBER instead of invoice ID:", invoiceIdStr)
+      console.error("ERROR: Received invoice NUMBER instead of invoice ID:", invoiceIdStr)
       return NextResponse.json({ 
         error: "Invalid invoiceId: expected database invoice_id (integer), received invoice number string" 
       }, { status: 400 })
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     invoiceIdNumeric = Number.parseInt(invoiceIdStr)
     
     if (isNaN(invoiceIdNumeric)) {
-      console.error("[v0] ERROR: Could not parse invoiceId to integer:", body.invoiceId)
+      console.error("ERROR: Could not parse invoiceId to integer:", body.invoiceId)
       return NextResponse.json({ error: "Invalid invoiceId format" }, { status: 400 })
     }
 
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.from("customer_payments").insert(dbData).select().single()
 
     if (error) {
-      console.error("[v0] Customer Payments API - Database error:", error)
+      console.error("Customer Payments API - Database error:", error)
       throw error
     }
 

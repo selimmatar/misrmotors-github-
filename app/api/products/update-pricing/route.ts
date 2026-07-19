@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         .single()
 
       if (error) {
-        console.error("[v0] Product Pricing Update: Error updating product", productId, error)
+        console.error("Product Pricing Update: Error updating product", productId, error)
         results.push({ productId, success: false, error: error.message })
       } else {
         results.push({ productId, success: true, data })
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ results })
   } catch (error) {
-    console.error("[v0] Product Pricing Update: Error", error)
+    console.error("Product Pricing Update: Error", error)
     return NextResponse.json({ error: "Failed to update product pricing" }, { status: 500 })
   }
 }

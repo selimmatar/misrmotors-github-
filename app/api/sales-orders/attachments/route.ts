@@ -24,13 +24,13 @@ export async function GET(request: NextRequest) {
       .order("uploaded_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] SO Attachments GET: Error", error)
+      console.error("SO Attachments GET: Error", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json(data || [])
   } catch (error: any) {
-    console.error("[v0] SO Attachments GET: Error", error)
+    console.error("SO Attachments GET: Error", error)
     return NextResponse.json({ error: "Failed to fetch attachments" }, { status: 500 })
   }
 }
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (dbError) {
-      console.error("[v0] SO Attachments POST: Database error:", dbError)
+      console.error("SO Attachments POST: Database error:", dbError)
       return NextResponse.json({ error: dbError.message }, { status: 500 })
     }
 
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       message: "PO Request uploaded successfully",
     })
   } catch (error: any) {
-    console.error("[v0] SO Attachments POST: Error:", error)
+    console.error("SO Attachments POST: Error:", error)
     return NextResponse.json({ error: "Failed to upload attachment" }, { status: 500 })
   }
 }
@@ -124,13 +124,13 @@ export async function DELETE(request: NextRequest) {
       .eq("id", attachmentId)
 
     if (error) {
-      console.error("[v0] SO Attachments DELETE: Error", error)
+      console.error("SO Attachments DELETE: Error", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ message: "Attachment deleted successfully" })
   } catch (error: any) {
-    console.error("[v0] SO Attachments DELETE: Error:", error)
+    console.error("SO Attachments DELETE: Error:", error)
     return NextResponse.json({ error: "Failed to delete attachment" }, { status: 500 })
   }
 }

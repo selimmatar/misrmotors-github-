@@ -132,7 +132,7 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
         }
       }
     } catch (error: any) {
-      console.error("[v0] AI assistant error:", error)
+      console.error("AI assistant error:", error)
       setMessages((prev) => [
         ...prev,
         {

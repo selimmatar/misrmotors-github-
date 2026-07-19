@@ -62,7 +62,7 @@ export function MaintenanceMaterialsSelector({
         setProducts(data)
       }
     } catch (error) {
-      console.error("[v0] Error fetching products:", error)
+      console.error("Error fetching products:", error)
     } finally {
       setLoading(false)
     }

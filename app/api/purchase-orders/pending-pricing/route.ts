@@ -16,7 +16,7 @@ export async function GET() {
       .order("cost_finalized_at", { ascending: false })
 
     if (posError) {
-      console.error("[v0] Pending Pricing Review: Error fetching POs", posError)
+      console.error("Pending Pricing Review: Error fetching POs", posError)
       throw posError
     }
 
@@ -34,7 +34,7 @@ export async function GET() {
       .in("po_id", poIds)
 
     if (itemsError) {
-      console.error("[v0] Pending Pricing Review: Error fetching items", itemsError)
+      console.error("Pending Pricing Review: Error fetching items", itemsError)
       throw itemsError
     }
 
@@ -87,7 +87,7 @@ export async function GET() {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("[v0] Pending Pricing Review: Error", error)
+    console.error("Pending Pricing Review: Error", error)
     return NextResponse.json({ error: "Failed to fetch pending pricing review" }, { status: 500 })
   }
 }

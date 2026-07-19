@@ -82,7 +82,7 @@ export function PaymentScheduleModule() {
             }
           }
         } catch (error) {
-          console.error("[v0] Error fetching schedules for SO", soId, error)
+          console.error("Error fetching schedules for SO", soId, error)
         }
       }
       

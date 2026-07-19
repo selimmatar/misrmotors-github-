@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(data || [])
   } catch (error) {
-    console.error("[v0] Error fetching inventory batches:", error)
+    console.error("Error fetching inventory batches:", error)
     return NextResponse.json({ error: "Failed to fetch inventory batches" }, { status: 500 })
   }
 }
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(data)
   } catch (error: any) {
-    console.error("[v0] Error creating inventory batch:", error)
+    console.error("Error creating inventory batch:", error)
     return NextResponse.json({ error: error.message || "Failed to create inventory batch" }, { status: 500 })
   }
 }

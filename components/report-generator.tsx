@@ -159,10 +159,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
               order.paymentTerms?.toLowerCase() === "installments" ||
               (order.installments && Number(order.installments) > 1),
           )
-            total: orders.length,
-            filtered: filtered.length,
-            sample: filtered[0],
-          })
           return filtered
         },
       },
@@ -790,12 +786,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
     dateRange?: { startDate?: string; endDate?: string },
   ) => {
     try {
-        title,
-        groupingLevel: groupByFields.filter((f) => f !== "none").length,
-        dataType: typeof processedData,
-        isArray: Array.isArray(processedData),
-        dateRange,
-      })
 
       const groupingLevel = groupByFields.filter((f) => f !== "none").length
       let dataToRender = processedData
@@ -803,22 +793,16 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
       // The processedData is already grouped if groupingLevel > 0,
       // so we only need to check if it's an array for renderTable
       if (groupingLevel > 0 && typeof processedData !== "object") {
-        console.warn("[v0] Expected object for grouped data, but received:", typeof processedData)
+        console.warn("Expected object for grouped data, but received:", typeof processedData)
         dataToRender = [] // Fallback to empty array if structure is unexpected
       } else if (Array.isArray(processedData) && groupingLevel > 0) {
-        console.warn("[v0] Expected object for grouped data, but received array. Treating as flat data.")
+        console.warn("Expected object for grouped data, but received array. Treating as flat data.")
         dataToRender = processedData
       }
 
       const renderTable = (items: any[], showTotals = false, groupedFields: string[] = []) => {
         try {
           const fieldsToShow = selectedFieldsConfig.filter((field) => !groupedFields.includes(field.key))
-
-            itemCount: items?.length,
-            firstItem: items?.[0],
-            fieldsToShow: fieldsToShow.map((f) => ({ key: f.key, label: f.label })),
-            groupedFields,
-          })
 
           if (!Array.isArray(items) || items.length === 0) {
             return '<div class="no-data">No data available</div>'
@@ -956,7 +940,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
         </table>
       `
         } catch (error) {
-          console.error("[v0] Error in renderTable:", error)
+          console.error("Error in renderTable:", error)
           return '<div class="no-data">Error rendering table</div>'
         }
       }
@@ -991,7 +975,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
               }
               return currentContent
             } catch (error) {
-              console.error("[v0] Error in renderLevel:", error)
+              console.error("Error in renderLevel:", error)
               return '<div class="no-data">Error rendering grouped content</div>'
             }
           }
@@ -1006,7 +990,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
 
           return content
         } catch (error) {
-          console.error("[v0] Error in renderContent:", error)
+          console.error("Error in renderContent:", error)
           return '<div class="no-data">Error rendering report content</div>'
         }
       }
@@ -1145,7 +1129,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
 
       setReportPreview({ open: true, html: htmlContent, title: title })
     } catch (error) {
-      console.error("[v0] Error in generatePDF:", error)
+      console.error("Error in generatePDF:", error)
       alert(`Failed to generate PDF report: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
@@ -1223,20 +1207,12 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
           if (fromDate) params.set("startDate", fromDate)
           if (toDate) params.set("endDate", toDate)
 
-            view,
-            startDate: fromDate,
-            endDate: toDate,
-            url: `/api/lost-sales?${params.toString()}`,
-          })
+
 
           const response = await fetch(`/api/lost-sales?${params.toString()}`)
           if (!response.ok) throw new Error("Failed to fetch lost sales data")
 
           const rawData = await response.json()
-
-            count: Array.isArray(rawData) ? rawData.length : "not an array",
-            firstItem: Array.isArray(rawData) && rawData.length > 0 ? rawData[0] : null,
-          })
 
           reportData = transformDatabaseData(rawData, "lost-sales")
 
@@ -1268,7 +1244,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
             downloadCSV(reportData, title)
           }
         } catch (error) {
-          console.error("[v0] Error generating lost sales report:", error)
+          console.error("Error generating lost sales report:", error)
           alert("Failed to generate lost sales report. Please try again.")
         } finally {
           setGenerating(false)
@@ -1298,10 +1274,6 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
             })
 
             if (!customer && order.customerId) {
-                orderId: order.soId,
-                customerId: order.customerId,
-                availableCustomerIds: customersData.map((c: any) => c.id || c.customer_id).slice(0, 5),
-              })
             }
 
             return {
@@ -1533,7 +1505,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
       setGroupBy2("none")
       setGroupBy3("none")
     } catch (error) {
-      console.error("[v0] Report generation error:", error)
+      console.error("Report generation error:", error)
       alert("Error generating report. Please try again.")
     } finally {
       setGenerating(false)

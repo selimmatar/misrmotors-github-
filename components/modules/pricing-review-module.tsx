@@ -59,7 +59,7 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
       })
       setPricingData(initial)
     } catch (error) {
-      console.error("[v0] Error fetching pending pricing:", error)
+      console.error("Error fetching pending pricing:", error)
       setProducts([])
     } finally {
       setLoading(false)
@@ -111,7 +111,7 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
         throw new Error("Failed to update pricing")
       }
     } catch (error) {
-      console.error("[v0] Error saving pricing:", error)
+      console.error("Error saving pricing:", error)
       alert(t("pricing.error"))
     } finally {
       setSaving(false)

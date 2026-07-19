@@ -111,12 +111,6 @@ export function WarehouseDeliveryModule() {
         const productId = item.productId || item.product_id
         const isOutsourced = !productId || productId === "" || productId === "null"
         
-          isOutsourced,
-          productId,
-          outsourcedName: item.outsourced_name || item.outsourcedName,
-          supplierName: item.supplier_name || item.supplierName
-        })
-        
         // For outsourced items, use supplier info; for regular items, use warehouse info
         let availableWarehouses: WarehouseAvailability[] = []
         let defaultWh = null

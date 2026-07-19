@@ -41,13 +41,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (uploadError) {
-      console.error("[v0] Upload record error:", uploadError)
+      console.error("Upload record error:", uploadError)
       return NextResponse.json({ error: "Failed to create upload record" }, { status: 500 })
     }
 
     return NextResponse.json({ upload }, { status: 201 })
   } catch (error) {
-    console.error("[v0] Supplier quote upload error:", error)
+    console.error("Supplier quote upload error:", error)
     return NextResponse.json({ error: "Failed to upload supplier quote" }, { status: 500 })
   }
 }
@@ -69,13 +69,13 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] Fetch uploads error:", error)
+      console.error("Fetch uploads error:", error)
       return NextResponse.json({ error: "Failed to fetch uploads" }, { status: 500 })
     }
 
     return NextResponse.json({ uploads })
   } catch (error) {
-    console.error("[v0] Supplier quote GET error:", error)
+    console.error("Supplier quote GET error:", error)
     return NextResponse.json({ error: "Failed to fetch supplier quotes" }, { status: 500 })
   }
 }

@@ -23,16 +23,11 @@ export async function POST(request: Request) {
       .single()
 
     if (transferError || !transfer) {
-      console.error("[v0] Transfer not found:", transferError)
+      console.error("Transfer not found:", transferError)
       return NextResponse.json({ error: "Transfer not found" }, { status: 404 })
     }
 
-      id: transfer.transfer_id,
-      status: transfer.status,
-      itemsCount: transfer.warehouse_transfer_items?.length || 0,
-      fromWarehouse: transfer.source_warehouse_id,
-      toWarehouse: transfer.destination_warehouse_id
-    })
+
 
     if (transfer.status !== "pending" && transfer.status !== "in_transit") {
       return NextResponse.json(
@@ -45,14 +40,6 @@ export async function POST(request: Request) {
     for (const item of transfer.warehouse_transfer_items) {
       const transferQuantity = item.quantity_sent || item.quantity_requested || 0
       const isOutsourced = item.is_outsourced || !item.product_id
-
-        sourceInventoryId: item.source_inventory_id,
-        productId: item.product_id,
-        isOutsourced,
-        quantity: transferQuantity,
-        fromWarehouse: transfer.source_warehouse_id,
-        toWarehouse: transfer.destination_warehouse_id,
-      })
 
       // 1) Find the source inventory row. Prefer source_inventory_id; fall back to product+warehouse.
       let sourceInv: any = null
@@ -88,7 +75,7 @@ export async function POST(request: Request) {
         .eq("inventory_id", sourceInv.inventory_id)
 
       if (deductError) {
-        console.error("[v0] Error deducting from source:", deductError)
+        console.error("Error deducting from source:", deductError)
         return NextResponse.json({ error: `Failed to deduct from source: ${deductError.message}` }, { status: 500 })
       }
 
@@ -122,7 +109,7 @@ export async function POST(request: Request) {
           .eq("inventory_id", destInv.inventory_id)
 
         if (destUpdateError) {
-          console.error("[v0] Error updating destination inventory:", destUpdateError)
+          console.error("Error updating destination inventory:", destUpdateError)
           return NextResponse.json({ error: `Failed to add to destination: ${destUpdateError.message}` }, { status: 500 })
         }
       } else {
@@ -145,7 +132,7 @@ export async function POST(request: Request) {
 
         const { error: insertError } = await supabase.from("inventory").insert(insertPayload)
         if (insertError) {
-          console.error("[v0] Error inserting destination inventory:", insertError)
+          console.error("Error inserting destination inventory:", insertError)
           return NextResponse.json({ error: `Failed to create destination inventory: ${insertError.message}` }, { status: 500 })
         }
       }
@@ -189,7 +176,7 @@ export async function POST(request: Request) {
       .eq("transfer_id", transferId)
 
     if (updateError) {
-      console.error("[v0] Error updating transfer status:", updateError)
+      console.error("Error updating transfer status:", updateError)
       return NextResponse.json({ error: "Failed to complete transfer" }, { status: 500 })
     }
 
@@ -199,7 +186,7 @@ export async function POST(request: Request) {
       message: "Transfer completed successfully",
     })
   } catch (error) {
-    console.error("[v0] Error completing transfer:", error)
+    console.error("Error completing transfer:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     )
 
     if (permitError || !permit) {
-      console.error("[v0] Permit not found:", permitId, permitError)
+      console.error("Permit not found:", permitId, permitError)
       const errorHtml = `
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
         logoDataUrl = `data:image/png;base64,${base64}`
       }
     } catch (e) {
-      console.error("[v0] Failed to load logo:", e)
+      console.error("Failed to load logo:", e)
     }
 
     // Fetch permit items
@@ -419,7 +419,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("[v0] Delivery Permit PDF error:", error)
+    console.error("Delivery Permit PDF error:", error)
     return NextResponse.json({ error: "Failed to generate PDF" }, { status: 500 })
   }
 }

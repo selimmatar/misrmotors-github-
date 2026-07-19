@@ -189,7 +189,7 @@ You are powered by Google Gemini.
       })
       return NextResponse.json({ answer: text, content: text })
     } catch (geminiError) {
-      console.warn("[v0] Gemini failed, falling back to GPT-4o:", geminiError)
+      console.warn("Gemini failed, falling back to GPT-4o:", geminiError)
       // Fallback to OpenAI if Gemini fails
       const { text } = await generateText({
         model: "openai/gpt-4o",
@@ -199,7 +199,7 @@ You are powered by Google Gemini.
       return NextResponse.json({ answer: text, content: text })
     }
   } catch (error: any) {
-    console.error("[v0] CEO Assistant error:", error)
+    console.error("CEO Assistant error:", error)
     return NextResponse.json({ error: error.message || "Analysis failed" }, { status: 500 })
   }
 }

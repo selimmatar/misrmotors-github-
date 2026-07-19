@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     
     return NextResponse.json({ success: true, received: true })
   } catch (error) {
-    console.error("[v0] Webhook trigger error:", error)
+    console.error("Webhook trigger error:", error)
     return NextResponse.json({ error: "Failed to process webhook" }, { status: 500 })
   }
 }

@@ -383,7 +383,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
       if (!apInvoiceResponse.ok) {
         const errorData = await apInvoiceResponse.json()
-        console.error("[v0] Failed to create AP invoice:", errorData)
+        console.error("Failed to create AP invoice:", errorData)
         throw new Error(errorData.error || "Failed to create supplier invoice")
       }
 
@@ -392,7 +392,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       const invoiceId = newInvoice.invoice_id || newInvoice.invoiceId
 
       if (!invoiceId) {
-        console.error("[v0] AP Invoice created but invoice_id is missing:", newInvoice)
+        console.error("AP Invoice created but invoice_id is missing:", newInvoice)
         throw new Error("Invoice created but invoice_id was not returned")
       }
 
@@ -432,10 +432,10 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             }
           } else {
             const errorText = await scheduleResponse.text()
-            console.error("[v0] Error creating payment schedules:", errorText)
+            console.error("Error creating payment schedules:", errorText)
           }
         } catch (scheduleError) {
-          console.error("[v0] Exception creating payment schedules:", scheduleError)
+          console.error("Exception creating payment schedules:", scheduleError)
         }
       } else if (savedScheduleMode === "MANUAL" && savedScheduleEntries.length > 0) {
         // Manual schedule handling remains unchanged
@@ -478,14 +478,6 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       return
     }
 
-      poNumber: order.poNumber,
-      poType: order.poType,
-      paymentType: order.paymentType,
-      paymentTerms: order.paymentTerms,
-      downPaymentAmount: order.downPaymentAmount,
-      remainingAmount: order.remainingAmount,
-    })
-
     try {
       await updatePurchaseOrder({
         ...order,
@@ -498,7 +490,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
       alert(`Purchase order ${order.poNumber} has been approved and added to Accounts Payable`)
     } catch (error) {
-      console.error("[v0] Error approving PO:", error)
+      console.error("Error approving PO:", error)
       alert("Failed to approve purchase order. Please try again.")
     }
   }
@@ -1020,7 +1012,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
       alert(`Purchase order ${order.poNumber} has been rejected`)
     } catch (error) {
-      console.error("[v0] Error rejecting PO:", error)
+      console.error("Error rejecting PO:", error)
       alert("Failed to reject purchase order. Please try again.")
     }
   }
@@ -1057,7 +1049,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         alert(`Failed to finalize cost: ${error.error}`)
       }
     } catch (error) {
-      console.error("[v0] Error finalizing cost:", error)
+      console.error("Error finalizing cost:", error)
       alert("Failed to finalize cost. Please try again.")
     } finally {
       setFinalizingCost(false)

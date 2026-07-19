@@ -98,7 +98,7 @@ export async function POST(request: Request) {
     const { data: existing, error: checkError } = await query.maybeSingle()
 
     if (checkError) {
-      console.error("[v0] Inventory POST: Check error", checkError)
+      console.error("Inventory POST: Check error", checkError)
       throw checkError
     }
 
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error("[v0] Inventory POST: Error", error)
+      console.error("Inventory POST: Error", error)
       throw error
     }
 
@@ -160,7 +160,7 @@ export async function PUT(request: Request) {
       const { data: existing, error: fetchError } = await fetchQuery.maybeSingle()
 
       if (fetchError) {
-        console.error("[v0] Inventory PUT: Error fetching existing quantity", fetchError)
+        console.error("Inventory PUT: Error fetching existing quantity", fetchError)
         throw fetchError
       }
 
@@ -199,7 +199,7 @@ export async function PUT(request: Request) {
       const { data, error } = await updateQuery.select().single()
 
       if (error) {
-        console.error("[v0] Inventory PUT: Error", error)
+        console.error("Inventory PUT: Error", error)
         throw error
       }
 
@@ -228,7 +228,7 @@ export async function PUT(request: Request) {
     const { data, error } = await updateQuery.select().single()
 
     if (error) {
-      console.error("[v0] Inventory PUT: Error", error)
+      console.error("Inventory PUT: Error", error)
       throw error
     }
 

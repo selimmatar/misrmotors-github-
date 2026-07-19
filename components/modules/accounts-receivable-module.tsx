@@ -103,7 +103,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         setAvailableSOs(filteredSOs)
       }
     } catch (error) {
-      console.error("[v0] AR - Error fetching SOs:", error)
+      console.error("AR - Error fetching SOs:", error)
     }
   }
 
@@ -120,11 +120,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         const dpData = await dpResponse.json()
         setSODeliveryPermits(dpData || [])
       } else {
-        console.error("[v0] AR - Failed to fetch DPs:", await dpResponse.text())
+        console.error("AR - Failed to fetch DPs:", await dpResponse.text())
         setSODeliveryPermits([])
       }
     } catch (error) {
-      console.error("[v0] AR - Error fetching SO details:", error)
+      console.error("AR - Error fetching SO details:", error)
       setSODeliveryPermits([])
     } finally {
       setIsLoadingSODetails(false)
@@ -139,7 +139,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         setAvailableDPs(data)
       }
     } catch (error) {
-      console.error("[v0] AR - Error fetching DPs:", error)
+      console.error("AR - Error fetching DPs:", error)
     }
   }
 
@@ -153,10 +153,10 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         // For now, let's assume loadData does this
         await loadData()
       } else {
-        console.error("[v0] AR - Error fetching invoices:", response.statusText)
+        console.error("AR - Error fetching invoices:", response.statusText)
       }
     } catch (error) {
-      console.error("[v0] AR - Error fetching invoices:", error)
+      console.error("AR - Error fetching invoices:", error)
     }
   }
 
@@ -180,7 +180,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         alert(error.error || "Failed to create invoice")
       }
     } catch (error) {
-      console.error("[v0] AR - Error creating invoice from SO:", error)
+      console.error("AR - Error creating invoice from SO:", error)
       alert(t("message.error"))
     }
   }
@@ -228,7 +228,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("[v0] Invoice creation failed. Status:", response.status, "Response:", errorText)
+        console.error("Invoice creation failed. Status:", response.status, "Response:", errorText)
 
         let errorMessage = "Failed to create invoice"
         try {
@@ -248,7 +248,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       setSelectedDPs([])
       await loadData()
     } catch (error) {
-      console.error("[v0] Error creating invoice from DPs:", error)
+      console.error("Error creating invoice from DPs:", error)
       alert("Failed to create invoice. Please try again.")
     }
   }
@@ -292,7 +292,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     // The AR GET endpoint transforms invoice_id to id, so use that
     const invoiceId = invoice.id
     if (!invoiceId) {
-      console.error("[v0] AR PDF Error: No invoice ID found", invoice)
+      console.error("AR PDF Error: No invoice ID found", invoice)
       alert(t("error.no-invoice-id"))
       return
     }
@@ -701,7 +701,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
       if (!uploadResponse.ok) {
         const errorData = await uploadResponse.json()
-        console.error("[v0] Upload failed:", errorData)
+        console.error("Upload failed:", errorData)
         throw new Error(errorData.error || 'Failed to upload file')
       }
 
@@ -720,7 +720,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
       if (!response.ok) {
         const errorData = await response.json()
-        console.error("[v0] Invoice update failed:", errorData)
+        console.error("Invoice update failed:", errorData)
         throw new Error(errorData.error || 'Failed to update invoice')
       }
 
@@ -729,7 +729,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       // Refresh invoices
       fetchInvoices()
     } catch (error: any) {
-      console.error("[v0] Error uploading VAT invoice:", error)
+      console.error("Error uploading VAT invoice:", error)
       alert(t("error.upload-failed") || `Failed to upload VAT invoice: ${error.message}`)
     }
   }
@@ -742,7 +742,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
     const invoiceId = selectedInvoiceForSchedule.id
     if (!invoiceId) {
-      console.error("[v0] AR - No invoice ID found")
+      console.error("AR - No invoice ID found")
       alert(t("message.error"))
       return
     }
@@ -832,7 +832,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       setSchedulePaymentFile(null)
       alert(t("message.success"))
     } catch (error) {
-      console.error("[v0] AR - Error recording schedule payment:", error)
+      console.error("AR - Error recording schedule payment:", error)
       alert(t("message.error"))
     } finally {
       setIsUploading(false)
@@ -907,7 +907,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       setPaymentReceiptFile(null)
       alert(t("message.success"))
     } catch (error) {
-      console.error("[v0] AR - Error recording payment:", error)
+      console.error("AR - Error recording payment:", error)
       alert(t("message.error"))
     } finally {
       setIsUploading(false)

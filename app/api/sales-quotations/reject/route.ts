@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (updateError) {
-      console.error("[v0] Reject quotation error:", updateError)
+      console.error("Reject quotation error:", updateError)
       return NextResponse.json({ error: "Failed to reject quotation" }, { status: 500 })
     }
 
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       quotation: updatedQuotation,
     })
   } catch (error) {
-    console.error("[v0] Reject quotation error:", error)
+    console.error("Reject quotation error:", error)
     return NextResponse.json({ error: "Failed to reject quotation" }, { status: 500 })
   }
 }

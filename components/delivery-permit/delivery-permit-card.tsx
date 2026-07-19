@@ -40,14 +40,14 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
 
       if (!response.ok) {
         const errorData = await response.json()
-        console.error("[v0] DeliveryPermitCard - Update failed:", errorData)
+        console.error("DeliveryPermitCard - Update failed:", errorData)
         throw new Error(errorData.error || "Failed to update permit")
       }
 
       const result = await response.json()
       onRefresh?.()
     } catch (error) {
-      console.error("[v0] DeliveryPermitCard - Error updating permit:", error)
+      console.error("DeliveryPermitCard - Error updating permit:", error)
       alert(t("message.error"))
     } finally {
       setIsLoading(false)

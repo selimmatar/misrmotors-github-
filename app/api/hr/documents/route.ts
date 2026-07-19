@@ -21,13 +21,13 @@ export async function GET(request: Request) {
       .order("uploaded_at", { ascending: false })
     
     if (error) {
-      console.error("[v0] Error fetching documents:", error)
+      console.error("Error fetching documents:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data || [])
   } catch (error) {
-    console.error("[v0] Error in documents API:", error)
+    console.error("Error in documents API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -66,13 +66,13 @@ export async function POST(request: Request) {
       .single()
     
     if (error) {
-      console.error("[v0] Error creating document:", error)
+      console.error("Error creating document:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     
     return NextResponse.json(data)
   } catch (error) {
-    console.error("[v0] Error in create document API:", error)
+    console.error("Error in create document API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

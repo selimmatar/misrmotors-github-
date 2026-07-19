@@ -119,7 +119,7 @@ export async function GET() {
       inventoryValue: totalValue,
     })
   } catch (error) {
-    console.error("[v0] Error fetching inventory analytics:", error)
+    console.error("Error fetching inventory analytics:", error)
     return NextResponse.json({ error: "Failed to fetch inventory analytics" }, { status: 500 })
   }
 }

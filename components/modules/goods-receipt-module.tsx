@@ -315,7 +315,7 @@ export function GoodsReceiptModule() {
       await loadData()
       alert(`Goods received successfully! GRN: ${result.receipt.grnNumber}`)
     } catch (error: any) {
-      console.error('[v0] Error creating goods receipt:', error)
+      console.error('Error creating goods receipt:', error)
       alert(`Error: ${error.message}`)
     }
 

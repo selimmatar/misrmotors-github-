@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     
     return NextResponse.json({ url: blob.url })
   } catch (error) {
-    console.error("[v0] Error uploading document:", error)
+    console.error("Error uploading document:", error)
     return NextResponse.json({ 
       error: error instanceof Error ? error.message : "Failed to upload file" 
     }, { status: 500 })

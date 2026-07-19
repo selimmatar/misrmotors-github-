@@ -91,10 +91,6 @@ export function LostSalesModule() {
         }
       }
 
-        detailCount: detailData.length,
-        summaryData: summaryData,
-      })
-
       setDetailedLostSales(detailData)
       setSummary(summaryData)
     } catch (err) {

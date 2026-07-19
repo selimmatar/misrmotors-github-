@@ -34,7 +34,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
         }
       }
     } catch (err) {
-      console.error("[v0] Error fetching report:", err)
+      console.error("Error fetching report:", err)
     } finally {
       setLoadingReport(false)
     }
@@ -51,10 +51,10 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
         const data = await response.json()
         setWorkOrders(data)
       } else {
-        console.error("[v0] Shipping Maintenance Tab: Failed to fetch work orders:", response.status)
+        console.error("Shipping Maintenance Tab: Failed to fetch work orders:", response.status)
       }
     } catch (error) {
-      console.error("[v0] Error fetching work orders:", error)
+      console.error("Error fetching work orders:", error)
     } finally {
       setLoading(false)
     }

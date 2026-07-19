@@ -53,7 +53,7 @@ export async function GET() {
     })
 
     if (!result || !Array.isArray(result)) {
-      console.error("[v0] AR GET: Invalid result format", result)
+      console.error("AR GET: Invalid result format", result)
       return NextResponse.json([], { status: 200 })
     }
 
@@ -94,7 +94,7 @@ export async function GET() {
 
     return NextResponse.json(transformed)
   } catch (error: any) {
-    console.error("[v0] AR GET: Final error after all retries:", error?.message || error)
+    console.error("AR GET: Final error after all retries:", error?.message || error)
     return NextResponse.json([], { status: 200 })
   }
 }
@@ -121,7 +121,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.from("accounts_receivable").insert(dbData).select().single()
 
     if (error) {
-      console.error("[v0] AR POST: Error", error.message)
+      console.error("AR POST: Error", error.message)
       throw error
     }
 
@@ -162,7 +162,7 @@ export async function PUT(request: Request) {
       .single()
 
     if (error) {
-      console.error("[v0] AR PUT: Error", error.message)
+      console.error("AR PUT: Error", error.message)
       throw error
     }
 

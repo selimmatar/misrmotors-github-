@@ -179,7 +179,7 @@ export async function POST(req: Request) {
 
     return Response.json({ insights: salesInsights })
   } catch (error: any) {
-    console.error("[v0] Sales insights error:", error)
+    console.error("Sales insights error:", error)
     return Response.json({ error: "Failed to generate sales insights" }, { status: 500 })
   }
 }

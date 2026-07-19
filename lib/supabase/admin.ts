@@ -8,7 +8,7 @@ export function getAdminClient() {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
     if (!supabaseUrl || !supabaseKey) {
-      console.error("[v0] Missing Supabase credentials:", {
+      console.error("Missing Supabase credentials:", {
         hasUrl: !!supabaseUrl,
         hasKey: !!supabaseKey,
       })
@@ -30,7 +30,7 @@ export function createAdminClient() {
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !supabaseKey) {
-    console.error("[v0] Missing Supabase credentials:", {
+    console.error("Missing Supabase credentials:", {
       hasUrl: !!supabaseUrl,
       hasKey: !!supabaseKey,
     })
