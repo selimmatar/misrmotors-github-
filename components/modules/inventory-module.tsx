@@ -356,7 +356,6 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   }
 
   const handleRemoveReturnedItem = (item: any) => {
-    console.log("[v0] Remove returned item clicked:", item)
     setSelectedReturnedItem(item)
     setRemoveReturnedItemDialog(true)
   }
@@ -364,7 +363,6 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const handleConfirmRemoveReturnedItem = async () => {
     if (!selectedReturnedItem) return
 
-    console.log("[v0] Confirming remove returned item:", selectedReturnedItem)
     setIsRemovingItem(true)
     try {
       const payload = {
@@ -376,19 +374,14 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         soNumber: selectedReturnedItem.soNumber,
         productName: selectedReturnedItem.productName,
       }
-      console.log("[v0] Sending to API:", payload)
       
       const response = await fetch("/api/inventory/remove-returned", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-
-      console.log("[v0] API response status:", response.status)
       
       if (response.ok) {
-        const result = await response.json()
-        console.log("[v0] API success:", result)
         alert("Returned item removed successfully. Supplier credit has been created.")
         setRemoveReturnedItemDialog(false)
         setSelectedReturnedItem(null)
@@ -396,11 +389,9 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         location.reload()
       } else {
         const error = await response.json()
-        console.log("[v0] API error:", error)
         alert("Error: " + (error.message || "Failed to remove returned item"))
       }
     } catch (error) {
-      console.error("[v0] Error removing returned item:", error)
       alert("Error removing returned item: " + String(error))
     } finally {
       setIsRemovingItem(false)

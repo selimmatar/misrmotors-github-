@@ -98,8 +98,9 @@ export function useInventory() {
     if (!data) return []
     return data.map((inv: any) => ({
       id: inv.inventory_id?.toString() || inv.id,
+      inventoryId: inv.inventory_id ?? inv.inventoryId,
       productId: inv.product_id?.toString() || inv.productId,
-      productName: inv.products?.product_name || inv.productName || "Unknown",
+      productName: inv.products?.product_name || inv.productName || inv.outsourcedName || inv.outsourced_name || "Unknown",
       sku: inv.products?.sku || inv.sku || "",
       unit: inv.products?.unit || inv.unit || "unit",
       quantity: inv.quantity,
@@ -107,6 +108,13 @@ export function useInventory() {
       location: inv.location,
       lastUpdated: inv.last_updated || inv.lastUpdated,
       unitCost: inv.unit_cost ?? inv.unitCost ?? 0,
+      isReturned: inv.isReturned ?? inv.is_returned ?? false,
+      isOutsourced: inv.isOutsourced ?? inv.is_outsourced ?? false,
+      supplierName: inv.supplierName ?? inv.supplier_name ?? null,
+      soNumber: inv.soNumber ?? inv.so_number ?? null,
+      outsourcedName: inv.outsourcedName ?? inv.outsourced_name ?? null,
+      warehouseId: inv.warehouseId ?? inv.warehouse_id,
+      warehouseName: inv.warehouseName ?? inv.warehouses?.warehouse_name,
     }))
   }, [data])
 
