@@ -66,6 +66,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   const [orderItems, setOrderItems] = useState<
     Array<{
       productId: string
+      productName: string
       quantity: string
       unitPrice: string
       itemType?: "stock" | "outsourced"
@@ -194,12 +195,15 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   const lowStockSuggestions = getLowStockSuggestions()
 
   const handleAddSuggestedItem = (productId: string, quantity: number, unitPrice: number) => {
+    const product = products.find((p) => p.id === productId)
     setOrderItems([
       ...orderItems,
       {
         productId,
+        productName: product?.productName || "",
         quantity: quantity.toString(),
         unitPrice: unitPrice.toString(),
+        itemType: "stock",
       },
     ])
   }
@@ -478,7 +482,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   }
 
   const handleAddItem = () => {
-  setOrderItems([...orderItems, { productId: "", quantity: "", unitPrice: "", itemType: "stock" }])
+    setOrderItems([...orderItems, { productId: "", productName: "", quantity: "", unitPrice: "", itemType: "stock" }])
   }
   
   const handleRemoveItem = (index: number) => {
@@ -530,6 +534,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
     const importedItems = matchingItems.map((item: any) => ({
       productId: "",
+      productName: "",
       quantity: (item.quantity ?? "").toString(),
       unitPrice: (item.unitPrice ?? "").toString(),
       itemType: "outsourced" as const,
@@ -629,7 +634,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
     // Validate items
     for (const item of orderItems) {
-      const hasName = item.itemType === "outsourced" ? !!item.outsourcedName : !!item.productId
+      const hasName = item.itemType === "outsourced" ? !!item.outsourcedName : !!item.productName
       if (!hasName || !item.quantity || !item.unitPrice) {
         alert(t("validation.complete-items"))
         return
@@ -658,14 +663,13 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       }
 
       const items = orderItems.map((item) => {
-        const product = products.find((p) => p.id === item.productId)
         const isOutsourced = item.itemType === "outsourced"
         const qty = Number.parseInt(item.quantity) || 0
         // unit_price is NOT NULL in DB — default to 0 if blank (user can update later)
         const unitPrice = Number.parseFloat(item.unitPrice) || 0
         return {
-          productId: isOutsourced ? "" : item.productId,
-          productName: isOutsourced ? item.outsourcedName || "Outsourced Item" : product?.productName || "Unknown",
+          productId: isOutsourced ? "" : (item.productId || ""),
+          productName: isOutsourced ? item.outsourcedName || "Outsourced Item" : item.productName || "Unknown",
           quantity: qty,
           unitPrice,
           total: qty * unitPrice,
@@ -810,8 +814,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     if (!moqWarning) return
 
     const itemIndex = orderItems.findIndex((item) => {
-      const product = products.find((p) => p.id === item.productId)
-      return product?.productName === moqWarning.productName
+      const resolvedName = item.productName || products.find((p) => p.id === item.productId)?.productName
+      return resolvedName === moqWarning.productName
     })
 
     if (itemIndex !== -1) {
@@ -1629,22 +1633,15 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         )}
                       </div>
                     ) : (
-                      <select
-                        className="w-full border rounded px-3 py-2"
-                        value={item.productId}
+                      <Input
+                        placeholder="Product name"
+                        value={item.productName}
                         onChange={(e) => {
                           const newItems = [...orderItems]
-                          newItems[index].productId = e.target.value
+                          newItems[index].productName = e.target.value
                           setOrderItems(newItems)
                         }}
-                      >
-                        <option value="">{t("action.select-product")}</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.productName}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     )}
                     <Input
                       placeholder={t("field.quantity")}
