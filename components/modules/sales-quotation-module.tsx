@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, FileText, Printer, Package, Upload, UserPlus } from "lucide-react"
+import { Trash2, FileText, Printer, Package, Upload, UserPlus } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { UserRole, Customer, PaymentType, PaymentDetails } from "@/lib/types"
@@ -723,10 +723,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 <Upload className="h-4 w-4 mr-2" />
                 Import Excel
               </Button>
-              <Button onClick={() => addItem("outsourced")} size="sm" variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Outsourced
-              </Button>
+
             </div>
           </div>
           <CardDescription className="text-xs mt-2">
