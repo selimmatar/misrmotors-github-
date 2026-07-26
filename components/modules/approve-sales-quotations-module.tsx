@@ -83,7 +83,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       const data = await response.json()
       // Get quotations with pending/draft status
       const pendingQuotations = (data.quotations || []).filter((q: any) =>
-        q.status === "draft" || q.status === "pending" || q.status === "sent"
+        q.status === "sent" || q.status === "pending"
       )
       
       setQuotations(pendingQuotations)

@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
         // VAT
         vat_enabled: vat_enabled !== undefined ? vat_enabled : true,
         net_total: net_total || total,
-        status: "draft",
+        status: "sent",
         created_by: "current_user", // TODO: Get from auth
       })
       .select()
