@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already processed
-    if (existingQuotation.status !== "draft" && existingQuotation.status !== "pending") {
+    if (existingQuotation.status === "approved" || existingQuotation.status === "rejected") {
       return NextResponse.json({ error: "Quotation has already been processed" }, { status: 400 })
     }
 

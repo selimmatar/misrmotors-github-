@@ -23,11 +23,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
     }
 
-    // Check if it's a draft (not already processed)
-    if (quotation.status !== "draft" && quotation.status !== "pending") {
+    // Check if it's in an approvable state
+    if (quotation.status === "approved" || quotation.status === "rejected") {
       console.error("Quotation already processed, current status:", quotation.status)
       return NextResponse.json({ 
-        error: `This quotation has already been ${quotation.status === "rejected" ? "rejected" : "approved"}. Current status: ${quotation.status}` 
+        error: `This quotation has already been ${quotation.status}.` 
       }, { status: 400 })
     }
 
