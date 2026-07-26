@@ -169,8 +169,6 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
 
       const { sales_order } = await response.json()
 
-      // Optimistically remove approved quotation from list
-      setQuotations((prev) => prev.filter((q) => q.id !== selectedQuotation.id))
       setApprovalDocument(null)
       setShowApproveDialog(false)
       setShowDetailsDialog(false)
@@ -178,6 +176,10 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       alert(`Quotation approved! Sales Order ${sales_order.so_number} created.`)
     } catch (error) {
       console.error("Error approving quotation:", error)
+      // Restore the card if approval failed
+      if (selectedQuotation) {
+        setQuotations((prev) => [...prev, selectedQuotation as any])
+      }
       alert(error instanceof Error ? error.message : "Failed to approve quotation")
     } finally {
       setActionLoading(false)
@@ -370,6 +372,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
                       className="gap-2"
                       onClick={() => {
                         setSelectedQuotation(quotation as any)
+                        setQuotations((prev) => prev.filter((q) => q.id !== quotation.id))
                         setShowApproveDialog(true)
                       }}
                       disabled={actionLoading}
