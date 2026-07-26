@@ -793,8 +793,8 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                           </SelectTrigger>
                           <SelectContent>
                             {suppliers.map((s) => (
-                              <SelectItem key={s.id} value={s.supplierName}>
-                                {s.supplierName}
+                              <SelectItem key={s.id} value={s.name}>
+                                {s.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
