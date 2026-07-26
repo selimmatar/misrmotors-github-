@@ -1589,10 +1589,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
           <Button variant="outline" onClick={() => setShowReportGenerator(true)}>
             {t("report.generate")}
           </Button>
-          <Button onClick={() => setShowForm(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            {t("so.add")}
-          </Button>
         </div>
       </div>
 
@@ -1682,8 +1678,8 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Create Order Dialog */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
+      {/* Create Order Dialog removed - orders are created via Sales Quotations workflow */}
+      {false && <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto p-6">
           <DialogHeader className="mb-4">
             <DialogTitle className="text-2xl font-bold">{selectedOrder ? t("so.edit") : t("so.create-new")}</DialogTitle>
@@ -1936,7 +1932,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
             </div>
           </form>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       <Card>
         <CardHeader>
