@@ -82,8 +82,8 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       
       const data = await response.json()
       // Get quotations with pending/draft status
-      const pendingQuotations = (data.quotations || []).filter((q: any) => 
-        q.status === "draft" || q.status === "pending"
+      const pendingQuotations = (data.quotations || []).filter((q: any) =>
+        q.status === "draft" || q.status === "pending" || q.status === "sent"
       )
       
       setQuotations(pendingQuotations)
@@ -168,14 +168,14 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       }
 
       const { sales_order } = await response.json()
-      alert(`Quotation approved! Sales Order ${sales_order.so_number} is now active with status "pending_accountant".`)
-      
-      // Reset state and refresh
+
+      // Optimistically remove approved quotation from list
+      setQuotations((prev) => prev.filter((q) => q.id !== selectedQuotation.id))
       setApprovalDocument(null)
       setShowApproveDialog(false)
       setShowDetailsDialog(false)
-      await fetchQuotations()
-      await refreshSalesOrders()
+      refreshSalesOrders()
+      alert(`Quotation approved! Sales Order ${sales_order.so_number} created.`)
     } catch (error) {
       console.error("Error approving quotation:", error)
       alert(error instanceof Error ? error.message : "Failed to approve quotation")
@@ -208,13 +208,12 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
         throw new Error(error.error || "Failed to reject quotation")
       }
 
-      alert("Quotation rejected successfully.")
-      
-      // Refresh list
-      await fetchQuotations()
+      // Optimistically remove rejected quotation from list
+      setQuotations((prev) => prev.filter((q) => q.id !== selectedQuotation?.id))
       setShowDetailsDialog(false)
       setShowRejectDialog(false)
       setRejectionReason("")
+      alert("Quotation rejected successfully.")
     } catch (error) {
       console.error("Error rejecting quotation:", error)
       alert(error instanceof Error ? error.message : "Failed to reject quotation")
@@ -243,13 +242,13 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
       }
 
       const { sales_order } = await response.json()
-      alert(`Quotation approved! Sales Order ${sales_order.so_number} is now active with status "pending_accountant".`)
-      
-      // Reset state and refresh
+
+      // Optimistically remove approved quotation from list
+      setQuotations((prev) => prev.filter((q) => q.id !== quotation.id))
       setShowApproveDialog(false)
       setShowDetailsDialog(false)
-      await fetchQuotations()
-      await refreshSalesOrders()
+      refreshSalesOrders()
+      alert(`Quotation approved! Sales Order ${sales_order.so_number} created.`)
     } catch (error) {
       console.error("Error approving quotation:", error)
       alert(error instanceof Error ? error.message : "Failed to approve quotation")

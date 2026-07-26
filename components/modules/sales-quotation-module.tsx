@@ -723,10 +723,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 <Upload className="h-4 w-4 mr-2" />
                 Import Excel
               </Button>
-              <Button onClick={() => addItem("inventory")} size="sm" variant="outline">
-                <Package className="h-4 w-4 mr-2" />
-                Add from Inventory
-              </Button>
               <Button onClick={() => addItem("outsourced")} size="sm" variant="outline">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Outsourced
