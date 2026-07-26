@@ -40,7 +40,7 @@ interface SalesQuotationModuleProps {
 }
 
 export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
-  const { products, customers, addCustomer } = useAppContext()
+  const { products, customers, addCustomer, suppliers } = useAppContext()
 
   // Customer selection
   const [selectedCustomerId, setSelectedCustomerId] = useState("")
@@ -723,7 +723,14 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 <Upload className="h-4 w-4 mr-2" />
                 Import Excel
               </Button>
-
+              <Button onClick={() => addItem("inventory")} size="sm" variant="outline">
+                <Package className="h-4 w-4 mr-2" />
+                Add from Inventory
+              </Button>
+              <Button onClick={() => addItem("outsourced")} size="sm" variant="outline">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Outsourced Item
+              </Button>
             </div>
           </div>
           <CardDescription className="text-xs mt-2">
@@ -776,13 +783,22 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                         />
                       </div>
                       <div className="col-span-2 space-y-2">
-                        <Label htmlFor={`supplier-${item.id}`}>Supplier Name</Label>
-                        <Input
-                          id={`supplier-${item.id}`}
-                          placeholder="Enter supplier name"
+                        <Label htmlFor={`supplier-${item.id}`}>Supplier</Label>
+                        <Select
                           value={item.supplier_name || ""}
-                          onChange={(e) => updateItem(item.id, "supplier_name", e.target.value)}
-                        />
+                          onValueChange={(value) => updateItem(item.id, "supplier_name", value)}
+                        >
+                          <SelectTrigger id={`supplier-${item.id}`}>
+                            <SelectValue placeholder="Select supplier" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {suppliers.map((s) => (
+                              <SelectItem key={s.id} value={s.supplierName}>
+                                {s.supplierName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </>
                   )}
