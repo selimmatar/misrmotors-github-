@@ -308,14 +308,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       }
     }
 
-    console.log(
-      "[v0] PO Module - createSupplierInvoice called for PO",
-      order.poNumber,
-      "payment type:",
-      effectivePaymentType,
-      "amounts:",
-      { downPaymentAmount, remainingAmount, monthlyAmount },
-    )
+
 
     try {
       // Check if invoice already exists
@@ -361,16 +354,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         schedule_mode: effectivePaymentType === "hybrid" ? order.scheduleMode || "AUTO" : null,
       }
 
-      console.log(
-        "[v0] PO Module - Creating AP invoice with payment_type:",
-        apInvoiceData.payment_type,
-        "hybrid fields:",
-        {
-          down_payment_amount: apInvoiceData.down_payment_amount,
-          remaining_amount: apInvoiceData.remaining_amount,
-          remaining_installment_months: apInvoiceData.remaining_installment_months,
-        },
-      )
+
 
       const apInvoiceResponse = await fetch("/api/accounts-payable", {
         method: "POST",
@@ -483,8 +467,6 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         ...order,
         status: "approved",
       })
-
-      await createSupplierInvoice(order)
 
       setPurchaseOrders(purchaseOrders.map((o) => (o.id === id ? { ...o, status: "approved" as const } : o)))
 

@@ -536,77 +536,74 @@ export async function PUT(request: Request) {
     }
 
     if (updates.status === "approved") {
-      // Check if it's a prepaid order
       const { data: currentOrder } = await supabase.from("purchase_orders").select("*").eq("po_id", id).single()
 
-      if (currentOrder && currentOrder.payment_terms === "prepaid") {
-
-        // 1. Check if invoice already exists
+      if (currentOrder) {
+        // Dedup check: only create AP entry if one doesn't already exist for this PO
         const { data: existingInvoice } = await supabase
-          .from("accounts_payable") // Renamed from supplier_invoices
+          .from("accounts_payable")
           .select("invoice_id")
           .eq("po_id", id)
-          .single()
+          .maybeSingle()
 
         if (!existingInvoice) {
-          // 2. Create Supplier Invoice (Paid)
-          const invoiceData = {
-            invoice_number: `INV-${currentOrder.po_number}`,
+          const paymentType = currentOrder.payment_type || currentOrder.payment_terms || "cash"
+          const isPrepaidOrCash = paymentType === "prepaid" || paymentType === "cash"
+
+          const invoiceData: any = {
+            invoice_number: `APINV-${currentOrder.po_number}`,
             supplier_id: currentOrder.supplier_id,
             po_id: currentOrder.po_id,
             invoice_date: new Date().toISOString().split("T")[0],
-            due_date: new Date().toISOString().split("T")[0],
+            due_date: currentOrder.down_payment_due_date || currentOrder.payment_start_date || new Date().toISOString().split("T")[0],
             amount: currentOrder.total,
-            status: "paid",
-            installment_months: 0,
+            paid_amount: 0,
+            status: isPrepaidOrCash ? "paid" : "pending",
+            payment_type: paymentType,
+            payment_terms: paymentType,
+            installment_months: currentOrder.installments || 1,
             months_paid: 0,
+            down_payment_amount: currentOrder.down_payment_amount || null,
+            down_payment_percent: currentOrder.down_payment_percent || null,
+            down_payment_type: currentOrder.down_payment_type || null,
+            down_payment_due_date: currentOrder.down_payment_due_date || null,
+            remaining_amount: currentOrder.remaining_amount || null,
+            remaining_installment_months: currentOrder.remaining_installment_months || null,
+            monthly_amount: currentOrder.monthly_amount || null,
+            payment_start_date: currentOrder.payment_start_date || null,
+            schedule_entries: currentOrder.schedule_entries || null,
+            schedule_mode: currentOrder.schedule_mode || "AUTO",
           }
 
           const { data: newInvoice, error: invoiceError } = await supabase
-            .from("accounts_payable") // Renamed from supplier_invoices
+            .from("accounts_payable")
             .insert(invoiceData)
             .select()
             .single()
 
           if (invoiceError) {
-            console.error("Purchase Orders PUT: Error creating prepaid invoice", invoiceError)
-          } else {
-
-            // 3. Create Supplier Payment
-            const paymentData = {
+            console.error("Purchase Orders PUT: Error creating AP invoice on approval", invoiceError)
+          } else if (isPrepaidOrCash && newInvoice) {
+            // For prepaid/cash: also create supplier payment and balance entry
+            await supabase.from("supplier_payments").insert({
               supplier_invoice_id: newInvoice.invoice_id,
               supplier_id: currentOrder.supplier_id,
               amount: currentOrder.total,
               payment_date: new Date().toISOString().split("T")[0],
-              payment_method: "prepaid", // or "bank_transfer" as default
-              reference_number: `PREPAID-${currentOrder.po_number}`,
+              payment_method: paymentType,
+              reference_number: `${paymentType.toUpperCase()}-${currentOrder.po_number}`,
               status: "completed",
-            }
+            })
 
-            const { error: paymentError } = await supabase.from("supplier_payments").insert(paymentData)
-
-            if (paymentError) {
-              console.error("Purchase Orders PUT: Error creating prepaid payment", paymentError)
-            } else {
-
-              // 4. Update Balance History
-              const balanceData = {
-                entry_type: "ap_payment",
-                reference_type: "purchase_order",
-                reference_id: currentOrder.po_id.toString(),
-                reference_number: currentOrder.po_number,
-                amount: -currentOrder.total, // Negative for expense
-                description: `Prepaid payment for ${currentOrder.po_number}`,
-                status: "active",
-              }
-
-              const { error: balanceError } = await supabase.from("balance_entries").insert(balanceData)
-
-              if (balanceError) {
-                console.error("Purchase Orders PUT: Error updating balance for prepaid order", balanceError)
-              } else {
-              }
-            }
+            await (supabase as any).from("balance_entries").insert({
+              entry_type: "ap_payment",
+              reference_type: "purchase_order",
+              reference_id: currentOrder.po_id.toString(),
+              reference_number: currentOrder.po_number,
+              amount: -currentOrder.total,
+              description: `${paymentType} payment for ${currentOrder.po_number}`,
+              status: "active",
+            })
           }
         }
       }

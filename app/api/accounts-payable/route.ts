@@ -4,12 +4,15 @@ import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url)
+    const poId = searchParams.get("poId")
+
     const result = await withRetry(async () => {
       const supabase = createAdminClient()
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("accounts_payable")
         .select(`
           *,
@@ -17,6 +20,12 @@ export async function GET() {
           purchase_orders:po_id (po_number, payment_terms, installments, payment_type, down_payment_amount, down_payment_percent, down_payment_type, remaining_amount, remaining_installment_months, monthly_amount, payment_start_date, down_payment_due_date, schedule_entries, schedule_mode)
         `)
         .order("created_at", { ascending: false })
+
+      if (poId) {
+        query = query.eq("po_id", Number.parseInt(poId))
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
 
@@ -89,12 +98,7 @@ export async function POST(request: Request) {
     const supabase = createAdminClient()
 
     const body = await request.json()
-    console.log(
-      "[v0] AP POST: Received body with payment_type:",
-      body.payment_type,
-      "payment_terms:",
-      body.payment_terms,
-    )
+
 
     const amount = Number.parseFloat(body.amount) || 0
 
@@ -129,12 +133,7 @@ export async function POST(request: Request) {
       dbData.schedule_entries = body.schedule_entries ?? body.scheduleEntries ?? null
       dbData.schedule_mode = body.schedule_mode ?? body.scheduleMode ?? "AUTO"
 
-      console.log(
-        "[v0] AP POST: Hybrid payment - down_payment:",
-        dbData.down_payment_amount,
-        "remaining:",
-        dbData.remaining_amount,
-      )
+
     } else {
       // Non-hybrid: still set some fields if provided
       dbData.down_payment_amount = body.down_payment_amount ?? body.downPaymentAmount ?? null
