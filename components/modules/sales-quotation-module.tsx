@@ -813,7 +813,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                     />
                   </div>
                   <div className="col-span-2 space-y-2">
-                    <Label htmlFor={`price-${item.id}`}>Unit Price (EGP)</Label>
+                    <Label htmlFor={`price-${item.id}`}>Unit Cost (EGP)</Label>
                     <Input
                       id={`price-${item.id}`}
                       type="number"
