@@ -334,7 +334,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         invoice_date: new Date().toISOString().split("T")[0],
         due_date: effectivePaymentType === "hybrid" ? downPaymentDueDate : paymentStartDate,
         amount: order.total,
-        paid_amount: 0,
+        paid_amount: effectivePaymentType === "prepaid" || effectivePaymentType === "cash" ? order.total : 0,
         payment_start_date: paymentStartDate,
         installment_months:
           effectivePaymentType === "hybrid"
