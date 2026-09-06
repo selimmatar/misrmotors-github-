@@ -452,11 +452,13 @@ export function AccountsPayableModule() {
 
       // Check if this is a generated schedule (no real ID in database)
       if (selectedScheduleForPayment.id.startsWith("gen-")) {
-        // For generated schedules, just update the invoice directly
+        // For generated schedules, update the invoice directly and persist the
+        // receipt on it (the PUT handler also attaches it to the payment record)
         await updateSupplierInvoice(String(invoiceId), {
           paidAmount: newPaidAmount,
           monthsPaid: newMonthsPaid,
           status: newStatus,
+          paymentReceiptUrl: receiptUrl,
         })
       } else {
         // Update payment schedule in database
@@ -650,6 +652,32 @@ export function AccountsPayableModule() {
           installmentNumber: s.installmentNumber,
         }))
         .sort((a, b) => a.installmentNumber - b.installmentNumber)
+
+      // Also collect receipts stored on individual supplier payment records
+      // (covers generated schedules, where each payment's receipt is saved there)
+      try {
+        const paymentsResponse = await fetch("/api/supplier-payments")
+        if (paymentsResponse.ok) {
+          const payments = await paymentsResponse.json()
+          if (Array.isArray(payments)) {
+            const existingUrls = new Set(receipts.map((r) => r.receiptUrl))
+            payments
+              .filter((p: any) => String(p.invoice_id) === invoiceId && p.receipt_url)
+              .forEach((p: any) => {
+                if (!existingUrls.has(p.receipt_url)) {
+                  receipts.push({
+                    receiptUrl: p.receipt_url,
+                    paymentDate: p.payment_date,
+                    installmentNumber: receipts.length + 1,
+                  })
+                  existingUrls.add(p.receipt_url)
+                }
+              })
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching supplier payment receipts:", error)
+      }
 
       // Fall back to the invoice-level receipt (full payments recorded outside the schedule)
       if (receipts.length === 0 && invoice.paymentReceiptUrl) {
