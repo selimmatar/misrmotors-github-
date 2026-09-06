@@ -97,7 +97,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
     refreshInventory,
   } = useAppContext()
 
-  const [showForm, setShowForm] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null)
   const [showPrintQuotationDialog, setShowPrintQuotationDialog] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -128,10 +127,10 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
   // Force fresh inventory fetch when form opens to get latest warehouse data
   useEffect(() => {
-    if (showForm) {
+    if (selectedOrder) {
       refreshInventory()
     }
-  }, [showForm, refreshInventory])
+  }, [selectedOrder, refreshInventory])
 
   const [soTypeFilter, setSoTypeFilter] = useState<SOType | "ALL">("ALL")
 
@@ -811,7 +810,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
         }
 
         resetForm()
-        setShowForm(false)
         await refreshSalesOrders()
         await refreshInventory()
       }
@@ -1679,260 +1677,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       </Dialog>
 
       {/* Create Order Dialog removed - orders are created via Sales Quotations workflow */}
-      {false && <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto p-6">
-          <DialogHeader className="mb-4">
-            <DialogTitle className="text-2xl font-bold">{selectedOrder ? t("so.edit") : t("so.create-new")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <SOTypeSelector value={soType} onChange={setSoType} />
-
-            {/* Basic Information Section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">Basic Information</h3>
-              
-              {/* Customer Selection */}
-              <div className="space-y-2">
-                <Label>{t("field.customer")} *</Label>
-                <select
-                  className="w-full border rounded px-3 py-2"
-                  value={formData.customerId}
-                  onChange={(e) => handleCustomerChange(e.target.value)}
-                >
-                  <option value="">{t("select-customer")}</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-            {/* Order Date and Delivery Date */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>{t("field.order-date")} *</Label>
-                <Input
-                  type="date"
-                  value={formData.orderDate}
-                  onChange={(e) => setFormData({ ...formData, orderDate: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>{t("field.delivery-date")}</Label>
-                <Input
-                  type="date"
-                  value={formData.deliveryDate}
-                  onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-            
-            {/* Department & QR Number, Receiver Name */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Department & Quotation Request Number / القسم ورقم طلب التسعير</Label>
-                <Input
-                  value={formData.departmentName || ""}
-                  onChange={(e) => setFormData({ ...formData, departmentName: e.target.value })}
-                  placeholder="e.g., Maintenance Department - QR-2025-001"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label>Receiver Name / اسم المستلم</Label>
-                <Input
-                  value={formData.receiverName || ""}
-                  onChange={(e) => setFormData({ ...formData, receiverName: e.target.value })}
-                  placeholder="Name of person receiving order"
-                  className="mt-1"
-                />
-              </div>
-            </div>
-            
-            {/* QR File Upload */}
-            <div>
-              <Label>Upload QR File (Optional)</Label>
-              <QuotationRequestUploadWidget onUploadComplete={handleQRUploadComplete} />
-            </div>
-            </div>
-
-            {/* Delivery Details Section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">Delivery Details</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <Label>{t("field.delivery-address")}</Label>
-                  <Input
-                    value={formData.deliveryAddress}
-                    onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                    placeholder="Enter delivery address"
-                    className="mt-1"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Delivery Contact Name</Label>
-                    <Input
-                      value={formData.deliveryContactName}
-                      onChange={(e) => setFormData({ ...formData, deliveryContactName: e.target.value })}
-                      placeholder="Contact person name"
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label>Delivery Contact Phone</Label>
-                    <Input
-                      value={formData.deliveryContactPhone}
-                      onChange={(e) => setFormData({ ...formData, deliveryContactPhone: e.target.value })}
-                      placeholder="Contact phone number"
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Terms Section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">Payment Terms</h3>
-              <PaymentTypeSelector value={paymentType} onChange={setPaymentType} />
-
-              {paymentType === "installments" && (
-                <InstallmentFields
-                  totalAmount={calculateDiscount(calculateSubtotal(), discountType, discountValue).netTotal}
-                  installmentMonths={paymentDetails.installmentMonths || 6}
-                  paymentStartDate={paymentDetails.paymentStartDate} // Pass paymentStartDate
-                  onInstallmentMonthsChange={(months) =>
-                    setPaymentDetails({ ...paymentDetails, installmentMonths: months })
-                  }
-                  onPaymentStartDateChange={(date) => setPaymentDetails({ ...paymentDetails, paymentStartDate: date })}
-                  showScheduleBuilder={true}
-                  scheduleMode={scheduleMode}
-                  scheduleEntries={scheduleEntries}
-                  onScheduleModeChange={setScheduleMode}
-                  onScheduleEntriesChange={setScheduleEntries}
-                />
-              )}
-
-              {paymentType === "cheque" && (
-                <ChequeFields
-                  chequeNumber={paymentDetails.chequeNumber || ""}
-                  bankName={paymentDetails.chequeBankName || ""}
-                  dueDate={paymentDetails.chequeDueDate || ""}
-                  amount={
-                    paymentDetails.chequeAmount ||
-                    calculateDiscount(calculateSubtotal(), discountType, discountValue).netTotal
-                  }
-                  notes={paymentDetails.chequeNotes || ""}
-                  onChequeNumberChange={(v) => setPaymentDetails({ ...paymentDetails, chequeNumber: v })}
-                  onBankNameChange={(v) => setPaymentDetails({ ...paymentDetails, chequeBankName: v })}
-                  onDueDateChange={(v) => setPaymentDetails({ ...paymentDetails, chequeDueDate: v })}
-                  onAmountChange={(v) => setPaymentDetails({ ...paymentDetails, chequeAmount: v })}
-                  onNotesChange={(v) => setPaymentDetails({ ...paymentDetails, chequeNotes: v })}
-                />
-              )}
-
-              {paymentType === "hybrid" && (
-                <HybridFields
-                  totalAmount={calculateDiscount(calculateSubtotal(), discountType, discountValue).netTotal}
-                  downPaymentType={paymentDetails.downPaymentType || "cash"}
-                  downPaymentAmount={paymentDetails.downPaymentAmount || 0}
-                  downPaymentPercent={paymentDetails.downPaymentPercent || 50}
-                  remainingInstallmentMonths={paymentDetails.remainingInstallmentMonths || 6}
-                  paymentStartDate={paymentDetails.paymentStartDate}
-                  downPaymentDueDate={paymentDetails.downPaymentDueDate}
-                  downPaymentChequeNumber={paymentDetails.downPaymentChequeNumber || ""}
-                  downPaymentChequeBank={paymentDetails.downPaymentChequeBank || ""}
-                  downPaymentChequeDueDate={paymentDetails.downPaymentChequeDueDate || ""}
-                  onDownPaymentTypeChange={(v) => setPaymentDetails({ ...paymentDetails, downPaymentType: v })}
-                  onDownPaymentAmountChange={(v) => setPaymentDetails({ ...paymentDetails, downPaymentAmount: v })}
-                  onDownPaymentPercentChange={(v) => setPaymentDetails({ ...paymentDetails, downPaymentPercent: v })}
-                  onRemainingInstallmentMonthsChange={(v) =>
-                    setPaymentDetails({ ...paymentDetails, remainingInstallmentMonths: v })
-                  }
-                  onPaymentStartDateChange={(v) => setPaymentDetails({ ...paymentDetails, paymentStartDate: v })}
-                  onDownPaymentDueDateChange={(v) => setPaymentDetails({ ...paymentDetails, downPaymentDueDate: v })}
-                  onDownPaymentChequeNumberChange={(v) =>
-                    setPaymentDetails({ ...paymentDetails, downPaymentChequeNumber: v })
-                  }
-                  onDownPaymentChequeBankChange={(v) =>
-                    setPaymentDetails({ ...paymentDetails, downPaymentChequeBank: v })
-                  }
-                  showScheduleBuilder={true}
-                  scheduleMode={scheduleMode}
-                  scheduleEntries={scheduleEntries}
-                  onScheduleModeChange={setScheduleMode}
-                  onScheduleEntriesChange={setScheduleEntries}
-                />
-              )}
-            </div>
-
-            {/* Items Section */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">Order Items</h3>
-
-              {renderItemsSection()}
-            </div>
-
-            {/* VAT Toggle */}
-            {calculateSubtotal() > 0 && (
-              <div className="flex items-center space-x-2 mb-4">
-                <input
-                  type="checkbox"
-                  id="vatEnabled"
-                  checked={vatEnabled}
-                  onChange={(e) => setVatEnabled(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <label htmlFor="vatEnabled" className="text-sm font-medium">
-                  Add VAT (14%)
-                </label>
-              </div>
-            )}
-
-            {/* Pricing Summary with VAT */}
-            {calculateSubtotal() > 0 && (
-              <PricingSummaryCard
-                subtotal={calculateSubtotal()}
-                discountType={discountType}
-                discountValue={discountValue}
-                vatEnabled={vatEnabled}
-                vatRate={VAT_RATE}
-              />
-            )}
-
-
-
-          {/* Notes Section */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">Additional Information</h3>
-            <div className="space-y-2">
-              <Label>{t("field.notes")}</Label>
-              <textarea
-                className="w-full border rounded px-3 py-2 min-h-[100px]"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Additional notes or comments..."
-              />
-            </div>
-          </div>
-  
-  {/* Action Buttons */}
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowForm(false)} type="button">
-                {t("action.cancel")}
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? t("action.saving") : t("action.save")}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>}
 
       <Card>
         <CardHeader>
