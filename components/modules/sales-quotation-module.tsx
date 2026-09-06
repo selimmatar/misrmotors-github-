@@ -32,6 +32,7 @@ interface QuotationItem {
   product_name: string
   quantity: number
   unit_price: number
+  markup: number
   supplier_name?: string
 }
 
@@ -98,6 +99,9 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   // VAT settings (always 14%)
   const VAT_RATE = 0.14
 
+  // Selling price per unit = cost + markup%
+  const getItemFinalPrice = (item: QuotationItem) => item.unit_price * (1 + (item.markup || 0) / 100)
+
   // Payment schedule
   const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleEntry[]>([])
 
@@ -106,7 +110,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       const updated = { ...prev, [field]: value }
       
       // Recalculate dependent values when key fields change
-      const currentSubtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+      const currentSubtotal = items.reduce((sum, item) => sum + item.quantity * getItemFinalPrice(item), 0)
       // Calculate total with 14% tax
       const totalWithTax = currentSubtotal * 1.14
       
@@ -142,7 +146,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
 
   // Recalculate payment amounts when items change (not payment details to avoid loops)
   useEffect(() => {
-    const currentSubtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+    const currentSubtotal = items.reduce((sum, item) => sum + item.quantity * getItemFinalPrice(item), 0)
     // Calculate total with 14% tax
     const totalWithTax = currentSubtotal * 1.14
     
@@ -302,6 +306,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
               product_name: String(productName),
               quantity: isNaN(quantity) ? 1 : quantity,
               unit_price: isNaN(unitPrice) ? 0 : unitPrice,
+              markup: 0,
               supplier_name: String(supplierName) || undefined,
             }
           } else {
@@ -320,6 +325,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 product_name: matchedProduct.name || matchedProduct.productName || "",
                 quantity: isNaN(quantity) ? 1 : quantity,
                 unit_price: isNaN(unitPrice) ? (matchedProduct.price || 0) : unitPrice,
+                markup: 0,
               }
             } else {
               // Product not found in inventory - mark as outsourced without supplier
@@ -330,6 +336,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 product_name: String(productName),
                 quantity: isNaN(quantity) ? 1 : quantity,
                 unit_price: isNaN(unitPrice) ? 0 : unitPrice,
+                markup: 0,
                 supplier_name: undefined,
               }
             }
@@ -371,6 +378,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         product_name: "",
         quantity: 1,
         unit_price: 0,
+        markup: 0,
         supplier_name: itemType === "outsourced" ? "" : undefined,
       },
     ])
@@ -403,7 +411,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   }
 
   const calculateTotal = () => {
-    const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+    const subtotal = items.reduce((sum, item) => sum + item.quantity * getItemFinalPrice(item), 0)
     const tax = subtotal * 0.14
     return { subtotal, tax, total: subtotal + tax }
   }
@@ -478,7 +486,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
             product_id: item.product_id,
             product_name: item.product_name,
             quantity: item.quantity,
-            unit_price: item.unit_price,
+            unit_price: Number(getItemFinalPrice(item).toFixed(2)),
             supplier_name: item.supplier_name || null,
           })),
         }),
@@ -500,7 +508,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         items: items.map((item) => ({
           product_name: item.product_name,
           quantity: item.quantity,
-          unit_price: item.unit_price,
+          unit_price: Number(getItemFinalPrice(item).toFixed(2)),
         })),
         validity_days: validityDays,
         notes: notes,
@@ -755,7 +763,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                   </div>
                   {item.item_type === "inventory" ? (
                     <>
-                      <div className="col-span-5 space-y-2">
+                      <div className="col-span-4 space-y-2">
                         <Label htmlFor={`product-${item.id}`}>Select Product from Inventory</Label>
                         <ProductSearchCombobox
                           products={products
@@ -773,7 +781,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                     </>
                   ) : (
                     <>
-                      <div className="col-span-3 space-y-2">
+                      <div className="col-span-2 space-y-2">
                         <Label htmlFor={`product-${item.id}`}>Outsourced Product Name</Label>
                         <Input
                           id={`product-${item.id}`}
@@ -824,8 +832,22 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                     />
                   </div>
                   <div className="col-span-1 space-y-2">
+                    <Label htmlFor={`markup-${item.id}`}>Markup %</Label>
+                    <Input
+                      id={`markup-${item.id}`}
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={item.markup}
+                      onChange={(e) => updateItem(item.id, "markup", Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="col-span-1 space-y-2">
                     <Label>Total</Label>
-                    <div className="text-sm font-medium pt-2">{(item.quantity * item.unit_price).toFixed(2)} EGP</div>
+                    <div className="text-sm font-medium pt-2">{(item.quantity * getItemFinalPrice(item)).toFixed(2)} EGP</div>
+                    {(item.markup || 0) > 0 && (
+                      <div className="text-xs text-muted-foreground">@ {getItemFinalPrice(item).toFixed(2)}</div>
+                    )}
                   </div>
                   <div className="col-span-1">
                     <Button variant="destructive" size="icon" onClick={() => removeItem(item.id)}>
