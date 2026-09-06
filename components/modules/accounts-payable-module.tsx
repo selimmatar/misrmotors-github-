@@ -627,12 +627,20 @@ export function AccountsPayableModule() {
       bankIban: po?.bankIban || "",
       bankBranch: po?.bankBranch || "",
       bankHolderName: po?.bankHolderName || "",
-      downPaymentAmount: po?.downPaymentAmount || 0,
-      downPaymentDueDate: po?.downPaymentDueDate || "",
-      downPaymentType: po?.downPaymentType || "",
-      paymentType: po?.paymentType || po?.paymentTerms || "",
-      poNumber: po?.poNumber || "",
-    }
+  downPaymentAmount: po?.downPaymentAmount || 0,
+  downPaymentDueDate: po?.downPaymentDueDate || "",
+  downPaymentType: po?.downPaymentType || "",
+  paymentType: po?.paymentType || po?.paymentTerms || "",
+  poNumber: po?.poNumber || "",
+  chequeNumber: po?.chequeNumber || "",
+  chequeBankName: po?.chequeBankName || "",
+  chequeDueDate: po?.chequeDueDate || "",
+  chequeAmount: po?.chequeAmount || 0,
+  chequeNotes: po?.chequeNotes || "",
+  downPaymentChequeNumber: po?.downPaymentChequeNumber || "",
+  downPaymentChequeBank: po?.downPaymentChequeBank || "",
+  downPaymentChequeDueDate: po?.downPaymentChequeDueDate || "",
+  }
   }
 
   return (
@@ -1145,6 +1153,12 @@ export function AccountsPayableModule() {
               {(() => {
                 const bankDetails = getPOBankDetails(selectedInvoiceForPaymentDetails.poId)
                 const hasBankDetails = bankDetails.bankName || bankDetails.bankAccountNumber || bankDetails.bankIban
+                const isChequePayment = bankDetails.paymentType === "cheque"
+                const isHybridCheque =
+                  bankDetails.paymentType === "hybrid" && bankDetails.downPaymentType === "cheque"
+                const hasChequeDetails =
+                  (isChequePayment && (bankDetails.chequeNumber || bankDetails.chequeBankName)) ||
+                  (isHybridCheque && (bankDetails.downPaymentChequeNumber || bankDetails.downPaymentChequeBank))
 
                 return (
                   <>
@@ -1183,6 +1197,119 @@ export function AccountsPayableModule() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Cheque Details */}
+                    {hasChequeDetails && (
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold flex items-center gap-2">
+                          <FileText className="w-4 h-4" />
+                          {t("payment.cheque-details") || "Cheque Details"}
+                        </h3>
+                        <div className="border rounded-lg p-4 space-y-3 bg-amber-50/50 border-amber-200">
+                          {isChequePayment ? (
+                            <>
+                              {bankDetails.chequeNumber && (
+                                <div className="flex justify-between items-center">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {t("payment.cheque-number") || "Cheque Number"}
+                                    </p>
+                                    <p className="font-medium font-mono">{bankDetails.chequeNumber}</p>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => copyToClipboard(bankDetails.chequeNumber)}
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
+                              {bankDetails.chequeBankName && (
+                                <div className="flex justify-between items-center">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {t("payment.bank-name") || "Bank Name"}
+                                    </p>
+                                    <p className="font-medium">{bankDetails.chequeBankName}</p>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => copyToClipboard(bankDetails.chequeBankName)}
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
+                              {bankDetails.chequeDueDate && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">
+                                    {t("payment.cheque-due-date") || "Cheque Due Date"}
+                                  </p>
+                                  <p className="font-medium">{formatDate(bankDetails.chequeDueDate)}</p>
+                                </div>
+                              )}
+                              {bankDetails.chequeAmount > 0 && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">
+                                    {t("payment.cheque-amount") || "Cheque Amount"}
+                                  </p>
+                                  <p className="font-medium">{formatCurrency(bankDetails.chequeAmount)}</p>
+                                </div>
+                              )}
+                              {bankDetails.chequeNotes && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">
+                                    {t("payment.cheque-notes") || "Notes"}
+                                  </p>
+                                  <p className="font-medium">{bankDetails.chequeNotes}</p>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-xs text-muted-foreground">
+                                {t("payment.down-payment-cheque") || "Down Payment Cheque"}
+                              </p>
+                              {bankDetails.downPaymentChequeNumber && (
+                                <div className="flex justify-between items-center">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {t("payment.cheque-number") || "Cheque Number"}
+                                    </p>
+                                    <p className="font-medium font-mono">{bankDetails.downPaymentChequeNumber}</p>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => copyToClipboard(bankDetails.downPaymentChequeNumber)}
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
+                              {bankDetails.downPaymentChequeBank && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">
+                                    {t("payment.bank-name") || "Bank Name"}
+                                  </p>
+                                  <p className="font-medium">{bankDetails.downPaymentChequeBank}</p>
+                                </div>
+                              )}
+                              {bankDetails.downPaymentChequeDueDate && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">
+                                    {t("payment.cheque-due-date") || "Cheque Due Date"}
+                                  </p>
+                                  <p className="font-medium">{formatDate(bankDetails.downPaymentChequeDueDate)}</p>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Bank Details */}
                     {hasBankDetails ? (

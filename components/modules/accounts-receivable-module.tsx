@@ -1754,6 +1754,79 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                       </CardContent>
                     </Card>
 
+                    {/* Cheque Details */}
+                    {(() => {
+                      const so = selectedSO ? getSO(selectedSO) : null
+                      const pd = so?.paymentDetails
+                      const soPaymentType = so?.paymentType || selectedSODetails?.paymentType
+                      const isChequePayment = soPaymentType === "cheque"
+                      const isHybridCheque = soPaymentType === "hybrid" && pd?.downPaymentType === "cheque"
+                      const chequeNumber = isChequePayment ? pd?.chequeNumber : pd?.downPaymentChequeNumber
+                      const chequeBank = isChequePayment ? pd?.chequeBankName : pd?.downPaymentChequeBank
+                      const chequeDueDate = isChequePayment ? pd?.chequeDueDate : pd?.downPaymentChequeDueDate
+                      const chequeAmount = isChequePayment ? pd?.chequeAmount : pd?.downPaymentAmount
+                      const chequeNotes = isChequePayment ? pd?.chequeNotes : undefined
+
+                      if (!isChequePayment && !isHybridCheque) return null
+                      if (!chequeNumber && !chequeBank && !chequeDueDate) return null
+
+                      return (
+                        <Card className="border-amber-200 bg-amber-50/50">
+                          <CardHeader className="bg-muted/30">
+                            <CardTitle className="text-lg">
+                              {isHybridCheque
+                                ? t("payment.down-payment-cheque") || "Down Payment Cheque"
+                                : t("payment.cheque-details") || "Cheque Details"}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="pt-6">
+                            <div className="grid grid-cols-2 gap-4">
+                              {chequeNumber && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {t("payment.cheque-number") || "Cheque Number"}
+                                  </p>
+                                  <p className="font-semibold font-mono">{chequeNumber}</p>
+                                </div>
+                              )}
+                              {chequeBank && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {t("payment.bank-name") || "Bank Name"}
+                                  </p>
+                                  <p className="font-semibold">{chequeBank}</p>
+                                </div>
+                              )}
+                              {chequeDueDate && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {t("payment.cheque-due-date") || "Cheque Due Date"}
+                                  </p>
+                                  <p className="font-semibold">{formatDate(chequeDueDate)}</p>
+                                </div>
+                              )}
+                              {chequeAmount != null && chequeAmount > 0 && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {t("payment.cheque-amount") || "Cheque Amount"}
+                                  </p>
+                                  <p className="font-semibold">{formatCurrency(chequeAmount)}</p>
+                                </div>
+                              )}
+                              {chequeNotes && (
+                                <div className="col-span-2">
+                                  <p className="text-sm text-muted-foreground">
+                                    {t("payment.cheque-notes") || "Notes"}
+                                  </p>
+                                  <p className="font-semibold">{chequeNotes}</p>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })()}
+
                     {/* Delivery Permits */}
                     <Card>
                       <CardHeader className="bg-muted/30">

@@ -906,14 +906,12 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           {paymentType === "cheque" && (
             <ChequeFields
               chequeNumber={paymentDetails.chequeNumber || ""}
-              chequeBankName={paymentDetails.chequeBankName || ""}
-              chequeDueDate={paymentDetails.chequeDueDate || ""}
-              chequeAmount={subtotal}
-              chequeNotes={paymentDetails.chequeNotes || ""}
-              onChequeNumberChange={(val) => handlePaymentDetailChange("chequeNumber", val)}
-              onChequeBankNameChange={(val) => handlePaymentDetailChange("chequeBankName", val)}
-              onChequeDueDateChange={(val) => handlePaymentDetailChange("chequeDueDate", val)}
-              onChequeNotesChange={(val) => handlePaymentDetailChange("chequeNotes", val)}
+              bankName={paymentDetails.chequeBankName || ""}
+              dueDate={paymentDetails.chequeDueDate || ""}
+              amount={paymentDetails.chequeAmount || subtotal}
+              notes={paymentDetails.chequeNotes || ""}
+              totalAmount={subtotal}
+              onChange={handlePaymentDetailChange}
             />
           )}
 

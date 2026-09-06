@@ -105,6 +105,24 @@ export interface PurchaseOrder {
   bankIban?: string
   bankBranch?: string
   bankHolderName?: string
+  chequeNumber?: string
+  chequeBankName?: string
+  chequeDueDate?: string
+  chequeAmount?: number
+  chequeNotes?: string
+  downPaymentChequeNumber?: string
+  downPaymentChequeBank?: string
+  downPaymentChequeDueDate?: string
+  downPaymentType?: DownPaymentType
+  downPaymentAmount?: number
+  downPaymentPercent?: number
+  downPaymentDueDate?: string
+  remainingAmount?: number
+  remainingInstallmentMonths?: number
+  monthlyAmount?: number
+  paymentStartDate?: string
+  scheduleEntries?: any[]
+  scheduleMode?: string
 }
 
 export interface POItem {
