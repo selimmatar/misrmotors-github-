@@ -69,6 +69,9 @@ export function AccountsPayableModule() {
 
   const [paymentDetailsDialogOpen, setPaymentDetailsDialogOpen] = useState(false)
   const [selectedInvoiceForPaymentDetails, setSelectedInvoiceForPaymentDetails] = useState<SupplierInvoice | null>(null)
+  const [paymentDetailsReceipts, setPaymentDetailsReceipts] = useState<
+    { receiptUrl: string; paymentDate?: string; installmentNumber: number }[]
+  >([])
 
   const userRole = user?.role || "viewer"
 
@@ -546,7 +549,7 @@ export function AccountsPayableModule() {
         paidAmount: newPaidAmount,
         monthsPaid: newMonthsPaid,
         status: isPaid ? "paid" : "partially_paid",
-        receiptUrl, // Assign receipt URL to the invoice itself if it's a full payment
+        paymentReceiptUrl: receiptUrl, // Assign receipt URL to the invoice itself if it's a full payment
       })
 
       await loadData()
@@ -613,9 +616,54 @@ export function AccountsPayableModule() {
     navigator.clipboard.writeText(text)
   }
 
-  const handleViewPaymentDetails = (invoice: SupplierInvoice) => {
+  const handleViewPaymentDetails = async (invoice: SupplierInvoice) => {
     setSelectedInvoiceForPaymentDetails(invoice)
     setPaymentDetailsDialogOpen(true)
+    setPaymentDetailsReceipts([])
+
+    // Collect receipt PDFs uploaded when schedule payments were marked as done
+    try {
+      const poId = invoice.poId ? String(invoice.poId) : null
+      const invoiceId = String(invoice.id)
+
+      let schedules: PaymentScheduleEntry[] = []
+      if (poId) {
+        const response = await fetch(`/api/payment-schedules?poId=${poId}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (Array.isArray(data)) schedules = data
+        }
+      }
+      if (schedules.length === 0) {
+        const response = await fetch(`/api/payment-schedules?invoiceId=${invoiceId}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (Array.isArray(data)) schedules = data
+        }
+      }
+
+      const receipts = schedules
+        .filter((s) => s.receiptUrl)
+        .map((s) => ({
+          receiptUrl: s.receiptUrl as string,
+          paymentDate: s.paymentDate,
+          installmentNumber: s.installmentNumber,
+        }))
+        .sort((a, b) => a.installmentNumber - b.installmentNumber)
+
+      // Fall back to the invoice-level receipt (full payments recorded outside the schedule)
+      if (receipts.length === 0 && invoice.paymentReceiptUrl) {
+        receipts.push({
+          receiptUrl: invoice.paymentReceiptUrl,
+          paymentDate: invoice.lastPaymentDate,
+          installmentNumber: 0,
+        })
+      }
+
+      setPaymentDetailsReceipts(receipts)
+    } catch (error) {
+      console.error("Error fetching payment receipts:", error)
+    }
   }
 
   const getPOBankDetails = (poId: string) => {
@@ -1183,17 +1231,36 @@ export function AccountsPayableModule() {
                           <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
                           <p className="font-medium">{formatCurrency(selectedInvoiceForPaymentDetails.amount || 0)}</p>
                         </div>
-                        {/* Added button to download PDF */}
+                        {/* Download PDF: uploaded payment receipt if available, otherwise generated invoice */}
                         <div>
                           <p className="text-sm text-muted-foreground">{t("action.download-pdf") || "Download PDF"}</p>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDownloadInvoicePDF(selectedInvoiceForPaymentDetails)}
-                          >
-                            <Download className="w-4 h-4 mr-1" />
-                            {t("action.download")}
-                          </Button>
+                          {paymentDetailsReceipts.length > 0 ? (
+                            <div className="flex flex-col gap-1">
+                              {paymentDetailsReceipts.map((receipt, index) => (
+                                <Button
+                                  key={receipt.receiptUrl}
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => window.open(receipt.receiptUrl, "_blank")}
+                                >
+                                  <FileText className="w-4 h-4 mr-1" />
+                                  {paymentDetailsReceipts.length > 1
+                                    ? `${t("action.view-receipt") || "Receipt"} ${index + 1}`
+                                    : t("action.view-receipt") || "View Receipt"}
+                                  {receipt.paymentDate ? ` (${formatDate(receipt.paymentDate)})` : ""}
+                                </Button>
+                              ))}
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDownloadInvoicePDF(selectedInvoiceForPaymentDetails)}
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              {t("action.download")}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>

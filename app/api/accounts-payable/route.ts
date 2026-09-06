@@ -82,6 +82,7 @@ export async function GET(request: Request) {
         scheduleMode: inv.schedule_mode ?? inv.purchase_orders?.schedule_mode ?? "AUTO",
         invoiceFileUrl: inv.invoice_file_url,
         pdfUrl: inv.pdf_url,
+        paymentReceiptUrl: inv.payment_receipt_url || null,
         items: [],
       }
     })
@@ -243,6 +244,8 @@ export async function PUT(request: Request) {
       dbUpdates.remaining_installment_months = updates.remainingInstallmentMonths
     if (updates.monthlyAmount !== undefined) dbUpdates.monthly_amount = updates.monthlyAmount
     if (updates.paymentStartDate !== undefined) dbUpdates.payment_start_date = updates.paymentStartDate
+    if (updates.receiptUrl !== undefined) dbUpdates.payment_receipt_url = updates.receiptUrl
+    if (updates.paymentReceiptUrl !== undefined) dbUpdates.payment_receipt_url = updates.paymentReceiptUrl
 
 
     const { data, error } = await supabase
@@ -266,6 +269,7 @@ export async function PUT(request: Request) {
 
       if (delta > 0 && existingInvoice.supplier_id) {
         const paymentType = existingInvoice.payment_type || "payment"
+        const receiptUrl = updates.receiptUrl || updates.paymentReceiptUrl || null
         const { error: paymentError } = await supabase.from("supplier_payments").insert({
           invoice_id: existingInvoice.invoice_id,
           supplier_id: existingInvoice.supplier_id,
@@ -273,6 +277,7 @@ export async function PUT(request: Request) {
           payment_date: new Date().toISOString().split("T")[0],
           payment_method: paymentType,
           reference_number: `PAY-${existingInvoice.invoice_number}`,
+          receipt_url: receiptUrl,
         })
         if (paymentError) {
           console.error("AP PUT: Error recording supplier payment", paymentError)
