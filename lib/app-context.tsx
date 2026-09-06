@@ -539,6 +539,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           delivery_date: order.deliveryDate,
           status: order.status || "Pending",
           total: order.total,
+          tax_amount: order.taxAmount ?? null,
           notes: order.notes,
           payment_type: order.paymentType,
           payment_terms: order.paymentTerms,

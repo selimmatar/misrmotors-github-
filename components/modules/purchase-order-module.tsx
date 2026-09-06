@@ -110,6 +110,10 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   const [perProductTaxMode, setPerProductTaxMode] = useState(false)
   const [productTaxes, setProductTaxes] = useState<Record<string, { tax: string; otherCosts: string }>>({})
 
+  // VAT on PO creation (14%, same as sales quotations)
+  const VAT_RATE = 0.14
+  const [vatEnabled, setVatEnabled] = useState(true)
+
   const [paymentType, setPaymentType] = useState<PaymentType>("cash")
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({
     paymentType: "cash",
@@ -559,6 +563,9 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     return sum + qty * price
   }, 0)
 
+  const vatAmount = vatEnabled ? orderTotal * VAT_RATE : 0
+  const grandTotal = orderTotal + vatAmount
+
   const handlePaymentTypeChange = (type: PaymentType) => {
     setPaymentType(type)
     // Update payment details based on new type
@@ -593,15 +600,15 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       if (field === "downPaymentAmount" && paymentType === "hybrid") {
         setDownPaymentInputMode("amount")
         const amount = Number(value) || 0
-        updated.downPaymentPercent = orderTotal > 0 ? Math.round((amount / orderTotal) * 10000) / 100 : 0
-        updated.remainingAmount = orderTotal - amount
+      updated.downPaymentPercent = grandTotal > 0 ? Math.round((amount / grandTotal) * 10000) / 100 : 0
+      updated.remainingAmount = grandTotal - amount
         updated.monthlyAmount = updated.remainingAmount / (updated.remainingInstallmentMonths || 6)
       }
       if (field === "downPaymentPercent" && paymentType === "hybrid") {
         setDownPaymentInputMode("percent")
         const percent = Number(value) || 0
-        updated.downPaymentAmount = Math.round(((orderTotal * percent) / 100) * 100) / 100
-        updated.remainingAmount = orderTotal - updated.downPaymentAmount
+      updated.downPaymentAmount = Math.round(((grandTotal * percent) / 100) * 100) / 100
+      updated.remainingAmount = grandTotal - updated.downPaymentAmount
         updated.monthlyAmount = updated.remainingAmount / (updated.remainingInstallmentMonths || 6)
       }
       if (field === "remainingInstallmentMonths" && paymentType === "hybrid") {
@@ -610,7 +617,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       }
       if (field === "installmentMonths" && paymentType === "installments") {
         const months = Number(value) || 6
-        updated.monthlyAmount = orderTotal / months
+        updated.monthlyAmount = grandTotal / months
       }
       // Ensure paymentStartDate is updated correctly
       if (field === "paymentStartDate" && paymentType === "hybrid") {
@@ -682,7 +689,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         }
       })
 
-      const totalAmount = items.reduce((sum, item) => sum + item.total, 0)
+      const itemsSubtotal = items.reduce((sum, item) => sum + item.total, 0)
+      const totalAmount = itemsSubtotal + vatAmount
 
       const finalPaymentDetails: PaymentDetails = {
         paymentType,
@@ -724,6 +732,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         items,
         status: "pending",
         total: totalAmount,
+        taxAmount: vatAmount,
         notes: "",
         paymentType,
         paymentTerms:
@@ -782,6 +791,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       setPoInvoiceFile(null)
       setPaymentType("cash")
       setPoType("local")
+      setVatEnabled(true)
       setPaymentDetails({
         paymentType: "cash",
         installmentMonths: 6,
@@ -929,8 +939,18 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           <div class="total-section">
             <div class="total-row">
               <div class="total-label">Subtotal:</div>
-              <div class="total-value">${order.currency || "EGP"} ${invoice.total.toLocaleString()}</div>
+              <div class="total-value">${order.currency || "EGP"} ${(invoice.total - (order.taxAmount || 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
             </div>
+            ${
+              order.taxAmount
+                ? `
+              <div class="total-row">
+                <div class="total-label">VAT (14%):</div>
+                <div class="total-value">${order.currency || "EGP"} ${order.taxAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+              </div>
+            `
+                : ""
+            }
             ${
               order.installments
                 ? `
@@ -1532,13 +1552,13 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             {paymentType === "installments" && (
               <InstallmentFields
                 months={paymentDetails.installmentMonths || 6}
-                monthlyAmount={orderTotal / (paymentDetails.installmentMonths || 6)}
-                totalAmount={orderTotal}
+                monthlyAmount={grandTotal / (paymentDetails.installmentMonths || 6)}
+                totalAmount={grandTotal}
                 onMonthsChange={(months) => {
                   setPaymentDetails((prev) => ({
                     ...prev,
                     installmentMonths: months,
-                    monthlyAmount: orderTotal / months,
+                    monthlyAmount: grandTotal / months,
                   }))
                 }}
                 showScheduleBuilder={true}
@@ -1554,20 +1574,20 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 chequeNumber={paymentDetails.chequeNumber || ""}
                 bankName={paymentDetails.chequeBankName || ""}
                 dueDate={paymentDetails.chequeDueDate || ""}
-                amount={paymentDetails.chequeAmount || orderTotal}
+                amount={paymentDetails.chequeAmount || grandTotal}
                 notes={paymentDetails.chequeNotes}
-                totalAmount={orderTotal}
+                totalAmount={grandTotal}
                 onChange={handlePaymentDetailChange}
               />
             )}
 
             {paymentType === "hybrid" && (
               <HybridFields
-                totalAmount={orderTotal}
+                totalAmount={grandTotal}
                 downPaymentType={paymentDetails.downPaymentType || "cash"}
                 downPaymentAmount={paymentDetails.downPaymentAmount || 0}
                 downPaymentPercent={paymentDetails.downPaymentPercent || 50}
-                remainingAmount={paymentDetails.remainingAmount || orderTotal / 2}
+                remainingAmount={paymentDetails.remainingAmount || grandTotal / 2}
                 remainingInstallmentMonths={paymentDetails.remainingInstallmentMonths || 6}
                 monthlyAmount={paymentDetails.monthlyAmount || 0}
                 downPaymentChequeNumber={paymentDetails.downPaymentChequeNumber}
@@ -1675,10 +1695,32 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               </div>
 
               {orderItems.length > 0 && (
-                <div className="mt-4 p-3 bg-muted rounded-lg">
-                  <div className="flex justify-between items-center font-semibold">
-                    <span>{t("field.total")}</span>
+                <div className="mt-4 p-3 bg-muted rounded-lg space-y-2">
+                  <div className="flex items-center space-x-2 pb-2 border-b">
+                    <input
+                      type="checkbox"
+                      id="poVatEnabled"
+                      checked={vatEnabled}
+                      onChange={(e) => setVatEnabled(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <label htmlFor="poVatEnabled" className="text-sm font-medium">
+                      Add VAT (14%)
+                    </label>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
                     <span>{formatCurrency(orderTotal)}</span>
+                  </div>
+                  {vatEnabled && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">VAT (14%)</span>
+                      <span>{formatCurrency(vatAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center font-semibold pt-2 border-t">
+                    <span>{t("field.total")}</span>
+                    <span>{formatCurrency(grandTotal)}</span>
                   </div>
                 </div>
               )}
