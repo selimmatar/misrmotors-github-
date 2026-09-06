@@ -51,6 +51,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             quantity,
             unit_price,
             total,
+            item_type,
+            outsourced_name,
             products:product_id (product_name, sku)
           )
         )
@@ -427,8 +429,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               (item: any, index: number) => `
             <tr>
               <td class="number-col">${toArabicNumbers(index + 1)}</td>
-              <td>${item.products?.product_name || "-"}</td>
-              <td>${item.products?.sku || "-"}</td>
+              <td>${item.products?.product_name || item.outsourced_name || "-"}</td>
+              <td>${item.products?.sku || (item.item_type === "outsourced" ? "خارجي" : "-")}</td>
               <td class="qty-col">${toArabicNumbers(item.quantity)}</td>
               <td class="price-col">${formatArabicCurrency(item.unit_price || 0)}</td>
               <td class="price-col">${formatArabicCurrency(item.total || 0)}</td>

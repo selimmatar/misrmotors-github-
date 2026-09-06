@@ -199,11 +199,16 @@ export async function POST(request: Request) {
       down_payment_cheque_number: orderData.down_payment_cheque_number || orderData.downPaymentChequeNumber || null,
       down_payment_cheque_due_date:
         orderData.down_payment_cheque_due_date || orderData.downPaymentChequeDueDate || null,
-      cheque_number: orderData.cheque_number || orderData.chequeNumber || null,
-      cheque_bank_name: orderData.cheque_bank_name || orderData.chequeBankName || null,
-      cheque_due_date: orderData.cheque_due_date || orderData.chequeDueDate || null,
-      cheque_amount: orderData.cheque_amount || orderData.chequeAmount || null,
-      cheque_notes: orderData.cheque_notes || orderData.chequeNotes || null,
+      cheque_number:
+        orderData.cheque_number || orderData.chequeNumber || orderData.paymentDetails?.chequeNumber || null,
+      cheque_bank_name:
+        orderData.cheque_bank_name || orderData.chequeBankName || orderData.paymentDetails?.chequeBankName || null,
+      cheque_due_date:
+        orderData.cheque_due_date || orderData.chequeDueDate || orderData.paymentDetails?.chequeDueDate || null,
+      cheque_amount:
+        orderData.cheque_amount || orderData.chequeAmount || orderData.paymentDetails?.chequeAmount || null,
+      cheque_notes:
+        orderData.cheque_notes || orderData.chequeNotes || orderData.paymentDetails?.chequeNotes || null,
       down_payment_due_date: orderData.down_payment_due_date || orderData.downPaymentDueDate || null,
       remaining_amount: orderData.remaining_amount || orderData.remainingAmount || null,
       remaining_installment_months:
