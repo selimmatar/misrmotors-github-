@@ -105,6 +105,26 @@ export async function POST(request: Request) {
     const paymentType =
       body.payment_type || body.paymentType || body.payment_terms || body.paymentTerms || "installments"
 
+    // Dedup: never create a second AP invoice for the same PO
+    const poIdNum = Number.parseInt(body.po_id || body.poId)
+    if (!Number.isNaN(poIdNum)) {
+      const { data: existing } = await supabase
+        .from("accounts_payable")
+        .select("invoice_id, invoice_number")
+        .eq("po_id", poIdNum)
+        .limit(1)
+
+      if (existing && existing.length > 0) {
+        return NextResponse.json({
+          invoice_id: existing[0].invoice_id,
+          invoiceId: existing[0].invoice_id,
+          invoice_number: existing[0].invoice_number,
+          po_id: poIdNum,
+          duplicate: true,
+        })
+      }
+    }
+
 
     const dbData: any = {
       invoice_number: body.invoice_number || body.invoiceNumber,

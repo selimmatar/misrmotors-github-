@@ -319,11 +319,11 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
 
     try {
-      // Check if invoice already exists
+      // Check if invoice already exists (GET returns a plain array)
       const response = await fetch(`/api/accounts-payable?poId=${poIdInt}`)
-      const { data: existingInvoice } = await response.json()
+      const existingInvoice = await response.json()
 
-      if (existingInvoice && existingInvoice.length > 0) {
+      if (Array.isArray(existingInvoice) && existingInvoice.length > 0) {
         return
       }
 

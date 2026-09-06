@@ -75,7 +75,56 @@ export async function POST(request: Request) {
 
     // 3. Create a supplier credit entry
     if (supplierId) {
-      const creditAmount = (quantity || 0) * (unitCost || 0)
+      // The credit must be valued at the cost actually paid to the supplier,
+      // never the selling price. The unitCost passed in can be the SO selling
+      // price (permit items fall back to unit_price), so resolve the true cost
+      // from the matching purchase order item first.
+      let trueUnitCost: number | null = null
+
+      if (productName) {
+        const { data: poItem } = await supabase
+          .from("purchase_order_items")
+          .select("unit_price, created_at, purchase_orders!inner(supplier_id)")
+          .eq("purchase_orders.supplier_id", supplierId)
+          .ilike("outsourced_name", `%${productName.trim()}%`)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (poItem?.unit_price != null) {
+          trueUnitCost = Number(poItem.unit_price)
+        }
+      }
+
+      // Regular (non-outsourced) product: use the latest received batch cost
+      if (trueUnitCost == null) {
+        const { data: invRow } = await supabase
+          .from("inventory")
+          .select("product_id")
+          .eq("inventory_id", inventoryId)
+          .maybeSingle()
+
+        if (invRow?.product_id) {
+          const { data: lastBatch } = await supabase
+            .from("inventory_batches")
+            .select("unit_cost")
+            .eq("product_id", invRow.product_id)
+            .order("received_date", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (lastBatch?.unit_cost != null) {
+            trueUnitCost = Number(lastBatch.unit_cost)
+          }
+        }
+      }
+
+      // Last resort: the caller-provided cost
+      if (trueUnitCost == null) {
+        trueUnitCost = Number(unitCost) || 0
+      }
+
+      const creditAmount = (quantity || 0) * trueUnitCost
 
       const { error: creditError } = await supabase
         .from("supplier_credits")
@@ -84,7 +133,7 @@ export async function POST(request: Request) {
           amount: creditAmount,
           credit_type: "return",
           reference_type: "inventory",
-          description: `Return of ${productName || "item"} (Qty: ${quantity})${soNumber ? ` from ${soNumber}` : ""}`,
+          description: `Return of ${productName || "item"} (Qty: ${quantity} @ ${trueUnitCost})${soNumber ? ` from ${soNumber}` : ""}`,
           status: "active",
           created_at: new Date().toISOString(),
         })
