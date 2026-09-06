@@ -218,6 +218,17 @@ export async function PUT(request: Request) {
 
     const dbUpdates: any = {}
 
+    // Capture the invoice before update so we can record the payment delta
+    let existingInvoice: any = null
+    if (updates.paidAmount !== undefined) {
+      const { data: current } = await supabase
+        .from("accounts_payable")
+        .select("invoice_id, invoice_number, po_id, supplier_id, amount, paid_amount, payment_type")
+        .eq("invoice_id", Number.parseInt(id))
+        .single()
+      existingInvoice = current
+    }
+
     if (updates.monthsPaid !== undefined) dbUpdates.months_paid = updates.monthsPaid
     if (updates.paidAmount !== undefined) dbUpdates.paid_amount = updates.paidAmount
     if (updates.status !== undefined) dbUpdates.status = updates.status
@@ -244,6 +255,39 @@ export async function PUT(request: Request) {
     if (error) {
       console.error("AP PUT: Error", error.message)
       throw error
+    }
+
+    // Record the payment delta in supplier_payments so supplier totals,
+    // analytics, and payment history stay in sync with the AP invoice
+    if (existingInvoice && updates.paidAmount !== undefined) {
+      const previousPaid = Number.parseFloat(existingInvoice.paid_amount) || 0
+      const newPaid = Number.parseFloat(updates.paidAmount) || 0
+      const delta = newPaid - previousPaid
+
+      if (delta > 0 && existingInvoice.supplier_id) {
+        const paymentType = existingInvoice.payment_type || "payment"
+        const { error: paymentError } = await supabase.from("supplier_payments").insert({
+          invoice_id: existingInvoice.invoice_id,
+          supplier_id: existingInvoice.supplier_id,
+          amount: delta,
+          payment_date: new Date().toISOString().split("T")[0],
+          payment_method: paymentType,
+          reference_number: `PAY-${existingInvoice.invoice_number}`,
+        })
+        if (paymentError) {
+          console.error("AP PUT: Error recording supplier payment", paymentError)
+        }
+
+        await (supabase as any).from("balance_entries").insert({
+          entry_type: "ap_payment",
+          reference_type: "purchase_order",
+          reference_id: existingInvoice.po_id?.toString() || "",
+          reference_number: existingInvoice.invoice_number,
+          amount: -delta,
+          description: `Payment for ${existingInvoice.invoice_number}`,
+          status: "active",
+        })
+      }
     }
 
     return NextResponse.json(data)

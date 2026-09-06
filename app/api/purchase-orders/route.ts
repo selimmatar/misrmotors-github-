@@ -606,13 +606,12 @@ export async function PUT(request: Request) {
           } else if (isPrepaidOrCash && newInvoice) {
             // For prepaid/cash: also create supplier payment and balance entry
             await supabase.from("supplier_payments").insert({
-              supplier_invoice_id: newInvoice.invoice_id,
+              invoice_id: newInvoice.invoice_id,
               supplier_id: currentOrder.supplier_id,
               amount: currentOrder.total,
               payment_date: new Date().toISOString().split("T")[0],
               payment_method: paymentType,
               reference_number: `${paymentType.toUpperCase()}-${currentOrder.po_number}`,
-              status: "completed",
             })
 
             await (supabase as any).from("balance_entries").insert({
