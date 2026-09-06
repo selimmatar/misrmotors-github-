@@ -536,7 +536,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       productId: "",
       productName: "",
       quantity: (item.quantity ?? "").toString(),
-      unitPrice: (item.unitPrice ?? "").toString(),
+      unitPrice: "",
       itemType: "outsourced" as const,
       outsourcedName: item.outsourcedName || item.productName || "",
       outsourcedDescription: item.outsourcedDescription || "",
