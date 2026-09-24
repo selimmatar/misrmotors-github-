@@ -613,6 +613,13 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
           return
         }
 
+        const availableStock = inventory.find((inv) => inv.productId === item.productId)?.quantity ?? null
+        if (availableStock !== null && quantity > availableStock) {
+          alert(`Only ${availableStock} in stock for this item. Please reduce the quantity.`)
+          setIsSubmitting(false)
+          return
+        }
+
         const product = products.find((p) => p.id === item.productId)
         const itemCategory: ItemCategory = equipmentItems.some((eqItem) => eqItem.productId === item.productId)
           ? "EQUIPMENT"
@@ -647,6 +654,16 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
           if (!item.unitPrice || isNaN(unitPrice) || unitPrice < 0) {
             alert("Unit price cannot be negative for stock items")
+            setIsSubmitting(false)
+            return
+          }
+
+          const warehouseId = item.warehouseId ? Number.parseInt(item.warehouseId) : null
+          const availableStock =
+            inventory.find((inv) => inv.productId === item.productId && inv.warehouseId === warehouseId)
+              ?.quantity ?? null
+          if (availableStock !== null && quantity > availableStock) {
+            alert(`Only ${availableStock} in stock for this item. Please reduce the quantity.`)
             setIsSubmitting(false)
             return
           }
@@ -936,17 +953,33 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                         )
                       })}
                   </select>
-                  <Input
-                    placeholder={t("field.quantity")}
-                    type="number"
-                    min="1"
-                    value={item.quantity}
-                    onChange={(e) => {
-                      const newItems = [...equipmentItems]
-                      newItems[index].quantity = e.target.value
-                      setEquipmentItems(newItems)
-                    }}
-                  />
+                  {(() => {
+                    const equipmentStock = inventory.find((inv) => inv.productId === item.productId)?.quantity ?? null
+                    return (
+                      <div>
+                        <Input
+                          placeholder={t("field.quantity")}
+                          type="number"
+                          min="1"
+                          max={equipmentStock ?? undefined}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            let nextValue = e.target.value
+                            const parsed = Number.parseInt(nextValue, 10)
+                            if (equipmentStock !== null && !isNaN(parsed) && parsed > equipmentStock) {
+                              nextValue = String(equipmentStock)
+                            }
+                            const newItems = [...equipmentItems]
+                            newItems[index].quantity = nextValue
+                            setEquipmentItems(newItems)
+                          }}
+                        />
+                        {equipmentStock !== null && (
+                          <p className="text-xs text-muted-foreground mt-1">{equipmentStock} in stock</p>
+                        )}
+                      </div>
+                    )
+                  })()}
                   <Input
                     placeholder={t("field.unit-price")}
                     type="number"
@@ -1016,17 +1049,34 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                         )
                       })}
                   </select>
-                  <Input
-                    placeholder={t("field.quantity")}
-                    type="number"
-                    min="1"
-                    value={item.quantity}
-                    onChange={(e) => {
-                      const newItems = [...maintenanceItems]
-                      newItems[index].quantity = e.target.value
-                      setMaintenanceItems(newItems)
-                    }}
-                  />
+                  {(() => {
+                    const maintenanceStock =
+                      inventory.find((inv) => inv.productId === item.productId)?.quantity ?? null
+                    return (
+                      <div>
+                        <Input
+                          placeholder={t("field.quantity")}
+                          type="number"
+                          min="1"
+                          max={maintenanceStock ?? undefined}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            let nextValue = e.target.value
+                            const parsed = Number.parseInt(nextValue, 10)
+                            if (maintenanceStock !== null && !isNaN(parsed) && parsed > maintenanceStock) {
+                              nextValue = String(maintenanceStock)
+                            }
+                            const newItems = [...maintenanceItems]
+                            newItems[index].quantity = nextValue
+                            setMaintenanceItems(newItems)
+                          }}
+                        />
+                        {maintenanceStock !== null && (
+                          <p className="text-xs text-muted-foreground mt-1">{maintenanceStock} in stock</p>
+                        )}
+                      </div>
+                    )
+                  })()}
                   <Input
                     placeholder={t("field.unit-price")}
                     type="number"
@@ -1221,16 +1271,38 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
               <div className="grid grid-cols-4 gap-3">
                 <div>
                   <Label className="text-xs text-gray-600 mb-1">Quantity</Label>
-                  <Input
-                    type="number"
-                    placeholder="0"
-                    value={item.quantity}
-                    onChange={(e) => {
-                      const newItems = [...orderItems]
-                      newItems[index].quantity = e.target.value
-                      setOrderItems(newItems)
-                    }}
-                  />
+                  {(() => {
+                    const stockLimit =
+                      item.item_type === "outsourced"
+                        ? null
+                        : inventory.find(
+                            (inv) => inv.productId === item.productId && inv.warehouseId === selectedWarehouseId,
+                          )?.quantity ?? null
+                    return (
+                      <>
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          min="1"
+                          max={stockLimit ?? undefined}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            let nextValue = e.target.value
+                            const parsed = Number.parseInt(nextValue, 10)
+                            if (stockLimit !== null && !isNaN(parsed) && parsed > stockLimit) {
+                              nextValue = String(stockLimit)
+                            }
+                            const newItems = [...orderItems]
+                            newItems[index].quantity = nextValue
+                            setOrderItems(newItems)
+                          }}
+                        />
+                        {stockLimit !== null && (
+                          <p className="text-xs text-muted-foreground mt-1">{stockLimit} in stock</p>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
                 <div>
                   <Label className="text-xs text-gray-600 mb-1">Cost Price</Label>

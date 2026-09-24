@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,7 +44,23 @@ interface SalesQuotationModuleProps {
 }
 
 export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
-  const { products, customers, addCustomer, suppliers } = useAppContext()
+  const { products, customers, addCustomer, suppliers, inventory } = useAppContext()
+
+  // Aggregate available (non-returned) stock per product across all warehouses
+  const aggregatedInventory = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const inv of inventory) {
+      if ((inv as any).isReturned) continue
+      totals.set(inv.productId, (totals.get(inv.productId) || 0) + (inv.quantity || 0))
+    }
+    return Array.from(totals.entries()).map(([productId, quantity]) => ({ productId, quantity }))
+  }, [inventory])
+
+  const getAvailableStock = (productId?: number | null): number | null => {
+    if (productId === undefined || productId === null) return null
+    const entry = aggregatedInventory.find((inv) => inv.productId === productId.toString())
+    return entry ? entry.quantity : 0
+  }
 
   // Draft persistence: lets the user save multiple in-progress quotations and pick which one to
   // resume, e.g. when juggling several quotes at once or logging out mid-creation.
@@ -701,6 +717,18 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       return
     }
 
+    const outOfStockItem = items.find((item) => {
+      if (item.item_type !== "inventory") return false
+      const stock = getAvailableStock(item.product_id)
+      return stock !== null && item.quantity > stock
+    })
+
+    if (outOfStockItem) {
+      const stock = getAvailableStock(outOfStockItem.product_id)
+      alert(`"${outOfStockItem.product_name}" only has ${stock} in stock. Please reduce the quantity.`)
+      return
+    }
+
     setIsCreatingQuotation(true)
 
     try {
@@ -1113,6 +1141,8 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                               productName: product.productName,
                               sku: product.sku
                             }))}
+                          inventory={aggregatedInventory}
+                          warehouseId="all"
                           value={item.product_id ? item.product_id.toString() : undefined}
                           onSelect={(value) => handleInventorySelection(item.id, value)}
                           placeholder="Search product by name or SKU..."
@@ -1152,13 +1182,30 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                   )}
                   <div className="col-span-2 space-y-2">
                     <Label htmlFor={`quantity-${item.id}`}>Quantity</Label>
-                    <Input
-                      id={`quantity-${item.id}`}
-                      type="number"
-                      min="1"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(item.id, "quantity", Number(e.target.value))}
-                    />
+                    {(() => {
+                      const stockLimit = item.item_type === "inventory" ? getAvailableStock(item.product_id) : null
+                      return (
+                        <>
+                          <Input
+                            id={`quantity-${item.id}`}
+                            type="number"
+                            min="1"
+                            max={stockLimit ?? undefined}
+                            value={item.quantity}
+                            onChange={(e) => {
+                              let next = Number(e.target.value)
+                              if (stockLimit !== null && !isNaN(next) && next > stockLimit) {
+                                next = stockLimit
+                              }
+                              updateItem(item.id, "quantity", next)
+                            }}
+                          />
+                          {stockLimit !== null && (
+                            <p className="text-xs text-muted-foreground">{stockLimit} in stock</p>
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
                   <div className="col-span-2 space-y-2">
                     <Label htmlFor={`price-${item.id}`}>Unit Cost (EGP)</Label>
