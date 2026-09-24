@@ -4,11 +4,13 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-const supabase = getAdminClient()
-
 // GET - Fetch images for a product
 export async function GET(request: NextRequest) {
   try {
+    // Created inside the handler (not at module scope) so this file can be
+    // imported during `next build`'s page-data collection without requiring
+    // the Supabase env vars to be present at build time.
+    const supabase = getAdminClient()
     const { searchParams } = new URL(request.url)
     const productId = searchParams.get("productId")
 
@@ -35,6 +37,7 @@ export async function GET(request: NextRequest) {
 // POST - Upload a new product image
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getAdminClient()
     const formData = await request.formData()
     const file = formData.get("file") as File
     const productId = formData.get("productId") as string
@@ -102,6 +105,7 @@ export async function POST(request: NextRequest) {
 // DELETE - Remove a product image
 export async function DELETE(request: NextRequest) {
   try {
+    const supabase = getAdminClient()
     const { searchParams } = new URL(request.url)
     const imageId = searchParams.get("imageId")
 

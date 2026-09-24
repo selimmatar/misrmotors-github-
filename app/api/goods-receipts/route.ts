@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-)
+import { createAdminClient } from "@/lib/supabase/admin"
 
 // GET: Fetch all goods receipts (with filtering)
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
   try {
+    // Created inside the handler (not at module scope) so this file can be
+    // imported during `next build`'s page-data collection without requiring
+    // the Supabase env vars to be present at build time.
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const poId = searchParams.get("po_id")
 
@@ -79,6 +78,7 @@ export async function GET(request: Request) {
 // POST: Create a new goods receipt
 export async function POST(request: Request) {
   try {
+    const supabase = createAdminClient()
     const body = await request.json()
     const { poId, lines, receivedBy, notes } = body
 
