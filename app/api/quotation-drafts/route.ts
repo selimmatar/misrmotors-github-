@@ -3,72 +3,88 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-// Fetch the saved in-progress quotation draft for a user, if any.
+// List every saved in-progress quotation draft for a user (most recently updated first).
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.nextUrl.searchParams.get("user_id")
-    if (!userId) {
-      return NextResponse.json({ error: "user_id is required" }, { status: 400 })
+    const ownerKey = request.nextUrl.searchParams.get("owner_key")
+    if (!ownerKey) {
+      return NextResponse.json({ error: "owner_key is required" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
     const { data, error } = await supabase
       .from("quotation_drafts")
-      .select("form_data, updated_at")
-      .eq("user_id", userId)
-      .maybeSingle()
+      .select("id, form_data, updated_at")
+      .eq("owner_key", ownerKey)
+      .order("updated_at", { ascending: false })
 
     if (error) {
-      console.error("Fetch quotation draft error:", error)
-      return NextResponse.json({ error: "Failed to fetch draft" }, { status: 500 })
+      console.error("Fetch quotation drafts error:", error)
+      return NextResponse.json({ error: "Failed to fetch drafts" }, { status: 500 })
     }
 
-    return NextResponse.json({ draft: data ?? null })
+    return NextResponse.json({ drafts: data ?? [] })
   } catch (error) {
-    console.error("Fetch quotation draft error:", error)
-    return NextResponse.json({ error: "Failed to fetch draft" }, { status: 500 })
+    console.error("Fetch quotation drafts error:", error)
+    return NextResponse.json({ error: "Failed to fetch drafts" }, { status: 500 })
   }
 }
 
-// Save (upsert) the in-progress quotation draft for a user.
+// Create a new draft, or update an existing one when `id` is provided.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { user_id, form_data } = body
+    const { id, owner_key, form_data } = body
 
-    if (!user_id) {
-      return NextResponse.json({ error: "user_id is required" }, { status: 400 })
+    if (!owner_key) {
+      return NextResponse.json({ error: "owner_key is required" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
-    const { error } = await supabase.from("quotation_drafts").upsert({
-      user_id,
-      form_data,
-      updated_at: new Date().toISOString(),
-    })
+
+    if (id) {
+      const { error } = await supabase
+        .from("quotation_drafts")
+        .update({ form_data, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("owner_key", owner_key)
+
+      if (error) {
+        console.error("Update quotation draft error:", error)
+        return NextResponse.json({ error: "Failed to save draft" }, { status: 500 })
+      }
+
+      return NextResponse.json({ id })
+    }
+
+    const { data, error } = await supabase
+      .from("quotation_drafts")
+      .insert({ owner_key, form_data, updated_at: new Date().toISOString() })
+      .select("id")
+      .single()
 
     if (error) {
-      console.error("Save quotation draft error:", error)
+      console.error("Create quotation draft error:", error)
       return NextResponse.json({ error: "Failed to save draft" }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ id: data.id })
   } catch (error) {
     console.error("Save quotation draft error:", error)
     return NextResponse.json({ error: "Failed to save draft" }, { status: 500 })
   }
 }
 
-// Discard the saved draft for a user (called once the quotation is finalized or explicitly discarded).
+// Discard a single saved draft (called once its quotation is finalized or explicitly discarded).
 export async function DELETE(request: NextRequest) {
   try {
-    const userId = request.nextUrl.searchParams.get("user_id")
-    if (!userId) {
-      return NextResponse.json({ error: "user_id is required" }, { status: 400 })
+    const id = request.nextUrl.searchParams.get("id")
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 })
     }
 
     const supabase = await createServerClient()
-    const { error } = await supabase.from("quotation_drafts").delete().eq("user_id", userId)
+    const { error } = await supabase.from("quotation_drafts").delete().eq("id", id)
 
     if (error) {
       console.error("Delete quotation draft error:", error)
