@@ -117,7 +117,7 @@ export async function GET() {
             productName:
               item.item_type === "outsourced"
                 ? item.outsourced_name || "Outsourced Item"
-                : item.products?.product_name || item.product_name || "Unknown Product",
+                : item.products?.product_name || item.item_name_snapshot || "Unknown Product",
             sku: item.products?.sku || "",
             unit: item.item_type === "outsourced" ? item.outsourced_unit || "" : item.products?.unit || "pcs",
             quantity: item.quantity,
@@ -248,6 +248,8 @@ export async function POST(request: Request) {
           po_id: order.po_id,
           // Outsourced items have no product; keep product_id null
           product_id: isOutsourced ? null : rawProductId || null,
+          // Keep the display name so free-text items (no product_id) still print on invoices
+          item_name_snapshot: item.productName || item.product_name || null,
           quantity: Number(item.quantity) || 0,
           unit_price: Number(item.unitPrice ?? item.unit_price ?? 0),
           total: Number(item.total ?? 0),
@@ -536,7 +538,8 @@ export async function PUT(request: Request) {
       if (items.length > 0) {
         const itemsWithPoId = items.map((item: any) => ({
           po_id: Number.parseInt(id),
-          product_id: Number.parseInt(item.product_id || item.productId),
+          product_id: Number.parseInt(item.product_id || item.productId) || null,
+          item_name_snapshot: item.productName || item.product_name || null,
           quantity: item.quantity,
           unit_price: item.unit_price || item.unitPrice,
           total: item.total,

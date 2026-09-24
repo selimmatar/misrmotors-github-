@@ -390,7 +390,7 @@ export async function GET(request: NextRequest) {
         ${poItems.map((item, index) => `
           <tr>
             <td>${index + 1}</td>
-            <td style="text-align: right;">${item.products?.product_name || item.product_name || "Unknown"}</td>
+            <td style="text-align: right;">${item.products?.product_name || item.item_name_snapshot || item.product_name || "Unknown"}</td>
             <td>${item.products?.sku || "-"}</td>
             <td>${item.quantity} ${item.products?.unit || ""}</td>
             ${po.status !== "pending" ? `

@@ -219,7 +219,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
         ? items.map((item: any, i: number) => {
             const itemName = item.item_type === "outsourced"
               ? (item.outsourced_name || "Outsourced Item")
-              : (item.products?.product_name || item.outsourced_name || "—")
+              : (item.products?.product_name || item.item_name_snapshot || item.outsourced_name || "—")
             const sku = item.products?.sku || ""
             const qty = Number(item.quantity) || 0
             const unitPrice = Number(item.unit_price) || 0
