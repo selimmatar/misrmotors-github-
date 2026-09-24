@@ -144,13 +144,17 @@ export async function GET() {
         return { success: false, message: error.message }
       }
 
-      // Check if net_total = subtotal - discount_amount (allowing for rounding)
+      // so.total includes 14% VAT on top of (subtotal - discount_amount), matching
+      // VAT_RATE in sales-order-module.tsx. Previously this check compared against
+      // (subtotal - discount) with no VAT, which flagged every VAT-inclusive order
+      // as a false-positive mismatch.
+      const VAT_RATE = 0.14
       const mismatches: any[] = []
       for (const order of orders || []) {
         const subtotal = Number(order.subtotal) || 0
         const discount = Number(order.discount_amount) || 0
         const netTotal = Number(order.net_total) || Number(order.total) || 0
-        const expected = subtotal - discount
+        const expected = (subtotal - discount) * (1 + VAT_RATE)
 
         if (subtotal > 0 && Math.abs(expected - netTotal) > 1) {
           mismatches.push({

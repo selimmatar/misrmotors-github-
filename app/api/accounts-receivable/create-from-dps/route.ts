@@ -22,6 +22,7 @@ export async function POST(request: Request) {
           customer_id,
           total,
           subtotal,
+          discount_amount,
           payment_type,
           payment_terms,
           customers:customer_id (customer_name)
@@ -102,14 +103,30 @@ export async function POST(request: Request) {
       // not the sales order total. A single SO can have multiple DPs, and the
       // accountant may only be invoicing a subset of them - so the amount must
       // reflect only the delivered items on the DPs chosen for this invoice.
+      //
+      // delivery_permit_items totals are copied straight from sales_order_items,
+      // i.e. they are PRE-discount and PRE-VAT (same basis as so.subtotal). The
+      // sales order's own discount and 14% VAT are applied at the order level
+      // (so.total = (so.subtotal - so.discount_amount) * 1.14), so a DP subset
+      // must have that same discount rate and VAT applied proportionally -
+      // otherwise DP-based invoices silently omit VAT and undercharge ~14%
+      // relative to invoices created from the full SO.
+      const VAT_RATE = 0.14 // 14% VAT - matches sales-order-module.tsx
+
       const invoiceAmount = groupPermits.reduce((permitSum: number, permit: any) => {
         const items = permit.delivery_permit_items || []
-        const permitTotal = items.reduce((itemSum: number, item: any) => {
+        const rawItemTotal = items.reduce((itemSum: number, item: any) => {
           const lineTotal =
             item.total != null ? Number(item.total) : Number(item.quantity || 0) * Number(item.unit_price || 0)
           return itemSum + lineTotal
         }, 0)
-        return permitSum + permitTotal
+
+        const soSubtotal = Number(permit.sales_orders?.subtotal || 0)
+        const soDiscount = Number(permit.sales_orders?.discount_amount || 0)
+        const discountRate = soSubtotal > 0 ? soDiscount / soSubtotal : 0
+
+        const netForPermit = rawItemTotal * (1 - discountRate) * (1 + VAT_RATE)
+        return permitSum + netForPermit
       }, 0)
 
       // Get the SO's installment months - need to fetch full SO data
