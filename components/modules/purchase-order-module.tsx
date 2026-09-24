@@ -1831,9 +1831,9 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
               {/* Items List */}
               <div>
-                <h3 className="font-semibold mb-3 text-lg border-b pb-2">Order Items</h3>
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
+              <h3 className="font-semibold mb-3 text-lg border-b pb-2">Order Items</h3>
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full text-sm">
                     <thead className="bg-muted">
                       <tr>
                         <th className="text-start p-3 font-semibold">Product</th>

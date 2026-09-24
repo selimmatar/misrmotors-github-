@@ -429,9 +429,9 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
 
               {/* Items Table */}
               <div>
-                <p className="text-sm text-muted-foreground mb-2 font-medium">Items</p>
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full">
+              <p className="text-sm text-muted-foreground mb-2 font-medium">Items</p>
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full">
                     <thead className="bg-muted">
                       <tr>
                         <th className="text-left p-3 text-sm font-medium">#</th>

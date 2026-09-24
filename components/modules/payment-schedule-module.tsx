@@ -237,7 +237,7 @@ export function PaymentScheduleModule() {
                     </Button>
                     
                     {isExpanded && (
-                      <div className="border-t pt-3 mt-2">
+                      <div className="border-t pt-3 mt-2 overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="text-muted-foreground">

@@ -1634,6 +1634,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
             {pendingOrders.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">{t("no-pending-orders")}</p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-muted">
@@ -1671,6 +1672,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </DialogContent>

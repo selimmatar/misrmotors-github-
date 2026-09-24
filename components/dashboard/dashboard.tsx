@@ -89,6 +89,7 @@ type ModuleType =
 
 export function Dashboard({ user, onLogout }: DashboardProps) {
   const [activeModule, setActiveModule] = useState<ModuleType>(user.role === "shipment" ? "shipment" : "dashboard")
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   useEffect(() => {
     const handleNavigate = (event: CustomEvent) => {
@@ -197,10 +198,17 @@ case "po-requests":
 
   return (
     <div className="flex h-screen bg-background">
-      <Sidebar activeModule={activeModule} onModuleChange={setActiveModule} userRole={user.role} onLogout={onLogout} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header user={user} onLogout={onLogout} />
-        <main className="flex-1 overflow-auto p-6">{renderModule()}</main>
+      <Sidebar
+        activeModule={activeModule}
+        onModuleChange={setActiveModule}
+        userRole={user.role}
+        onLogout={onLogout}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <Header user={user} onLogout={onLogout} onMenuClick={() => setMobileSidebarOpen(true)} />
+        <main className="flex-1 overflow-auto p-4 md:p-6">{renderModule()}</main>
       </div>
     </div>
   )

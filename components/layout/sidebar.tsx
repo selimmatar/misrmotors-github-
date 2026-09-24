@@ -28,6 +28,7 @@ import {
   UserCog,
   ArrowLeftRight,
   Wrench,
+  X,
 } from "lucide-react"
 import type { UserRole } from "@/lib/types"
 import { useI18n } from "@/lib/i18n-context"
@@ -37,9 +38,11 @@ interface SidebarProps {
   onModuleChange: (module: any) => void
   userRole: UserRole
   onLogout?: () => void
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }
 
-export function Sidebar({ activeModule, onModuleChange, userRole, onLogout }: SidebarProps) {
+export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobileOpen, onMobileClose }: SidebarProps) {
   const { t } = useI18n()
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({})
 
@@ -167,8 +170,8 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout }: Si
     shipment: "role.shipment",
   }
 
-  return (
-    <div className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
+  const sidebarContent = (
+    <>
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3 mb-2">
           <img src="/images/image.png" alt="Misr Motors Logo" className="h-12 w-auto" />
@@ -186,7 +189,10 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout }: Si
               key={module.id}
               variant={activeModule === module.id ? "default" : "ghost"}
               className="w-full justify-start gap-3 relative"
-              onClick={() => onModuleChange(module.id)}
+              onClick={() => {
+                onModuleChange(module.id)
+                onMobileClose?.()
+              }}
             >
               <IconComponent className="w-4 h-4" />
               <span className="flex-1 text-left">{t(module.label)}</span>
@@ -207,6 +213,30 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout }: Si
           </Button>
         </div>
       )}
-    </div>
+    </>
+  )
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex w-64 bg-sidebar border-r border-sidebar-border flex-col shrink-0">
+        {sidebarContent}
+      </div>
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={onMobileClose} />
+          <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-sidebar border-r border-sidebar-border flex flex-col">
+            <div className="absolute top-3 right-3">
+              <Button variant="ghost" size="icon" onClick={onMobileClose} aria-label="Close menu">
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
