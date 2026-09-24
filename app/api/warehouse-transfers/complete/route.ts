@@ -52,11 +52,15 @@ export async function POST(request: Request) {
         sourceInv = data
       }
       if (!sourceInv && item.product_id) {
+        // A product can now have a separate returned-holding row (is_returned = true)
+        // alongside its normal stock row. Transfers must only ever move sellable,
+        // on-hand stock, and excluding is_returned also keeps this query to a single row.
         const { data } = await supabase
           .from("inventory")
           .select("inventory_id, quantity, unit_cost, reorder_point, is_outsourced, outsourced_name, outsourced_description, supplier_name")
           .eq("product_id", item.product_id)
           .eq("warehouse_id", transfer.source_warehouse_id)
+          .eq("is_returned", false)
           .maybeSingle()
         sourceInv = data
       }
@@ -96,6 +100,7 @@ export async function POST(request: Request) {
           .select("inventory_id, quantity")
           .eq("product_id", item.product_id)
           .eq("warehouse_id", transfer.destination_warehouse_id)
+          .eq("is_returned", false)
           .maybeSingle()
         destInv = data
       }
@@ -120,6 +125,7 @@ export async function POST(request: Request) {
           unit_cost: sourceInv.unit_cost || 0,
           location: "Transfer",
           is_outsourced: isOutsourced,
+          is_returned: false,
           supplier_name: sourceInv.supplier_name || null,
         }
         if (isOutsourced) {

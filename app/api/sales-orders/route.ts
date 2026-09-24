@@ -214,15 +214,21 @@ export async function POST(request: Request) {
           .from("inventory")
           .select("product_id, quantity")
           .in("product_id", productIds)
+          // Returned-holding stock isn't sellable yet (it hasn't been restocked), and a
+          // product can have both a normal row and a returned row per warehouse, so it
+          // must be excluded here rather than counted as available.
+          .eq("is_returned", false)
 
         if (inventoryError) {
           console.error("Sales Orders POST: Error fetching inventory", inventoryError)
           return Response.json({ error: "Failed to validate inventory" }, { status: 500 })
         }
 
+        // Sum across warehouses (a product can have one on-hand row per warehouse).
         const inventoryMap = new Map<string, number>()
         for (const inv of inventoryData || []) {
-          inventoryMap.set(String(inv.product_id), inv.quantity)
+          const key = String(inv.product_id)
+          inventoryMap.set(key, (inventoryMap.get(key) || 0) + (inv.quantity || 0))
         }
 
         for (const item of inventoryItems) {

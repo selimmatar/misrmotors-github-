@@ -1243,6 +1243,58 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Restock Returned Item Dialog */}
+      <Dialog open={restockReturnedItemDialog} onOpenChange={setRestockReturnedItemDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restock to Warehouse</DialogTitle>
+          </DialogHeader>
+          {selectedRestockItem && (
+            <div className="space-y-4">
+              <div className="bg-muted border border-border rounded-lg p-4">
+                <p className="text-sm text-foreground">
+                  <strong>Item:</strong> {selectedRestockItem.productName}
+                </p>
+                <p className="text-sm text-foreground mt-2">
+                  <strong>Quantity:</strong> {formatNumber(selectedRestockItem.quantity)}
+                </p>
+                <p className="text-sm text-foreground mt-2">
+                  <strong>Unit Cost:</strong> {formatCurrency(selectedRestockItem.unitCost || 0)}
+                </p>
+                {selectedRestockItem.warehouseName && (
+                  <p className="text-sm text-foreground mt-2">
+                    <strong>Warehouse:</strong> {selectedRestockItem.warehouseName}
+                  </p>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                This will add the returned quantity back into sellable warehouse stock and remove it from the
+                Returns list. No supplier credit will be created.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setRestockReturnedItemDialog(false)}
+                  disabled={isRestockingItem}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleConfirmRestockReturnedItem} disabled={isRestockingItem}>
+                  {isRestockingItem ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    "Restock to Warehouse"
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* SO Details Dialog */}
       <Dialog open={showSODetailsDialog} onOpenChange={setShowSODetailsDialog}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">

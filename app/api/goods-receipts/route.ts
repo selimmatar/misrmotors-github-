@@ -207,6 +207,10 @@ export async function POST(request: Request) {
           .from("inventory")
           .select("inventory_id, quantity")
           .eq("product_id", productId)
+          // A product can also have a separate returned-holding row (is_returned = true).
+          // Newly received stock must only merge into the normal on-hand row, never the
+          // returned-holding row, and this filter also keeps the lookup to a single row.
+          .eq("is_returned", false)
 
         if (warehouseId !== null) {
           query = query.eq("warehouse_id", warehouseId)
@@ -232,6 +236,7 @@ export async function POST(request: Request) {
             unit_cost: line.unitCost,
             warehouse_id: warehouseId,
             reorder_point: 0,
+            is_returned: false,
             last_updated: new Date().toISOString(),
           })
         }
