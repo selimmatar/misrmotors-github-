@@ -126,6 +126,7 @@ export async function GET(request: NextRequest) {
         customerAddress: permit.customers?.address,
         customerCity: permit.customers?.city,
         customerCountry: permit.customers?.country,
+        invoiceId: permit.invoice_id ? permit.invoice_id.toString() : null,
         recipientName: permit.recipient_name || permit.sales_orders?.delivery_contact_name || permit.customers?.customer_name,
         recipientPhone: permit.recipient_phone || permit.sales_orders?.delivery_contact_phone || permit.customers?.phone,
         deliveryAddress: permit.delivery_address || permit.sales_orders?.delivery_address || permit.customers?.address,

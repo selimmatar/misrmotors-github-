@@ -97,12 +97,21 @@ export async function POST(request: Request) {
 
     for (const [paymentType, groupPermits] of Object.entries(dpsByPaymentType)) {
       const firstSoId = groupPermits[0].sales_order_id
-      const firstSo = groupPermits[0].sales_orders
-      
-      // Use the sales order total, not the sum of delivered items
-      // This ensures the invoice amount matches the SO amount
-      const invoiceAmount = firstSo?.total || 0
-      
+
+      // Price the invoice from the items actually included on the selected DPs,
+      // not the sales order total. A single SO can have multiple DPs, and the
+      // accountant may only be invoicing a subset of them - so the amount must
+      // reflect only the delivered items on the DPs chosen for this invoice.
+      const invoiceAmount = groupPermits.reduce((permitSum: number, permit: any) => {
+        const items = permit.delivery_permit_items || []
+        const permitTotal = items.reduce((itemSum: number, item: any) => {
+          const lineTotal =
+            item.total != null ? Number(item.total) : Number(item.quantity || 0) * Number(item.unit_price || 0)
+          return itemSum + lineTotal
+        }, 0)
+        return permitSum + permitTotal
+      }, 0)
+
       // Get the SO's installment months - need to fetch full SO data
       const { data: soData } = await supabase
         .from("sales_orders")
@@ -112,23 +121,11 @@ export async function POST(request: Request) {
       
       const installmentMonths = soData?.installments || 1
 
-      // Check if invoice already exists for this SO
-      const { data: existingInvoice } = await supabase
-        .from("accounts_receivable")
-        .select("invoice_number, invoice_id")
-        .eq("so_id", firstSoId)
-        .maybeSingle()
-
-      if (existingInvoice) {
-        return NextResponse.json(
-          {
-            error: `Invoice ${existingInvoice.invoice_number} already exists for Sales Order. Cannot create duplicate.`,
-            invoiceId: existingInvoice.invoice_id,
-            invoiceNumber: existingInvoice.invoice_number,
-          },
-          { status: 400 },
-        )
-      }
+      // NOTE: We intentionally do NOT block on "an invoice already exists for this SO".
+      // One sales order can have multiple delivery permits, and the accountant may
+      // create separate invoices for different subsets of DPs over time. Duplicate
+      // invoicing is already prevented per-DP by the existingLinks check above
+      // (each permit can only be linked to one invoice).
 
       // Generate invoice number
       const year = new Date().getFullYear()

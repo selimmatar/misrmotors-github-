@@ -260,20 +260,26 @@ export async function PUT(request: Request) {
             })
           if (insertErr) console.error("Outsourced insert error:", insertErr)
         } else {
-          // Regular product — look up existing unit_cost from inventory or last batch
+          // Regular product — hold returned stock in its own "returned" row, keyed
+          // by is_returned = true. Never merge into the main on-hand row: doing so
+          // would both inflate the on-hand quantity with the return and then hide
+          // the ENTIRE merged quantity from "on hand" once is_returned is set,
+          // making the product disappear from inventory and the Returns tab show
+          // the wrong (much larger) quantity.
           let unitCost = assignment.unitCost ? Number(assignment.unitCost) : 0
 
-          const { data: existingInv } = await getAdmin()
+          const { data: existingReturnedInv } = await getAdmin()
             .from("inventory")
             .select("*")
             .eq("product_id", productId)
             .eq("warehouse_id", warehouseId)
+            .eq("is_returned", true)
             .maybeSingle()
 
-          // If unitCost not passed from UI, pull from existing inventory or latest batch
+          // If unitCost not passed from UI, pull from existing returned row or latest batch
           if (!unitCost) {
-            if (existingInv?.unit_cost) {
-              unitCost = Number(existingInv.unit_cost)
+            if (existingReturnedInv?.unit_cost) {
+              unitCost = Number(existingReturnedInv.unit_cost)
             } else {
               const { data: lastBatch } = await getAdmin()
                 .from("inventory_batches")
@@ -286,18 +292,17 @@ export async function PUT(request: Request) {
             }
           }
 
-          if (existingInv) {
-            const newQuantity = (existingInv.quantity || 0) + (assignment.quantityReturned || 0)
+          if (existingReturnedInv) {
+            const newQuantity = (existingReturnedInv.quantity || 0) + (assignment.quantityReturned || 0)
             await getAdmin()
               .from("inventory")
               .update({
                 quantity: newQuantity,
-                unit_cost: unitCost || existingInv.unit_cost,
-                supplier_name: assignment.supplierName || existingInv.supplier_name,
-                is_returned: true,
-                so_number: soNumber || existingInv.so_number,
+                unit_cost: unitCost || existingReturnedInv.unit_cost,
+                supplier_name: assignment.supplierName || existingReturnedInv.supplier_name,
+                so_number: soNumber || existingReturnedInv.so_number,
               })
-              .eq("inventory_id", existingInv.inventory_id)
+              .eq("inventory_id", existingReturnedInv.inventory_id)
           } else {
             await getAdmin()
               .from("inventory")

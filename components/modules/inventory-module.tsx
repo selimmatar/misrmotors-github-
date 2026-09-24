@@ -101,6 +101,9 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const [removeReturnedItemDialog, setRemoveReturnedItemDialog] = useState(false)
   const [selectedReturnedItem, setSelectedReturnedItem] = useState<any>(null)
   const [isRemovingItem, setIsRemovingItem] = useState(false)
+  const [restockReturnedItemDialog, setRestockReturnedItemDialog] = useState(false)
+  const [selectedRestockItem, setSelectedRestockItem] = useState<any>(null)
+  const [isRestockingItem, setIsRestockingItem] = useState(false)
 
   const [uniqueCategories, setUniqueCategories] = useState<Array<{ category_id: number; category_name: string }>>([])
   const [searchQuery, setSearchQuery] = useState("")
@@ -356,6 +359,41 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const handleRemoveReturnedItem = (item: any) => {
     setSelectedReturnedItem(item)
     setRemoveReturnedItemDialog(true)
+  }
+
+  const handleRestockReturnedItem = (item: any) => {
+    setSelectedRestockItem(item)
+    setRestockReturnedItemDialog(true)
+  }
+
+  const handleConfirmRestockReturnedItem = async () => {
+    if (!selectedRestockItem) return
+
+    setIsRestockingItem(true)
+    try {
+      const response = await fetch("/api/inventory/restock-returned", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inventoryId: selectedRestockItem.inventoryId || selectedRestockItem.id,
+        }),
+      })
+
+      if (response.ok) {
+        alert("Item restocked to warehouse successfully.")
+        setRestockReturnedItemDialog(false)
+        setSelectedRestockItem(null)
+        await refreshInventory()
+      } else {
+        const error = await response.json()
+        alert("Error: " + (error.message || "Failed to restock item"))
+      }
+    } catch (error) {
+      console.error("Error restocking returned item:", error)
+      alert("Error: Failed to restock item")
+    } finally {
+      setIsRestockingItem(false)
+    }
   }
 
   const handleConfirmRemoveReturnedItem = async () => {
@@ -953,7 +991,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 Returned Items
               </CardTitle>
               <CardDescription>
-                Items returned from customers currently held in the warehouse. Remove an item to write it off and add a credit to the supplier account.
+                Items returned from customers currently held in the warehouse. Restock an item to add it back to
+                sellable stock, or remove it to write it off and add a credit to the supplier account.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1002,15 +1041,26 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                           <TableCell>{item.soNumber || "—"}</TableCell>
                           <TableCell>{item.warehouseName || "—"}</TableCell>
                           <TableCell>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleRemoveReturnedItem(item)}
-                              className="gap-1"
-                            >
-                              <X className="w-4 h-4" />
-                              Remove & Credit
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRestockReturnedItem(item)}
+                                className="gap-1"
+                              >
+                                <Warehouse className="w-4 h-4" />
+                                Restock to Warehouse
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleRemoveReturnedItem(item)}
+                                className="gap-1"
+                              >
+                                <X className="w-4 h-4" />
+                                Remove & Credit
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

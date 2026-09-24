@@ -136,7 +136,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       const response = await fetch("/api/delivery-permits")
       if (response.ok) {
         const data = await response.json()
-        setAvailableDPs(data)
+        // Only offer DPs that are approved and not already tied to an invoice.
+        // A sales order can have several DPs, and each DP can only be billed once,
+        // so DPs already consolidated into a prior invoice must not be selectable again.
+        const invoiceable = (data || []).filter((dp: any) => dp.status === "APPROVED" && !dp.invoiceId)
+        setAvailableDPs(invoiceable)
       }
     } catch (error) {
       console.error("AR - Error fetching DPs:", error)
