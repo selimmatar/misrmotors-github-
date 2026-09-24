@@ -43,6 +43,7 @@ interface WarehouseAllocation {
 
 interface ReceiptLineItem {
   productId: string
+  poItemId: string
   productName: string
   itemType: 'stock' | 'outsourced'
   quantityOrdered: number
@@ -139,9 +140,13 @@ export function GoodsReceiptModule() {
     
     const lines: ReceiptLineItem[] = po.items.map((item: any) => {
       const qty = Number(item.quantity) || 0
-      const isOutsourced = item.itemType === 'outsourced' || !item.productId
+      // Trust the item's actual item_type. A stock item without a matching catalog
+      // product (manually typed on the PO) is still a stock item — it must still be
+      // allocated to a warehouse and added to inventory, not silently dropped as "outsourced".
+      const isOutsourced = item.itemType === 'outsourced'
       return {
         productId: item.productId || item.id || String(Math.random()),
+        poItemId: item.id ? String(item.id) : '',
         productName: item.productName || item.outsourcedName || 'Unknown',
         itemType: isOutsourced ? 'outsourced' : 'stock',
         quantityOrdered: qty,
@@ -255,7 +260,7 @@ export function GoodsReceiptModule() {
 
       for (const line of receiptLines) {
         const poItem = selectedPOForPhotos.items.find(
-          (item: any) => item.productId === line.productId || item.outsourcedName === line.productName
+          (item: any) => (line.poItemId && String(item.id) === line.poItemId) || item.productId === line.productId || item.outsourcedName === line.productName
         )
 
         if (line.itemType === 'outsourced') {
@@ -274,12 +279,16 @@ export function GoodsReceiptModule() {
             unitCost: line.unitPrice,
           })
         } else {
-          // Stock items: one line per warehouse allocation
+          // Stock items: one line per warehouse allocation.
+          // poItem.productId is the real catalog product id (may be missing if this
+          // was a manually-typed item on the PO) — pass productName along so the
+          // server can provision a catalog product for it when needed.
           for (const allocation of line.warehouseAllocations) {
             if (allocation.quantity > 0) {
               allLines.push({
                 poItemId: poItem?.id || null,
-                productId: line.productId,
+                productId: poItem?.productId || null,
+                productName: line.productName,
                 itemType: 'stock',
                 sourceSoItemId: null,
                 quantityOrdered: line.quantityOrdered,

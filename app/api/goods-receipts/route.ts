@@ -97,6 +97,47 @@ export async function POST(request: Request) {
       )
     }
 
+    // Auto-provision a catalog product for stock items that were added to the PO
+    // manually (typed name, no matching catalog product). Without a real product_id,
+    // these items could never be added to inventory when received.
+    const provisionedProductIds = new Map<string, number>()
+    for (const line of lines) {
+      if (line.itemType !== "outsourced" && !line.productId && line.poItemId) {
+        const cacheKey = String(line.poItemId)
+        const cached = provisionedProductIds.get(cacheKey)
+        if (cached) {
+          line.productId = cached
+          continue
+        }
+
+        const { data: newProduct, error: newProductError } = await supabase
+          .from("products")
+          .insert({
+            product_name: line.productName || `PO Item ${line.poItemId}`,
+            sku: `AUTO-${line.poItemId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            unit_price: line.unitCost || 0,
+            unit: "pcs",
+            is_active: true,
+          })
+          .select("product_id")
+          .single()
+
+        if (newProductError || !newProduct) {
+          throw newProductError || new Error("Failed to create catalog product for stock item")
+        }
+
+        // Link the new product back to the PO item so future lookups (invoices,
+        // reorder suggestions, tracking, etc.) resolve to a real catalog product.
+        await supabase
+          .from("purchase_order_items")
+          .update({ product_id: newProduct.product_id })
+          .eq("po_item_id", Number.parseInt(line.poItemId))
+
+        provisionedProductIds.set(cacheKey, newProduct.product_id)
+        line.productId = newProduct.product_id
+      }
+    }
+
     // Generate GRN number
     const { data: seqData } = await supabase.rpc("get_next_grn_number")
     const grnNumber = `GRN-${new Date().getFullYear()}-${String(seqData || 1).padStart(4, "0")}`
