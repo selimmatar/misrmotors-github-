@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Trash2, FileText, Printer, Package, Upload, UserPlus } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Trash2, FileText, Printer, Package, Upload, UserPlus, FileClock, X } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { UserRole, Customer, PaymentType, PaymentDetails } from "@/lib/types"
@@ -23,6 +24,7 @@ import {
   type PaymentScheduleEntry,
 } from "@/components/payment"
 import { DiscountFields, PricingSummaryCard, calculateDiscount, type DiscountType } from "@/components/discount"
+import { getOrCreateClientId } from "@/lib/client-id"
 import * as XLSX from "xlsx"
 
 interface QuotationItem {
@@ -42,6 +44,16 @@ interface SalesQuotationModuleProps {
 
 export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   const { products, customers, addCustomer, suppliers } = useAppContext()
+
+  // Draft persistence: lets the user resume a quotation in progress if they log out mid-creation.
+  // There are no real accounts here (see login-page.tsx), so we key drafts by a stable per-browser
+  // id rather than the per-login User.id, which is regenerated on every login and would never match
+  // across a logout/login cycle.
+  const [draftOwnerKey, setDraftOwnerKey] = useState<string | null>(null)
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false)
+  const [showDraftRestored, setShowDraftRestored] = useState(false)
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
+  const draftSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Customer selection
   const [selectedCustomerId, setSelectedCustomerId] = useState("")
@@ -104,6 +116,185 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
 
   // Payment schedule
   const [paymentSchedule, setPaymentSchedule] = useState<PaymentScheduleEntry[]>([])
+
+  // Snapshot of every field that should survive a logout / accidental navigation mid-creation
+  const buildDraftSnapshot = () => ({
+    selectedCustomerId,
+    customerName,
+    customerPhone,
+    customerEmail,
+    customerAddress,
+    validityDays,
+    items,
+    notes,
+    quotationRequestNumber,
+    departmentName,
+    receiverName,
+    deliveryDate,
+    deliveryAddress,
+    deliveryContactName,
+    deliveryContactPhone,
+    soType,
+    orderDate,
+    paymentType,
+    paymentDetails,
+    discountType,
+    discountValue,
+    paymentSchedule,
+  })
+
+  const applyDraftSnapshot = (draft: ReturnType<typeof buildDraftSnapshot>) => {
+    setSelectedCustomerId(draft.selectedCustomerId ?? "")
+    setCustomerName(draft.customerName ?? "")
+    setCustomerPhone(draft.customerPhone ?? "")
+    setCustomerEmail(draft.customerEmail ?? "")
+    setCustomerAddress(draft.customerAddress ?? "")
+    setValidityDays(draft.validityDays ?? 30)
+    setItems(draft.items ?? [])
+    setNotes(draft.notes ?? "")
+    setQuotationRequestNumber(draft.quotationRequestNumber ?? "")
+    setDepartmentName(draft.departmentName ?? "")
+    setReceiverName(draft.receiverName ?? "")
+    setDeliveryDate(draft.deliveryDate ?? "")
+    setDeliveryAddress(draft.deliveryAddress ?? "")
+    setDeliveryContactName(draft.deliveryContactName ?? "")
+    setDeliveryContactPhone(draft.deliveryContactPhone ?? "")
+    setSoType(draft.soType ?? "EQUIPMENT")
+    setOrderDate(draft.orderDate ?? new Date().toISOString().split("T")[0])
+    setPaymentType(draft.paymentType ?? "cash")
+    if (draft.paymentDetails) setPaymentDetails(draft.paymentDetails)
+    setDiscountType(draft.discountType ?? "none")
+    setDiscountValue(draft.discountValue ?? 0)
+    setPaymentSchedule(draft.paymentSchedule ?? [])
+  }
+
+  const isDraftWorthKeeping = (draft: ReturnType<typeof buildDraftSnapshot>) =>
+    Boolean(draft.customerName?.trim()) || draft.items.length > 0
+
+  // Derive the stable per-browser draft key, then restore any in-progress quotation left
+  // behind by a logout or lost session
+  useEffect(() => {
+    const clientId = getOrCreateClientId()
+    if (!clientId) {
+      setIsDraftLoaded(true)
+      return
+    }
+
+    const key = `${userRole}:${clientId}`
+    setDraftOwnerKey(key)
+
+    let isMounted = true
+
+    fetch(`/api/quotation-drafts?user_id=${encodeURIComponent(key)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((result) => {
+        if (!isMounted) return
+        const draft = result?.draft?.form_data
+        if (draft && isDraftWorthKeeping(draft)) {
+          applyDraftSnapshot(draft)
+          setShowDraftRestored(true)
+        }
+      })
+      .catch((error) => {
+        console.error("[v0] Failed to load quotation draft:", error)
+      })
+      .finally(() => {
+        if (isMounted) setIsDraftLoaded(true)
+      })
+
+    return () => {
+      isMounted = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole])
+
+  // Autosave the in-progress quotation so it can be resumed after a logout
+  useEffect(() => {
+    if (!draftOwnerKey || !isDraftLoaded) return
+
+    if (draftSaveTimeoutRef.current) {
+      clearTimeout(draftSaveTimeoutRef.current)
+    }
+
+    const snapshot = buildDraftSnapshot()
+
+    draftSaveTimeoutRef.current = setTimeout(() => {
+      if (!isDraftWorthKeeping(snapshot)) return
+      setIsSavingDraft(true)
+      fetch("/api/quotation-drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: draftOwnerKey, form_data: snapshot }),
+      })
+        .catch((error) => {
+          console.error("[v0] Failed to save quotation draft:", error)
+        })
+        .finally(() => setIsSavingDraft(false))
+    }, 1000)
+
+    return () => {
+      if (draftSaveTimeoutRef.current) clearTimeout(draftSaveTimeoutRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isDraftLoaded,
+    draftOwnerKey,
+    selectedCustomerId,
+    customerName,
+    customerPhone,
+    customerEmail,
+    customerAddress,
+    validityDays,
+    items,
+    notes,
+    quotationRequestNumber,
+    departmentName,
+    receiverName,
+    deliveryDate,
+    deliveryAddress,
+    deliveryContactName,
+    deliveryContactPhone,
+    soType,
+    orderDate,
+    paymentType,
+    paymentDetails,
+    discountType,
+    discountValue,
+    paymentSchedule,
+  ])
+
+  const discardDraft = () => {
+    setShowDraftRestored(false)
+    setSelectedCustomerId("")
+    setCustomerName("")
+    setCustomerPhone("")
+    setCustomerEmail("")
+    setCustomerAddress("")
+    setValidityDays(30)
+    setItems([])
+    setNotes("")
+    setQuotationRequestNumber("")
+    setDepartmentName("")
+    setReceiverName("")
+    setDeliveryDate("")
+    setDeliveryAddress("")
+    setDeliveryContactName("")
+    setDeliveryContactPhone("")
+    setSoType("EQUIPMENT")
+    setOrderDate(new Date().toISOString().split("T")[0])
+    setPaymentType("cash")
+    setDiscountType("none")
+    setDiscountValue(0)
+    setPaymentSchedule([])
+
+    if (draftOwnerKey) {
+      fetch(`/api/quotation-drafts?user_id=${encodeURIComponent(draftOwnerKey)}`, { method: "DELETE" }).catch(
+        (error) => {
+          console.error("[v0] Failed to discard quotation draft:", error)
+        },
+      )
+    }
+  }
 
   const handlePaymentDetailChange = (field: string, value: string | number) => {
     setPaymentDetails((prev) => {
@@ -499,6 +690,16 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
       const { quotation } = await response.json()
       setSavedQuotation(quotation)
 
+      // Quotation was successfully created, so the in-progress draft is no longer needed
+      if (draftOwnerKey) {
+        fetch(`/api/quotation-drafts?user_id=${encodeURIComponent(draftOwnerKey)}`, { method: "DELETE" }).catch(
+          (error) => {
+            console.error("[v0] Failed to clear quotation draft:", error)
+          },
+        )
+      }
+      setShowDraftRestored(false)
+
       // Generate PDF
       const quotationData = {
         quotation_number: quotation.quotation_number,
@@ -527,14 +728,31 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
   const { subtotal, tax, total } = calculateTotal()
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-6 w-6" />
-            Sales Quotations
-          </CardTitle>
-          <CardDescription>
+  <div className="space-y-6">
+  {showDraftRestored && (
+    <Alert className="flex items-center justify-between gap-4 border-primary/30 bg-primary/5">
+      <div className="flex items-center gap-2">
+        <FileClock className="h-4 w-4 text-primary" />
+        <AlertDescription>
+          We restored your in-progress quotation from before you left. Continue where you left off, or discard it to
+          start fresh.
+        </AlertDescription>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={discardDraft}>
+          <X className="h-4 w-4 mr-1" />
+          Discard Draft
+        </Button>
+      </div>
+    </Alert>
+  )}
+  <Card>
+  <CardHeader>
+  <CardTitle className="flex items-center gap-2">
+  <FileText className="h-6 w-6" />
+  Sales Quotations
+  </CardTitle>
+  <CardDescription>
             Create and print sales quotations for customers with inventory items or custom products
           </CardDescription>
         </CardHeader>
@@ -983,6 +1201,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 {isCreatingQuotation ? "Saving..." : "Save & Generate PDF"}
               </Button>
               <p className="text-sm text-muted-foreground">Saves quotation and opens PDF in new window</p>
+              {isSavingDraft && <p className="text-xs text-muted-foreground">Saving draft…</p>}
 
               {savedQuotation && (
                 <div className="mt-4 pt-4 border-t">
