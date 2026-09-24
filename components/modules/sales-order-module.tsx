@@ -767,7 +767,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       netTotal: finalNetTotal, // Explicit net total field
       notes: formData.notes,
       paymentType,
-      paymentTerms: paymentType === "cash" ? "prepaid" : "installment",
+      paymentTerms: paymentType === "cash" || paymentType === "bank_transfer" ? "prepaid" : "installment",
       installments:
         paymentType === "installments"
           ? paymentDetails.installmentMonths

@@ -39,8 +39,8 @@ export interface Product {
   costUpdatedBy?: number
 }
 
-export type PaymentType = "cash" | "installments" | "cheque" | "hybrid"
-export type DownPaymentType = "cash" | "cheque"
+export type PaymentType = "cash" | "installments" | "cheque" | "hybrid" | "bank_transfer"
+export type DownPaymentType = "cash" | "cheque" | "bank_transfer"
 export type SOType = "EQUIPMENT" | "MAINTENANCE_PARTS" | "MIXED"
 export type ItemCategory = "EQUIPMENT" | "MAINTENANCE_PARTS"
 export type DeliveryPermitStatus =

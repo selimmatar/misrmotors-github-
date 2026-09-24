@@ -23,6 +23,7 @@ export function PaymentTypeSelector({ value, onChange, disabled }: PaymentTypeSe
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="cash">{t("payment.cash")}</SelectItem>
+          <SelectItem value="bank_transfer">{t("payment.bank_transfer")}</SelectItem>
           <SelectItem value="installments">{t("payment.installments")}</SelectItem>
           <SelectItem value="cheque">{t("payment.cheque")}</SelectItem>
           <SelectItem value="hybrid">{t("payment.hybrid")}</SelectItem>

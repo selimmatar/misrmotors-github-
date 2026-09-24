@@ -708,7 +708,7 @@ export async function PUT(request: Request) {
 
         const invoiceData: any = {}
 
-        if (paymentType === "cash" || paymentType === "prepaid") {
+        if (paymentType === "cash" || paymentType === "prepaid" || paymentType === "bank_transfer") {
           invoiceData.installment_months = 1
           invoiceData.months_paid = 0
           invoiceData.due_date = new Date().toISOString().split("T")[0]

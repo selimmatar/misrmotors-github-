@@ -334,7 +334,12 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         invoice_date: new Date().toISOString().split("T")[0],
         due_date: effectivePaymentType === "hybrid" ? downPaymentDueDate : paymentStartDate,
         amount: order.total,
-        paid_amount: effectivePaymentType === "prepaid" || effectivePaymentType === "cash" ? order.total : 0,
+        paid_amount:
+          effectivePaymentType === "prepaid" ||
+          effectivePaymentType === "cash" ||
+          effectivePaymentType === "bank_transfer"
+            ? order.total
+            : 0,
         payment_start_date: paymentStartDate,
         installment_months:
           effectivePaymentType === "hybrid"
@@ -343,7 +348,12 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               ? order.installments || remainingInstallmentMonths
               : 1,
         months_paid: 0,
-        status: effectivePaymentType === "prepaid" || effectivePaymentType === "cash" ? "paid" : "pending",
+        status:
+          effectivePaymentType === "prepaid" ||
+          effectivePaymentType === "cash" ||
+          effectivePaymentType === "bank_transfer"
+            ? "paid"
+            : "pending",
         payment_type:
           effectivePaymentType === "hybrid"
             ? "hybrid"
@@ -444,7 +454,12 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             referenceNumber: order.poNumber,
             amount: order.total,
             description: `PO ${order.poNumber} - ${order.supplierName || "Supplier"}`,
-            status: effectivePaymentType === "prepaid" || effectivePaymentType === "cash" ? "voided" : "active",
+            status:
+              effectivePaymentType === "prepaid" ||
+              effectivePaymentType === "cash" ||
+              effectivePaymentType === "bank_transfer"
+                ? "voided"
+                : "active",
           }),
         })
       } catch (balanceError) {
@@ -736,7 +751,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         notes: "",
         paymentType,
         paymentTerms:
-          paymentType === "cash"
+          paymentType === "cash" || paymentType === "bank_transfer"
             ? "prepaid"
             : paymentType === "hybrid"
               ? "hybrid"
@@ -1797,6 +1812,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         {viewDetailsOrder.paymentType === "hybrid" && "Hybrid Payment"}
                         {viewDetailsOrder.paymentType === "installments" && "Installments"}
                         {viewDetailsOrder.paymentType === "cash" && "Cash"}
+                        {viewDetailsOrder.paymentType === "bank_transfer" && "Bank Transfer"}
                         {viewDetailsOrder.paymentType === "cheque" && "Cheque"}
                         {!viewDetailsOrder.paymentType && (viewDetailsOrder.paymentTerms || "Cash")}
                       </Badge>

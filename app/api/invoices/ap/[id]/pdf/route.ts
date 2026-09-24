@@ -367,7 +367,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         <span class="info-label">الحالة:</span>
         <span class="status-badge status-${invoice.status}">${
           invoice.status === "pending"
-            ? "قيد الانتظار"
+            ? "قيد الا��تظار"
             : invoice.status === "paid"
               ? "مدفوعة"
               : invoice.status === "partially_paid"
@@ -384,7 +384,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               ? "أقساط"
               : paymentType === "cash"
                 ? "نقدي"
-                : paymentType
+                : paymentType === "bank_transfer"
+                  ? "تحويل بنكي"
+                  : paymentType
         }</span>
       </div>
     </div>

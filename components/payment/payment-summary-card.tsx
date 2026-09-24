@@ -3,7 +3,7 @@
 import { useI18n } from "@/lib/i18n-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CreditCard, Banknote, FileText, Layers } from "lucide-react"
+import { CreditCard, Banknote, FileText, Layers, Landmark } from "lucide-react"
 import type { PaymentType, PaymentDetails } from "@/lib/types"
 
 interface PaymentSummaryCardProps {
@@ -25,6 +25,8 @@ export function PaymentSummaryCard({
     switch (paymentType) {
       case "cash":
         return <Banknote className="w-4 h-4" />
+      case "bank_transfer":
+        return <Landmark className="w-4 h-4" />
       case "installments":
         return <CreditCard className="w-4 h-4" />
       case "cheque":
@@ -40,6 +42,8 @@ export function PaymentSummaryCard({
     switch (paymentType) {
       case "cash":
         return "bg-green-100 text-green-800"
+      case "bank_transfer":
+        return "bg-teal-100 text-teal-800"
       case "installments":
         return "bg-blue-100 text-blue-800"
       case "cheque":
@@ -73,6 +77,11 @@ export function PaymentSummaryCard({
         {/* Cash - Simple display */}
         {paymentType === "cash" && (
           <div className="p-2 bg-green-50 rounded text-sm text-green-700">{t("payment.cash-full-payment")}</div>
+        )}
+
+        {/* Bank Transfer - Simple display */}
+        {paymentType === "bank_transfer" && (
+          <div className="p-2 bg-teal-50 rounded text-sm text-teal-700">{t("payment.bank-transfer-full-payment")}</div>
         )}
 
         {/* Installments */}

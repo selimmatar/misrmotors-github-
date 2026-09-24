@@ -571,7 +571,8 @@ export async function PUT(request: Request) {
 
         if (!existingInvoice) {
           const paymentType = currentOrder.payment_type || currentOrder.payment_terms || "cash"
-          const isPrepaidOrCash = paymentType === "prepaid" || paymentType === "cash"
+          const isPrepaidOrCash =
+            paymentType === "prepaid" || paymentType === "cash" || paymentType === "bank_transfer"
 
           const invoiceData: any = {
             invoice_number: `APINV-${currentOrder.po_number}`,

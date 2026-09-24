@@ -488,6 +488,8 @@ const translations: Record<Language, Record<string, string>> = {
     // Payment
     "payment.type": "Payment Type",
     "payment.cash": "Cash",
+    "payment.bank_transfer": "Bank Transfer",
+    "payment.bank-transfer-full-payment": "Full payment via bank transfer",
     "payment.installments": "Installments",
     "payment.cheque": "Cheque",
     "payment.hybrid": "Hybrid",
@@ -1021,7 +1023,7 @@ const translations: Record<Language, Record<string, string>> = {
     "permit.signed-documents": "المستندات الموقع",
     "permit.printed-at": "تم الطباعة في",
     "permit.out-for-delivery-at": "تم وضع علامة خارج للشحن في",
-    "permit.submitted-at": "تم تقديم في",
+    "permit.submitted-at": "تم ت��ديم في",
     "permit.search-placeholder": "البحث عن طريق رقم السماح، رقم أمر البيع، العميل...",
     "permit.awaiting-approval": "بانتظار الموافقة",
     "permit.status.draft": "مسودة",
@@ -1253,6 +1255,8 @@ const translations: Record<Language, Record<string, string>> = {
     // Payment (Arabic)
     "payment.type": "نوع الدفع",
     "payment.cash": "نقداً",
+    "payment.bank_transfer": "تحويل بنكي",
+    "payment.bank-transfer-full-payment": "دفع كامل عن طريق التحويل البنكي",
     "payment.installments": "أقساط",
     "payment.cheque": "شيك",
     "payment.hybrid": "مختلط",

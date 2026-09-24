@@ -257,6 +257,7 @@ export function HybridFields({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="cash">{t("payment.cash")}</SelectItem>
+                <SelectItem value="bank_transfer">{t("payment.bank_transfer")}</SelectItem>
                 <SelectItem value="cheque">{t("payment.cheque")}</SelectItem>
               </SelectContent>
             </Select>

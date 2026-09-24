@@ -499,8 +499,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       return schedules
     }
 
-    // For cash/prepaid, just show one entry
-    if (paymentType === "cash" || paymentType === "prepaid") {
+    // For cash/prepaid/bank transfer, just show one entry
+    if (paymentType === "cash" || paymentType === "prepaid" || paymentType === "bank_transfer") {
       schedules.push({
         id: `gen-${invoice.id}-1`,
         invoiceId: invoice.id,
