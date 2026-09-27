@@ -110,11 +110,19 @@ export async function POST(request: Request) {
           continue
         }
 
+        // Generate a short numeric SKU (e.g. "SKU-482910") server-side instead of a
+        // long "AUTO-{id}-{timestamp}-{random}" string - still guaranteed unique,
+        // just not exposing internal ids/timestamps to whoever sees the SKU.
+        const { data: generatedSku, error: skuError } = await supabase.rpc("generate_product_sku")
+        if (skuError || !generatedSku) {
+          throw skuError || new Error("Failed to generate product SKU")
+        }
+
         const { data: newProduct, error: newProductError } = await supabase
           .from("products")
           .insert({
             product_name: line.productName || `PO Item ${line.poItemId}`,
-            sku: `AUTO-${line.poItemId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            sku: generatedSku as string,
             unit_price: line.unitCost || 0,
             unit: "pcs",
             is_active: true,
