@@ -5,6 +5,75 @@ import { checkIdempotency, completeIdempotency, generateDPApprovalIdempotencyKey
 
 export const dynamic = "force-dynamic"
 
+// Statuses that count as "delivered" for a single delivery permit
+const DP_DELIVERED_STATUSES = ["SUBMITTED_SIGNED", "DELIVERED", "APPROVED"]
+
+/**
+ * Determines whether every item on a sales order has been fully covered (by quantity)
+ * across all of its delivery permits that count as delivered.
+ *
+ * A sales order can have multiple partial delivery permits (e.g. DP-06 may only ship
+ * 4 of 30 line items). Marking the SO as "delivered" just because every DP created SO FAR
+ * has reached a delivered status is WRONG when those DPs don't cover the full order — the
+ * SO should stay non-delivered (and be reported as "partially delivered") until every line
+ * item's ordered quantity has been shipped.
+ *
+ * `overridePermitId`/`overrideStatus` let the caller check what the outcome WOULD be after
+ * the current PUT request's status change is applied, before that change is persisted.
+ */
+async function isSOFullyDelivered(
+  supabase: ReturnType<typeof createAdminClient>,
+  salesOrderId: number,
+  overridePermitId?: number,
+  overrideStatus?: string,
+): Promise<boolean> {
+  const { data: soItems } = await supabase
+    .from("sales_order_items")
+    .select("so_item_id, product_id, quantity, outsourced_name")
+    .eq("so_id", salesOrderId)
+
+  if (!soItems || soItems.length === 0) return true
+
+  const { data: permits } = await supabase
+    .from("delivery_permits")
+    .select("permit_id, status")
+    .eq("sales_order_id", salesOrderId)
+
+  const deliveredPermitIds = (permits || [])
+    .map((p: any) => (p.permit_id === overridePermitId ? { ...p, status: overrideStatus || p.status } : p))
+    .filter((p: any) => DP_DELIVERED_STATUSES.includes(p.status))
+    .map((p: any) => p.permit_id)
+
+  if (deliveredPermitIds.length === 0) return false
+
+  const { data: dpItems } = await supabase
+    .from("delivery_permit_items")
+    .select("product_id, item_name_snapshot, quantity")
+    .in("permit_id", deliveredPermitIds)
+
+  const deliveredByProduct = new Map<number, number>()
+  const deliveredByName = new Map<string, number>()
+
+  for (const dpItem of dpItems || []) {
+    const qty = Number(dpItem.quantity) || 0
+    if (dpItem.product_id) {
+      deliveredByProduct.set(dpItem.product_id, (deliveredByProduct.get(dpItem.product_id) || 0) + qty)
+    } else {
+      const name = (dpItem.item_name_snapshot || "").trim()
+      if (name) deliveredByName.set(name, (deliveredByName.get(name) || 0) + qty)
+    }
+  }
+
+  return soItems.every((soItem: any) => {
+    const orderedQty = Number(soItem.quantity) || 0
+    if (orderedQty <= 0) return true
+    const deliveredQty = soItem.product_id
+      ? deliveredByProduct.get(soItem.product_id) || 0
+      : deliveredByName.get((soItem.outsourced_name || "").trim()) || 0
+    return deliveredQty >= orderedQty
+  })
+}
+
 // GET - Fetch all delivery permits or a specific one
 export async function GET(request: NextRequest) {
   try {
@@ -489,24 +558,21 @@ export async function PUT(request: NextRequest) {
       updates.submitted_signed_at = new Date().toISOString()
       updates.submitted_signed_by = userId ? Number.parseInt(userId) : null
       
-      // Check if ALL delivery permits for this SO are now delivered before marking SO as delivered
+      // Only mark the SO as delivered once every line item's ordered quantity has been
+      // covered by delivered permits — a single delivered DP does not mean the whole SO shipped.
       if (currentPermit.sales_order_id) {
-        const { data: allDPs } = await supabase
-          .from("delivery_permits")
-          .select("permit_id, status")
-          .eq("sales_order_id", currentPermit.sales_order_id)
-        
-        const allDelivered = allDPs?.every(dp => 
-          dp.permit_id === Number.parseInt(permitId) || 
-          dp.status === "SUBMITTED_SIGNED" || 
-          dp.status === "DELIVERED" ||
-          dp.status === "APPROVED"
+        const fullyDelivered = await isSOFullyDelivered(
+          supabase,
+          currentPermit.sales_order_id,
+          Number.parseInt(permitId),
+          newStatus,
         )
-        
-        if (allDelivered) {
+
+        if (fullyDelivered) {
           soUpdates.status = "delivered"
           soUpdates.fulfillment_status = "DELIVERED"
         } else {
+          soUpdates.fulfillment_status = "PARTIALLY_DELIVERED"
         }
       }
       break
@@ -543,24 +609,21 @@ export async function PUT(request: NextRequest) {
           soUpdates.payment_active = true
           soUpdates.payment_activated_at = new Date().toISOString()
           
-          // Check if ALL delivery permits for this SO are now delivered
+          // Only mark the SO as delivered once every line item's ordered quantity has been
+          // covered by delivered permits — a single approved DP does not mean the whole SO shipped.
           if (currentPermit.sales_order_id) {
-            const { data: allDPs } = await supabase
-              .from("delivery_permits")
-              .select("permit_id, status")
-              .eq("sales_order_id", currentPermit.sales_order_id)
-            
-            const allDelivered = allDPs?.every(dp => 
-              dp.permit_id === Number.parseInt(permitId) || 
-              dp.status === "SUBMITTED_SIGNED" || 
-              dp.status === "DELIVERED" ||
-              dp.status === "APPROVED"
+            const fullyDelivered = await isSOFullyDelivered(
+              supabase,
+              currentPermit.sales_order_id,
+              Number.parseInt(permitId),
+              newStatus,
             )
-            
-            if (allDelivered) {
+
+            if (fullyDelivered) {
               soUpdates.fulfillment_status = "DELIVERED"
               soUpdates.status = "delivered"
             } else {
+              soUpdates.fulfillment_status = "PARTIALLY_DELIVERED"
             }
           }
 
