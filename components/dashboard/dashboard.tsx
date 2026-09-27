@@ -8,7 +8,6 @@ import { PORequestModule } from "@/components/modules/po-request-module"
 import { SupplierModule } from "@/components/modules/supplier-module"
 import { AccountsPayableModule } from "@/components/modules/accounts-payable-module"
 import { CustomerModule } from "@/components/modules/customer-module"
-import { SalesOrderModule } from "@/components/modules/sales-order-module"
 import { AccountsReceivableModule } from "@/components/modules/accounts-receivable-module"
 import { FinancialDashboard } from "@/components/modules/financial-dashboard"
 import { InventoryModule } from "@/components/modules/inventory-module"
@@ -33,6 +32,7 @@ import { SystemHealthModule } from "@/components/modules/system-health-module"
 import DeliveryPermitsModule from "@/components/modules/delivery-permits-module" // Added delivery-permits module type
 import { SalesQuotationModule } from "@/components/modules/sales-quotation-module" // Import SalesQuotationModule
 import { ApproveSalesQuotationsModule } from "@/components/modules/approve-sales-quotations-module"
+import { SalesQuotationsHubModule } from "@/components/modules/sales-quotations-hub-module"
 import { WarehouseDeliveryModule } from "@/components/modules/warehouse-delivery-module" // Import WarehouseDeliveryModule
 import { CourierManagementModule } from "@/components/modules/courier-management-module" // Import CourierManagementModule
 import { HRManagementModule } from "@/components/modules/hr-management-module" // Import HR Management Module
@@ -134,7 +134,9 @@ case "po-requests":
       case "customers":
         return <CustomerModule userRole={user.role} />
       case "sales-orders":
-        return <SalesOrderModule userRole={user.role} />
+        // Sidebar shows this as a single "Sales Quotations" tab that groups Create
+        // Quotations, Approve Quotations, and Sales Quotations (this list) into sub-tabs.
+        return <SalesQuotationsHubModule userRole={user.role} />
       case "accounts-receivable":
         return <AccountsReceivableModule userRole={user.role} />
       case "maintenance-invoices":
