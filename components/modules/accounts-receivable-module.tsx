@@ -19,7 +19,7 @@ import { Progress } from "@/components/ui/progress"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import type { CustomerInvoice } from "@/lib/types"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, ChevronDown, Upload } from "lucide-react"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, ChevronDown, Upload, Search } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 
@@ -74,6 +74,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const [availableDPs, setAvailableDPs] = useState<any[]>([])
   const [selectedDPs, setSelectedDPs] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
+ const [invoiceSearchQuery, setInvoiceSearchQuery] = useState("")
   const [dpReturnHandling, setDpReturnHandling] = useState<Record<string, "exclude" | "credit">>({})
   const [showCreditMemoForm, setShowCreditMemoForm] = useState(false)
   const [creditMemoDP, setCreditMemoDP] = useState<string | null>(null)
@@ -918,20 +919,35 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     }
   }
 
-  const getDisplayedInvoices = () => {
-    switch (listFilter) {
-      case "pending":
-        return allInvoices.filter((inv) => getInvoiceStatus(inv) === "pending")
-      case "partially_paid":
-        return allInvoices.filter((inv) => getInvoiceStatus(inv) === "partially_paid")
-      case "paid":
-        return allInvoices.filter((inv) => getInvoiceStatus(inv) === "paid")
-      case "overdue":
-        return overdueInvoices
-      default:
-        return allInvoices
-    }
-  }
+ const getDisplayedInvoices = () => {
+ let filtered: typeof allInvoices
+ switch (listFilter) {
+ case "pending":
+ filtered = allInvoices.filter((inv) => getInvoiceStatus(inv) === "pending")
+ break
+ case "partially_paid":
+ filtered = allInvoices.filter((inv) => getInvoiceStatus(inv) === "partially_paid")
+ break
+ case "paid":
+ filtered = allInvoices.filter((inv) => getInvoiceStatus(inv) === "paid")
+ break
+ case "overdue":
+ filtered = overdueInvoices
+ break
+ default:
+ filtered = allInvoices
+ }
+
+ const query = invoiceSearchQuery.trim().toLowerCase()
+ if (!query) return filtered
+
+ return filtered.filter((invoice) => {
+ const invoiceNumber = invoice.invoiceNumber?.toLowerCase() || ""
+ const customerName = getCustomerName(invoice.customerId)?.toLowerCase() || ""
+ const soNumber = getSONumber(invoice.soId, invoice)?.toLowerCase() || ""
+ return invoiceNumber.includes(query) || customerName.includes(query) || soNumber.includes(query)
+ })
+ }
 
   const handleWidgetClick = (type: "receivable" | "collected" | "outstanding" | "overdue") => {
     setWidgetDialogType(type)
@@ -1147,12 +1163,28 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         <CardHeader>
           <CardTitle>{t("ar.invoice-list")}</CardTitle>
           <CardDescription>{t("ar.invoice-description")}</CardDescription>
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search by invoice number, customer, or SO number..."
+              value={invoiceSearchQuery}
+              onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+              className="pl-9"
+              aria-label="Search invoices"
+            />
+          </div>
         </CardHeader>
         <CardContent>
-          {getDisplayedInvoices().length === 0 ? (
+          {allInvoices.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>{t("ar.no-invoices")}</p>
+            </div>
+          ) : getDisplayedInvoices().length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No invoices match your search</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
