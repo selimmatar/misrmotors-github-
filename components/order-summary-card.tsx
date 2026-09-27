@@ -89,7 +89,7 @@ export function OrderSummaryCard({
       <CardContent className="space-y-3">
         {/* Pricing breakdown */}
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">{t("subtotal")}</span>
+          <span className="text-muted-foreground">{t("pricing.subtotal")}</span>
           <span>{formatCurrency(subtotal)}</span>
         </div>
 
@@ -118,7 +118,7 @@ export function OrderSummaryCard({
         )}
 
         <div className="flex justify-between font-semibold border-t pt-3">
-          <span>{t("net-total")}</span>
+          <span>{t("pricing.net-total")}</span>
           <span className="text-lg">{formatCurrency(calculatedNetTotal, currency)}</span>
         </div>
 

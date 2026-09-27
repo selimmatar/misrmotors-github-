@@ -485,9 +485,11 @@ const translations: Record<Language, Record<string, string>> = {
     "status.out_for_delivery": "Out for Delivery",
     "status.partially_paid": "Partially Paid",
 
-    // Payment
-    "payment.type": "Payment Type",
-    "payment.cash": "Cash",
+  // Payment
+  "payment.type": "Payment Type",
+  "payment.select-type": "Select payment type",
+  "payment.cash-full-payment": "Full payment in cash",
+  "payment.cash": "Cash",
     "payment.bank_transfer": "Bank Transfer",
     "payment.bank-transfer-full-payment": "Full payment via bank transfer",
     "payment.installments": "Installments",
@@ -1093,7 +1095,7 @@ const translations: Record<Language, Record<string, string>> = {
     "warehouse.select-warehouse": "اختر المستودع",
     "warehouse.add": "إضافة مستودع",
     "warehouse.add-new": "إضافة مستودع جديد",
-    "warehouse.name": "اسم المستودع",
+    "warehouse.name": "اسم المست��دع",
     "warehouse.name-placeholder": "أدخل اسم المستودع",
     "warehouse.location": "الموقع",
     "warehouse.location-placeholder": "أدخل موقع المستودع",
@@ -1158,7 +1160,7 @@ const translations: Record<Language, Record<string, string>> = {
     "action.record-payment": "تسجيل دفعة",
     "action.add-item": "إضافة عنصر",
     "action.remove-item": "حذف عنصر",
-    "action.save-adjustments": "حفظ التعديلات",
+    "action.save-adjustments": "حفظ ��لتعديلات",
     "action.create-new": "إنشاء جديد",
     "action.refresh": "تحديث",
     "action.logout": "تسجيل الخروج",
@@ -1255,9 +1257,11 @@ const translations: Record<Language, Record<string, string>> = {
     "status.out_for_delivery": "خارج للتسليم",
     "status.partially_paid": "مدفوع جزئياً",
 
-    // Payment (Arabic)
-    "payment.type": "نوع الدفع",
-    "payment.cash": "نقداً",
+  // Payment (Arabic)
+  "payment.type": "نوع الدفع",
+  "payment.select-type": "اختر نوع الدفع",
+  "payment.cash-full-payment": "دفع كامل نقداً",
+  "payment.cash": "نقداً",
     "payment.bank_transfer": "تحويل بنكي",
     "payment.bank-transfer-full-payment": "دفع كامل عن طريق التحويل البنكي",
     "payment.installments": "أقساط",
@@ -1309,7 +1313,7 @@ const translations: Record<Language, Record<string, string>> = {
     "discount-percentage": "نسبة مئوية (%)",
     "discount-fixed": "مبلغ ثابت",
     "discount-value": "قيمة الخصم",
-    "discount-amount": "مبلغ الخصم",
+    "discount-amount": "مب��غ الخصم",
     "pricing-summary": "ملخص الأسعار",
     "order-summary": "ملخص الطلب",
     "pricing.subtotal": "المجموع الفرعي",
