@@ -63,16 +63,9 @@ interface SoldItem extends PendingItem {
   soldDate: string
 }
 
-interface WarehouseType {
-  id: number
-  name: string
-  location: string
-  isDefault: boolean
-}
-
 export function InventoryModule({ userRole }: InventoryModuleProps) {
   const { t, formatNumber, formatCurrency, formatDate, language } = useI18n()
-  const { inventory, salesOrders, customers, products, suppliers, warehouses: appWarehouses, refreshInventory } = useAppContext()
+  const { inventory, salesOrders, customers, products, suppliers, warehouses: appWarehouses, refreshInventory, refreshWarehouses } = useAppContext()
 
   const [aiAnalysis, setAiAnalysis] = useState<any>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -91,7 +84,6 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const [selectedSODetails, setSelectedSODetails] = useState<SalesOrder | null>(null)
   const [showSODetailsDialog, setShowSODetailsDialog] = useState(false)
 
-  const [warehouses, setAppWarehouses] = useState<WarehouseType[]>([])
   const [warehouseFilterState, setWarehouseFilterState] = useState<string>("all")
   const [showAddWarehouseDialog, setShowAddWarehouseDialog] = useState(false)
   const [newWarehouseName, setNewWarehouseName] = useState("")
@@ -147,21 +139,6 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     const interval = setInterval(fetchDeliveryPermits, 10000)
 
     return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
-    const fetchWarehouses = async () => {
-      try {
-        const response = await fetch("/api/warehouses")
-        if (response.ok) {
-          const data = await response.json()
-          setAppWarehouses(data)
-        }
-      } catch (error) {
-        console.error("Error fetching warehouses:", error)
-      }
-    }
-    fetchWarehouses()
   }, [])
 
   const pendingItems: PendingItem[] = useMemo(() => {
@@ -539,8 +516,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       })
       
       if (response.ok) {
-        const newWarehouse = await response.json()
-        setAppWarehouses([...warehouses, newWarehouse])
+        // The warehouse list shown throughout this page (e.g. the "Filter by
+        // Warehouse" dropdown) comes from shared app context, not local
+        // state - refresh it so the newly created warehouse actually shows
+        // up without requiring a full page reload.
+        await refreshWarehouses()
         setNewWarehouseName("")
         setNewWarehouseLocation("")
         setNewWarehouseAddress("")
