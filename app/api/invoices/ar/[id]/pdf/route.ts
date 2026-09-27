@@ -43,6 +43,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           so_number,
           order_date,
           total,
+          subtotal,
+          discount_amount,
           payment_type,
           payment_terms,
           quotation_request_number,
@@ -72,31 +74,81 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
     }
 
-    const items = invoice.sales_orders?.sales_order_items || []
     const customer = invoice.customers || {}
     const so = invoice.sales_orders || {}
     const qrNumber = so.quotation_request_number || null
-    
 
-    // Fetch delivery permits separately using sales_order_id
-    let deliveryPermits: any[] = []
-    if (so.so_id) {
-      const { data: dpData } = await supabase
-        .from("delivery_permits")
-        .select("permit_id, permit_no, status")
-        .eq("sales_order_id", so.so_id)
-      deliveryPermits = dpData || []
-    }
+    // A single sales order can have multiple delivery permits, each invoiced
+    // separately. Find the delivery permit(s) actually linked to THIS invoice
+    // (via invoice_delivery_permits) - if any exist, this invoice only covers
+    // those DPs' items, not every item on the whole sales order.
+    const { data: dpLinks } = await supabase
+      .from("invoice_delivery_permits")
+      .select(
+        `
+        permit_id,
+        delivery_permits:permit_id (
+          permit_id,
+          permit_no,
+          status,
+          delivery_permit_items (
+            quantity,
+            unit_price,
+            total,
+            item_name_snapshot
+          )
+        )
+      `,
+      )
+      .eq("invoice_id", invoiceId)
+
+    const linkedPermits = (dpLinks || []).map((link: any) => link.delivery_permits).filter(Boolean)
+    const isDpBasedInvoice = linkedPermits.length > 0
+
+    // Items shown on the invoice: only the linked DP's items for a DP-based
+    // invoice, otherwise every item on the sales order (invoice created
+    // directly from the SO with no specific DP subset).
+    const items = isDpBasedInvoice
+      ? linkedPermits.flatMap((permit: any) =>
+          (permit.delivery_permit_items || []).map((item: any) => ({
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total: item.total,
+            item_type: null,
+            outsourced_name: null,
+            products: { product_name: item.item_name_snapshot },
+          })),
+        )
+      : invoice.sales_orders?.sales_order_items || []
+
+    // Delivery permits listed in the invoice header: only the ones linked to
+    // THIS invoice, not every DP ever created for the sales order.
+    const deliveryPermits = isDpBasedInvoice
+      ? linkedPermits.map((permit: any) => ({
+          permit_id: permit.permit_id,
+          permit_no: permit.permit_no,
+          status: permit.status,
+        }))
+      : []
 
     // Calculate totals - ensure proper numeric conversion
     // Do all math calculations FIRST with JavaScript numbers, then convert to Arabic for display
-    const subtotalBeforeVat = items.reduce((sum: number, item: any) => {
+    const rawItemsTotal = items.reduce((sum: number, item: any) => {
       const unitPrice = Number(item.unit_price) || 0
       const quantity = Number(item.quantity) || 0
       const itemTotal = Number(item.total) || (unitPrice * quantity)
       return sum + itemTotal
     }, 0)
-    
+
+    // Apply the sales order's discount rate proportionally, then 14% VAT -
+    // matches the math used when the invoice was created (create-from-dps /
+    // create-from-so), so the printed total matches invoice.amount even for
+    // a partial-DP invoice.
+    const soSubtotal = Number(so.subtotal) || 0
+    const soDiscount = Number(so.discount_amount) || 0
+    const discountRate = soSubtotal > 0 ? soDiscount / soSubtotal : 0
+    const subtotalBeforeVat = rawItemsTotal * (1 - discountRate)
+
     // Calculate VAT on the subtotal (14% added on top)
     const VAT_RATE = 0.14
     const vatAmount = subtotalBeforeVat * VAT_RATE
