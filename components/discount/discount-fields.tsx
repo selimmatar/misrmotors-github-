@@ -22,19 +22,7 @@ export function DiscountFields({
   onDiscountTypeChange,
   onDiscountValueChange,
 }: DiscountFieldsProps) {
-  const { t, formatCurrency, formatNumber } = useI18n()
-
-  // Calculate discount amount based on type
-  const calculateDiscountAmount = (): number => {
-    if (discountType === "none" || !discountValue) return 0
-    if (discountType === "percentage") {
-      return (subtotal * discountValue) / 100
-    }
-    return Math.min(discountValue, subtotal) // Fixed amount, capped at subtotal
-  }
-
-  const discountAmount = calculateDiscountAmount()
-  const netTotal = subtotal - discountAmount
+  const { t } = useI18n()
 
   return (
     <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
@@ -74,27 +62,6 @@ export function DiscountFields({
             </div>
           </div>
         )}
-      </div>
-
-      {/* Real-time calculated values */}
-      <div className="border-t pt-4 space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">{t("subtotal")}</span>
-          <span>{formatCurrency(subtotal)}</span>
-        </div>
-        {discountType !== "none" && discountAmount > 0 && (
-          <div className="flex justify-between text-sm text-red-600">
-            <span>
-              {t("discount-amount")}
-              {discountType === "percentage" && ` (${formatNumber(discountValue)}%)`}
-            </span>
-            <span>- {formatCurrency(discountAmount)}</span>
-          </div>
-        )}
-        <div className="flex justify-between font-semibold text-lg border-t pt-2">
-          <span>{t("net-total")}</span>
-          <span>{formatCurrency(netTotal)}</span>
-        </div>
       </div>
     </div>
   )

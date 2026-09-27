@@ -52,9 +52,9 @@ import {
   InstallmentFields,
   ChequeFields,
   HybridFields,
-  PaymentSummaryCard,
 } from "@/components/payment"
-import { DiscountFields, PricingSummaryCard, calculateDiscount, type DiscountType } from "@/components/discount"
+import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
+import { OrderSummaryCard } from "@/components/order-summary-card"
 import { Badge } from "@/components/ui/badge"
 import { SOTypeSelector, SOTypeBadge } from "@/components/so-type"
 import { Label } from "@/components/ui/label"
@@ -349,23 +349,35 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
   }
 
   const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      draft: "bg-gray-100 text-gray-800",
-      pending: "bg-yellow-100 text-yellow-800",
-      pending_accountant: "bg-amber-100 text-amber-800",
-      accountant_approved: "bg-blue-100 text-blue-800",
-      ready_for_delivery: "bg-indigo-100 text-indigo-800",
-      out_for_delivery: "bg-purple-100 text-purple-800",
-      delivered: "bg-green-100 text-green-800",
-      shipped: "bg-green-100 text-green-800",
-      cancelled: "bg-red-100 text-red-800",
-      rejected: "bg-red-100 text-red-800",
-      approved: "bg-blue-100 text-blue-800",
-      pending_warehouse: "bg-orange-100 text-orange-800",
-      partially_paid: "bg-cyan-100 text-cyan-800",
-      paid: "bg-emerald-100 text-emerald-800",
-    }
-    return colors[status] || "bg-gray-100 text-gray-800"
+  const colors: Record<string, string> = {
+  draft: "bg-gray-100 text-gray-800",
+  pending: "bg-yellow-100 text-yellow-800",
+  pending_accountant: "bg-amber-100 text-amber-800",
+  accountant_approved: "bg-blue-100 text-blue-800",
+  ready_for_delivery: "bg-indigo-100 text-indigo-800",
+  out_for_delivery: "bg-purple-100 text-purple-800",
+  delivered: "bg-green-100 text-green-800",
+  shipped: "bg-green-100 text-green-800",
+  cancelled: "bg-red-100 text-red-800",
+  rejected: "bg-red-100 text-red-800",
+  approved: "bg-blue-100 text-blue-800",
+  pending_warehouse: "bg-orange-100 text-orange-800",
+  partially_paid: "bg-cyan-100 text-cyan-800",
+  paid: "bg-emerald-100 text-emerald-800",
+  not_delivered: "bg-gray-100 text-gray-800",
+  partially_delivered: "bg-yellow-100 text-yellow-800",
+  }
+  return colors[status] || "bg-gray-100 text-gray-800"
+  }
+
+  // Overall delivery-fulfillment status for a Sales Order, always one of exactly
+  // three states: no delivery permits created yet, some created but the order
+  // isn't fully delivered, or every delivery permit has been fully processed.
+  const getSODeliveryStatus = (order: any): "not_delivered" | "partially_delivered" | "delivered" => {
+  const deliveryPermits = order.deliveryPermits || order.delivery_permits || []
+  if (deliveryPermits.length === 0) return "not_delivered"
+  if (order.status === "delivered") return "delivered"
+  return "partially_delivered"
   }
 
   const getDaysUntilDue = (dueDate: string): number => {
@@ -1798,9 +1810,8 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                     <TableCell className="p-2">{formatNumber(order.items?.length || 0)}</TableCell>
                     <TableCell className="p-2">{formatCurrency(order.total)}</TableCell>
                     <TableCell className="p-2">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(order.status)}`}>
-                        {/* Translated status */}
-                        {t(`so.status.${order.status}`)}
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(getSODeliveryStatus(order))}`}>
+                        {t(`so.status.${getSODeliveryStatus(order)}`)}
                       </span>
                     </TableCell>
                     <TableCell className="p-2 text-right">
@@ -1947,7 +1958,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                   )}
                 </div>
 
-                <PricingSummaryCard
+                <OrderSummaryCard
                   subtotal={selectedOrder.subtotal || 0}
                   discountType={(selectedOrder.discountType as DiscountType) || "none"}
                   discountValue={selectedOrder.discountValue || 0}
@@ -1955,13 +1966,9 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                   netTotal={selectedOrder.netTotal || selectedOrder.total}
                   vatEnabled={true}
                   vatRate={0.14}
-                />
-
-                <PaymentSummaryCard
                   paymentType={
                     selectedOrder.paymentType || (selectedOrder.paymentTerms === "prepaid" ? "cash" : "installments")
                   }
-                  totalAmount={selectedOrder.total}
                   paymentDetails={
                     selectedOrder.paymentDetails || {
                       paymentType: selectedOrder.paymentTerms === "prepaid" ? "cash" : "installments",

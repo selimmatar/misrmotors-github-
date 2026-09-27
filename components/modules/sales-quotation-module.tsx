@@ -20,11 +20,11 @@ import {
   InstallmentFields,
   ChequeFields,
   HybridFields,
-  PaymentSummaryCard,
   PaymentScheduleEditor,
   type PaymentScheduleEntry,
 } from "@/components/payment"
-import { DiscountFields, PricingSummaryCard, calculateDiscount, type DiscountType } from "@/components/discount"
+import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
+import { OrderSummaryCard } from "@/components/order-summary-card"
 import { getOrCreateClientId } from "@/lib/client-id"
 import * as XLSX from "xlsx"
 
@@ -1256,14 +1256,6 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
             onDiscountTypeChange={setDiscountType}
             onDiscountValueChange={setDiscountValue}
           />
-
-          <PricingSummaryCard
-            subtotal={subtotal}
-            discountType={discountType}
-            discountValue={discountValue}
-            vatEnabled={true}
-            vatRate={VAT_RATE}
-          />
         </CardContent>
       </Card>
 
@@ -1334,9 +1326,19 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
             />
           )}
 
-          <PaymentSummaryCard paymentType={paymentType} paymentDetails={paymentDetails} totalAmount={subtotal} />
         </CardContent>
       </Card>
+
+      {/* Combined pricing + payment summary - shown once, at the end, after all inputs are set */}
+      <OrderSummaryCard
+        subtotal={subtotal}
+        discountType={discountType}
+        discountValue={discountValue}
+        vatEnabled={true}
+        vatRate={VAT_RATE}
+        paymentType={paymentType}
+        paymentDetails={paymentDetails}
+      />
 
       <Card>
         <CardHeader>
