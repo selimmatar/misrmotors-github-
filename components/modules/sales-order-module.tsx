@@ -1713,6 +1713,9 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
             <DialogTitle>
               {t("so.pending-orders")} ({pendingOrders.length})
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              List of sales orders awaiting approval or delivery
+            </DialogDescription>
           </DialogHeader>
           <div className="mt-4">
             {pendingOrders.length === 0 ? (
@@ -1723,11 +1726,11 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                 <thead>
                   <tr className="bg-muted">
                     <th className="border p-2 text-left">{t("so-number")}</th>
-                    <th className="border p-2 text-left">{t("customer")}</th>
-                    <th className="border p-2 text-left">{t("status")}</th>
-                    <th className="border p-2 text-left">{t("date")}</th>
-                    <th className="border p-2 text-right">{t("total")}</th>
-                    <th className="border p-2 text-center">{t("actions")}</th>
+                    <th className="border p-2 text-left">{t("field.customer")}</th>
+                    <th className="border p-2 text-left">{t("field.status")}</th>
+                    <th className="border p-2 text-left">{t("field.date")}</th>
+                    <th className="border p-2 text-right">{t("field.total")}</th>
+                    <th className="border p-2 text-center">{t("field.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1876,6 +1879,9 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("sales-orders.details")}: {selectedOrder?.soNumber}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Full details, pricing, payment, and maintenance history for this sales order
+            </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
             <Tabs defaultValue="maintenance" className="flex-1 overflow-hidden flex flex-col">
@@ -1906,7 +1912,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                     <p className="font-semibold">{selectedOrder.soNumber}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">{t("customer")}</p>
+                    <p className="text-sm text-muted-foreground">{t("field.customer")}</p>
                     <p className="font-semibold">{customers.find((c) => c.id === selectedOrder.customerId)?.name}</p>
                   </div>
                   {selectedOrder.quotationRequestNumber && (
@@ -1916,11 +1922,11 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                     </div>
                   )}
                   <div>
-                    <p className="text-sm text-muted-foreground">{t("date")}</p>
+                    <p className="text-sm text-muted-foreground">{t("field.date")}</p>
                     <p className="font-semibold">{selectedOrder.orderDate}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">{t("status")}</p>
+                    <p className="text-sm text-muted-foreground">{t("field.status")}</p>
                     <Badge className={getStatusColor(selectedOrder.status)}>{t(`status.${selectedOrder.status}`)}</Badge>
                     
                     {/* Show delivery permit fulfillment status */}
@@ -1987,7 +1993,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                       
                       
                       return (
-                        <div key={item.productId || idx} className="flex justify-between items-start gap-2">
+                        <div key={`${item.productId || "item"}-${idx}`} className="flex justify-between items-start gap-2">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-medium">{item.productName}</span>

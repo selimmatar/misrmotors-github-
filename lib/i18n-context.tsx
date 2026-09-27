@@ -92,6 +92,7 @@ const translations: Record<Language, Record<string, string>> = {
     "role.ceo": "CEO/Owner",
     "role.accountant": "Accountant",
     "role.sales": "Sales Representative",
+    "role.sales-rep": "Sales Representative",
     "role.purchasing": "Purchasing Agent",
     "role.warehouse": "Warehouse Representative",
     "role.warehouse-rep": "Warehouse Representative",
@@ -772,6 +773,13 @@ const translations: Record<Language, Record<string, string>> = {
     "filter.last-2-years": "Last 2 Years",
 
     // SO
+    "so.title": "Sales Orders",
+    "so.description": "Manage and track all sales orders",
+    "so.total-orders": "Total Orders",
+    "so.pending-orders": "Pending Orders",
+    "so.total-value": "Total Value",
+    "report.generate": "Generate Report",
+    "click-to-view": "Click to view",
     "so.details": "Sales Order Details",
     "so.items": "Items",
     "so.delivery-address": "Delivery Address",
@@ -869,8 +877,10 @@ const translations: Record<Language, Record<string, string>> = {
     "role.ceo": "الرئيس التنفيذي/المالك",
     "role.accountant": "المحاسب",
     "role.sales": "مندوب المبيعات",
+    "role.sales-rep": "مندوب المبيعات",
     "role.purchasing": "مسؤول المشتريات",
     "role.warehouse": "مسؤول المستودع",
+    "role.warehouse-rep": "مسؤول المستودع",
     "role.shipping": "فريق الشحن",
 
     // Modules
@@ -1541,6 +1551,13 @@ const translations: Record<Language, Record<string, string>> = {
     "filter.last-2-years": "السنتين الماضيتين",
 
     // SO (Arabic)
+    "so.title": "أوامر البيع",
+    "so.description": "إدارة ومتابعة جميع أوامر البيع",
+    "so.total-orders": "إجمالي الطلبات",
+    "so.pending-orders": "الطلبات المعلقة",
+    "so.total-value": "القيمة الإجمالية",
+    "report.generate": "إنشاء تقرير",
+    "click-to-view": "انقر للعرض",
     "so.details": "تفاصيل أمر البيع",
     "so.items": "العناصر",
     "so.delivery-address": "عنوان التسليم",
