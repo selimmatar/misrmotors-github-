@@ -46,6 +46,7 @@ import {
   FileText,
   Printer,
   CheckCircle,
+  PackageX,
 } from "lucide-react"
 import {
   PaymentTypeSelector,
@@ -378,6 +379,15 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
   if (deliveryPermits.length === 0) return "not_delivered"
   if (order.status === "delivered") return "delivered"
   return "partially_delivered"
+  }
+
+  // Opens a freshly generated PDF report of every SO line item not yet added to any
+  // delivery permit. The report route queries live data on each request (no caching),
+  // so re-clicking this always reflects the current state of the order's DPs.
+  const handlePrintMissingItems = (order: any) => {
+    const soIdValue = order.so_id || order.id
+    const url = `${window.location.origin}/api/sales-orders/missing-items-pdf?soId=${soIdValue}`
+    window.open(url, "_blank")
   }
 
   const getDaysUntilDue = (dueDate: string): number => {
@@ -1835,6 +1845,19 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                         <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)} title="View Details">
                           <Eye className="w-4 h-4" /> View
                         </Button>
+                  {getSODeliveryStatus(order) !== "delivered" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handlePrintMissingItems(order)
+                      }}
+                      title="Print a report of items not yet added to any delivery permit"
+                    >
+                      <PackageX className="w-4 h-4" /> Missing Items
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
