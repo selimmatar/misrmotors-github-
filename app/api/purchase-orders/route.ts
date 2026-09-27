@@ -167,8 +167,16 @@ export async function POST(request: Request) {
           : JSON.stringify(orderData.schedule_entries)
     }
 
+    // Always generate the PO number server-side (obfuscated, atomic) — never trust a
+    // client-supplied value, which was previously a predictable, guessable counter.
+    const { data: generatedPoNumber, error: poNumberError } = await supabase.rpc("generate_po_number")
+    if (poNumberError || !generatedPoNumber) {
+      console.error("Purchase Orders POST: Failed to generate PO number", poNumberError)
+      return NextResponse.json({ error: "Failed to generate purchase order number" }, { status: 500 })
+    }
+
     const orderWithCurrency = {
-      po_number: orderData.po_number || orderData.poNumber,
+      po_number: generatedPoNumber as string,
       supplier_id: orderData.supplier_id || orderData.supplierId,
       order_date: orderData.order_date || orderData.orderDate,
       delivery_date: orderData.delivery_date || orderData.deliveryDate,

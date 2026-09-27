@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Eye, CheckCircle, XCircle, FileText, Loader2, AlertCircle, Printer, Upload } from "lucide-react"
+import { Eye, CheckCircle, XCircle, FileText, Loader2, AlertCircle, Printer, Upload, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useAppContext } from "@/lib/app-context"
@@ -66,6 +66,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
   const [rejectionReason, setRejectionReason] = useState("")
   const [approvalDocument, setApprovalDocument] = useState<File | null>(null)
   const [uploadingDocument, setUploadingDocument] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
   
   const { refreshSalesOrders } = useAppContext()
 
@@ -118,6 +119,34 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
     } catch (error) {
       console.error("Error fetching quotation details:", error)
       alert("Failed to load quotation details")
+    }
+  }
+
+  const handlePrintPreview = async (quotation: Quotation) => {
+    try {
+      // The list only carries summary fields (no items) - fetch the full
+      // quotation so the print/preview dialog actually shows the line items.
+      const response = await fetch(`/api/sales-quotations?id=${quotation.id}`)
+      if (!response.ok) throw new Error("Failed to fetch quotation details")
+
+      const data = await response.json()
+      const fullQuotation = data.quotation
+
+      if (!fullQuotation) {
+        throw new Error("Quotation not found")
+      }
+
+      setSelectedQuotation({
+        ...fullQuotation,
+        items: (fullQuotation.items || []).map((item: any) => ({
+          ...item,
+          total: item.quantity * item.unit_price,
+        })),
+      } as QuotationDetails)
+      setShowPrintDialog(true)
+    } catch (error) {
+      console.error("Error loading quotation for preview:", error)
+      alert("Failed to load quotation for preview")
     }
   }
 
@@ -284,6 +313,17 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
 
+  const filteredQuotations = quotations.filter((quotation) => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return true
+    return (
+      quotation.quotation_number?.toLowerCase().includes(query) ||
+      quotation.customer_name?.toLowerCase().includes(query) ||
+      quotation.customer_phone?.toLowerCase().includes(query) ||
+      quotation.customer_email?.toLowerCase().includes(query)
+    )
+  })
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -307,6 +347,17 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
           <CardDescription>
             Quotations awaiting approval will appear here
           </CardDescription>
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search by quotation number, customer name, phone, or email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              aria-label="Search pending quotations"
+            />
+          </div>
         </CardHeader>
         <CardContent>
           {quotations.length === 0 ? (
@@ -315,9 +366,14 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
               <p>No pending quotations found</p>
               <p className="text-sm mt-2">Quotations in "Sent" status will appear here for approval</p>
             </div>
+          ) : filteredQuotations.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No quotations match your search</p>
+            </div>
           ) : (
             <div className="space-y-4">
-              {quotations.map((quotation) => (
+              {filteredQuotations.map((quotation) => (
                 <div key={quotation.id} className="border rounded-lg p-4">
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
                     <div>
@@ -346,10 +402,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
                       size="sm"
                       variant="outline"
                       className="gap-2 bg-transparent"
-                      onClick={() => {
-                        setSelectedQuotation(quotation as any)
-                        setShowPrintDialog(true)
-                      }}
+                      onClick={() => handlePrintPreview(quotation)}
                     >
                       <Printer className="w-4 h-4" />
                       Print/Preview

@@ -193,7 +193,16 @@ export async function POST(request: Request) {
       ...rest
     } = body
 
-    const soNumber = soNumberCamel || soNumberSnake
+    // Always generate the SO number server-side (obfuscated, atomic) — never trust a
+    // client-supplied value, which was previously a predictable, guessable counter.
+    const { data: generatedSoNumber, error: soNumberError } = await supabase.rpc("generate_so_number")
+    if (soNumberError || !generatedSoNumber) {
+      console.error("Sales Orders POST: Failed to generate SO number", soNumberError)
+      return Response.json({ error: "Failed to generate sales order number" }, { status: 500 })
+    }
+    const soNumber = generatedSoNumber as string
+    void soNumberCamel
+    void soNumberSnake
     const finalCustomerId = customerId || customer_id
     const rawOrderDate = orderDate || order_date
     // Ensure order_date is never null, undefined, or "unknown" - default to today
