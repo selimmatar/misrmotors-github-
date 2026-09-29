@@ -6,11 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Eye, CheckCircle, XCircle, FileText, Loader2, AlertCircle, Printer, Upload, Search } from "lucide-react"
+import { Eye, CheckCircle, XCircle, FileText, Loader2, AlertCircle, Printer, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useAppContext } from "@/lib/app-context"
 import { QuotationPreviewDialog } from "@/components/quotation/quotation-preview-dialog"
+import { ApproveConvertQuotationDialog } from "@/components/sales-quotation/approve-convert-quotation-dialog"
 import type { UserRole } from "@/lib/types"
 
 interface Quotation {
@@ -19,6 +20,7 @@ interface Quotation {
   quotation_request_number?: string
   department_name?: string
   receiver_name?: string
+  customer_id?: number | null
   customer_name: string
   customer_phone: string | null
   customer_email: string | null
@@ -27,10 +29,20 @@ interface Quotation {
   subtotal: number
   tax: number
   total: number
+  net_total?: number
   status: string
   created_at: string
   created_by: string | null
   updated_at: string
+  delivery_address?: string
+  delivery_contact_name?: string
+  delivery_contact_phone?: string
+  discount_type?: string
+  discount_value?: number
+  discount_amount?: number
+  payment_type?: string
+  payment_details?: any
+  so_type?: string
 }
 
 interface QuotationItem {
@@ -64,8 +76,6 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
   const [showApproveDialog, setShowApproveDialog] = useState(false)
   const [showPrintDialog, setShowPrintDialog] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
-  const [approvalDocument, setApprovalDocument] = useState<File | null>(null)
-  const [uploadingDocument, setUploadingDocument] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   
   const { refreshSalesOrders } = useAppContext()
@@ -150,70 +160,42 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
     }
   }
 
-  const handleApproveWithDocument = async () => {
-    if (!selectedQuotation) return
-    
-    if (!approvalDocument) {
-      alert("Please upload an approval document before approving")
-      return
-    }
-
+  // Fetches the full quotation (with line items) before opening the "Approve & Convert
+  // to SO" dialog, since the list view only carries summary fields.
+  const openApproveConvertDialog = async (quotation: Quotation) => {
     try {
       setActionLoading(true)
-      setUploadingDocument(true)
-      
-      // First upload the document
-      const formData = new FormData()
-      formData.append("file", approvalDocument)
-      formData.append("quotation_id", selectedQuotation.id.toString())
-      formData.append("document_type", "approval")
-      
-      const uploadResponse = await fetch("/api/documents/upload", {
-        method: "POST",
-        body: formData,
-      })
-      
-      let documentUrl = ""
-      if (uploadResponse.ok) {
-        const uploadResult = await uploadResponse.json()
-        documentUrl = uploadResult.url || ""
-      }
-      
-      setUploadingDocument(false)
-      
-      // Then approve the quotation
-      const response = await fetch("/api/sales-quotations/approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          quotation_id: selectedQuotation.id,
-          approval_document_url: documentUrl,
-        }),
-      })
+      const response = await fetch(`/api/sales-quotations?id=${quotation.id}`)
+      if (!response.ok) throw new Error("Failed to fetch quotation details")
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to approve quotation")
-      }
+      const data = await response.json()
+      const fullQuotation = data.quotation
+      if (!fullQuotation) throw new Error("Quotation not found")
 
-      const { sales_order } = await response.json()
-
-      setApprovalDocument(null)
-      setShowApproveDialog(false)
-      setShowDetailsDialog(false)
-      refreshSalesOrders()
-      alert(`Quotation approved! Sales Order ${sales_order.so_number} created.`)
+      setSelectedQuotation({
+        ...fullQuotation,
+        items: (fullQuotation.items || []).map((item: any) => ({
+          ...item,
+          total: item.quantity * item.unit_price,
+        })),
+      } as QuotationDetails)
+      setShowApproveDialog(true)
     } catch (error) {
-      console.error("Error approving quotation:", error)
-      // Restore the card if approval failed
-      if (selectedQuotation) {
-        setQuotations((prev) => [...prev, selectedQuotation as any])
-      }
-      alert(error instanceof Error ? error.message : "Failed to approve quotation")
+      console.error("Error loading quotation for approval:", error)
+      alert("Failed to load quotation for approval")
     } finally {
       setActionLoading(false)
-      setUploadingDocument(false)
     }
+  }
+
+  const handleQuotationApproved = (soNumber: string) => {
+    if (selectedQuotation) {
+      setQuotations((prev) => prev.filter((q) => q.id !== selectedQuotation.id))
+    }
+    setShowApproveDialog(false)
+    setSelectedQuotation(null)
+    refreshSalesOrders()
+    alert(`Quotation approved! Sales Order ${soNumber} created.`)
   }
 
   const handleReject = async () => {
@@ -248,41 +230,6 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
     } catch (error) {
       console.error("Error rejecting quotation:", error)
       alert(error instanceof Error ? error.message : "Failed to reject quotation")
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const handleApprove = async (quotation: QuotationDetails) => {
-    if (!quotation) return
-
-    try {
-      setActionLoading(true)
-      const response = await fetch("/api/sales-quotations/approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          quotation_id: quotation.id,
-          approval_document_url: "",
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to approve quotation")
-      }
-
-      const { sales_order } = await response.json()
-
-      // Optimistically remove approved quotation from list
-      setQuotations((prev) => prev.filter((q) => q.id !== quotation.id))
-      setShowApproveDialog(false)
-      setShowDetailsDialog(false)
-      refreshSalesOrders()
-      alert(`Quotation approved! Sales Order ${sales_order.so_number} created.`)
-    } catch (error) {
-      console.error("Error approving quotation:", error)
-      alert(error instanceof Error ? error.message : "Failed to approve quotation")
     } finally {
       setActionLoading(false)
     }
@@ -423,11 +370,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
                     <Button
                       size="sm"
                       className="gap-2"
-                      onClick={() => {
-                        setSelectedQuotation(quotation as any)
-                        setQuotations((prev) => prev.filter((q) => q.id !== quotation.id))
-                        setShowApproveDialog(true)
-                      }}
+                      onClick={() => openApproveConvertDialog(quotation)}
                       disabled={actionLoading}
                     >
                       <CheckCircle className="w-4 h-4" />
@@ -604,69 +547,19 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
         </DialogContent>
       </Dialog>
 
-      {/* Approval Document Upload Dialog */}
-      <Dialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Approve Quotation</DialogTitle>
-            <DialogDescription>
-              Upload an approval document (signed quotation, authorization letter, etc.) to approve this quotation
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="approval-document">Approval Document *</Label>
-              <div className="mt-2">
-                <Input
-                  id="approval-document"
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) setApprovalDocument(file)
-                  }}
-                />
-              </div>
-              {approvalDocument && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  Selected: {approvalDocument.name}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground mt-1">
-                Supported formats: PDF, JPG, PNG, DOC, DOCX
-              </p>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowApproveDialog(false)
-                  setApprovalDocument(null)
-                }}
-                className="bg-transparent"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleApproveWithDocument}
-                disabled={actionLoading || !approvalDocument}
-              >
-                {actionLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    {uploadingDocument ? "Uploading..." : "Approving..."}
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload & Approve
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Approve & Convert to SO Dialog - lets the sales rep edit items, customer,
+          delivery, and payment terms before the sales order is created, in case the
+          customer only approved some of the quoted items. */}
+      {showApproveDialog && selectedQuotation && (
+        <ApproveConvertQuotationDialog
+          quotation={selectedQuotation}
+          onOpenChange={(open) => {
+            setShowApproveDialog(open)
+            if (!open) setSelectedQuotation(null)
+          }}
+          onApproved={handleQuotationApproved}
+        />
+      )}
 
       {/* Print/Preview Dialog */}
       <QuotationPreviewDialog

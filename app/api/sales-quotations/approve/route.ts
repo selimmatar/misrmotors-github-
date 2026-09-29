@@ -5,10 +5,38 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createAdminClient()
     const body = await request.json()
-    const { quotation_id, approval_document_url } = body
+    const {
+      quotation_id,
+      approval_document_url,
+      // Optional overrides from the sales rep editing the quotation at the "Approve &
+      // Convert to SO" step (e.g. the customer only approved some of the requested
+      // items). When `items` is present, every override field below is authoritative;
+      // any field omitted from the payload falls back to the stored quotation value.
+      items: overrideItems,
+      customer_id: overrideCustomerId,
+      delivery_address: overrideDeliveryAddress,
+      delivery_contact_name: overrideDeliveryContactName,
+      delivery_contact_phone: overrideDeliveryContactPhone,
+      notes: overrideNotes,
+      discount_type: overrideDiscountType,
+      discount_value: overrideDiscountValue,
+      discount_amount: overrideDiscountAmount,
+      subtotal: overrideSubtotal,
+      tax: overrideTax,
+      total: overrideTotal,
+      net_total: overrideNetTotal,
+      payment_type: overridePaymentType,
+      payment_details: overridePaymentDetails,
+    } = body
+
+    const hasEdits = Array.isArray(overrideItems)
 
     if (!quotation_id) {
       return NextResponse.json({ error: "Quotation ID is required" }, { status: 400 })
+    }
+
+    if (hasEdits && overrideItems.length === 0) {
+      return NextResponse.json({ error: "At least one item is required to convert to a sales order" }, { status: 400 })
     }
 
     // Fetch the quotation from sales_quotations table
@@ -41,9 +69,10 @@ export async function POST(request: NextRequest) {
 
     const soNumber = soNumberData as string
 
-    // Extract payment details from quotation
-    const paymentDetails = quotation.payment_details || {}
-    const paymentType = quotation.payment_type || "cash"
+    // Extract payment details - use the sales rep's edits when provided, otherwise fall
+    // back to what was stored on the quotation.
+    const paymentDetails = (hasEdits ? overridePaymentDetails : quotation.payment_details) || {}
+    const paymentType = (hasEdits ? overridePaymentType : quotation.payment_type) || "cash"
 
     // Helper: convert empty strings to null for date columns (Postgres rejects "")
     const safeDate = (value: any): string | null => {
@@ -56,12 +85,13 @@ export async function POST(request: NextRequest) {
       .from("sales_orders")
       .insert({
         so_number: soNumber,
-        customer_id: quotation.customer_id || null,
+        customer_id: (hasEdits ? overrideCustomerId : quotation.customer_id) || null,
         status: "pending_accountant",
-        subtotal: quotation.subtotal,
-        total: quotation.total,
-        net_total: quotation.net_total || quotation.total,
-        notes: quotation.notes,
+        subtotal: hasEdits && overrideSubtotal !== undefined ? overrideSubtotal : quotation.subtotal,
+        total: hasEdits && overrideTotal !== undefined ? overrideTotal : quotation.total,
+        net_total:
+          hasEdits && overrideNetTotal !== undefined ? overrideNetTotal : quotation.net_total || quotation.total,
+        notes: hasEdits ? overrideNotes ?? null : quotation.notes,
         order_date: safeDate(quotation.order_date) || new Date().toISOString().split('T')[0],
         parent_quotation_id: quotation.id,
         approval_document_url: approval_document_url || null,
@@ -72,13 +102,13 @@ export async function POST(request: NextRequest) {
         so_type: quotation.so_type || 'EQUIPMENT',
         // Delivery info
         delivery_date: safeDate(quotation.delivery_date),
-        delivery_address: quotation.delivery_address,
-        delivery_contact_name: quotation.delivery_contact_name,
-        delivery_contact_phone: quotation.delivery_contact_phone,
+        delivery_address: hasEdits ? overrideDeliveryAddress ?? null : quotation.delivery_address,
+        delivery_contact_name: hasEdits ? overrideDeliveryContactName ?? null : quotation.delivery_contact_name,
+        delivery_contact_phone: hasEdits ? overrideDeliveryContactPhone ?? null : quotation.delivery_contact_phone,
         // Discount info
-        discount_type: quotation.discount_type || 'none',
-        discount_value: quotation.discount_value || 0,
-        discount_amount: quotation.discount_amount || 0,
+        discount_type: (hasEdits ? overrideDiscountType : quotation.discount_type) || 'none',
+        discount_value: (hasEdits ? overrideDiscountValue : quotation.discount_value) || 0,
+        discount_amount: (hasEdits ? overrideDiscountAmount : quotation.discount_amount) || 0,
         // Payment info
         payment_type: paymentType,
         // payment_terms only allows 'prepaid' or 'installment' - map accordingly
@@ -113,18 +143,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to create sales order" }, { status: 500 })
     }
 
-    // Create sales order items from quotation items
-    if (quotation.items && quotation.items.length > 0) {
-      const soItems = quotation.items.map((item: any) => ({
-        so_id: salesOrder.so_id,
-        product_id: item.product_id || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total: item.quantity * item.unit_price,
-        item_type: item.item_type === "outsourced" ? "outsourced" : "stock",
-        outsourced_name: item.item_type === "outsourced" ? item.product_name : null,
-        outsourced_description: item.supplier_name ? `Supplier: ${item.supplier_name}` : null,
-      }))
+    // Create sales order items - from the sales rep's edited item list when provided
+    // (e.g. some quoted items weren't approved), otherwise straight from the quotation.
+    const sourceItems = hasEdits ? overrideItems : quotation.items
+    if (sourceItems && sourceItems.length > 0) {
+      const soItems = sourceItems.map((item: any) => {
+        const isOutsourced = item.item_type === "outsourced"
+        if (hasEdits) {
+          return {
+            so_id: salesOrder.so_id,
+            product_id: isOutsourced ? null : item.product_id ? Number(item.product_id) : null,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total: item.quantity * item.unit_price,
+            item_type: isOutsourced ? "outsourced" : "stock",
+            item_category: item.item_category || null,
+            outsourced_name: isOutsourced ? item.product_name : null,
+            outsourced_description: item.supplier_name ? `Supplier: ${item.supplier_name}` : null,
+            outsourced_unit: isOutsourced ? item.outsourced_unit || "unit" : null,
+            supplier_id: isOutsourced && item.supplier_id ? Number(item.supplier_id) : null,
+          }
+        }
+        return {
+          so_id: salesOrder.so_id,
+          product_id: item.product_id || null,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total: item.quantity * item.unit_price,
+          item_type: isOutsourced ? "outsourced" : "stock",
+          outsourced_name: isOutsourced ? item.product_name : null,
+          outsourced_description: item.supplier_name ? `Supplier: ${item.supplier_name}` : null,
+        }
+      })
 
       const { error: itemsError } = await supabase
         .from("sales_order_items")
