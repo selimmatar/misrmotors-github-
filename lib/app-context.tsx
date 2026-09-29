@@ -681,7 +681,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error("Sales order ID is required for update")
       }
       
-      const payload = {
+      const payload: Record<string, unknown> = {
         so_id: soId,
         status: order.status,
         notes: order.notes,
@@ -689,7 +689,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
         total: order.total,
         invoice_file_url: (order as any).invoiceFileUrl,
       }
-      
+
+      // Extended fields used by the "Edit Order" dialog (e.g. correcting an already-approved
+      // order to match what was actually approved). Optional so existing narrower callers
+      // that only pass status/notes/etc. are unaffected.
+      const extended = order as any
+      if (extended.items !== undefined) payload.items = extended.items
+      if (extended.customerId !== undefined) payload.customerId = extended.customerId
+      if (extended.deliveryAddress !== undefined) payload.deliveryAddress = extended.deliveryAddress
+      if (extended.deliveryContactName !== undefined) payload.deliveryContactName = extended.deliveryContactName
+      if (extended.deliveryContactPhone !== undefined) payload.deliveryContactPhone = extended.deliveryContactPhone
+      if (extended.paymentTerms !== undefined) payload.paymentTerms = extended.paymentTerms
+      if (extended.installments !== undefined) payload.installments = extended.installments
+      if (extended.subtotal !== undefined) payload.subtotal = extended.subtotal
+      if (extended.discountType !== undefined) payload.discountType = extended.discountType
+      if (extended.discountValue !== undefined) payload.discountValue = extended.discountValue
+      if (extended.discountAmount !== undefined) payload.discountAmount = extended.discountAmount
+      if (extended.paymentDetails !== undefined) payload.paymentDetails = extended.paymentDetails
+
       
       const response = await fetch("/api/sales-orders", {
         method: "PUT",

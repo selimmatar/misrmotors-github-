@@ -681,18 +681,69 @@ export async function PUT(request: Request) {
 
 
     if (items) {
-      await supabase.from("sales_order_items").delete().eq("so_id", finalId)
+      // Diff against existing rows instead of delete-all-then-insert-all, so unchanged/edited
+      // items keep their so_item_id. Purchase orders can reference an item via
+      // source_so_item_id, so reusing the id here keeps that link valid; only items the
+      // caller actually removed get deleted.
+      const numericSoId = Number.parseInt(finalId)
+      const { data: existingItemRows } = await supabase
+        .from("sales_order_items")
+        .select("so_item_id")
+        .eq("so_id", numericSoId)
 
-      if (items.length > 0) {
-        const itemsWithSoId = items.map((item: any) => ({
-          so_id: Number.parseInt(finalId),
-          product_id: Number.parseInt(item.productId || item.product_id),
+      const existingIds = new Set((existingItemRows || []).map((row: any) => row.so_item_id))
+      const incomingIds = new Set(
+        items
+          .map((item: any) => item.id ?? item.so_item_id ?? item.soItemId)
+          .filter((id: any) => id !== undefined && id !== null && id !== "")
+          .map((id: any) => Number(id)),
+      )
+
+      const idsToDelete = [...existingIds].filter((id) => !incomingIds.has(id))
+      if (idsToDelete.length > 0) {
+        await supabase.from("sales_order_items").delete().in("so_item_id", idsToDelete)
+      }
+
+      for (const item of items) {
+        const hasProductId = (item.productId || item.product_id) && (item.productId || item.product_id) !== ""
+        const isOutsourced =
+          item.itemCategory === "OUTSOURCED" ||
+          item.itemType === "outsourced" ||
+          item.item_type === "outsourced" ||
+          !hasProductId
+
+        let validItemCategory = "EQUIPMENT"
+        if (item.itemCategory === "MAINTENANCE_PARTS" || item.item_category === "MAINTENANCE_PARTS") {
+          validItemCategory = "MAINTENANCE_PARTS"
+        }
+
+        const supplierName = item.supplierName || item.supplier_name
+        const outsourcedDesc = isOutsourced
+          ? [item.outsourcedDescription || item.outsourced_description, supplierName ? `Supplier: ${supplierName}` : null]
+              .filter(Boolean)
+              .join(" | ") || null
+          : null
+
+        const itemRow: any = {
+          so_id: numericSoId,
+          product_id: hasProductId ? Number.parseInt(item.productId || item.product_id) : null,
           quantity: item.quantity,
-          unit_price: item.unitPrice || item.unit_price,
+          unit_price: item.unitPrice ?? item.unit_price,
           total: item.total,
-        }))
+          item_type: isOutsourced ? "outsourced" : "stock",
+          item_category: validItemCategory,
+          outsourced_name: isOutsourced ? item.productName || item.outsourcedName || item.outsourced_name || null : null,
+          outsourced_unit: isOutsourced ? item.outsourcedUnit || item.outsourced_unit || "unit" : null,
+          outsourced_description: outsourcedDesc,
+          supplier_id: item.supplierId || item.supplier_id ? Number(item.supplierId || item.supplier_id) : null,
+        }
 
-        await supabase.from("sales_order_items").insert(itemsWithSoId)
+        const existingId = item.id ?? item.so_item_id ?? item.soItemId
+        if (existingId !== undefined && existingId !== null && existingId !== "" && existingIds.has(Number(existingId))) {
+          await supabase.from("sales_order_items").update(itemRow).eq("so_item_id", Number(existingId))
+        } else {
+          await supabase.from("sales_order_items").insert(itemRow)
+        }
       }
     }
 

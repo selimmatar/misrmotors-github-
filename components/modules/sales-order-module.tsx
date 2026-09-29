@@ -47,6 +47,7 @@ import {
   Printer,
   CheckCircle,
   PackageX,
+  Pencil,
 } from "lucide-react"
 import {
   PaymentTypeSelector,
@@ -68,6 +69,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
+import { EditApprovedOrderDialog } from "@/components/sales-order/edit-approved-order-dialog"
 
 // Declare SalesOrderModuleProps type
 type SalesOrderModuleProps = {
@@ -99,6 +101,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
   } = useAppContext()
 
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null)
+  const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null)
   const [showPrintQuotationDialog, setShowPrintQuotationDialog] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [aiInsights, setAiInsights] = useState<any>(null)
@@ -878,6 +881,13 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
   }
 
   const canApproveSO = userRole === "ceo" || userRole === "admin"
+
+  // Sales reps can correct an order right after accountant approval (e.g. the accountant
+  // only approved some of the requested items). Once a delivery permit exists, downstream
+  // fulfillment has already started against those items, so editing is blocked from here.
+  const canEditRole = userRole === "sales-rep" || userRole === "admin"
+  const canEditApprovedOrder = (order: SalesOrder) =>
+    canEditRole && order.status === "accountant_approved" && !(order as any).deliveryPermits?.length
 
   const pendingShipmentOrders = salesOrders.filter((order) => order.status === "ready_for_delivery")
   const shippedOrders = salesOrders.filter((order) => order.status === "shipped")
@@ -1887,6 +1897,24 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                   >
                     <Wrench className="w-4 h-4" /> Maintenance
                   </Button>
+                  {canEditRole && order.status === "accountant_approved" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditingOrder(order)
+                      }}
+                      disabled={!canEditApprovedOrder(order)}
+                      title={
+                        canEditApprovedOrder(order)
+                          ? "Edit this approved order (items, customer, payment terms)"
+                          : "Cannot edit - a delivery permit has already been created for this order"
+                      }
+                    >
+                      <Pencil className="w-4 h-4" /> Edit
+                    </Button>
+                  )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -2261,6 +2289,17 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
         open={showPrintQuotationDialog}
         onOpenChange={setShowPrintQuotationDialog}
       />
+
+      {editingOrder && (
+        <EditApprovedOrderDialog
+          order={editingOrder}
+          onOpenChange={(open) => !open && setEditingOrder(null)}
+          onSaved={() => {
+            refreshSalesOrders()
+            setEditingOrder(null)
+          }}
+        />
+      )}
     </div>
   )
 }
