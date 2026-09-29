@@ -97,7 +97,7 @@ export function ChequeFields({
             <Label>{t("payment.cheque-amount")}</Label>
             <Input
               type="number"
-              value={amount || totalAmount || 0}
+              value={Number((amount || totalAmount || 0).toFixed(2))}
               onChange={handleChange("amount")}
               placeholder={formatCurrency(totalAmount)}
             />

@@ -291,7 +291,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Approve &amp; Convert to Sales Order: {quotation.quotation_number}</DialogTitle>
           <DialogDescription>
@@ -313,9 +313,9 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
               <div className="space-y-2">
                 <Label>Customer</Label>
                 <Select value={customerId} onValueChange={setCustomerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select customer" className="truncate" />
+              </SelectTrigger>
                   <SelectContent>
                     {customers.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
@@ -405,8 +405,8 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
                                 updateItem(item.key, { supplierName: value, supplierId: supplier?.id || "" })
                               }}
                             >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select supplier" />
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select supplier" className="truncate" />
                               </SelectTrigger>
                               <SelectContent>
                                 {suppliers.map((s) => (
@@ -438,9 +438,11 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
                           onChange={(e) => updateItem(item.key, { unitPrice: Number(e.target.value) || 0 })}
                         />
                       </div>
-                      <div className="col-span-1 space-y-1">
+                      <div className="col-span-2 space-y-1">
                         <Label className="text-xs">Total</Label>
-                        <div className="text-sm font-medium pt-2">{formatCurrency(item.quantity * item.unitPrice)}</div>
+                        <div className="text-sm font-medium pt-2 whitespace-nowrap">
+                          {formatCurrency(item.quantity * item.unitPrice)}
+                        </div>
                       </div>
                       <div className="col-span-1 flex justify-end">
                         <Button variant="destructive" size="icon" onClick={() => removeItem(item.key)}>
