@@ -179,8 +179,13 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     })
   }
 
+  // Matches the same 14% VAT applied when the order was first created (sales-order-module.tsx):
+  // subtotal is post-discount/pre-VAT, and total/netTotal includes VAT on top of that.
+  const VAT_RATE = 0.14
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
-  const { discountAmount, netTotal } = calculateDiscount(subtotal, discountType, discountValue)
+  const { discountAmount, netTotal: subtotalAfterDiscount } = calculateDiscount(subtotal, discountType, discountValue)
+  const vatAmount = subtotalAfterDiscount * VAT_RATE
+  const netTotal = subtotalAfterDiscount + vatAmount
 
   const getAvailableStock = (productId: string): number | null => {
     if (!productId) return null
@@ -236,7 +241,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         deliveryContactName,
         deliveryContactPhone,
         items: payloadItems,
-        subtotal,
+        subtotal: subtotalAfterDiscount,
         discountType,
         discountValue,
         discountAmount,
@@ -471,7 +476,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
             )}
           </div>
 
-          <div className="flex justify-end gap-6 text-sm border-t pt-4">
+          <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 text-sm border-t pt-4">
             <div>
               Subtotal: <span className="font-medium">{formatCurrency(subtotal)}</span>
             </div>
@@ -480,6 +485,9 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
                 Discount: <span className="font-medium">-{formatCurrency(discountAmount)}</span>
               </div>
             )}
+            <div>
+              VAT (14%): <span className="font-medium">{formatCurrency(vatAmount)}</span>
+            </div>
             <div>
               Total: <span className="font-semibold">{formatCurrency(netTotal)}</span>
             </div>
