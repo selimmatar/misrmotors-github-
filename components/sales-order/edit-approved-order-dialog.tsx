@@ -263,7 +263,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Sales Order: {order.soNumber}</DialogTitle>
           <DialogDescription>
@@ -279,8 +279,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
               <div className="space-y-2">
                 <Label>{t("field.customer")}</Label>
                 <Select value={customerId} onValueChange={setCustomerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select customer" className="truncate" />
                   </SelectTrigger>
                   <SelectContent>
                     {customers.map((c) => (
@@ -370,8 +370,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
                                 updateItem(item.key, { supplierName: value, supplierId: supplier?.id || "" })
                               }}
                             >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select supplier" />
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select supplier" className="truncate" />
                               </SelectTrigger>
                               <SelectContent>
                                 {suppliers.map((s) => (
@@ -403,9 +403,9 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
                           onChange={(e) => updateItem(item.key, { unitPrice: Number(e.target.value) || 0 })}
                         />
                       </div>
-                      <div className="col-span-1 space-y-1">
+                      <div className="col-span-2 space-y-1">
                         <Label className="text-xs">Total</Label>
-                        <div className="text-sm font-medium pt-2">
+                        <div className="text-sm font-medium pt-2 whitespace-nowrap">
                           {formatCurrency(item.quantity * item.unitPrice)}
                         </div>
                       </div>

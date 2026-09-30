@@ -447,7 +447,7 @@ export function MaintenanceModule() {
 
       {/* Create Work Order Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Create Work Order</DialogTitle>
           </DialogHeader>
@@ -573,7 +573,7 @@ export function MaintenanceModule() {
 
       {/* Create Report Dialog */}
       <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Complete Work Order - {selectedWorkOrder?.work_order_number}</DialogTitle>
           </DialogHeader>

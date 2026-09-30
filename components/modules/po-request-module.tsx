@@ -408,7 +408,7 @@ export function PORequestModule() {
 
       {/* Create Request Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isRTL ? "إنشاء طلب عرض سعر جديد" : "Create New Quotation Request"}</DialogTitle>
           </DialogHeader>
@@ -544,7 +544,7 @@ export function PORequestModule() {
 
       {/* View Request Dialog */}
       <Dialog open={!!selectedRequest} onOpenChange={() => setSelectedRequest(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>

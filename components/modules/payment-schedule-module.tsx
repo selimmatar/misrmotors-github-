@@ -291,7 +291,7 @@ export function PaymentScheduleModule() {
       
       {/* Reschedule Dialog */}
       <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Reschedule Payment Plan</DialogTitle>
             <DialogDescription>

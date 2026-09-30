@@ -133,7 +133,7 @@ export function ApproveSalesOrdersModule() {
 
       {/* Approve / Reject Dialog */}
       <Dialog open={!!actionDialog} onOpenChange={(open) => { if (!open) { setActionDialog(null); setComment(""); } }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {actionDialog?.action === "approve" ? "Approve Sales Order" : "Reject Sales Order"}
@@ -192,7 +192,7 @@ export function ApproveSalesOrdersModule() {
 
       {/* Sales Order Details Dialog */}
       <Dialog open={!!selectedSalesOrder} onOpenChange={(open) => !open && setSelectedSalesOrder(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t("approve.order-details")}</DialogTitle>
             <DialogDescription>{t("approve.order-details-desc")}</DialogDescription>

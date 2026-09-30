@@ -99,7 +99,7 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
           Compare Supplier Quotations
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Compare Supplier Quotations</DialogTitle>
           <DialogDescription>

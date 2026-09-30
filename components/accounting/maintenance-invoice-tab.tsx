@@ -187,7 +187,7 @@ export function MaintenanceInvoiceTab() {
 
       {/* Create Invoice Dialog */}
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Maintenance Invoice</DialogTitle>
             <DialogDescription>

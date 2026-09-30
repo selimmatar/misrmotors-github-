@@ -282,7 +282,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
 
       {/* View Details Dialog */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wrench className="w-5 h-5" />
@@ -347,7 +347,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
 
       {/* View Report Dialog */}
       <Dialog open={showViewReportDialog} onOpenChange={setShowViewReportDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
@@ -460,7 +460,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
 
       {/* Report Submission Dialog */}
       <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Submit Maintenance Report</DialogTitle>
           </DialogHeader>

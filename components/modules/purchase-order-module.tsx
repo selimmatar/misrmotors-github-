@@ -1265,7 +1265,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       </Card>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>{t("po.create-new")}</DialogTitle>
           </DialogHeader>
@@ -1766,7 +1766,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       {/* Order Details Modal */}
       {showDetailsModal && viewDetailsOrder && (
         <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl">Purchase Order Details - {viewDetailsOrder.poNumber}</DialogTitle>
             </DialogHeader>

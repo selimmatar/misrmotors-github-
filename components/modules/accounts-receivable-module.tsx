@@ -1332,7 +1332,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
       {/* Payment Schedule Dialog - CHANGE: Updated to match AP pattern */}
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-5xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
@@ -1534,7 +1534,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
       {/* Widget Dialog */}
       <Dialog open={widgetDialogOpen} onOpenChange={setWidgetDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{getWidgetDialogTitle()}</DialogTitle>
           </DialogHeader>
@@ -1673,7 +1673,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           }
         }}
       >
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader className="border-b pb-4">
             <DialogTitle className="text-2xl">{t("ar.create-invoice")}</DialogTitle>
             <DialogDescription className="text-base mt-2">
@@ -1969,7 +1969,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
       {/* DP Selection Dialog */}
       <Dialog open={dpSelectDialogOpen} onOpenChange={setDpSelectDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t("ar.select-delivery-permits")}</DialogTitle>
             <DialogDescription>

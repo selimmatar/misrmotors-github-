@@ -1019,7 +1019,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
       )}
 
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{detailDialogData?.title}</DialogTitle>
             <DialogDescription>{detailDialogData?.description}</DialogDescription>

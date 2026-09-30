@@ -272,7 +272,7 @@ export function MaintenanceApprovalTab({ userRole }: { userRole: string }) {
 
       {/* Review Dialog */}
       <Dialog open={!!selectedReport} onOpenChange={(open) => !open && setSelectedReport(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Review Maintenance Report</DialogTitle>
             <DialogDescription>

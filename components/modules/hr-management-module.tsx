@@ -272,7 +272,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                   Add Employee
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Add New Employee</DialogTitle>
                   <DialogDescription>Create a new employee record in the system</DialogDescription>
@@ -567,7 +567,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
       {/* Employee Details Dialog */}
       {selectedEmployee && (
         <Dialog open={!!selectedEmployee} onOpenChange={() => setSelectedEmployee(null)}>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -794,7 +794,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
               {activeCompensation ? "Update Compensation" : "Add Compensation"}
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Add Compensation Record</DialogTitle>
               <DialogDescription>Set up salary and allowances for {employee.full_name}</DialogDescription>
@@ -821,7 +821,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                 Record Payment
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Record Salary Payment</DialogTitle>
                 <DialogDescription>Add a salary payment record with bonus and adjustments</DialogDescription>

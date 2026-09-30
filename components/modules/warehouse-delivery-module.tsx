@@ -803,7 +803,7 @@ export function WarehouseDeliveryModule() {
 
       {/* Preview Dialog */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{previewPermit?.permitNo}</DialogTitle>
           </DialogHeader>
@@ -844,7 +844,7 @@ export function WarehouseDeliveryModule() {
 
       {/* Warehouse Allocation Dialog */}
       <Dialog open={showAllocationDialog} onOpenChange={setShowAllocationDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Warehouse className="w-5 h-5" />
@@ -1113,7 +1113,7 @@ export function WarehouseDeliveryModule() {
       
       {/* Return Processing Dialog */}
       <Dialog open={showReturnProcessDialog} onOpenChange={setShowReturnProcessDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="w-5 h-5 text-orange-600" />

@@ -261,7 +261,7 @@ export function SalesMaintenanceReviewTab({ userRole }: { userRole: string }) {
 
       {/* Review Dialog */}
       <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Review Maintenance Report</DialogTitle>
           </DialogHeader>

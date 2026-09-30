@@ -287,7 +287,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
 
       {/* Details Dialog */}
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               {t("permit.details")} - {selectedPermit?.permitNo}
@@ -305,7 +305,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
       </Dialog>
 
       <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />

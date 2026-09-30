@@ -333,7 +333,7 @@ export function ProductModule() {
       </div>
 
       <Dialog open={showImagesDialog} onOpenChange={setShowImagesDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ImageIcon className="w-5 h-5" />
@@ -388,7 +388,7 @@ export function ProductModule() {
 
                 {selectedImageIndex !== null && (
                   <Dialog open={selectedImageIndex !== null} onOpenChange={() => setSelectedImageIndex(null)}>
-                    <DialogContent className="max-w-4xl">
+                    <DialogContent className="sm:max-w-4xl">
                       <div className="relative">
                         <img
                           src={productImages[selectedImageIndex].image_url || "/placeholder.svg"}

@@ -533,7 +533,7 @@ export function GoodsReceiptModule() {
 
       {/* Photo & Warehouse Selection Modal */}
       <Dialog open={showPhotoModal} onOpenChange={setShowPhotoModal}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="w-5 h-5" />

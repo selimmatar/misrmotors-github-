@@ -348,7 +348,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
 
       {/* Add Product Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add Product to {supplierName}</DialogTitle>
             <DialogDescription>
@@ -447,7 +447,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
 
       {/* Edit Product Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Product Relationship</DialogTitle>
             <DialogDescription>

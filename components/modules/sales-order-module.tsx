@@ -1728,7 +1728,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       </div>
 
       <Dialog open={showPendingOrdersDialog} onOpenChange={setShowPendingOrdersDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {t("so.pending-orders")} ({pendingOrders.length})
@@ -1927,7 +1927,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
       {/* Order Details Dialog with Maintenance */}
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("sales-orders.details")}: {selectedOrder?.soNumber}</DialogTitle>
             <DialogDescription className="sr-only">
@@ -2106,7 +2106,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
       {/* Create DP Dialog */}
       <Dialog open={createDPDialogOpen} onOpenChange={setCreateDPDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Create Delivery Permit for {selectedSOForDP?.soNumber || selectedSOForDP?.so_number}

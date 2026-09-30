@@ -292,7 +292,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
       {/* Create Transfer Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Warehouse Transfer</DialogTitle>
           </DialogHeader>
@@ -417,7 +417,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
       {/* Transfer Details Dialog */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Transfer Details</DialogTitle>
           </DialogHeader>

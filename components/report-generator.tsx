@@ -1608,7 +1608,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">
               Generate {type.charAt(0).toUpperCase() + type.slice(1)} Report
@@ -1855,7 +1855,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
         open={reportPreview.open}
         onOpenChange={(open) => !open && setReportPreview({ ...reportPreview, open: false })}
       >
-        <DialogContent className="max-w-[95vw] w-[95vw] h-[95vh] p-0 gap-0">
+        <DialogContent className="sm:max-w-[95vw] w-[95vw] h-[95vh] p-0 gap-0">
           <DialogHeader className="p-6 pb-4 border-b">
             <div className="flex items-center justify-between">
               <DialogTitle>{reportPreview.title}</DialogTitle>

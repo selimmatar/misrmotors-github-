@@ -1055,7 +1055,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
       {/* AI Insights Dialog */}
       <Dialog open={showAiInsights} onOpenChange={setShowAiInsights}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-yellow-500" />
@@ -1072,7 +1072,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
       {/* Photo Dialog */}
       <Dialog open={showPhotoDialog} onOpenChange={setShowPhotoDialog}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
               {t("photo.photos")} - {selectedProductForPhoto?.productName}
@@ -1277,7 +1277,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
       {/* SO Details Dialog */}
       <Dialog open={showSODetailsDialog} onOpenChange={setShowSODetailsDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {t("so.title")} - {selectedSODetails?.soNumber}

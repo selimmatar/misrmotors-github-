@@ -796,7 +796,7 @@ export function ShippingModule() {
 
       {/* Return Dialog */}
       <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Return Items from Delivery</DialogTitle>
             <DialogDescription>

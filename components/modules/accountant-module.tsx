@@ -1288,7 +1288,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
 
       {/* Sales Order Details Dialog */}
       <Dialog open={!!selectedSalesOrder} onOpenChange={(open) => !open && setSelectedSalesOrder(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t("title.sales_order_details")}</DialogTitle>
             <DialogDescription>{t("description.view_detailed_sales_order")}</DialogDescription>

@@ -888,7 +888,7 @@ export function AccountsPayableModule() {
 
       {/* Payment Schedule Dialog */}
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center justify-between">
               <DialogTitle className="flex items-center gap-2">
@@ -1172,7 +1172,7 @@ export function AccountsPayableModule() {
 
       {/* Widget Dialog */}
       <Dialog open={widgetDialogOpen} onOpenChange={setWidgetDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{getWidgetDialogTitle()}</DialogTitle>
           </DialogHeader>
@@ -1216,7 +1216,7 @@ export function AccountsPayableModule() {
       </Dialog>
 
       <Dialog open={paymentDetailsDialogOpen} onOpenChange={setPaymentDetailsDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CreditCard className="w-5 h-5" />
