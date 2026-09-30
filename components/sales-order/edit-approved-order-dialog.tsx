@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle, Package, Trash2, UserPlus } from "lucide-react"
+import { AlertTriangle, Package, Printer, Trash2, UserPlus } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
@@ -193,14 +193,16 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     return entry ? entry.quantity : 0
   }
 
-  const handleSave = async () => {
+  // Validates the form and persists the edits. Returns true on success so callers
+  // (Save, and Save & Print) can decide what to do next without duplicating this logic.
+  const saveOrder = async (): Promise<boolean> => {
     if (!customerId) {
       alert("Please select a customer")
-      return
+      return false
     }
     if (items.length === 0) {
       alert("Please add at least one item")
-      return
+      return false
     }
     const invalidItem = items.find((item) => {
       if (item.itemType === "stock") return !item.productId || item.quantity <= 0 || item.unitPrice < 0
@@ -208,7 +210,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     })
     if (invalidItem) {
       alert("Please fill in all item details (product, quantity, and price)")
-      return
+      return false
     }
 
     const finalPaymentTerms =
@@ -251,13 +253,319 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         paymentType,
         paymentDetails: isHybrid ? order.paymentDetails : paymentDetails,
       } as any)
-      onSaved()
-      onOpenChange(false)
+      return true
     } catch (error: any) {
       console.error("[v0] Failed to save order edits:", error)
       alert(`Failed to save changes: ${error.message || "Unknown error"}`)
+      return false
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSave = async () => {
+    if (await saveOrder()) {
+      onSaved()
+      onOpenChange(false)
+    }
+  }
+
+  const getPaymentTypeAr = (type: PaymentType | undefined) => {
+    switch (type) {
+      case "cash":
+        return "نقدي"
+      case "installments":
+        return "تقسيط"
+      case "hybrid":
+        return "دفعة مقدمة + أقساط"
+      case "cheque":
+        return "شيك"
+      case "bank_transfer":
+        return "تحويل بنكي"
+      default:
+        return "نقدي"
+    }
+  }
+
+  const formatDateAr = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "-"
+    const date = new Date(dateStr)
+    if (Number.isNaN(date.getTime())) return "-"
+    const day = String(date.getDate()).padStart(2, "0")
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const year = date.getFullYear()
+    return `${day}/${month}/${year}`
+  }
+
+  // Prints the order using the current in-dialog state (post-edit values), so the
+  // printed document always matches what was just saved via handleSaveAndPrint.
+  const handlePrint = () => {
+    const customer = customers.find((c) => c.id === customerId)
+
+    const itemsHtml = items
+      .map((item, idx) => {
+        const unitPrice = item.unitPrice || 0
+        const itemTotal = item.quantity * item.unitPrice
+        const unitGineh = Math.floor(unitPrice)
+        const unitQirsh = Math.round((unitPrice - unitGineh) * 100)
+        const totalGineh = Math.floor(itemTotal)
+        const totalQirsh = Math.round((itemTotal - totalGineh) * 100)
+        return `
+        <tr>
+          <td class="center">${idx + 1}</td>
+          <td>${item.productName}</td>
+          <td class="center">${item.quantity}</td>
+          <td class="currency-col">${unitGineh.toLocaleString("en-US")}</td>
+          <td class="currency-col">${unitQirsh.toString().padStart(2, "0")}</td>
+          <td class="currency-col">${totalGineh.toLocaleString("en-US")}</td>
+          <td class="currency-col">${totalQirsh.toString().padStart(2, "0")}</td>
+        </tr>`
+      })
+      .join("")
+
+    const discountHtml =
+      discountAmount > 0
+        ? `
+      <tr>
+        <td colspan="5" style="text-align: left; color: red;">الخصم</td>
+        <td class="currency-col" style="color: red;">-${Math.floor(discountAmount).toLocaleString("en-US")}</td>
+        <td class="currency-col" style="color: red;">${Math.round((discountAmount - Math.floor(discountAmount)) * 100)
+          .toString()
+          .padStart(2, "0")}</td>
+      </tr>`
+        : ""
+
+    let paymentDetailsHtml = ""
+    if (paymentType === "installments" && paymentDetails.installmentMonths) {
+      paymentDetailsHtml = `
+          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
+            <strong>تفاصيل التقسيط:</strong><br/>
+            <span>عدد الأشهر: ${paymentDetails.installmentMonths}</span><br/>
+            <span>القسط الشهري: ${(paymentDetails.monthlyAmount || 0).toLocaleString("en-US")} جنيه</span>
+            ${(paymentDetails as any).paymentStartDate ? `<br/><span>تاريخ أول قسط: ${formatDateAr((paymentDetails as any).paymentStartDate)}</span>` : ""}
+          </div>`
+    }
+    if (paymentType === "hybrid") {
+      paymentDetailsHtml = `
+          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
+            <strong>تفاصيل الدفع:</strong><br/>
+            <span>الدفعة المقدمة: ${(paymentDetails.downPaymentAmount || 0).toLocaleString("en-US")} جنيه</span><br/>
+            <span>المبلغ المتبقي: ${(paymentDetails.remainingAmount || 0).toLocaleString("en-US")} جنيه</span>
+          </div>`
+    }
+    if (paymentType === "cheque") {
+      paymentDetailsHtml = `
+          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
+            <strong>تفاصيل الشيك:</strong><br/>
+            ${paymentDetails.chequeNumber ? `<span>رقم الشيك: ${paymentDetails.chequeNumber}</span><br/>` : ""}
+            ${paymentDetails.chequeBankName ? `<span>البنك: ${paymentDetails.chequeBankName}</span><br/>` : ""}
+            ${paymentDetails.chequeDueDate ? `<span>تاريخ الاستحقاق: ${formatDateAr(paymentDetails.chequeDueDate)}</span><br/>` : ""}
+            ${paymentDetails.chequeAmount ? `<span>المبلغ: ${paymentDetails.chequeAmount.toLocaleString("en-US")} جنيه</span>` : ""}
+          </div>`
+    }
+
+    const paymentTermsHtml = `
+      <div style="margin-top: 10mm; border: 2px solid #000; padding: 10px;">
+        <div style="font-size: 14pt; font-weight: 700; margin-bottom: 8px; text-decoration: underline;">شروط الدفع</div>
+        <div style="margin-bottom: 8px;"><strong>طريقة الدفع:</strong> ${getPaymentTypeAr(paymentType)}</div>
+        ${paymentDetailsHtml}
+      </div>`
+
+    const notesHtml = notes
+      ? `
+      <div style="margin-top: 8mm; border: 1px solid #999; padding: 8px;">
+        <strong>ملاحظات إضافية:</strong><br/>
+        <span style="font-size: 10pt;">${notes}</span>
+      </div>`
+      : ""
+
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
+
+    printWindow.document.write(`
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>أمر بيع - ${order.soNumber}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { size: A4; margin: 15mm; }
+    body {
+      font-family: 'Noto Naskh Arabic', 'Arial', sans-serif;
+      font-size: 12pt;
+      line-height: 1.4;
+      color: #000;
+      background: white;
+      direction: rtl;
+    }
+    table { width: 100%; border-collapse: collapse; border: 2px solid #000; }
+    th, td { border: 1px solid #000; padding: 8px; text-align: right; }
+    th { background: #e8e8e8; font-weight: 700; }
+    .company-header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding: 10px;
+      margin-bottom: 5mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .company-logo { width: 80px; height: 80px; object-fit: contain; margin-bottom: 10px; }
+    .company-name-ar { font-size: 18pt; font-weight: 700; margin-bottom: 3px; }
+    .company-name-en { font-size: 14pt; font-weight: 600; margin-bottom: 8px; }
+    .company-details { font-size: 10pt; line-height: 1.6; }
+    .tax-info { font-size: 9pt; margin-top: 5px; border-top: 1px solid #ccc; padding-top: 5px; }
+    .doc-title { text-align: center; font-size: 20pt; font-weight: 700; margin: 10mm 0; text-decoration: underline; }
+    .header-table { width: 100%; border: 2px solid #000; margin-bottom: 10mm; }
+    .header-table td { border: 1px solid #000; padding: 4px 8px; }
+    .items-table { width: 100%; border: 2px solid #000; margin-bottom: 10mm; }
+    .items-table th { background: #e8e8e8; font-weight: 700; text-align: center; padding: 8px 4px; }
+    .items-table td { text-align: right; padding: 6px 4px; }
+    .items-table .center { text-align: center; }
+    .currency-col { text-align: center; }
+    .subheader { font-size: 10pt; font-weight: 600; }
+    .signatures { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20mm; margin-top: 15mm; }
+    .signature-box { text-align: center; }
+    .signature-label { font-weight: 700; margin-bottom: 20mm; text-decoration: underline; }
+    .signature-line { border-top: 1px solid #000; margin-top: 15mm; }
+    @media print { body { margin: 0; padding: 0; } }
+  </style>
+</head>
+<body>
+  <!-- Company Header -->
+  <div class="company-header">
+    <img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" onerror="this.style.display='none'" />
+    <div class="company-name-ar">شركة مصر للمحركات</div>
+    <div class="company-name-en">Misr Motors Co.</div>
+    <div class="company-details">
+      <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
+      <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
+      <div>البريد الإلكتروني: sales@misrmotors.com</div>
+    </div>
+    <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
+  </div>
+
+  <!-- Title -->
+  <div class="doc-title">أمر بيع</div>
+
+  <!-- Order Info -->
+  <table class="header-table">
+    <tr>
+      <td style="width: 25%;"><strong>رقم أمر البيع:</strong></td>
+      <td style="width: 25%;">${order.soNumber}</td>
+      <td style="width: 25%;"><strong>التاريخ:</strong></td>
+      <td style="width: 25%;">${formatDateAr(order.orderDate)}</td>
+    </tr>
+    <tr>
+      <td colspan="4"><strong>السادة:</strong> ${customer?.name || "-"}</td>
+    </tr>
+    ${
+      customer?.phone
+        ? `
+    <tr>
+      <td><strong>الهاتف:</strong></td>
+      <td>${customer.phone}</td>
+      <td><strong>البريد الإلكتروني:</strong></td>
+      <td>${customer.email || "-"}</td>
+    </tr>`
+        : ""
+    }
+    ${
+      deliveryAddress
+        ? `
+    <tr>
+      <td><strong>عنوان التسليم:</strong></td>
+      <td colspan="3">${deliveryAddress}</td>
+    </tr>`
+        : ""
+    }
+    ${
+      deliveryContactName
+        ? `
+    <tr>
+      <td><strong>مسؤول الاستلام:</strong></td>
+      <td>${deliveryContactName}</td>
+      <td><strong>هاتف الاستلام:</strong></td>
+      <td>${deliveryContactPhone || "-"}</td>
+    </tr>`
+        : ""
+    }
+  </table>
+
+  <!-- Items Table -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th rowspan="2" style="width: 6%;">م</th>
+        <th rowspan="2" style="width: 36%;">البيان</th>
+        <th rowspan="2" style="width: 8%;">الكمية</th>
+        <th colspan="2" style="text-align: center;">سعر الوحدة</th>
+        <th colspan="2" style="text-align: center;">القيمة</th>
+      </tr>
+      <tr>
+        <th class="subheader" style="width: 12.5%;">جنيه</th>
+        <th class="subheader" style="width: 12.5%;">قرش</th>
+        <th class="subheader" style="width: 12.5%;">جنيه</th>
+        <th class="subheader" style="width: 12.5%;">قرش</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemsHtml}
+    </tbody>
+    <tfoot>
+      ${discountHtml}
+      <tr>
+        <td colspan="5" style="text-align: left;">المجموع الفرعي</td>
+        <td class="currency-col">${Math.floor(subtotalAfterDiscount).toLocaleString("en-US")}</td>
+        <td class="currency-col">${Math.round((subtotalAfterDiscount - Math.floor(subtotalAfterDiscount)) * 100)
+          .toString()
+          .padStart(2, "0")}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="text-align: left;">ضريبة القيمة المضافة (14%)</td>
+        <td class="currency-col">${Math.floor(vatAmount).toLocaleString("en-US")}</td>
+        <td class="currency-col">${Math.round((vatAmount - Math.floor(vatAmount)) * 100)
+          .toString()
+          .padStart(2, "0")}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="text-align: left; font-weight: 700;">الإجمالي</td>
+        <td class="currency-col" style="font-weight: 700;">${Math.floor(netTotal).toLocaleString("en-US")}</td>
+        <td class="currency-col" style="font-weight: 700;">${Math.round((netTotal - Math.floor(netTotal)) * 100)
+          .toString()
+          .padStart(2, "0")}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  ${isHybrid ? "" : paymentTermsHtml}
+
+  ${notesHtml}
+
+  <!-- Signatures -->
+  <div class="signatures">
+    <div class="signature-box">
+      <div class="signature-label">توقيع العميل</div>
+      <div class="signature-line"></div>
+    </div>
+    <div class="signature-box">
+      <div class="signature-label">التوقيع المعتمد</div>
+      <div class="signature-line"></div>
+    </div>
+  </div>
+</body>
+</html>`)
+    printWindow.document.close()
+    printWindow.print()
+  }
+
+  const handleSaveAndPrint = async () => {
+    if (await saveOrder()) {
+      handlePrint()
+      onSaved()
+      onOpenChange(false)
     }
   }
 
@@ -497,6 +805,10 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
+          </Button>
+          <Button variant="outline" onClick={handleSaveAndPrint} disabled={saving} className="gap-2">
+            <Printer className="h-4 w-4" />
+            {saving ? "Saving..." : "Save & Print"}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? "Saving..." : "Save Changes"}
