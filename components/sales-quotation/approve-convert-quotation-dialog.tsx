@@ -14,7 +14,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Package, Trash2, UserPlus, Upload } from "lucide-react"
+import { Loader2, Package, Printer, Trash2, UserPlus, Upload } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
@@ -34,6 +34,7 @@ interface QuotationItemInput {
 interface QuotationInput {
   id: number
   quotation_number: string
+  quotation_request_number?: string | null
   customer_id?: number | null
   customer_name: string
   customer_phone?: string | null
@@ -48,6 +49,9 @@ interface QuotationInput {
   payment_type?: string | null
   payment_details?: any
   so_type?: string | null
+  validity_days?: number | null
+  quotation_date?: string | null
+  created_at?: string | null
   items?: QuotationItemInput[]
 }
 
@@ -196,6 +200,332 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   const { discountAmount, netTotal: subtotalAfterDiscount } = calculateDiscount(subtotal, discountType, discountValue)
   const vatAmount = subtotalAfterDiscount * VAT_RATE
   const netTotal = subtotalAfterDiscount + vatAmount
+
+  const formatDateAr = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "-"
+    const date = new Date(dateStr)
+    if (Number.isNaN(date.getTime())) return "-"
+    const day = String(date.getDate()).padStart(2, "0")
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const year = date.getFullYear()
+    return `${day}/${month}/${year}`
+  }
+
+  const getPaymentTypeAr = (type: PaymentType | undefined) => {
+    switch (type) {
+      case "cash":
+        return "نقدي"
+      case "installments":
+        return "تقسيط"
+      case "hybrid":
+        return "دفعة مقدمة + أقساط"
+      case "cheque":
+        return "شيك"
+      case "bank_transfer":
+        return "تحويل بنكي"
+      default:
+        return "نقدي"
+    }
+  }
+
+  // Prints the quotation using the current in-dialog (post-edit) state, so the customer
+  // can be shown the updated terms before the quotation is actually converted to an SO.
+  const handlePrintQuotation = () => {
+    const customer = customers.find((c) => c.id === customerId)
+    const customerName = customer?.name || quotation.customer_name
+    const customerPhone = customer?.phone || quotation.customer_phone
+    const customerEmail = customer?.email || quotation.customer_email
+
+    const itemsHtml = items
+      .map((item, idx) => {
+        const unitPrice = item.unitPrice || 0
+        const itemTotal = item.quantity * item.unitPrice
+        const unitGineh = Math.floor(unitPrice)
+        const unitQirsh = Math.round((unitPrice - unitGineh) * 100)
+        const totalGineh = Math.floor(itemTotal)
+        const totalQirsh = Math.round((itemTotal - totalGineh) * 100)
+        return `
+        <tr>
+          <td class="center">${idx + 1}</td>
+          <td>${item.productName}</td>
+          <td class="center">${item.quantity}</td>
+          <td class="currency-col">${unitGineh.toLocaleString("en-US")}</td>
+          <td class="currency-col">${unitQirsh.toString().padStart(2, "0")}</td>
+          <td class="currency-col">${totalGineh.toLocaleString("en-US")}</td>
+          <td class="currency-col">${totalQirsh.toString().padStart(2, "0")}</td>
+        </tr>`
+      })
+      .join("")
+
+    const discountHtml =
+      discountAmount > 0
+        ? `
+      <tr>
+        <td colspan="5" style="text-align: left; color: red;">الخصم</td>
+        <td class="currency-col" style="color: red;">-${Math.floor(discountAmount).toLocaleString("en-US")}</td>
+        <td class="currency-col" style="color: red;">${Math.round((discountAmount - Math.floor(discountAmount)) * 100)
+          .toString()
+          .padStart(2, "0")}</td>
+      </tr>`
+        : ""
+
+    let paymentDetailsHtml = ""
+    if (paymentType === "installments" && paymentDetails.installmentMonths) {
+      paymentDetailsHtml = `
+          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
+            <strong>تفاصيل التقسيط:</strong><br/>
+            <span>عدد الأشهر: ${paymentDetails.installmentMonths}</span><br/>
+            <span>القسط الشهري: ${(paymentDetails.monthlyAmount || 0).toLocaleString("en-US")} جنيه</span>
+            ${(paymentDetails as any).paymentStartDate ? `<br/><span>تاريخ أول قسط: ${formatDateAr((paymentDetails as any).paymentStartDate)}</span>` : ""}
+          </div>`
+    }
+    if (paymentType === "hybrid") {
+      paymentDetailsHtml = `
+          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
+            <strong>تفاصيل الدفع:</strong><br/>
+            <span>الدفعة المقدمة: ${(paymentDetails.downPaymentAmount || 0).toLocaleString("en-US")} جنيه</span><br/>
+            <span>المبلغ المتبقي: ${(paymentDetails.remainingAmount || 0).toLocaleString("en-US")} جنيه</span>
+          </div>`
+    }
+    if (paymentType === "cheque") {
+      paymentDetailsHtml = `
+          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
+            <strong>تفاصيل الشيك:</strong><br/>
+            ${paymentDetails.chequeNumber ? `<span>رقم الشيك: ${paymentDetails.chequeNumber}</span><br/>` : ""}
+            ${paymentDetails.chequeBankName ? `<span>البنك: ${paymentDetails.chequeBankName}</span><br/>` : ""}
+            ${paymentDetails.chequeDueDate ? `<span>تاريخ الاستحقاق: ${formatDateAr(paymentDetails.chequeDueDate)}</span><br/>` : ""}
+            ${paymentDetails.chequeAmount ? `<span>المبلغ: ${paymentDetails.chequeAmount.toLocaleString("en-US")} جنيه</span>` : ""}
+          </div>`
+    }
+
+    const paymentTermsHtml = `
+      <div style="margin-top: 10mm; border: 2px solid #000; padding: 10px;">
+        <div style="font-size: 14pt; font-weight: 700; margin-bottom: 8px; text-decoration: underline;">شروط الدفع</div>
+        <div style="margin-bottom: 8px;"><strong>طريقة الدفع:</strong> ${getPaymentTypeAr(paymentType)}</div>
+        ${paymentDetailsHtml}
+      </div>`
+
+    const notesHtml = notes
+      ? `
+      <div style="margin-top: 8mm; border: 1px solid #999; padding: 8px;">
+        <strong>ملاحظات إضافية:</strong><br/>
+        <span style="font-size: 10pt;">${notes}</span>
+      </div>`
+      : ""
+
+    const quotationDateStr = quotation.quotation_date || quotation.created_at || new Date().toISOString()
+    const validityDays = quotation.validity_days || 30
+    const validUntil = new Date(new Date(quotationDateStr).getTime() + validityDays * 24 * 60 * 60 * 1000)
+
+    const printWindow = window.open("", "_blank")
+    if (!printWindow) return
+
+    printWindow.document.write(`
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>عرض سعر - ${quotation.quotation_number}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { size: A4; margin: 15mm; }
+    body {
+      font-family: 'Noto Naskh Arabic', 'Arial', sans-serif;
+      font-size: 12pt;
+      line-height: 1.4;
+      color: #000;
+      background: white;
+      direction: rtl;
+    }
+    table { width: 100%; border-collapse: collapse; border: 2px solid #000; }
+    th, td { border: 1px solid #000; padding: 8px; text-align: right; }
+    th { background: #e8e8e8; font-weight: 700; }
+    .company-header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding: 10px;
+      margin-bottom: 5mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .company-logo { width: 80px; height: 80px; object-fit: contain; margin-bottom: 10px; }
+    .company-name-ar { font-size: 18pt; font-weight: 700; margin-bottom: 3px; }
+    .company-name-en { font-size: 14pt; font-weight: 600; margin-bottom: 8px; }
+    .company-details { font-size: 10pt; line-height: 1.6; }
+    .tax-info { font-size: 9pt; margin-top: 5px; border-top: 1px solid #ccc; padding-top: 5px; }
+    .doc-title { text-align: center; font-size: 20pt; font-weight: 700; margin: 10mm 0; text-decoration: underline; }
+    .header-table { width: 100%; border: 2px solid #000; margin-bottom: 10mm; }
+    .header-table td { border: 1px solid #000; padding: 4px 8px; }
+    .items-table { width: 100%; border: 2px solid #000; margin-bottom: 10mm; }
+    .items-table th { background: #e8e8e8; font-weight: 700; text-align: center; padding: 8px 4px; }
+    .items-table td { text-align: right; padding: 6px 4px; }
+    .items-table .center { text-align: center; }
+    .currency-col { text-align: center; }
+    .subheader { font-size: 10pt; font-weight: 600; }
+    .signatures { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20mm; margin-top: 15mm; }
+    .signature-box { text-align: center; }
+    .signature-label { font-weight: 700; margin-bottom: 20mm; text-decoration: underline; }
+    .signature-line { border-top: 1px solid #000; margin-top: 15mm; }
+    .terms-section { margin-top: 8mm; font-size: 10pt; }
+    .terms-section li { margin-bottom: 3px; }
+    @media print { body { margin: 0; padding: 0; } }
+  </style>
+</head>
+<body>
+  <!-- Company Header -->
+  <div class="company-header">
+    <img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" onerror="this.style.display='none'" />
+    <div class="company-name-ar">شركة مصر للمحركات</div>
+    <div class="company-name-en">Misr Motors Co.</div>
+    <div class="company-details">
+      <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
+      <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
+      <div>البريد الإلكتروني: sales@misrmotors.com</div>
+    </div>
+    <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
+  </div>
+
+  <!-- Title -->
+  <div class="doc-title">عرض سعر</div>
+
+  <!-- Quotation Info -->
+  <table class="header-table">
+    <tr>
+      <td style="width: 25%;"><strong>رقم العرض:</strong></td>
+      <td style="width: 25%;">${quotation.quotation_number}</td>
+      <td style="width: 25%;"><strong>التاريخ:</strong></td>
+      <td style="width: 25%;">${formatDateAr(quotationDateStr)}</td>
+    </tr>
+    ${
+      quotation.quotation_request_number
+        ? `
+    <tr>
+      <td><strong>رقم طلب التسعير:</strong></td>
+      <td colspan="3">${quotation.quotation_request_number}</td>
+    </tr>`
+        : ""
+    }
+    <tr>
+      <td><strong>صالح حتى:</strong></td>
+      <td>${formatDateAr(validUntil.toISOString())}</td>
+      <td><strong>مدة الصلاحية:</strong></td>
+      <td>${validityDays} يوم</td>
+    </tr>
+    <tr>
+      <td colspan="4"><strong>السادة:</strong> ${customerName}</td>
+    </tr>
+    ${
+      customerPhone
+        ? `
+    <tr>
+      <td><strong>الهاتف:</strong></td>
+      <td>${customerPhone}</td>
+      <td><strong>البريد الإلكتروني:</strong></td>
+      <td>${customerEmail || "-"}</td>
+    </tr>`
+        : ""
+    }
+    ${
+      deliveryAddress
+        ? `
+    <tr>
+      <td><strong>عنوان التسليم:</strong></td>
+      <td colspan="3">${deliveryAddress}</td>
+    </tr>`
+        : ""
+    }
+    ${
+      deliveryContactName
+        ? `
+    <tr>
+      <td><strong>مسؤول الاستلام:</strong></td>
+      <td>${deliveryContactName}</td>
+      <td><strong>هاتف الاستلام:</strong></td>
+      <td>${deliveryContactPhone || "-"}</td>
+    </tr>`
+        : ""
+    }
+  </table>
+
+  <!-- Items Table -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th rowspan="2" style="width: 6%;">م</th>
+        <th rowspan="2" style="width: 36%;">البيان</th>
+        <th rowspan="2" style="width: 8%;">الكمية</th>
+        <th colspan="2" style="text-align: center;">سعر الوحدة</th>
+        <th colspan="2" style="text-align: center;">القيمة</th>
+      </tr>
+      <tr>
+        <th class="subheader" style="width: 12.5%;">جنيه</th>
+        <th class="subheader" style="width: 12.5%;">قرش</th>
+        <th class="subheader" style="width: 12.5%;">جنيه</th>
+        <th class="subheader" style="width: 12.5%;">قرش</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemsHtml}
+    </tbody>
+    <tfoot>
+      ${discountHtml}
+      <tr>
+        <td colspan="5" style="text-align: left;">المجموع الفرعي</td>
+        <td class="currency-col">${Math.floor(subtotalAfterDiscount).toLocaleString("en-US")}</td>
+        <td class="currency-col">${Math.round((subtotalAfterDiscount - Math.floor(subtotalAfterDiscount)) * 100)
+          .toString()
+          .padStart(2, "0")}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="text-align: left;">ضريبة القيمة المضافة (14%)</td>
+        <td class="currency-col">${Math.floor(vatAmount).toLocaleString("en-US")}</td>
+        <td class="currency-col">${Math.round((vatAmount - Math.floor(vatAmount)) * 100)
+          .toString()
+          .padStart(2, "0")}</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="text-align: left; font-weight: 700;">إجمالي العرض</td>
+        <td class="currency-col" style="font-weight: 700;">${Math.floor(netTotal).toLocaleString("en-US")}</td>
+        <td class="currency-col" style="font-weight: 700;">${Math.round((netTotal - Math.floor(netTotal)) * 100)
+          .toString()
+          .padStart(2, "0")}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  ${isHybrid ? "" : paymentTermsHtml}
+
+  <!-- General Terms -->
+  <div class="terms-section">
+    <div style="font-weight: 700; margin-bottom: 5px;">الشروط والأحكام:</div>
+    <ul style="padding-right: 20px;">
+      <li>هذا العرض صالح لمدة ${validityDays} يوم من تاريخ الإصدار</li>
+      <li>الأسعار قابلة للتغيير بعد انتهاء فترة الصلاحية</li>
+      <li>مواعيد التسليم تقديرية وتخضع للتوافر</li>
+      <li>جميع المدفوعات يجب أن تتم وفقاً للجدول المتفق عليه</li>
+    </ul>
+  </div>
+
+  ${notesHtml}
+
+  <!-- Signatures -->
+  <div class="signatures">
+    <div class="signature-box">
+      <div class="signature-label">توقيع العميل</div>
+      <div class="signature-line"></div>
+    </div>
+    <div class="signature-box">
+      <div class="signature-label">التوقيع المعتمد</div>
+      <div class="signature-line"></div>
+    </div>
+  </div>
+</body>
+</html>`)
+    printWindow.document.close()
+    printWindow.print()
+  }
 
   const handleApproveAndConvert = async () => {
     if (!approvalDocument) {
@@ -539,6 +869,10 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
+          </Button>
+          <Button variant="outline" onClick={handlePrintQuotation} disabled={saving} className="gap-2">
+            <Printer className="h-4 w-4" />
+            Print QT
           </Button>
           <Button onClick={handleApproveAndConvert} disabled={saving || !approvalDocument}>
             {saving ? (
