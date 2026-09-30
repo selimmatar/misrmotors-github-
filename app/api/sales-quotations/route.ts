@@ -128,6 +128,107 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Persist edits made to an existing quotation (e.g. from the "Approve & Convert to SO"
+// screen) without changing its status or converting it. Lets a sales rep save their
+// adjustments — and print an up-to-date copy — before actually approving the quotation.
+export async function PATCH(request: NextRequest) {
+  try {
+    const supabase = await createServerClient()
+    const body = await request.json()
+    const {
+      quotation_id,
+      customer_id,
+      customer_name,
+      customer_phone,
+      customer_email,
+      delivery_address,
+      delivery_contact_name,
+      delivery_contact_phone,
+      notes,
+      discount_type,
+      discount_value,
+      discount_amount,
+      subtotal,
+      tax,
+      total,
+      net_total,
+      payment_type,
+      payment_details,
+      items,
+    } = body
+
+    if (!quotation_id) {
+      return NextResponse.json({ error: "quotation_id is required" }, { status: 400 })
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: "At least one item is required" }, { status: 400 })
+    }
+
+    const { error: updateError } = await supabase
+      .from("sales_quotations")
+      .update({
+        customer_id: customer_id ? Number(customer_id) : null,
+        customer_name,
+        customer_phone: customer_phone || null,
+        customer_email: customer_email || null,
+        delivery_address: delivery_address || null,
+        delivery_contact_name: delivery_contact_name || null,
+        delivery_contact_phone: delivery_contact_phone || null,
+        notes: notes || null,
+        discount_type: discount_type || "none",
+        discount_value: discount_value || 0,
+        discount_amount: discount_amount || 0,
+        subtotal,
+        tax,
+        total,
+        net_total,
+        payment_type: payment_type || "cash",
+        payment_details: payment_details || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", quotation_id)
+
+    if (updateError) {
+      console.error("Update quotation error:", updateError)
+      return NextResponse.json({ error: "Failed to save quotation changes" }, { status: 500 })
+    }
+
+    const { error: deleteItemsError } = await supabase
+      .from("sales_quotation_items")
+      .delete()
+      .eq("quotation_id", quotation_id)
+
+    if (deleteItemsError) {
+      console.error("Delete quotation items error:", deleteItemsError)
+      return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
+    }
+
+    const itemsData = items.map((item: any, index: number) => ({
+      quotation_id: Number(quotation_id),
+      line_no: index + 1,
+      item_type: item.item_type || "inventory",
+      product_id: item.product_id ? Number(item.product_id) : null,
+      product_name: item.product_name,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      total: item.quantity * item.unit_price,
+      supplier_name: item.supplier_name || null,
+    }))
+
+    const { error: insertItemsError } = await supabase.from("sales_quotation_items").insert(itemsData)
+
+    if (insertItemsError) {
+      console.error("Insert quotation items error:", insertItemsError)
+      return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Sales quotation PATCH error:", error)
+    return NextResponse.json({ error: "Failed to save quotation changes" }, { status: 500 })
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createServerClient()

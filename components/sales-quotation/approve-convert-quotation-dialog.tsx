@@ -142,6 +142,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
 
   const [approvalDocument, setApprovalDocument] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
+  const [printing, setPrinting] = useState(false)
   const [uploadingDocument, setUploadingDocument] = useState(false)
 
   const aggregatedInventory = useMemo(() => {
@@ -230,11 +231,69 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
 
   // Prints the quotation using the current in-dialog (post-edit) state, so the customer
   // can be shown the updated terms before the quotation is actually converted to an SO.
-  const handlePrintQuotation = () => {
+  // Saves the current in-dialog edits back to the quotation (without approving or
+  // converting it) and then opens the print-ready copy, so the printed document always
+  // matches what's stored.
+  const handleSaveAndPrintQuotation = async () => {
+    if (items.length === 0) {
+      alert("Please add at least one item")
+      return
+    }
+    const invalidItem = items.find((item) => {
+      if (item.itemType === "stock") return !item.productId || item.quantity <= 0 || item.unitPrice < 0
+      return !item.productName.trim() || item.quantity <= 0 || item.unitPrice < 0
+    })
+    if (invalidItem) {
+      alert("Please fill in all item details (product, quantity, and price)")
+      return
+    }
+
     const customer = customers.find((c) => c.id === customerId)
     const customerName = customer?.name || quotation.customer_name
     const customerPhone = customer?.phone || quotation.customer_phone
     const customerEmail = customer?.email || quotation.customer_email
+
+    setPrinting(true)
+    try {
+      const payloadItems = items.map((item) => ({
+        product_id: item.itemType === "stock" ? item.productId || null : null,
+        product_name: item.productName,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        item_type: item.itemType === "stock" ? "inventory" : "outsourced",
+        supplier_name: item.itemType === "outsourced" ? item.supplierName : null,
+      }))
+
+      const saveResponse = await fetch("/api/sales-quotations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quotation_id: quotation.id,
+          customer_id: customerId ? Number(customerId) : null,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          customer_email: customerEmail,
+          delivery_address: deliveryAddress,
+          delivery_contact_name: deliveryContactName,
+          delivery_contact_phone: deliveryContactPhone,
+          notes,
+          discount_type: discountType,
+          discount_value: discountValue,
+          discount_amount: discountAmount,
+          subtotal: subtotalAfterDiscount,
+          tax: vatAmount,
+          total: netTotal,
+          net_total: netTotal,
+          payment_type: paymentType,
+          payment_details: isHybrid ? quotation.payment_details : paymentDetails,
+          items: payloadItems,
+        }),
+      })
+
+      if (!saveResponse.ok) {
+        const error = await saveResponse.json()
+        throw new Error(error.error || "Failed to save quotation changes")
+      }
 
     const itemsHtml = items
       .map((item, idx) => {
@@ -523,8 +582,14 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   </div>
 </body>
 </html>`)
-    printWindow.document.close()
-    printWindow.print()
+      printWindow.document.close()
+      printWindow.print()
+    } catch (error) {
+      console.error("Error saving quotation before printing:", error)
+      alert(error instanceof Error ? error.message : "Failed to save quotation changes")
+    } finally {
+      setPrinting(false)
+    }
   }
 
   const handleApproveAndConvert = async () => {
@@ -867,14 +932,19 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || printing}>
             Cancel
           </Button>
-          <Button variant="outline" onClick={handlePrintQuotation} disabled={saving} className="gap-2">
-            <Printer className="h-4 w-4" />
-            Print QT
+          <Button
+            variant="outline"
+            onClick={handleSaveAndPrintQuotation}
+            disabled={saving || printing}
+            className="gap-2"
+          >
+            {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+            Save &amp; Print QT
           </Button>
-          <Button onClick={handleApproveAndConvert} disabled={saving || !approvalDocument}>
+          <Button onClick={handleApproveAndConvert} disabled={saving || printing || !approvalDocument}>
             {saving ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
