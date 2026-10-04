@@ -193,13 +193,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Failed to save quotation changes" }, { status: 500 })
     }
 
-    const { error: deleteItemsError } = await supabase
+    // Capture the existing item IDs before writing the new ones so that, if the
+    // insert below fails, the original items are still intact (the previous
+    // implementation deleted first and could lose all items on a failed insert).
+    const { data: existingItems, error: existingItemsError } = await supabase
       .from("sales_quotation_items")
-      .delete()
+      .select("id")
       .eq("quotation_id", quotation_id)
 
-    if (deleteItemsError) {
-      console.error("Delete quotation items error:", deleteItemsError)
+    if (existingItemsError) {
+      console.error("Fetch existing quotation items error:", existingItemsError)
       return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
     }
 
@@ -211,7 +214,6 @@ export async function PATCH(request: NextRequest) {
       product_name: item.product_name,
       quantity: item.quantity,
       unit_price: item.unit_price,
-      total: item.quantity * item.unit_price,
       supplier_name: item.supplier_name || null,
     }))
 
@@ -220,6 +222,19 @@ export async function PATCH(request: NextRequest) {
     if (insertItemsError) {
       console.error("Insert quotation items error:", insertItemsError)
       return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
+    }
+
+    const existingItemIds = (existingItems || []).map((item) => item.id)
+    if (existingItemIds.length > 0) {
+      const { error: deleteItemsError } = await supabase
+        .from("sales_quotation_items")
+        .delete()
+        .in("id", existingItemIds)
+
+      if (deleteItemsError) {
+        console.error("Delete old quotation items error:", deleteItemsError)
+        return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
+      }
     }
 
     return NextResponse.json({ success: true })
