@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAppContext } from "@/lib/app-context"
+import { permitChip } from "@/lib/customer-dp-chip"
 import { useI18n } from "@/lib/i18n-context"
 import { COUNTRIES, getCitiesForCountry } from "@/lib/countries-data"
 import { ReportGenerator } from "@/components/report-generator"
@@ -346,13 +347,16 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                                 {order.deliveryPermits.map((dp: any) => (
                                   <div key={dp.permit_number || dp.permitNumber} className="text-xs flex items-center gap-1">
                                     <span className="font-mono">{dp.permit_number || dp.permitNumber}</span>
-                                    <span className={`px-1.5 py-0.5 rounded ${
-                                      dp.status === "SUBMITTED_SIGNED" || dp.status === "APPROVED" || dp.status === "DELIVERED"
-                                        ? "bg-green-100 text-green-700"
-                                        : "bg-yellow-100 text-yellow-700"
-                                    }`}>
-                                      {dp.status === "SUBMITTED_SIGNED" || dp.status === "APPROVED" || dp.status === "DELIVERED" ? "Delivered" : "Pending"}
-                                    </span>
+                                    {(() => {
+                                      const chip = permitChip(dp.status, (order as any).returnedQuantity)
+                                      const tone =
+                                        chip.tone === "green"
+                                          ? "bg-green-100 text-green-700"
+                                          : chip.tone === "orange"
+                                            ? "bg-orange-100 text-orange-700"
+                                            : "bg-yellow-100 text-yellow-700"
+                                      return <span className={`px-1.5 py-0.5 rounded ${tone}`}>{chip.label}</span>
+                                    })()}
                                   </div>
                                 ))}
                               </div>
