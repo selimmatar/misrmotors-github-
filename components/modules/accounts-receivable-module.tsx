@@ -145,7 +145,27 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         // Only offer DPs that are approved and not already tied to an invoice.
         // A sales order can have several DPs, and each DP can only be billed once,
         // so DPs already consolidated into a prior invoice must not be selectable again.
-        const invoiceable = (data || []).filter((dp: any) => dp.status === "APPROVED" && !dp.invoiceId)
+        //
+        // Also hide DPs of a sales order that was already invoiced as a whole (an invoice with the
+        // order's id and no delivery permits): those DPs cannot be invoiced again (the server enforces this too).
+        let wholeInvoicedSoIds = new Set<string>()
+        try {
+          const invoicesResponse = await fetch("/api/accounts-receivable")
+          if (invoicesResponse.ok) {
+            const rawInvoices = await invoicesResponse.json()
+            wholeInvoicedSoIds = new Set(
+              (rawInvoices || [])
+                .filter((inv: any) => inv.soId && !inv.isMaintenance && (inv.deliveryPermits || []).length === 0)
+                .map((inv: any) => String(inv.soId)),
+            )
+          }
+        } catch (invoiceError) {
+          console.error("AR - Error checking whole-order invoices:", invoiceError)
+        }
+        const invoiceable = (data || []).filter(
+          (dp: any) =>
+            dp.status === "APPROVED" && !dp.invoiceId && !wholeInvoicedSoIds.has(String(dp.sales_order_id ?? dp.salesOrderId ?? "")),
+        )
         setAvailableDPs(invoiceable)
       }
     } catch (error) {

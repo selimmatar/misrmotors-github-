@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
+import { VAT_RATE, computeInvoiceAmount, round2 } from "@/lib/invoicing"
 
 export const dynamic = "force-dynamic"
 
@@ -140,20 +141,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return sum + itemTotal
     }, 0)
 
-    // Apply the sales order's discount rate proportionally, then 14% VAT -
-    // matches the math used when the invoice was created (create-from-dps /
-    // create-from-so), so the printed total matches invoice.amount even for
-    // a partial-DP invoice.
+    // The printed total must equal the stored invoice amount.
+    //  - Delivery-permit invoice: priced from the linked permits' items with the sales order's discount rate
+    //    and 14% VAT - the same shared function create-from-dps stores (lib/invoicing.ts).
+    //  - Whole-sales-order invoice: the stored amount (the sales order total) is authoritative.
     const soSubtotal = Number(so.subtotal) || 0
     const soDiscount = Number(so.discount_amount) || 0
     const discountRate = soSubtotal > 0 ? soDiscount / soSubtotal : 0
-    const subtotalBeforeVat = rawItemsTotal * (1 - discountRate)
+    const VAT_RATE_PDF = 1 + VAT_RATE
 
-    // Calculate VAT on the subtotal (14% added on top)
-    const VAT_RATE = 0.14
-    const vatAmount = subtotalBeforeVat * VAT_RATE
-    const totalWithVat = subtotalBeforeVat + vatAmount
-    
+    const totalWithVat = isDpBasedInvoice
+      ? computeInvoiceAmount(rawItemsTotal, soSubtotal, soDiscount)
+      : round2(Number(invoice.amount) || 0)
+    const subtotalBeforeVat = isDpBasedInvoice ? rawItemsTotal * (1 - discountRate) : totalWithVat / VAT_RATE_PDF
+    const vatAmount = totalWithVat - subtotalBeforeVat
+
     // Fetch logo and convert to base64 for embedding in HTML
     let logoDataUrl = ""
     try {
