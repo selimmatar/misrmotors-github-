@@ -153,8 +153,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const totalWithVat = isDpBasedInvoice
       ? computeInvoiceAmount(rawItemsTotal, soSubtotal, soDiscount)
       : round2(Number(invoice.amount) || 0)
-    const subtotalBeforeVat = isDpBasedInvoice ? rawItemsTotal * (1 - discountRate) : totalWithVat / VAT_RATE_PDF
-    const vatAmount = totalWithVat - subtotalBeforeVat
+    // Rounded to cents so the piastre column never shows 100 (e.g. 899.9999 -> "899 / 100").
+    const subtotalBeforeVat = round2(isDpBasedInvoice ? rawItemsTotal * (1 - discountRate) : totalWithVat / VAT_RATE_PDF)
+    const vatAmount = round2(totalWithVat - subtotalBeforeVat)
 
     // Fetch logo and convert to base64 for embedding in HTML
     let logoDataUrl = ""
