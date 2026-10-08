@@ -277,6 +277,17 @@ const whereQuantity = (query: any, old: unknown) => (old === null || old === und
 const warehouseFilter = (query: any, warehouseId: number | null) =>
   warehouseId === null ? query.is("warehouse_id", null) : query.eq("warehouse_id", warehouseId)
 
+/**
+ * Weighted-average unit cost after adding `recvQty` @ `recvCost` to `oldQty` @ `oldCost` (2 decimals).
+ * No stock on hand (or an unknown old cost) means the receipt cost is the cost.
+ */
+export function weightedAverageCost(oldQty: unknown, oldCost: unknown, recvQty: number, recvCost: number): number {
+  const q = Number(oldQty)
+  const c = oldCost === null || oldCost === undefined ? NaN : Number(oldCost)
+  if (!Number.isFinite(q) || q <= 0 || !Number.isFinite(c) || recvQty <= 0) return Math.round(recvCost * 100) / 100
+  return Math.round(((q * c + recvQty * recvCost) / (q + recvQty)) * 100) / 100
+}
+
 async function addStock(
   db: Db,
   productId: number,
@@ -288,23 +299,25 @@ async function addStock(
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
     // Newly received stock only ever merges into the normal on-hand row, never the returned-holding row.
     const row = must(
-      await warehouseFilter(db.from("inventory").select("inventory_id, quantity").eq("product_id", productId).eq("is_returned", false), warehouseId).maybeSingle(),
+      await warehouseFilter(db.from("inventory").select("inventory_id, quantity, unit_cost").eq("product_id", productId).eq("is_returned", false), warehouseId).maybeSingle(),
       "read inventory",
     )
     if (row) {
       const before = row.quantity
+      // weighted average, computed from the same quantity the guarded update below compares against
+      const newCost = weightedAverageCost(before, row.unit_cost, quantity, unitCost)
       const updated = must(
         await whereQuantity(
           db
             .from("inventory")
-            .update({ quantity: (Number(before) || 0) + quantity, unit_cost: unitCost, last_updated: new Date().toISOString() })
+            .update({ quantity: (Number(before) || 0) + quantity, unit_cost: newCost, last_updated: new Date().toISOString() })
             .eq("inventory_id", row.inventory_id),
           before,
         ).select("inventory_id"),
         "update inventory",
       )
       if (updated && updated.length === 1) {
-        undo.push({ what: `inventory ${row.inventory_id} +${quantity}`, run: () => takeStock(db, row.inventory_id, quantity) })
+        undo.push({ what: `inventory ${row.inventory_id} +${quantity}`, run: () => takeStock(db, row.inventory_id, quantity, false, { from: newCost, to: row.unit_cost }) })
         return
       }
       continue // lost a race on the same row: re-read and try again
@@ -325,9 +338,9 @@ async function addStock(
 }
 
 /** Undo of addStock: subtract what this request added (deleting the row if this request created it and it is empty). */
-async function takeStock(db: Db, inventoryId: number, quantity: number, created = false) {
+async function takeStock(db: Db, inventoryId: number, quantity: number, created = false, cost?: { from: number; to: unknown }) {
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
-    const row = must(await db.from("inventory").select("inventory_id, quantity").eq("inventory_id", inventoryId).maybeSingle(), "undo: read inventory")
+    const row = must(await db.from("inventory").select("inventory_id, quantity, unit_cost").eq("inventory_id", inventoryId).maybeSingle(), "undo: read inventory")
     if (!row) return // already gone
     const left = (Number(row.quantity) || 0) - quantity
     if (created && left <= 0) {
@@ -335,8 +348,11 @@ async function takeStock(db: Db, inventoryId: number, quantity: number, created 
       if (gone && gone.length === 1) return
       continue
     }
+    // put the previous average cost back only if nobody changed it since this request set it
+    const patch: Record<string, unknown> = { quantity: Math.max(0, left), last_updated: new Date().toISOString() }
+    if (cost && Number(row.unit_cost) === cost.from && cost.to !== undefined) patch.unit_cost = cost.to
     const done = must(
-      await whereQuantity(db.from("inventory").update({ quantity: Math.max(0, left), last_updated: new Date().toISOString() }).eq("inventory_id", inventoryId), row.quantity).select("inventory_id"),
+      await whereQuantity(db.from("inventory").update(patch).eq("inventory_id", inventoryId), row.quantity).select("inventory_id"),
       "undo: update inventory",
     )
     if (done && done.length === 1) return
