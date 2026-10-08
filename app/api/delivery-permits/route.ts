@@ -4,6 +4,7 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkIdempotency, completeIdempotency, generateDPApprovalIdempotencyKey } from "@/lib/idempotency"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { isSOFullyDelivered } from "@/lib/delivery-status"
+import { isAllowedDpTransition } from "@/lib/dp-transitions"
 import { abortDeduction, deductStockForPermit, finishDeduction, type StockMove } from "@/lib/dp-stock"
 
 export const dynamic = "force-dynamic"
@@ -229,6 +230,56 @@ export async function POST(request: NextRequest) {
 
     const { salesOrderId, customerId, recipientName, recipientPhone, deliveryAddress, items, createdBy } = body
 
+    // Server-side quantity cap: per stock line (product), quantity on non-rejected permits may not exceed the SO line.
+    // Outsourced lines are not capped (the browser does not cap them and their names are not a reliable key).
+    if (items && items.length > 0) {
+      const soIdNum = Number.parseInt(salesOrderId)
+      const { data: soLines } = await supabase.from("sales_order_items").select("product_id, quantity").eq("so_id", soIdNum)
+      const ordered = new Map<string, number>()
+      for (const l of soLines || []) {
+        if (!l.product_id) continue
+        const k = lineKey(l.product_id, null)
+        ordered.set(k, (ordered.get(k) || 0) + (Number(l.quantity) || 0))
+      }
+      const used = new Map<string, number>()
+      const { data: openPermits } = await supabase
+        .from("delivery_permits")
+        .select("permit_id")
+        .eq("sales_order_id", soIdNum)
+        .neq("status", "REJECTED")
+      const openIds = (openPermits || []).map((p: any) => p.permit_id)
+      if (openIds.length > 0) {
+        const { data: prior } = await supabase.from("delivery_permit_items").select("product_id, quantity").in("permit_id", openIds)
+        for (const it of prior || []) {
+          if (!it.product_id) continue
+          const k = lineKey(it.product_id, null)
+          used.set(k, (used.get(k) || 0) + (Number(it.quantity) || 0))
+        }
+      }
+      const requested = new Map<string, number>()
+      for (const it of items) {
+        const pid = it.productId ? Number.parseInt(it.productId) : null
+        if (!pid) continue
+        const k = lineKey(pid, null)
+        requested.set(k, (requested.get(k) || 0) + (Number(it.quantity) || 0))
+      }
+      const over: any[] = []
+      for (const [k, qty] of requested) {
+        if (!ordered.has(k)) continue
+        const orderedQty = ordered.get(k) || 0
+        const already = used.get(k) || 0
+        if (already + qty > orderedQty) {
+          over.push({ productId: Number(k.slice(2)), ordered: orderedQty, alreadyOnPermits: already, requested: qty, remaining: Math.max(0, orderedQty - already) })
+        }
+      }
+      if (over.length > 0) {
+        return NextResponse.json(
+          { error: "The requested quantity exceeds what is left on the sales order.", code: "DP_OVER_QUANTITY", lines: over },
+          { status: 409 },
+        )
+      }
+    }
+
     // Generate permit number
     const year = new Date().getFullYear()
     const { data: lastPermit, error: lastPermitError } = await withRetry(() =>
@@ -410,6 +461,18 @@ export async function PUT(request: NextRequest) {
     if (currentPermit.status === "APPROVED" && APPROVED_LOCKED_ACTIONS.includes(action)) {
       return NextResponse.json(
         { error: "This delivery permit is already approved and its stock has been deducted, so it cannot be changed back.", code: "DP_ALREADY_APPROVED" },
+        { status: 409 },
+      )
+    }
+
+    if (!isAllowedDpTransition(currentPermit.status, action)) {
+      return NextResponse.json(
+        {
+          error: `Action ${action} is not allowed on a delivery permit in status ${currentPermit.status}.`,
+          code: "DP_INVALID_TRANSITION",
+          from: currentPermit.status,
+          action,
+        },
         { status: 409 },
       )
     }
@@ -609,7 +672,14 @@ export async function PUT(request: NextRequest) {
         newStatus = "REJECTED"
         updates.status = newStatus
         updates.rejected_at = new Date().toISOString()
-        updates.rejected_by_user_id = userId ? Number.parseInt(userId) : null
+        {
+          // rejected_by is an FK to users.user_id: only record it when that user exists (the role picker sends ids that may not)
+          const rejectedBy = userId ? Number.parseInt(userId) : Number.NaN
+          if (Number.isInteger(rejectedBy)) {
+            const { data: rejector } = await supabase.from("users").select("user_id").eq("user_id", rejectedBy).limit(1)
+            if (rejector && rejector.length > 0) updates.rejected_by = rejectedBy
+          }
+        }
         updates.rejection_reason = rejectionReason
         break
 
