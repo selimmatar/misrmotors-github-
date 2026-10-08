@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useApp } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,6 +11,8 @@ import { Progress } from "@/components/ui/progress"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   DollarSign,
   CheckCircle,
@@ -47,7 +49,7 @@ interface PaymentScheduleEntry {
 }
 
 export function AccountsPayableModule() {
-  const { supplierInvoices, suppliers, purchaseOrders, updateSupplierInvoice, user, loadData } = useApp()
+  const { supplierInvoices, suppliers, purchaseOrders, user, loadData } = useApp()
   const { t, formatCurrency, formatDate } = useI18n()
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<SupplierInvoice | null>(null)
@@ -62,6 +64,12 @@ export function AccountsPayableModule() {
   const [schedulePaymentDialogOpen, setSchedulePaymentDialogOpen] = useState(false)
   const [selectedScheduleForPayment, setSelectedScheduleForPayment] = useState<PaymentScheduleEntry | null>(null)
   const [schedulePaymentFile, setSchedulePaymentFile] = useState<File | null>(null)
+  // Payment form (shared by both payment dialogs). The idempotency key is generated once per dialog open.
+  const [payAmount, setPayAmount] = useState("")
+  const [payMethod, setPayMethod] = useState<"cash" | "cheque" | "bank_transfer">("bank_transfer")
+  const [payAllowOverpayment, setPayAllowOverpayment] = useState(false)
+  const payKeyRef = useRef<string>("")
+  const submittingRef = useRef(false)
   // Removed: const [invoiceUploadDialogOpen, setInvoiceUploadDialogOpen] = useState(false)
   // Removed: const [selectedScheduleForInvoice, setSelectedInvoiceForSchedule] = useState<PaymentScheduleEntry | null>(null)
   // Removed: const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
@@ -418,152 +426,104 @@ export function AccountsPayableModule() {
     await fetchPaymentSchedule(invoice)
   }
 
-  const handleRecordSchedulePayment = async () => {
-    if (!selectedScheduleForPayment || !schedulePaymentFile || !selectedInvoiceForSchedule) return
+  const openPaymentForm = (defaultAmount: number) => {
+    setPayAmount(String(Math.max(Math.round(defaultAmount * 100) / 100, 0)))
+    setPayMethod("bank_transfer")
+    setPayAllowOverpayment(false)
+    payKeyRef.current = `apui_${crypto.randomUUID()}`
+  }
 
-    const invoiceId = selectedInvoiceForSchedule.id || selectedScheduleForPayment.invoiceId
-    if (!invoiceId) {
-      console.error("No invoice ID found")
-      alert(t("message.error"))
-      return
+  // Both dialogs pay through the server endpoint, which validates the amount, applies it to the invoice
+  // and writes the ledger rows. The browser never computes paid amounts or statuses.
+  const submitPayment = async (invoiceId: string, file: File, scheduleId?: string): Promise<any | null> => {
+    if (submittingRef.current) return null
+    const amount = Number(payAmount)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert("Enter a payment amount greater than zero")
+      return null
     }
-
+    submittingRef.current = true
     setIsUploading(true)
     try {
-      // Upload receipt
       const formData = new FormData()
-      formData.append("file", schedulePaymentFile)
+      formData.append("file", file)
       formData.append("folder", "payment-receipts")
-
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!uploadResponse.ok) throw new Error("Upload failed")
+      const uploadResponse = await fetch("/api/upload", { method: "POST", body: formData })
+      if (!uploadResponse.ok) throw new Error("Receipt upload failed")
       const { url: receiptUrl } = await uploadResponse.json()
 
-      const paymentAmount = selectedScheduleForPayment.amount
-      const newPaidAmount = (selectedInvoiceForSchedule.paidAmount || 0) + paymentAmount
-      const newMonthsPaid = (selectedInvoiceForSchedule.monthsPaid || 0) + 1
-      const isFullyPaid = newPaidAmount >= (selectedInvoiceForSchedule.amount || 0)
-
-      const newStatus = isFullyPaid ? "paid" : "partially_paid"
-
-      // Check if this is a generated schedule (no real ID in database)
-      if (selectedScheduleForPayment.id.startsWith("gen-")) {
-        // For generated schedules, update the invoice directly and persist the
-        // receipt on it (the PUT handler also attaches it to the payment record)
-        await updateSupplierInvoice(String(invoiceId), {
-          paidAmount: newPaidAmount,
-          monthsPaid: newMonthsPaid,
-          status: newStatus,
-          paymentReceiptUrl: receiptUrl,
-        })
-      } else {
-        // Update payment schedule in database
-        const response = await fetch("/api/payment-schedules", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            scheduleId: selectedScheduleForPayment.id,
-            paidAmount: paymentAmount,
-            paymentDate: new Date().toISOString().split("T")[0],
-            receiptUrl,
-            scheduleType: "payable",
-          }),
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to record payment")
-        }
-
-        // Update AP invoice directly
-        await updateSupplierInvoice(String(invoiceId), {
-          paidAmount: newPaidAmount,
-          monthsPaid: newMonthsPaid,
-          status: newStatus,
-        })
+      const response = await fetch("/api/accounts-payable/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoiceId: Number(invoiceId),
+          amount,
+          paymentMethod: payMethod,
+          receiptUrl,
+          allowOverpayment: payAllowOverpayment,
+          // only saved (numeric-id) schedule rows are sent; generated "gen-" rows have no database row
+          ...(scheduleId && /^\d+$/.test(scheduleId) ? { scheduleId: Number(scheduleId) } : {}),
+          idempotencyKey: payKeyRef.current,
+        }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        alert(result.error || t("message.error"))
+        if (result.partialFailure) await loadData()
+        return null
       }
-
-      // This ensures the progress bar updates immediately without waiting for state refresh
-      const updatedInvoiceData: SupplierInvoice = {
-        ...selectedInvoiceForSchedule,
-        paidAmount: newPaidAmount,
-        monthsPaid: newMonthsPaid,
-        status: newStatus,
-      }
-      setSelectedInvoiceForSchedule(updatedInvoiceData)
-
-      setPaymentSchedules((prev) =>
-        prev.map((s) =>
-          s.id === selectedScheduleForPayment.id
-            ? {
-                ...s,
-                paidAmount: s.amount,
-                status: "paid",
-                paymentDate: new Date().toISOString().split("T")[0],
-              }
-            : s,
-        ),
-      )
-
-      // Reload data in background - don't await
-      loadData()
-
-      setSchedulePaymentDialogOpen(false)
-      setSelectedScheduleForPayment(null)
-      setSchedulePaymentFile(null)
+      return result
     } catch (error) {
       console.error("Error recording payment:", error)
       alert(t("message.error"))
+      return null
     } finally {
+      submittingRef.current = false
       setIsUploading(false)
     }
   }
 
+  const handleRecordSchedulePayment = async () => {
+    if (!selectedScheduleForPayment || !schedulePaymentFile || !selectedInvoiceForSchedule) return
+    const invoiceId = selectedInvoiceForSchedule.id || selectedScheduleForPayment.invoiceId
+    if (!invoiceId) {
+      alert(t("message.error"))
+      return
+    }
+
+    const result = await submitPayment(String(invoiceId), schedulePaymentFile, selectedScheduleForPayment.id)
+    if (!result) return
+
+    const inv = result.invoice
+    if (inv) {
+      setSelectedInvoiceForSchedule({
+        ...selectedInvoiceForSchedule,
+        paidAmount: inv.paidAmount,
+        monthsPaid: inv.monthsPaid,
+        status: inv.status,
+      })
+    }
+    setPaymentSchedules((prev) =>
+      prev.map((s) =>
+        s.id === selectedScheduleForPayment.id
+          ? { ...s, paidAmount: Number(payAmount), status: "paid", paymentDate: new Date().toISOString().split("T")[0] }
+          : s,
+      ),
+    )
+    loadData()
+    setSchedulePaymentDialogOpen(false)
+    setSelectedScheduleForPayment(null)
+    setSchedulePaymentFile(null)
+  }
+
   const handleRecordPayment = async () => {
     if (!selectedInvoiceForPayment || !paymentReceiptFile) return
-
-    setIsUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append("file", paymentReceiptFile)
-      formData.append("folder", "payment-receipts")
-
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!uploadResponse.ok) throw new Error("Upload failed")
-      const { url: receiptUrl } = await uploadResponse.json()
-
-      const installmentMonths = getInstallmentMonths(selectedInvoiceForPayment)
-      // Recalculate monthlyPayment based on the total amount and installment months for accuracy
-      const monthlyPayment = (selectedInvoiceForPayment.amount || 0) / installmentMonths
-      const newPaidAmount = (selectedInvoiceForPayment.paidAmount || 0) + monthlyPayment
-      const newMonthsPaid = (selectedInvoiceForPayment.monthsPaid || 0) + 1
-      const isPaid = newMonthsPaid >= installmentMonths
-
-      await updateSupplierInvoice(selectedInvoiceForPayment.id, {
-        paidAmount: newPaidAmount,
-        monthsPaid: newMonthsPaid,
-        status: isPaid ? "paid" : "partially_paid",
-        paymentReceiptUrl: receiptUrl, // Assign receipt URL to the invoice itself if it's a full payment
-      })
-
-      await loadData()
-      setPaymentDialogOpen(false)
-      setSelectedInvoiceForPayment(null)
-      setPaymentReceiptFile(null)
-    } catch (error) {
-      console.error("Error recording payment:", error)
-      alert(t("message.error"))
-    } finally {
-      setIsUploading(false)
-    }
+    const result = await submitPayment(selectedInvoiceForPayment.id, paymentReceiptFile)
+    if (!result) return
+    await loadData()
+    setPaymentDialogOpen(false)
+    setSelectedInvoiceForPayment(null)
+    setPaymentReceiptFile(null)
   }
 
   // Removed: const handleUploadInvoice = async () => { ... }
@@ -858,6 +818,7 @@ export function AccountsPayableModule() {
                             size="sm"
                             onClick={() => {
                               setSelectedInvoiceForPayment(invoice)
+                              openPaymentForm((invoice.amount || 0) - (invoice.paidAmount || 0))
                               setPaymentDialogOpen(true)
                             }}
                           >
@@ -1046,6 +1007,15 @@ export function AccountsPayableModule() {
                                     size="sm"
                                     onClick={() => {
                                       setSelectedScheduleForPayment(schedule)
+                                      openPaymentForm(
+                                        Math.min(
+                                          schedule.amount,
+                                          Math.max(
+                                            (selectedInvoiceForSchedule?.amount || 0) - (selectedInvoiceForSchedule?.paidAmount || 0),
+                                            0,
+                                          ),
+                                        ),
+                                      )
                                       setSchedulePaymentDialogOpen(true)
                                     }}
                                   >
@@ -1108,6 +1078,32 @@ export function AccountsPayableModule() {
               </div>
 
               <div className="space-y-2">
+                <Label>Amount</Label>
+                <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Payment method</Label>
+                <Select value={payMethod} onValueChange={(v) => setPayMethod(v as any)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="cheque">Cheque</SelectItem>
+                    <SelectItem value="bank_transfer">Bank transfer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="ap-allow-overpayment"
+                  checked={payAllowOverpayment}
+                  onCheckedChange={(v) => setPayAllowOverpayment(v === true)}
+                />
+                <Label htmlFor="ap-allow-overpayment">Advance / overpayment (amount may exceed the remaining balance)</Label>
+              </div>
+
+              <div className="space-y-2">
                 <Label>{t("field.payment-receipt")}</Label>
                 <Input
                   type="file"
@@ -1121,7 +1117,7 @@ export function AccountsPayableModule() {
             <Button variant="outline" onClick={() => setSchedulePaymentDialogOpen(false)}>
               {t("action.cancel")}
             </Button>
-            <Button onClick={handleRecordSchedulePayment} disabled={!schedulePaymentFile || isUploading}>
+            <Button onClick={handleRecordSchedulePayment} disabled={!schedulePaymentFile || isUploading || !(Number(payAmount) > 0)}>
               {isUploading ? t("action.uploading") : t("ar.record-payment")}
             </Button>
           </DialogFooter>
@@ -1150,6 +1146,32 @@ export function AccountsPayableModule() {
               </div>
 
               <div className="space-y-2">
+                <Label>Amount</Label>
+                <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Payment method</Label>
+                <Select value={payMethod} onValueChange={(v) => setPayMethod(v as any)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="cheque">Cheque</SelectItem>
+                    <SelectItem value="bank_transfer">Bank transfer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="ap-allow-overpayment"
+                  checked={payAllowOverpayment}
+                  onCheckedChange={(v) => setPayAllowOverpayment(v === true)}
+                />
+                <Label htmlFor="ap-allow-overpayment">Advance / overpayment (amount may exceed the remaining balance)</Label>
+              </div>
+
+              <div className="space-y-2">
                 <Label>{t("field.payment-receipt")}</Label>
                 <Input
                   type="file"
@@ -1163,7 +1185,7 @@ export function AccountsPayableModule() {
             <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
               {t("action.cancel")}
             </Button>
-            <Button onClick={handleRecordPayment} disabled={!paymentReceiptFile || isUploading}>
+            <Button onClick={handleRecordPayment} disabled={!paymentReceiptFile || isUploading || !(Number(payAmount) > 0)}>
               {isUploading ? t("action.uploading") : t("ar.record-payment")}
             </Button>
           </DialogFooter>

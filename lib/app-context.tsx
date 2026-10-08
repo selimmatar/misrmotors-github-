@@ -735,11 +735,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addSupplierInvoice = async (invoice: SupplierInvoice) => {
     try {
-      await fetch("/api/accounts-payable", {
+      const response = await fetch("/api/accounts-payable", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(invoice),
       })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to add supplier invoice")
+      }
       mutateSupplierInvoices()
     } catch (error) {
       console.error("Error adding supplier invoice:", error)
@@ -749,11 +753,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateSupplierInvoice = async (invoiceId: string, updates: Partial<SupplierInvoice>) => {
     try {
-      await fetch("/api/accounts-payable", {
+      const response = await fetch("/api/accounts-payable", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: invoiceId, ...updates }),
       })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to update supplier invoice")
+      }
       mutateSupplierInvoices()
     } catch (error) {
       console.error("Error updating supplier invoice:", error)

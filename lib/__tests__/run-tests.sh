@@ -27,16 +27,17 @@ cat > "$OUT/tsconfig.json" <<JSON
     "$REPO/lib/__tests__/print-totals.test.ts",
     "$REPO/lib/__tests__/missing-items.test.ts",
     "$REPO/lib/__tests__/print-routes.test.ts",
-    "$REPO/lib/__tests__/goods-receiving.test.ts"
+    "$REPO/lib/__tests__/goods-receiving.test.ts",
+    "$REPO/lib/__tests__/accounts-payable-payments.test.ts"
   ]
 }
 JSON
 "$REPO/node_modules/.bin/tsc" -p "$OUT/tsconfig.json" > "$OUT/tsc.log" 2>&1
-echo "compiled (tsc reported $(grep -c 'error TS' "$OUT/tsc.log") error line(s); new-file errors: $(grep 'error TS' "$OUT/tsc.log" | grep -E 'lib/(returns|return-lines|so-edit|delivery-status|invoicing|print-totals|print-html|missing-items|missing-items-html|so-print-html|goods-receiving|__tests__)' | wc -l))"
+echo "compiled (tsc reported $(grep -c 'error TS' "$OUT/tsc.log") error line(s); new-file errors: $(grep 'error TS' "$OUT/tsc.log" | grep -E 'lib/(returns|return-lines|so-edit|delivery-status|invoicing|print-totals|print-html|missing-items|missing-items-html|so-print-html|goods-receiving|ap-payments|__tests__)' | wc -l))"
 export NODE_PATH="$REPO/node_modules"
 status=0
 for run in $(seq 1 "$REPEAT"); do
-  for suite in payment-type invoicing returns invoicing-returns so-edit routes print-totals missing-items print-routes goods-receiving; do
+  for suite in payment-type invoicing returns invoicing-returns so-edit routes print-totals missing-items print-routes goods-receiving accounts-payable-payments; do
     result="$(node --test "$OUT/out/lib/__tests__/$suite.test.js" 2>&1)"
     line="$(echo "$result" | grep -E '^# (tests|pass|fail)' | tr '\n' ' ')"
     echo "run $run  $suite: $line"

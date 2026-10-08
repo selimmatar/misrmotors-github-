@@ -579,8 +579,6 @@ export async function PUT(request: Request) {
 
         if (!existingInvoice) {
           const paymentType = currentOrder.payment_type || currentOrder.payment_terms || "cash"
-          const isPrepaidOrCash =
-            paymentType === "prepaid" || paymentType === "cash" || paymentType === "bank_transfer"
 
           const invoiceData: any = {
             invoice_number: `APINV-${currentOrder.po_number}`,
@@ -590,7 +588,7 @@ export async function PUT(request: Request) {
             due_date: currentOrder.down_payment_due_date || currentOrder.payment_start_date || new Date().toISOString().split("T")[0],
             amount: currentOrder.total,
             paid_amount: 0,
-            status: isPrepaidOrCash ? "paid" : "pending",
+            status: "pending", // payment is an explicit step (POST /api/accounts-payable/payments), never implied by approval
             payment_type: paymentType,
             payment_terms: paymentType,
             installment_months: currentOrder.installments || 1,
@@ -607,7 +605,7 @@ export async function PUT(request: Request) {
             schedule_mode: currentOrder.schedule_mode || "AUTO",
           }
 
-          const { data: newInvoice, error: invoiceError } = await supabase
+          const { error: invoiceError } = await supabase
             .from("accounts_payable")
             .insert(invoiceData)
             .select()
@@ -615,26 +613,14 @@ export async function PUT(request: Request) {
 
           if (invoiceError) {
             console.error("Purchase Orders PUT: Error creating AP invoice on approval", invoiceError)
-          } else if (isPrepaidOrCash && newInvoice) {
-            // For prepaid/cash: also create supplier payment and balance entry
-            await supabase.from("supplier_payments").insert({
-              invoice_id: newInvoice.invoice_id,
-              supplier_id: currentOrder.supplier_id,
-              amount: currentOrder.total,
-              payment_date: new Date().toISOString().split("T")[0],
-              payment_method: paymentType,
-              reference_number: `${paymentType.toUpperCase()}-${currentOrder.po_number}`,
-            })
-
-            await (supabase as any).from("balance_entries").insert({
-              entry_type: "ap_payment",
-              reference_type: "purchase_order",
-              reference_id: currentOrder.po_id.toString(),
-              reference_number: currentOrder.po_number,
-              amount: -currentOrder.total,
-              description: `${paymentType} payment for ${currentOrder.po_number}`,
-              status: "active",
-            })
+            return NextResponse.json(
+              {
+                error: "The purchase order was approved but its AP invoice could not be created. Contact an administrator.",
+                poApproved: true,
+                apInvoiceCreated: false,
+              },
+              { status: 500 },
+            )
           }
         }
       }

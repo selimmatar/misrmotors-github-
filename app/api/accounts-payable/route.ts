@@ -134,10 +134,10 @@ export async function POST(request: Request) {
       invoice_date: body.invoice_date || body.date || new Date().toISOString().split("T")[0],
       due_date: body.due_date || body.dueDate || new Date().toISOString().split("T")[0],
       amount: amount,
-      paid_amount: body.paid_amount || body.paidAmount || 0,
+      paid_amount: 0, // payments are recorded only through /api/accounts-payable/payments
       installment_months: body.installment_months || body.installmentMonths || 1,
-      months_paid: body.months_paid || body.monthsPaid || 0,
-      status: body.status || "pending",
+      months_paid: 0,
+      status: "pending",
       payment_terms: body.payment_terms || body.paymentTerms || paymentType,
       payment_type: paymentType,
     }
@@ -217,25 +217,22 @@ export async function PUT(request: Request) {
     const body = await request.json()
     const { id, ...updates } = body
 
-    const dbUpdates: any = {}
-
-    // Capture the invoice before update so we can record the payment delta
-    let existingInvoice: any = null
-    if (updates.paidAmount !== undefined) {
-      const { data: current } = await supabase
-        .from("accounts_payable")
-        .select("invoice_id, invoice_number, po_id, supplier_id, amount, paid_amount, payment_type")
-        .eq("invoice_id", Number.parseInt(id))
-        .single()
-      existingInvoice = current
+    // Payment state is owned by POST /api/accounts-payable/payments (validated, idempotent, ledger-backed).
+    const forbidden = ["paidAmount", "status", "amount", "monthsPaid", "paymentReceiptUrl", "receiptUrl"].filter(
+      (field) => updates[field] !== undefined,
+    )
+    if (forbidden.length > 0) {
+      return NextResponse.json(
+        {
+          error: `These fields cannot be changed here: ${forbidden.join(", ")}. Record payments through /api/accounts-payable/payments.`,
+        },
+        { status: 400 },
+      )
     }
 
-    if (updates.monthsPaid !== undefined) dbUpdates.months_paid = updates.monthsPaid
-    if (updates.paidAmount !== undefined) dbUpdates.paid_amount = updates.paidAmount
-    if (updates.status !== undefined) dbUpdates.status = updates.status
+    const dbUpdates: any = {}
     if (updates.date !== undefined) dbUpdates.invoice_date = updates.date
     if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate
-    if (updates.amount !== undefined) dbUpdates.amount = updates.amount
     if (updates.installmentMonths !== undefined) dbUpdates.installment_months = updates.installmentMonths
     if (updates.paymentType !== undefined) dbUpdates.payment_type = updates.paymentType
     if (updates.downPaymentAmount !== undefined) dbUpdates.down_payment_amount = updates.downPaymentAmount
@@ -244,9 +241,10 @@ export async function PUT(request: Request) {
       dbUpdates.remaining_installment_months = updates.remainingInstallmentMonths
     if (updates.monthlyAmount !== undefined) dbUpdates.monthly_amount = updates.monthlyAmount
     if (updates.paymentStartDate !== undefined) dbUpdates.payment_start_date = updates.paymentStartDate
-    if (updates.receiptUrl !== undefined) dbUpdates.payment_receipt_url = updates.receiptUrl
-    if (updates.paymentReceiptUrl !== undefined) dbUpdates.payment_receipt_url = updates.paymentReceiptUrl
 
+    if (Object.keys(dbUpdates).length === 0) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 })
+    }
 
     const { data, error } = await supabase
       .from("accounts_payable")
@@ -258,41 +256,6 @@ export async function PUT(request: Request) {
     if (error) {
       console.error("AP PUT: Error", error.message)
       throw error
-    }
-
-    // Record the payment delta in supplier_payments so supplier totals,
-    // analytics, and payment history stay in sync with the AP invoice
-    if (existingInvoice && updates.paidAmount !== undefined) {
-      const previousPaid = Number.parseFloat(existingInvoice.paid_amount) || 0
-      const newPaid = Number.parseFloat(updates.paidAmount) || 0
-      const delta = newPaid - previousPaid
-
-      if (delta > 0 && existingInvoice.supplier_id) {
-        const paymentType = existingInvoice.payment_type || "payment"
-        const receiptUrl = updates.receiptUrl || updates.paymentReceiptUrl || null
-        const { error: paymentError } = await supabase.from("supplier_payments").insert({
-          invoice_id: existingInvoice.invoice_id,
-          supplier_id: existingInvoice.supplier_id,
-          amount: delta,
-          payment_date: new Date().toISOString().split("T")[0],
-          payment_method: paymentType,
-          reference_number: `PAY-${existingInvoice.invoice_number}`,
-          receipt_url: receiptUrl,
-        })
-        if (paymentError) {
-          console.error("AP PUT: Error recording supplier payment", paymentError)
-        }
-
-        await (supabase as any).from("balance_entries").insert({
-          entry_type: "ap_payment",
-          reference_type: "purchase_order",
-          reference_id: existingInvoice.po_id?.toString() || "",
-          reference_number: existingInvoice.invoice_number,
-          amount: -delta,
-          description: `Payment for ${existingInvoice.invoice_number}`,
-          status: "active",
-        })
-      }
     }
 
     return NextResponse.json(data)

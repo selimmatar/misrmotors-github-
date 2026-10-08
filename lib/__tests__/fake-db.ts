@@ -21,12 +21,17 @@ const PK: Record<string, string> = {
   goods_receipt_lines: "line_id",
   products: "product_id",
   sales_orders: "so_id",
+  accounts_payable: "invoice_id",
+  payment_schedules: "schedule_id",
+  supplier_payments: "payment_id",
+  balance_entries: "entry_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
   inventory: [["product_id", "warehouse_id", "is_returned"]],
   idempotency_log: [["operation_type", "idempotency_key"]],
   accounts_receivable: [["invoice_number"]],
+  accounts_payable: [["invoice_number"]],
   invoice_delivery_permits: [["permit_id"]],
   delivery_permits: [["permit_no"]],
   goods_receipts: [["grn_number"]],
