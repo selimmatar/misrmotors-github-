@@ -804,3 +804,67 @@ for (const stage of STAGES) {
     assert.equal(replay.body.partialFailure, true)
   })
 }
+
+// ------------------------------------------------------------------------------------------------ GET regression
+// GET /api/goods-receipts threw (HTTP 500) on any receipt that has an outsourced line, because such lines have
+// product_id = NULL and the mapper called line.product_id.toString(). The FakeDb does not do PostgREST embeds, so the
+// rows are seeded already embedded, exactly as PostgREST returns them.
+test("G1. GET /api/goods-receipts succeeds for outsourced lines (product_id NULL) and still maps normal product lines", async () => {
+  const embedded = (receipt_id: number, po_id: number, lines: Row[]) => ({
+    receipt_id,
+    grn_number: `GRN-G-${receipt_id}`,
+    po_id,
+    po_number: `PO-T-${po_id}`,
+    receipt_date: "2026-10-01",
+    status: "complete",
+    received_by: null,
+    notes: null,
+    created_at: "2026-10-01T10:00:00",
+    purchase_orders: { po_number: `PO-T-${po_id}`, supplier_id: 1, suppliers: { supplier_name: "Supplier One" } },
+    goods_receipt_lines: lines,
+  })
+  const db = baseDb({
+    goods_receipts: [
+      embedded(1, 1, [
+        { line_id: 1, receipt_id: 1, po_item_id: 2, product_id: null, quantity_ordered: 5, quantity_received: 5, quantity_remaining: 0, warehouse_id: null, unit_cost: "2000.00", received_date: "2026-10-01", products: null, warehouses: null },
+      ]),
+      embedded(2, 2, [
+        { line_id: 2, receipt_id: 2, po_item_id: 3, product_id: 7, quantity_ordered: 4, quantity_received: 4, quantity_remaining: 0, warehouse_id: 1, unit_cost: "100.00", received_date: "2026-10-01", products: { product_name: "Pump A", sku: "A-1", unit: "pcs" }, warehouses: { warehouse_name: "Main" } },
+      ]),
+      embedded(3, 1, [
+        { line_id: 3, receipt_id: 3, po_item_id: 1, product_id: 7, quantity_ordered: 10, quantity_received: 2, quantity_remaining: 8, warehouse_id: 1, unit_cost: "100.00", received_date: "2026-10-02", products: { product_name: "Pump A", sku: "A-1", unit: "pcs" }, warehouses: { warehouse_name: "Main" } },
+        { line_id: 4, receipt_id: 3, po_item_id: 2, product_id: null, quantity_ordered: 5, quantity_received: 1, quantity_remaining: 4, warehouse_id: null, unit_cost: "2000.00", received_date: "2026-10-02", products: null, warehouses: null },
+      ]),
+    ],
+  })
+
+  const all = await call((req) => grnRoute.GET(req), "GET", undefined, "http://test.local/api/goods-receipts")
+  assert.equal(all.status, 200, JSON.stringify(all.body))
+  assert.equal(all.body.length, 3)
+
+  const outsourced = all.body.find((r: any) => r.id === "1")
+  assert.equal(outsourced.lines.length, 1)
+  assert.equal(outsourced.lines[0].productId, undefined, "an outsourced line has no product id")
+  assert.equal(outsourced.lines[0].poItemId, "2")
+  assert.equal(outsourced.lines[0].quantityReceived, 5)
+  assert.equal(outsourced.supplierName, "Supplier One")
+
+  const normal = all.body.find((r: any) => r.id === "2")
+  assert.equal(normal.lines[0].productId, "7")
+  assert.equal(normal.lines[0].productName, "Pump A")
+  assert.equal(normal.lines[0].warehouseName, "Main")
+  assert.equal(normal.lines[0].quantityReceived, 4)
+
+  // mixed receipt: both kinds in one GRN
+  const mixed = all.body.find((r: any) => r.id === "3")
+  assert.deepEqual(mixed.lines.map((l: any) => [l.poItemId, l.productId ?? null, l.quantityReceived]), [["1", "7", 2], ["2", null, 1]])
+
+  // The po_id filter used by the receiving dialog. The route passes the query-string value (a string) to .eq(); Postgres
+  // casts it to the integer column, the FakeDb compares strictly, so this part of the test seeds po_id as strings.
+  const asStrings = baseDb({ goods_receipts: db.tables.goods_receipts.map((r) => ({ ...r, po_id: String(r.po_id) })) })
+  const forPo = await call((req) => grnRoute.GET(req), "GET", undefined, "http://test.local/api/goods-receipts?po_id=1")
+  assert.equal(forPo.status, 200, JSON.stringify(forPo.body))
+  assert.deepEqual(forPo.body.map((r: any) => r.id).sort(), ["1", "3"])
+  assert.equal(forPo.body.find((r: any) => r.id === "1").lines[0].productId, undefined)
+  void asStrings
+})

@@ -50,7 +50,7 @@ export async function GET(request: Request) {
         id: line.line_id.toString(),
         receiptId: line.receipt_id.toString(),
         poItemId: line.po_item_id?.toString(),
-        productId: line.product_id.toString(),
+        productId: line.product_id?.toString(),
         productName: line.products?.product_name,
         sku: line.products?.sku,
         unit: line.products?.unit,
