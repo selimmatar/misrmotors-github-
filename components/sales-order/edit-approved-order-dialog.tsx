@@ -16,6 +16,8 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, Package, Printer, Trash2, UserPlus } from "lucide-react"
+import { computeTotals } from "@/lib/print-totals"
+import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
@@ -321,6 +323,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
   const handlePrint = () => {
     const customer = customers.find((c) => c.id === customerId)
 
+    const printTotals = computeTotals({ subtotal, discountType, discountValue })
+
     const itemsHtml = items
       .map((item, idx) => {
         const unitPrice = item.unitPrice || 0
@@ -332,7 +336,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         return `
         <tr>
           <td class="center">${idx + 1}</td>
-          <td>${item.productName}</td>
+          <td>${escapeHtml(item.productName)}</td>
           <td class="center">${item.quantity}</td>
           <td class="currency-col">${unitGineh.toLocaleString("en-US")}</td>
           <td class="currency-col">${unitQirsh.toString().padStart(2, "0")}</td>
@@ -341,18 +345,6 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         </tr>`
       })
       .join("")
-
-    const discountHtml =
-      discountAmount > 0
-        ? `
-      <tr>
-        <td colspan="5" style="text-align: left; color: red;">الخصم</td>
-        <td class="currency-col" style="color: red;">-${Math.floor(discountAmount).toLocaleString("en-US")}</td>
-        <td class="currency-col" style="color: red;">${Math.round((discountAmount - Math.floor(discountAmount)) * 100)
-          .toString()
-          .padStart(2, "0")}</td>
-      </tr>`
-        : ""
 
     let paymentDetailsHtml = ""
     if (paymentType === "installments" && paymentDetails.installmentMonths) {
@@ -376,8 +368,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       paymentDetailsHtml = `
           <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
             <strong>تفاصيل الشيك:</strong><br/>
-            ${paymentDetails.chequeNumber ? `<span>رقم الشيك: ${paymentDetails.chequeNumber}</span><br/>` : ""}
-            ${paymentDetails.chequeBankName ? `<span>البنك: ${paymentDetails.chequeBankName}</span><br/>` : ""}
+            ${paymentDetails.chequeNumber ? `<span>رقم الشيك: ${escapeHtml(paymentDetails.chequeNumber)}</span><br/>` : ""}
+            ${paymentDetails.chequeBankName ? `<span>البنك: ${escapeHtml(paymentDetails.chequeBankName)}</span><br/>` : ""}
             ${paymentDetails.chequeDueDate ? `<span>تاريخ الاستحقاق: ${formatDateAr(paymentDetails.chequeDueDate)}</span><br/>` : ""}
             ${paymentDetails.chequeAmount ? `<span>المبلغ: ${paymentDetails.chequeAmount.toLocaleString("en-US")} جنيه</span>` : ""}
           </div>`
@@ -394,7 +386,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       ? `
       <div style="margin-top: 8mm; border: 1px solid #999; padding: 8px;">
         <strong>ملاحظات إضافية:</strong><br/>
-        <span style="font-size: 10pt;">${notes}</span>
+        <span style="font-size: 10pt;">${escapeHtml(notes)}</span>
       </div>`
       : ""
 
@@ -406,7 +398,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>أمر بيع - ${order.soNumber}</title>
+  <title>أمر بيع - ${escapeHtml(order.soNumber)}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -449,7 +441,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     .signature-box { text-align: center; }
     .signature-label { font-weight: 700; margin-bottom: 20mm; text-decoration: underline; }
     .signature-line { border-top: 1px solid #000; margin-top: 15mm; }
-    @media print { body { margin: 0; padding: 0; } }
+    @media print { body { margin: 0; padding: 0; } }${TOTALS_BLOCK_CSS}
   </style>
 </head>
 <body>
@@ -473,21 +465,21 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
   <table class="header-table">
     <tr>
       <td style="width: 25%;"><strong>رقم أمر البيع:</strong></td>
-      <td style="width: 25%;">${order.soNumber}</td>
+      <td style="width: 25%;">${escapeHtml(order.soNumber)}</td>
       <td style="width: 25%;"><strong>التاريخ:</strong></td>
       <td style="width: 25%;">${formatDateAr(order.orderDate)}</td>
     </tr>
     <tr>
-      <td colspan="4"><strong>السادة:</strong> ${customer?.name || "-"}</td>
+      <td colspan="4"><strong>السادة:</strong> ${escapeHtml(customer?.name || "-")}</td>
     </tr>
     ${
       customer?.phone
         ? `
     <tr>
       <td><strong>الهاتف:</strong></td>
-      <td>${customer.phone}</td>
+      <td>${escapeHtml(customer.phone)}</td>
       <td><strong>البريد الإلكتروني:</strong></td>
-      <td>${customer.email || "-"}</td>
+      <td>${escapeHtml(customer.email || "-")}</td>
     </tr>`
         : ""
     }
@@ -496,7 +488,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         ? `
     <tr>
       <td><strong>عنوان التسليم:</strong></td>
-      <td colspan="3">${deliveryAddress}</td>
+      <td colspan="3">${escapeHtml(deliveryAddress)}</td>
     </tr>`
         : ""
     }
@@ -505,9 +497,9 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         ? `
     <tr>
       <td><strong>مسؤول الاستلام:</strong></td>
-      <td>${deliveryContactName}</td>
+      <td>${escapeHtml(deliveryContactName)}</td>
       <td><strong>هاتف الاستلام:</strong></td>
-      <td>${deliveryContactPhone || "-"}</td>
+      <td>${escapeHtml(deliveryContactPhone || "-")}</td>
     </tr>`
         : ""
     }
@@ -533,31 +525,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     <tbody>
       ${itemsHtml}
     </tbody>
-    <tfoot>
-      ${discountHtml}
-      <tr>
-        <td colspan="5" style="text-align: left;">المجموع الفرعي</td>
-        <td class="currency-col">${Math.floor(subtotalAfterDiscount).toLocaleString("en-US")}</td>
-        <td class="currency-col">${Math.round((subtotalAfterDiscount - Math.floor(subtotalAfterDiscount)) * 100)
-          .toString()
-          .padStart(2, "0")}</td>
-      </tr>
-      <tr>
-        <td colspan="5" style="text-align: left;">ضريبة القيمة المضافة (14%)</td>
-        <td class="currency-col">${Math.floor(vatAmount).toLocaleString("en-US")}</td>
-        <td class="currency-col">${Math.round((vatAmount - Math.floor(vatAmount)) * 100)
-          .toString()
-          .padStart(2, "0")}</td>
-      </tr>
-      <tr>
-        <td colspan="5" style="text-align: left; font-weight: 700;">الإجمالي</td>
-        <td class="currency-col" style="font-weight: 700;">${Math.floor(netTotal).toLocaleString("en-US")}</td>
-        <td class="currency-col" style="font-weight: 700;">${Math.round((netTotal - Math.floor(netTotal)) * 100)
-          .toString()
-          .padStart(2, "0")}</td>
-      </tr>
-    </tfoot>
   </table>
+${renderTotalsBlock(printTotals)}
 
   ${isHybrid ? "" : paymentTermsHtml}
 

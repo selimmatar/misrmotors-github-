@@ -19,7 +19,6 @@ import { useAppContext } from "@/lib/app-context"
 import { getSalesInsights } from "@/lib/ai-utils"
 import { getCitiesForCountry } from "@/lib/countries-data"
 import { ReportGenerator } from "@/components/report-generator"
-import { QuotationPreviewDialog } from "@/components/quotation/quotation-preview-dialog"
 import { useI18n } from "@/lib/i18n-context"
 import type {
   SalesOrder,
@@ -103,7 +102,8 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null)
   const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null)
-  const [showPrintQuotationDialog, setShowPrintQuotationDialog] = useState(false)
+  // Missing Items report: hide the Unit Cost column (and the cost total) when ticked. Default: visible.
+  const [hideMissingItemsCost, setHideMissingItemsCost] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [aiInsights, setAiInsights] = useState<any>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -385,13 +385,20 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
   return "partially_delivered"
   }
 
-  // Opens a freshly generated PDF report of every SO line item not yet added to any
-  // delivery permit. The report route queries live data on each request (no caching),
-  // so re-clicking this always reflects the current state of the order's DPs.
+  // Opens the Missing Items report (items not yet delivered to the customer). The route reads live data on each
+  // request, so re-clicking always reflects the current state of the order.
   const handlePrintMissingItems = (order: any) => {
     const soIdValue = order.so_id || order.id
-    const url = `${window.location.origin}/api/sales-orders/missing-items-pdf?soId=${soIdValue}`
+    const hideCost = hideMissingItemsCost ? "&hideCost=1" : ""
+    const url = `${window.location.origin}/api/sales-orders/missing-items-pdf?soId=${soIdValue}${hideCost}`
     window.open(url, "_blank")
+  }
+
+  // Opens the server-rendered sales order print. It reads the saved order from the database, so it is correct for
+  // every status (draft included) and never depends on what this screen currently holds.
+  const handlePrintSalesOrder = (order: any) => {
+    const soIdValue = order.so_id || order.id
+    window.open(`${window.location.origin}/api/sales-orders/print?soId=${soIdValue}`, "_blank")
   }
 
   const getDaysUntilDue = (dueDate: string): number => {
@@ -1848,34 +1855,42 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                     </TableCell>
                     <TableCell className="p-2 text-right">
                       <div className="flex gap-2 justify-end">
-                        {order.status === "draft" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedOrder(order)
-                              setShowPrintQuotationDialog(true)
-                            }}
-                            title="Print Quotation"
-                          >
-                            <Printer className="w-4 h-4" /> Print
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handlePrintSalesOrder(order)
+                          }}
+                          title="Print Sales Order"
+                        >
+                          <Printer className="w-4 h-4" /> Print SO
+                        </Button>
                         <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)} title="View Details">
                           <Eye className="w-4 h-4" /> View
                         </Button>
                   {getSODeliveryStatus(order) !== "delivered" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handlePrintMissingItems(order)
-                      }}
-                      title="Print a report of items not yet added to any delivery permit"
-                    >
-                      <PackageX className="w-4 h-4" /> Missing Items
-                    </Button>
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handlePrintMissingItems(order)
+                        }}
+                        title="Print a report of items not yet delivered to the customer"
+                      >
+                        <PackageX className="w-4 h-4" /> Missing Items
+                      </Button>
+                      <label
+                        className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer"
+                        title="Hide Unit Cost (and the cost total) on the Missing Items report"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox checked={hideMissingItemsCost} onCheckedChange={(v) => setHideMissingItemsCost(v === true)} />
+                        Hide Unit Cost
+                      </label>
+                    </>
                   )}
                   <Button
                     variant="outline"
@@ -2260,46 +2275,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Quotation Print/Preview Dialog */}
-      <QuotationPreviewDialog
-        quotation={selectedOrder ? {
-          id: selectedOrder.id,
-          quotation_number: selectedOrder.soNumber || "",
-          quotation_request_number: selectedOrder.quotationRequestNumber || "",
-          department_name: selectedOrder.departmentName || "",
-          receiver_name: selectedOrder.receiverName || "",
-          customer_name: customers.find((c) => c.id === selectedOrder.customerId)?.name || "",
-          customer_phone: customers.find((c) => c.id === selectedOrder.customerId)?.phone || "",
-          customer_email: customers.find((c) => c.id === selectedOrder.customerId)?.email || "",
-          validity_days: 30,
-          quotation_date: selectedOrder.orderDate,
-          items: (selectedOrder.items || []).map((item, idx) => ({
-            id: idx,
-            quotation_id: parseInt(selectedOrder.id),
-            line_no: idx + 1,
-            item_type: "product",
-            product_id: item.productId ? parseInt(item.productId) : null,
-            product_name: item.productName,
-            quantity: item.quantity,
-            unit_price: item.unitPrice,
-            total: item.total,
-          })),
-          subtotal: selectedOrder.subtotal || selectedOrder.total,
-          discount_type: selectedOrder.discountType || "none",
-          discount_value: selectedOrder.discountValue || 0,
-          discount_amount: selectedOrder.discountAmount || 0,
-          net_total: selectedOrder.total,
-          payment_terms: selectedOrder.paymentTerms || "prepaid",
-          payment_type: selectedOrder.paymentType || selectedOrder.paymentTerms || "cash",
-          payment_details: selectedOrder.paymentDetails || null,
-          schedule_entries: selectedOrder.scheduleEntries || null,
-          notes: selectedOrder.notes || "",
-          status: selectedOrder.status,
-        } : null}
-        open={showPrintQuotationDialog}
-        onOpenChange={setShowPrintQuotationDialog}
-      />
 
       {editingOrder && (
         <EditApprovedOrderDialog

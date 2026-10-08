@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Package, Printer, Trash2, UserPlus, Upload } from "lucide-react"
+import { computeTotals } from "@/lib/print-totals"
+import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 import { useAppContext } from "@/lib/app-context"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
@@ -336,6 +338,8 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       setSavedSignature(signatureAtSave)
       onSaved?.()
 
+    const printTotals = computeTotals({ subtotal, discountType, discountValue })
+
     const itemsHtml = items
       .map((item, idx) => {
         const unitPrice = item.unitPrice || 0
@@ -347,7 +351,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         return `
         <tr>
           <td class="center">${idx + 1}</td>
-          <td>${item.productName}</td>
+          <td>${escapeHtml(item.productName)}</td>
           <td class="center">${item.quantity}</td>
           <td class="currency-col">${unitGineh.toLocaleString("en-US")}</td>
           <td class="currency-col">${unitQirsh.toString().padStart(2, "0")}</td>
@@ -356,18 +360,6 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         </tr>`
       })
       .join("")
-
-    const discountHtml =
-      discountAmount > 0
-        ? `
-      <tr>
-        <td colspan="5" style="text-align: left; color: red;">الخصم</td>
-        <td class="currency-col" style="color: red;">-${Math.floor(discountAmount).toLocaleString("en-US")}</td>
-        <td class="currency-col" style="color: red;">${Math.round((discountAmount - Math.floor(discountAmount)) * 100)
-          .toString()
-          .padStart(2, "0")}</td>
-      </tr>`
-        : ""
 
     let paymentDetailsHtml = ""
     if (paymentType === "installments" && paymentDetails.installmentMonths) {
@@ -391,8 +383,8 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       paymentDetailsHtml = `
           <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
             <strong>تفاصيل الشيك:</strong><br/>
-            ${paymentDetails.chequeNumber ? `<span>رقم الشيك: ${paymentDetails.chequeNumber}</span><br/>` : ""}
-            ${paymentDetails.chequeBankName ? `<span>البنك: ${paymentDetails.chequeBankName}</span><br/>` : ""}
+            ${paymentDetails.chequeNumber ? `<span>رقم الشيك: ${escapeHtml(paymentDetails.chequeNumber)}</span><br/>` : ""}
+            ${paymentDetails.chequeBankName ? `<span>البنك: ${escapeHtml(paymentDetails.chequeBankName)}</span><br/>` : ""}
             ${paymentDetails.chequeDueDate ? `<span>تاريخ الاستحقاق: ${formatDateAr(paymentDetails.chequeDueDate)}</span><br/>` : ""}
             ${paymentDetails.chequeAmount ? `<span>المبلغ: ${paymentDetails.chequeAmount.toLocaleString("en-US")} جنيه</span>` : ""}
           </div>`
@@ -409,7 +401,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       ? `
       <div style="margin-top: 8mm; border: 1px solid #999; padding: 8px;">
         <strong>ملاحظات إضافية:</strong><br/>
-        <span style="font-size: 10pt;">${notes}</span>
+        <span style="font-size: 10pt;">${escapeHtml(notes)}</span>
       </div>`
       : ""
 
@@ -425,7 +417,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>عرض سعر - ${quotation.quotation_number}</title>
+  <title>عرض سعر - ${escapeHtml(quotation.quotation_number)}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -470,7 +462,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     .signature-line { border-top: 1px solid #000; margin-top: 15mm; }
     .terms-section { margin-top: 8mm; font-size: 10pt; }
     .terms-section li { margin-bottom: 3px; }
-    @media print { body { margin: 0; padding: 0; } }
+    @media print { body { margin: 0; padding: 0; } }${TOTALS_BLOCK_CSS}
   </style>
 </head>
 <body>
@@ -494,7 +486,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   <table class="header-table">
     <tr>
       <td style="width: 25%;"><strong>رقم العرض:</strong></td>
-      <td style="width: 25%;">${quotation.quotation_number}</td>
+      <td style="width: 25%;">${escapeHtml(quotation.quotation_number)}</td>
       <td style="width: 25%;"><strong>التاريخ:</strong></td>
       <td style="width: 25%;">${formatDateAr(quotationDateStr)}</td>
     </tr>
@@ -503,7 +495,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         ? `
     <tr>
       <td><strong>رقم طلب التسعير:</strong></td>
-      <td colspan="3">${quotation.quotation_request_number}</td>
+      <td colspan="3">${escapeHtml(quotation.quotation_request_number)}</td>
     </tr>`
         : ""
     }
@@ -514,16 +506,16 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       <td>${validityDays} يوم</td>
     </tr>
     <tr>
-      <td colspan="4"><strong>السادة:</strong> ${customerName}</td>
+      <td colspan="4"><strong>السادة:</strong> ${escapeHtml(customerName)}</td>
     </tr>
     ${
       customerPhone
         ? `
     <tr>
       <td><strong>الهاتف:</strong></td>
-      <td>${customerPhone}</td>
+      <td>${escapeHtml(customerPhone)}</td>
       <td><strong>البريد الإلكتروني:</strong></td>
-      <td>${customerEmail || "-"}</td>
+      <td>${escapeHtml(customerEmail || "-")}</td>
     </tr>`
         : ""
     }
@@ -532,7 +524,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         ? `
     <tr>
       <td><strong>عنوان التسليم:</strong></td>
-      <td colspan="3">${deliveryAddress}</td>
+      <td colspan="3">${escapeHtml(deliveryAddress)}</td>
     </tr>`
         : ""
     }
@@ -541,9 +533,9 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         ? `
     <tr>
       <td><strong>مسؤول الاستلام:</strong></td>
-      <td>${deliveryContactName}</td>
+      <td>${escapeHtml(deliveryContactName)}</td>
       <td><strong>هاتف الاستلام:</strong></td>
-      <td>${deliveryContactPhone || "-"}</td>
+      <td>${escapeHtml(deliveryContactPhone || "-")}</td>
     </tr>`
         : ""
     }
@@ -569,31 +561,8 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     <tbody>
       ${itemsHtml}
     </tbody>
-    <tfoot>
-      ${discountHtml}
-      <tr>
-        <td colspan="5" style="text-align: left;">المجموع الفرعي</td>
-        <td class="currency-col">${Math.floor(subtotalAfterDiscount).toLocaleString("en-US")}</td>
-        <td class="currency-col">${Math.round((subtotalAfterDiscount - Math.floor(subtotalAfterDiscount)) * 100)
-          .toString()
-          .padStart(2, "0")}</td>
-      </tr>
-      <tr>
-        <td colspan="5" style="text-align: left;">ضريبة القيمة المضافة (14%)</td>
-        <td class="currency-col">${Math.floor(vatAmount).toLocaleString("en-US")}</td>
-        <td class="currency-col">${Math.round((vatAmount - Math.floor(vatAmount)) * 100)
-          .toString()
-          .padStart(2, "0")}</td>
-      </tr>
-      <tr>
-        <td colspan="5" style="text-align: left; font-weight: 700;">إجمالي العرض</td>
-        <td class="currency-col" style="font-weight: 700;">${Math.floor(netTotal).toLocaleString("en-US")}</td>
-        <td class="currency-col" style="font-weight: 700;">${Math.round((netTotal - Math.floor(netTotal)) * 100)
-          .toString()
-          .padStart(2, "0")}</td>
-      </tr>
-    </tfoot>
   </table>
+${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
 
   ${isHybrid ? "" : paymentTermsHtml}
 

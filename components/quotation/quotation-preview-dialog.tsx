@@ -8,6 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { useI18n } from "@/lib/i18n-context"
 import { Printer } from "lucide-react"
+import { computeTotals } from "@/lib/print-totals"
+import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 
 interface QuotationItem {
   id: number
@@ -51,6 +53,17 @@ interface QuotationPreviewDialogProps {
   quotation: QuotationData | null
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+// Batch 3: subtotal - discount = net subtotal; net x 14% = VAT; net + VAT = total (lib/print-totals.ts). The lines are
+// the source of the subtotal; only a quotation with no lines at all falls back to its stored subtotal (without a
+// discount, because what the stored subtotal means when a discount exists is not settled). Used by the printout AND
+// the on-screen preview so the two always agree.
+function quotationTotals(q: QuotationData) {
+  const linesSubtotal = (q.items || []).reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+  return linesSubtotal > 0
+    ? computeTotals({ subtotal: linesSubtotal, discountType: q.discount_type, discountValue: q.discount_value, discountAmount: q.discount_amount })
+    : computeTotals({ subtotal: q.subtotal || 0 })
 }
 
 export function QuotationPreviewDialog({ quotation, open, onOpenChange }: QuotationPreviewDialogProps) {
@@ -101,12 +114,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
     if (!activeQuotation) return
 
   const items = activeQuotation.items || []
-  // Always calculate subtotal from items (quantity * unit_price) to avoid tax-included totals
-  const calculatedSubtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
-  const subtotal = calculatedSubtotal > 0 ? calculatedSubtotal : (activeQuotation.subtotal || 0)
-  const calculatedTax = subtotal * 0.14
-  const tax = activeQuotation.tax && activeQuotation.tax > 0 && activeQuotation.tax !== subtotal ? activeQuotation.tax : calculatedTax
-  const finalTotal = subtotal + tax
+  const totals = quotationTotals(activeQuotation)
 
     const itemsHtml = items.map((item, idx) => {
       const unitPrice = item.unit_price || 0
@@ -118,7 +126,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
       return `
         <tr>
           <td class="center">${idx + 1}</td>
-          <td>${item.product_name}</td>
+          <td>${escapeHtml(item.product_name)}</td>
           <td class="center">${item.quantity}</td>
           <td class="currency-col">${unitGineh.toLocaleString("en-US")}</td>
           <td class="currency-col">${unitQirsh.toString().padStart(2, "0")}</td>
@@ -126,13 +134,6 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
           <td class="currency-col">${totalQirsh.toString().padStart(2, "0")}</td>
         </tr>`
     }).join("")
-
-    const discountHtml = activeQuotation.discount_amount && activeQuotation.discount_amount > 0 ? `
-      <tr>
-        <td colspan="5" style="text-align: left; color: red;">الخصم</td>
-        <td class="currency-col" style="color: red;">-${Math.floor(activeQuotation.discount_amount).toLocaleString("en-US")}</td>
-        <td class="currency-col" style="color: red;">${Math.round((activeQuotation.discount_amount - Math.floor(activeQuotation.discount_amount)) * 100).toString().padStart(2, "0")}</td>
-      </tr>` : ""
 
     let paymentTermsHtml = ""
     if (includePaymentTerms) {
@@ -164,8 +165,8 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
         paymentDetailsHtml = `
           <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
             <strong>تفاصيل الشيك:</strong><br/>
-            ${activeQuotation.payment_details.chequeNumber ? `<span>رقم الشيك: ${activeQuotation.payment_details.chequeNumber}</span><br/>` : ""}
-            ${activeQuotation.payment_details.chequeBankName ? `<span>البنك: ${activeQuotation.payment_details.chequeBankName}</span><br/>` : ""}
+            ${activeQuotation.payment_details.chequeNumber ? `<span>رقم الشيك: ${escapeHtml(activeQuotation.payment_details.chequeNumber)}</span><br/>` : ""}
+            ${activeQuotation.payment_details.chequeBankName ? `<span>البنك: ${escapeHtml(activeQuotation.payment_details.chequeBankName)}</span><br/>` : ""}
             ${activeQuotation.payment_details.chequeDueDate ? `<span>تاريخ الاستحقاق: ${formatDateAr(activeQuotation.payment_details.chequeDueDate)}</span><br/>` : ""}
             ${activeQuotation.payment_details.chequeAmount ? `<span>المبلغ: ${(activeQuotation.payment_details.chequeAmount).toLocaleString("en-US")} جنيه</span>` : ""}
           </div>`
@@ -178,7 +179,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
             <td class="center">${idx + 1}</td>
             <td>${formatDateAr(entry.dueDate)}</td>
             <td class="currency-col">${(entry.amount || 0).toLocaleString("en-US")} جنيه</td>
-            <td>${entry.note || "-"}</td>
+            <td>${escapeHtml(entry.note || "-")}</td>
           </tr>`).join("")
 
         const totalSchedule = activeQuotation.schedule_entries.reduce((sum: number, e: any) => sum + (e.amount || 0), 0)
@@ -219,7 +220,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
     const notesHtml = activeQuotation.notes ? `
       <div style="margin-top: 8mm; border: 1px solid #999; padding: 8px;">
         <strong>ملاحظات إضافية:</strong><br/>
-        <span style="font-size: 10pt;">${activeQuotation.notes}</span>
+        <span style="font-size: 10pt;">${escapeHtml(activeQuotation.notes)}</span>
       </div>` : ""
 
     const printWindow = window.open("", "_blank")
@@ -230,7 +231,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>عرض سعر - ${activeQuotation.quotation_number}</title>
+  <title>عرض سعر - ${escapeHtml(activeQuotation.quotation_number)}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -275,7 +276,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
     .signature-line { border-top: 1px solid #000; margin-top: 15mm; }
     .terms-section { margin-top: 8mm; font-size: 10pt; }
     .terms-section li { margin-bottom: 3px; }
-    @media print { body { margin: 0; padding: 0; } }
+    @media print { body { margin: 0; padding: 0; } }${TOTALS_BLOCK_CSS}
   </style>
 </head>
 <body>
@@ -299,14 +300,14 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
   <table class="header-table">
     <tr>
       <td style="width: 25%;"><strong>رقم العرض:</strong></td>
-      <td style="width: 25%;">${activeQuotation.quotation_number}</td>
+      <td style="width: 25%;">${escapeHtml(activeQuotation.quotation_number)}</td>
       <td style="width: 25%;"><strong>التاريخ:</strong></td>
       <td style="width: 25%;">${formatDateAr(quotationDate)}</td>
     </tr>
     ${activeQuotation.quotation_request_number ? `
     <tr>
       <td><strong>رقم طلب التسعير:</strong></td>
-      <td colspan="3">${activeQuotation.quotation_request_number}</td>
+      <td colspan="3">${escapeHtml(activeQuotation.quotation_request_number)}</td>
     </tr>` : ""}
     <tr>
       <td><strong>صالح حتى:</strong></td>
@@ -315,29 +316,29 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
       <td>${activeQuotation.validity_days || 30} يوم</td>
     </tr>
     <tr>
-      <td colspan="4"><strong>السادة:</strong> ${activeQuotation.customer_name}</td>
+      <td colspan="4"><strong>السادة:</strong> ${escapeHtml(activeQuotation.customer_name)}</td>
     </tr>
     ${activeQuotation.customer_phone ? `
     <tr>
       <td><strong>الهاتف:</strong></td>
-      <td>${activeQuotation.customer_phone}</td>
+      <td>${escapeHtml(activeQuotation.customer_phone)}</td>
       <td><strong>البريد الإلكتروني:</strong></td>
-      <td>${activeQuotation.customer_email || "-"}</td>
+      <td>${escapeHtml(activeQuotation.customer_email || "-")}</td>
     </tr>` : ""}
     ${activeQuotation.department_name ? `
     <tr>
       <td><strong>القسم:</strong></td>
-      <td colspan="3">${activeQuotation.department_name}</td>
+      <td colspan="3">${escapeHtml(activeQuotation.department_name)}</td>
     </tr>` : ""}
     ${activeQuotation.receiver_name ? `
     <tr>
       <td><strong>المستلم:</strong></td>
-      <td colspan="3">${activeQuotation.receiver_name}</td>
+      <td colspan="3">${escapeHtml(activeQuotation.receiver_name)}</td>
     </tr>` : ""}
     ${activeQuotation.delivery_address ? `
     <tr>
       <td><strong>عنوان التسليم:</strong></td>
-      <td colspan="3">${activeQuotation.delivery_address}</td>
+      <td colspan="3">${escapeHtml(activeQuotation.delivery_address)}</td>
     </tr>` : ""}
     ${activeQuotation.delivery_date ? `
     <tr>
@@ -366,25 +367,8 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
     <tbody>
       ${itemsHtml}
     </tbody>
-    <tfoot>
-      ${discountHtml}
-      <tr>
-        <td colspan="5" style="text-align: left;">المجموع الفرعي</td>
-        <td class="currency-col">${Math.floor(subtotal).toLocaleString("en-US")}</td>
-        <td class="currency-col">${Math.round((subtotal - Math.floor(subtotal)) * 100).toString().padStart(2, "0")}</td>
-      </tr>
-      <tr>
-        <td colspan="5" style="text-align: left;">ضريبة القيمة المضافة (14%)</td>
-        <td class="currency-col">${Math.floor(calculatedTax).toLocaleString("en-US")}</td>
-        <td class="currency-col">${Math.round((calculatedTax - Math.floor(calculatedTax)) * 100).toString().padStart(2, "0")}</td>
-      </tr>
-      <tr>
-        <td colspan="5" style="text-align: left; font-weight: 700;">إجمالي العرض</td>
-        <td class="currency-col" style="font-weight: 700;">${Math.floor(finalTotal).toLocaleString("en-US")}</td>
-        <td class="currency-col" style="font-weight: 700;">${Math.round((finalTotal - Math.floor(finalTotal)) * 100).toString().padStart(2, "0")}</td>
-      </tr>
-    </tfoot>
   </table>
+${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
 
   ${paymentTermsHtml}
 
@@ -545,33 +529,32 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
               <div className="flex justify-start">
   <div className="w-72 space-y-2">
   {(() => {
-  // Always calculate from items to ensure correctness
-  const itemsArray = activeQuotation.items || []
-  const calculatedSub = itemsArray.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
-  const sub = calculatedSub > 0 ? calculatedSub : (activeQuotation.subtotal || 0)
-  const calcTax = sub * 0.14
-  const tax = activeQuotation.tax && activeQuotation.tax > 0 && activeQuotation.tax !== sub ? activeQuotation.tax : calcTax
-  const tot = sub + tax
-
+                    const t = quotationTotals(activeQuotation)
                     return (
                       <>
-                        {activeQuotation.discount_amount && activeQuotation.discount_amount > 0 && (
-                          <div className="flex justify-between text-sm text-red-600">
-                            <span>الخصم:</span>
-                            <span>-{formatCurrency(activeQuotation.discount_amount)}</span>
-                          </div>
+                        {t.discount > 0 && (
+                          <>
+                            <div className="flex justify-between text-sm">
+                              <span>المجموع قبل الخصم:</span>
+                              <span>{formatCurrency(t.subtotal)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm text-red-600">
+                              <span>الخصم:</span>
+                              <span>-{formatCurrency(t.discount)}</span>
+                            </div>
+                          </>
                         )}
                         <div className="flex justify-between text-sm">
-                          <span>المجموع الفرعي:</span>
-                          <span>{formatCurrency(sub)}</span>
+                          <span>{t.discount > 0 ? "المجموع بعد الخصم:" : "المجموع الفرعي:"}</span>
+                          <span>{formatCurrency(t.netSubtotal)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span>ضريبة القيمة المضافة (14%):</span>
-                          <span>{formatCurrency(tax)}</span>
+                          <span>{formatCurrency(t.vat)}</span>
                         </div>
                         <div className="flex justify-between font-bold text-lg border-t pt-2">
                           <span>الإجمالي:</span>
-                          <span>{formatCurrency(tot)}</span>
+                          <span>{formatCurrency(t.total)}</span>
                         </div>
                       </>
                     )

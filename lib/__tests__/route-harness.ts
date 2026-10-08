@@ -18,8 +18,14 @@ const OUT_ROOT = path.resolve(__dirname, "..", "..") // <out>/lib/__tests__ -> <
 const ADMIN_FILE = path.join(OUT_ROOT, "lib", "supabase", "admin.js")
 const WEBHOOK_FILE = path.join(OUT_ROOT, "lib", "webhook-service.js")
 
+// `new NextResponse(html, init)` is used by the HTML print routes; `NextResponse.json` by the API routes.
+class StubNextResponse extends Response {
+  static json(body: unknown, init?: ResponseInit) {
+    return Response.json(body, init)
+  }
+}
 const nextServerStub = {
-  NextResponse: { json: (body: unknown, init?: ResponseInit) => Response.json(body, init) },
+  NextResponse: StubNextResponse,
   NextRequest: Request,
 }
 const adminStub = {
