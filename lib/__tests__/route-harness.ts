@@ -67,6 +67,7 @@ const SERVER_FILE = path.join(OUT_ROOT, "lib", "supabase", "server.js")
 const serverStub = {
   createAdminClient: adminStub.createAdminClient,
   createClient: async () => adminStub.createAdminClient(),
+  createServerClient: async () => adminStub.createAdminClient(),
 }
 
 const M = Module as any

@@ -190,29 +190,14 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     }
   }
 
+  // Retired: invoices are created strictly per APPROVED delivery permit (see handleCreateFromDPs).
+  const INVOICE_FROM_DP_ONLY_MESSAGE =
+    "Invoices are created from approved delivery permits. Use \"From Delivery Items\" and select the approved delivery permit(s)."
+
   const handleCreateFromSO = async () => {
-    if (!selectedSO) return
-
-    try {
-      const response = await fetch("/api/accounts-receivable/create-from-so", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ so_id: Number(selectedSO) }),
-      })
-
-      if (response.ok) {
-        alert(t("message.success"))
-        setSoSelectDialogOpen(false)
-        setSelectedSO(null)
-        await loadData() // Assuming loadData also reloads invoices
-      } else {
-        const error = await response.json()
-        alert(error.error || "Failed to create invoice")
-      }
-    } catch (error) {
-      console.error("AR - Error creating invoice from SO:", error)
-      alert(t("message.error"))
-    }
+    setSoSelectDialogOpen(false)
+    setSelectedSO(null)
+    alert(INVOICE_FROM_DP_ONLY_MESSAGE)
   }
 
   const validatePaymentTerms = (dpIds: string[]) => {
@@ -264,6 +249,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         try {
           const errorJson = JSON.parse(errorText)
           errorMessage = errorJson.error || errorMessage
+          if (errorJson.code === "DP_NOT_APPROVED") {
+            // A selected permit is no longer APPROVED: drop it from the list and the selection.
+            setSelectedDPs([])
+            fetchAvailableDPs()
+          }
         } catch (e) {
           errorMessage = errorText || errorMessage
         }
@@ -1093,10 +1083,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem
-                  onClick={() => {
-                    fetchAvailableSOs()
-                    setSoSelectDialogOpen(true)
-                  }}
+                  onClick={() => alert(INVOICE_FROM_DP_ONLY_MESSAGE)}
                 >
                   <FileText className="w-4 h-4 mr-2" />
                   From Sales Order

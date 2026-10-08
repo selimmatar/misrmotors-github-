@@ -572,7 +572,14 @@ export async function createDpInvoices(db: Db, permitIds: number[]): Promise<Wor
 
     const notApproved = permits.filter((p) => p.status !== "APPROVED")
     if (notApproved.length > 0) {
-      return failure(400, `Only APPROVED delivery permits can be invoiced. Not approved: ${notApproved.map((p) => `${p.permit_no} (${p.status})`).join(", ")}`)
+      return failure(
+        409,
+        `Only APPROVED delivery permits can be invoiced. Not approved: ${notApproved.map((p) => `${p.permit_no} (${p.status})`).join(", ")}`,
+        {
+          code: "DP_NOT_APPROVED",
+          permits: notApproved.map((p) => ({ permit_id: p.permit_id, permit_no: p.permit_no, status: p.status })),
+        },
+      )
     }
 
     const soIds = [...new Set(permits.map((p) => p.sales_order_id))]

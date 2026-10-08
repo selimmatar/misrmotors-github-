@@ -10,6 +10,10 @@
 
 import { createAdminClient } from "@/lib/supabase/admin"
 
+/** Sales order statuses that count as revenue (single definition used by every revenue KPI below). */
+export const REVENUE_STATUSES = ["accountant_approved", "ready_for_delivery", "shipped", "delivered"]
+const REVENUE_STATUSES_SQL = REVENUE_STATUSES.map((s) => `'${s}'`).join(", ")
+
 export interface DateRange {
   from?: Date
   to?: Date
@@ -126,7 +130,7 @@ export interface KPIMetrics {
 
 /**
  * FORMULA: Total Sales Revenue
- * = SUM(total) from sales_orders WHERE status IN ('accountant_approved', 'shipped', 'delivered')
+ * = SUM(total) from sales_orders WHERE status IN ('accountant_approved', 'ready_for_delivery', 'shipped', 'delivered')
  * Optional date filter on order_date
  */
 export async function getSalesMetrics(dateRange?: DateRange): Promise<SalesMetrics> {
@@ -152,7 +156,7 @@ export async function getSalesMetrics(dateRange?: DateRange): Promise<SalesMetri
   const orders = salesOrders || []
 
   // FORMULA: Revenue = SUM(total) WHERE status IN approved/shipped/delivered
-  const completedStatuses = ["accountant_approved", "shipped", "delivered"]
+  const completedStatuses = REVENUE_STATUSES
   const completedOrders = orders.filter((so) => completedStatuses.includes(so.status))
   const totalRevenue = completedOrders.reduce((sum, so) => sum + (Number(so.net_total) || Number(so.total) || 0), 0)
 
@@ -189,7 +193,7 @@ export async function getSalesMetrics(dateRange?: DateRange): Promise<SalesMetri
     uniqueCustomers: uniqueCustomerIds.size,
     revenueByStatus,
     monthlyRevenue,
-    _query: `SELECT * FROM sales_orders WHERE status IN ('accountant_approved', 'shipped', 'delivered')${dateRange?.from ? ` AND order_date >= '${dateRange.from.toISOString().split("T")[0]}'` : ""}${dateRange?.to ? ` AND order_date <= '${dateRange.to.toISOString().split("T")[0]}'` : ""}`,
+    _query: `SELECT * FROM sales_orders WHERE status IN (${REVENUE_STATUSES_SQL})${dateRange?.from ? ` AND order_date >= '${dateRange.from.toISOString().split("T")[0]}'` : ""}${dateRange?.to ? ` AND order_date <= '${dateRange.to.toISOString().split("T")[0]}'` : ""}`,
     _recordCount: orders.length,
   }
 }
@@ -566,7 +570,7 @@ export async function validateMetrics(): Promise<
   const { data: rawSales } = await supabase
     .from("sales_orders")
     .select("total, net_total, status")
-    .in("status", ["accountant_approved", "shipped", "delivered"])
+    .in("status", REVENUE_STATUSES)
 
   const rawSalesTotal = (rawSales || []).reduce((sum, so) => sum + (Number(so.net_total) || Number(so.total) || 0), 0)
 
@@ -575,8 +579,7 @@ export async function validateMetrics(): Promise<
     expected: rawSalesTotal,
     actual: salesMetrics.totalRevenue,
     match: Math.abs(rawSalesTotal - salesMetrics.totalRevenue) < 0.01,
-    query:
-      "SELECT SUM(COALESCE(net_total, total)) FROM sales_orders WHERE status IN ('accountant_approved', 'shipped', 'delivered')",
+    query: `SELECT SUM(COALESCE(net_total, total)) FROM sales_orders WHERE status IN (${REVENUE_STATUSES_SQL})`,
   })
 
   // Validate Inventory Value

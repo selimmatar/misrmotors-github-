@@ -238,7 +238,8 @@ test("DP must be APPROVED; one invoice may cover several DPs (no source_delivery
   const db = baseDb()
   db.tables.delivery_permits[1].status = "DRAFT"
   const notApproved = await createDpInvoices(db, [1, 2])
-  assert.equal(notApproved.status, 400)
+  assert.equal(notApproved.status, 409)
+  assert.equal(notApproved.body.code, "DP_NOT_APPROVED")
   assert.equal(invoicesOf(db).length, 0)
   db.tables.delivery_permits[1].status = "APPROVED"
   const both = await createDpInvoices(db, [1, 2])

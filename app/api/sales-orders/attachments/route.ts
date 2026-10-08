@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { put } from "@vercel/blob"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { checkUpload } from "@/lib/upload-allowlist"
 
 export const dynamic = "force-dynamic"
 
@@ -51,6 +52,9 @@ export async function POST(request: NextRequest) {
     if (!soId) {
       return NextResponse.json({ error: "Sales Order ID is required" }, { status: 400 })
     }
+
+    const rejection = checkUpload(file)
+    if (rejection) return NextResponse.json({ error: rejection.error }, { status: rejection.status })
 
 
     // Upload to Vercel Blob

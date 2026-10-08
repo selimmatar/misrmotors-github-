@@ -1,6 +1,7 @@
 import { put, del } from "@vercel/blob"
 import { getAdminClient } from "@/lib/supabase/admin"
 import { type NextRequest, NextResponse } from "next/server"
+import { checkUpload } from "@/lib/upload-allowlist"
 
 export const dynamic = "force-dynamic"
 
@@ -53,6 +54,9 @@ export async function POST(request: NextRequest) {
     if (!productId) {
       return NextResponse.json({ error: "Product ID is required" }, { status: 400 })
     }
+
+    const rejection = checkUpload(file)
+    if (rejection) return NextResponse.json({ error: rejection.error }, { status: rejection.status })
 
     // Generate unique filename with product info
     const timestamp = Date.now()
