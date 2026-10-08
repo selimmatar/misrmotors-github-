@@ -2,6 +2,31 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES } from "@/lib/po-status"
+import { checkPoOverOrder } from "@/lib/po-over-order"
+
+// Shared by POST and PUT so editing a PO's items keeps the SO link and the outsourced data.
+function mapPoItem(item: any, poId: number) {
+  const itemType = item.itemType || item.item_type || "stock"
+  const isOutsourced = itemType === "outsourced"
+  const rawProductId = item.productId || item.product_id
+  return {
+    po_id: poId,
+    // Outsourced items have no product; keep product_id null
+    product_id: isOutsourced ? null : rawProductId || null,
+    // Keep the display name so free-text items (no product_id) still print on invoices
+    item_name_snapshot: item.productName || item.product_name || null,
+    quantity: Number(item.quantity) || 0,
+    unit_price: Number(item.unitPrice ?? item.unit_price ?? 0),
+    total: Number(item.total ?? 0),
+    item_type: itemType,
+    outsourced_name: item.outsourcedName || item.outsourced_name || null,
+    outsourced_description: item.outsourcedDescription || item.outsourced_description || null,
+    outsourced_unit: item.outsourcedUnit || item.outsourced_unit || null,
+    // The client sends these as strings; the columns are integers.
+    source_so_id: Number.parseInt(item.sourceSoId || item.source_so_id) || null,
+    source_so_item_id: Number.parseInt(item.sourceSoItemId || item.source_so_item_id) || null,
+  }
+}
 
 export const dynamic = "force-dynamic"
 
@@ -160,6 +185,16 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { items, ...orderData } = body
 
+    // Do not order more from suppliers than the sales order lines need (400/409 before anything is written).
+    // Known limit: two concurrent POSTs can still both pass; closing that needs a DB constraint (not approved).
+    const overOrder = await checkPoOverOrder(supabase, items)
+    if (!overOrder.ok) {
+      return NextResponse.json(
+        { error: overOrder.error, code: overOrder.code, lines: overOrder.lines },
+        { status: overOrder.status },
+      )
+    }
+
     let scheduleEntriesValue = null
     if (orderData.schedule_entries) {
       scheduleEntriesValue =
@@ -249,27 +284,7 @@ export async function POST(request: Request) {
 
     // Insert items if provided
     if (items && items.length > 0) {
-      const itemsWithPoId = items.map((item: any) => {
-        const itemType = item.itemType || item.item_type || "stock"
-        const isOutsourced = itemType === "outsourced"
-        const rawProductId = item.productId || item.product_id
-        return {
-          po_id: order.po_id,
-          // Outsourced items have no product; keep product_id null
-          product_id: isOutsourced ? null : rawProductId || null,
-          // Keep the display name so free-text items (no product_id) still print on invoices
-          item_name_snapshot: item.productName || item.product_name || null,
-          quantity: Number(item.quantity) || 0,
-          unit_price: Number(item.unitPrice ?? item.unit_price ?? 0),
-          total: Number(item.total ?? 0),
-          item_type: itemType,
-          outsourced_name: item.outsourcedName || item.outsourced_name || null,
-          outsourced_description: item.outsourcedDescription || item.outsourced_description || null,
-          outsourced_unit: item.outsourcedUnit || item.outsourced_unit || null,
-          source_so_id: item.sourceSoId || item.source_so_id || null,
-          source_so_item_id: item.sourceSoItemId || item.source_so_item_id || null,
-        }
-      })
+      const itemsWithPoId = items.map((item: any) => mapPoItem(item, order.po_id))
 
       const { error: itemsInsertError } = await supabase.from("purchase_order_items").insert(itemsWithPoId)
 
@@ -601,6 +616,17 @@ export async function PUT(request: Request) {
       )
     }
 
+    // Only the lines of a PO that stays active count; this PO's own current lines are excluded from "already ordered".
+    if (items && targetStatus !== "rejected") {
+      const overOrder = await checkPoOverOrder(supabase, items, poId)
+      if (!overOrder.ok) {
+        return NextResponse.json(
+          { error: overOrder.error, code: overOrder.code, lines: overOrder.lines },
+          { status: overOrder.status },
+        )
+      }
+    }
+
     const statusChanged = targetStatus !== previousStatus
     const approving = statusChanged && targetStatus === "approved"
     if (approving && updates.approved_at === undefined) updates.approved_at = new Date().toISOString()
@@ -631,12 +657,7 @@ export async function PUT(request: Request) {
 
       if (items.length > 0) {
         const itemsWithPoId = items.map((item: any) => ({
-          po_id: poId,
-          product_id: Number.parseInt(item.product_id || item.productId) || null,
-          item_name_snapshot: item.productName || item.product_name || null,
-          quantity: item.quantity,
-          unit_price: item.unit_price || item.unitPrice,
-          total: item.total,
+          ...mapPoItem(item, poId),
           allocated_tax: item.allocatedTax || item.allocated_tax,
           allocated_overhead: item.allocatedOverhead || item.allocated_overhead,
           landed_cost: item.landedCost || item.landed_cost,
