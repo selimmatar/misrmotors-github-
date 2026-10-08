@@ -829,7 +829,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       setShowForm(false)
     } catch (error) {
       console.error("Error creating PO:", error)
-      alert(t("error.create-po"))
+      alert(error instanceof Error && error.message ? `${t("error.create-po")}: ${error.message}` : t("error.create-po"))
     } finally {
       setUploadingInvoice(false)
     }
