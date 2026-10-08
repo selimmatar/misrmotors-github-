@@ -17,8 +17,26 @@ export async function GET() {
       return NextResponse.json({ message: "Error fetching credits" }, { status: 500 })
     }
 
+    // Read-only enrichment: the AP invoice a credit is linked to and that invoice's PO (additive fields).
+    const invoiceIds = [...new Set((credits || []).map((c: any) => c.invoice_id).filter((id: any) => id != null))]
+    const invoiceById = new Map<number, any>()
+    const poById = new Map<number, any>()
+    if (invoiceIds.length > 0) {
+      const { data: invoices } = await supabase.from("accounts_payable").select("invoice_id, invoice_number, po_id").in("invoice_id", invoiceIds)
+      for (const inv of invoices || []) invoiceById.set(inv.invoice_id, inv)
+      const poIds = [...new Set((invoices || []).map((i: any) => i.po_id).filter((id: any) => id != null))]
+      if (poIds.length > 0) {
+        const { data: pos } = await supabase.from("purchase_orders").select("po_id, po_number").in("po_id", poIds)
+        for (const po of pos || []) poById.set(po.po_id, po)
+      }
+    }
+
     // Transform the response to match expected format
     const transformed = (credits || []).map((credit: any) => ({
+      invoice_number: invoiceById.get(credit.invoice_id)?.invoice_number ?? null,
+      po_id: invoiceById.get(credit.invoice_id)?.po_id ?? null,
+      po_number: poById.get(invoiceById.get(credit.invoice_id)?.po_id)?.po_number ?? null,
+      unapplied: credit.status === "active",
       credit_id: credit.credit_id,
       supplier_id: credit.supplier_id,
       amount: credit.amount,

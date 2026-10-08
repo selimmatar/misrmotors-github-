@@ -839,43 +839,172 @@ async function claimHoldingRowOrFlag(
   return claim.ok ? { ok: true, row: claim.row } : claim
 }
 
+// Supplier-credit VAT: AP invoices carry the PO total (items + PO tax, 14%), so a credit raised against a PO that
+// charged tax is the received line cost plus the same 14%. A PO that charged no tax (tax_amount empty/0) gets no VAT.
+const CREDIT_VAT_RATE = 0.14
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+type ReceiptCost = {
+  unitCost: number
+  receivedQty: number
+  poId: number
+  poNumber: string | null
+  grnNumber: string | null
+  supplierId: number
+  vatRate: number
+  apInvoiceIds: number[]
+  apInvoiceNumbers: string[]
+  multiplePos: boolean
+}
+
+// The receipt the returned stock came from: same product (stock) or same outsourced name, narrowed to the sales
+// order's lines when the SO is known, newest receipt first. Read-only; null when nothing matches.
+async function findOriginatingReceipt(db: Db, row: any, productName: string, soNumber: string | null, wantedSupplierId: number | null): Promise<ReceiptCost | null> {
+  let lines: any[]
+  if (row.product_id) {
+    lines = must(await db.from("goods_receipt_lines").select("*").eq("product_id", row.product_id), "receipt lines by product") as any[]
+  } else {
+    const name = String(row.outsourced_name || productName || "").trim().toLowerCase()
+    if (!name) return null
+    const all = must(await db.from("goods_receipt_lines").select("*").eq("item_type", "outsourced"), "receipt lines by name") as any[]
+    lines = all.filter((l) => String(l.outsourced_name || "").trim().toLowerCase() === name)
+  }
+  lines = lines.filter((l) => (Number(l.quantity_received) || 0) > 0)
+  if (lines.length === 0) return null
+
+  if (soNumber) {
+    const so = must(await db.from("sales_orders").select("so_id").eq("so_number", soNumber).limit(1).maybeSingle(), "sales order for credit")
+    if (so) {
+      const soItems = must(await db.from("sales_order_items").select("so_item_id").eq("so_id", so.so_id), "sales order items for credit") as any[]
+      const ids = new Set(soItems.map((i) => i.so_item_id))
+      const narrowed = lines.filter((l) => l.source_so_item_id != null && ids.has(l.source_so_item_id))
+      if (narrowed.length > 0) lines = narrowed
+    }
+  }
+
+  const receipts = must(await db.from("goods_receipts").select("receipt_id, grn_number, po_id").in("receipt_id", [...new Set(lines.map((l) => l.receipt_id))]), "receipts for credit") as any[]
+  const receiptById = new Map(receipts.map((r) => [r.receipt_id, r]))
+  const pos = must(
+    await db.from("purchase_orders").select("po_id, po_number, supplier_id, tax_amount").in("po_id", [...new Set(receipts.map((r) => r.po_id))]),
+    "purchase orders for credit",
+  ) as any[]
+  const poById = new Map(pos.map((p) => [p.po_id, p]))
+
+  let candidates = lines
+    .map((l) => ({ line: l, receipt: receiptById.get(l.receipt_id), po: poById.get(receiptById.get(l.receipt_id)?.po_id) }))
+    .filter((c) => c.receipt && c.po && c.po.supplier_id)
+  if (wantedSupplierId !== null) candidates = candidates.filter((c) => c.po.supplier_id === wantedSupplierId)
+  if (candidates.length === 0) return null
+  candidates.sort((a, b) => b.line.receipt_id - a.line.receipt_id)
+  const chosen = candidates[0]
+
+  let unitCost = Number(chosen.line.unit_cost) || 0
+  if (!(unitCost > 0) && chosen.line.po_item_id != null) {
+    const item = must(await db.from("purchase_order_items").select("unit_price").eq("po_item_id", chosen.line.po_item_id).limit(1).maybeSingle(), "purchase order item cost")
+    unitCost = Number(item?.unit_price) || 0
+  }
+  if (!(unitCost > 0)) return null
+
+  // Quantity originally received for this PO line (all its receipts): the ceiling for the credit.
+  const sameLine = candidates.filter(
+    (c) => c.po.po_id === chosen.po.po_id && (chosen.line.po_item_id != null ? c.line.po_item_id === chosen.line.po_item_id : c.line.po_item_id == null),
+  )
+  const receivedQty = sameLine.reduce((s, c) => s + (Number(c.line.quantity_received) || 0), 0)
+
+  const ap = must(await db.from("accounts_payable").select("invoice_id, invoice_number").eq("po_id", chosen.po.po_id), "payable for credit") as any[]
+  return {
+    unitCost,
+    receivedQty,
+    poId: chosen.po.po_id,
+    poNumber: chosen.po.po_number || null,
+    grnNumber: chosen.receipt.grn_number || null,
+    supplierId: chosen.po.supplier_id,
+    vatRate: (Number(chosen.po.tax_amount) || 0) > 0 ? CREDIT_VAT_RATE : 0,
+    apInvoiceIds: ap.map((a) => a.invoice_id),
+    apInvoiceNumbers: ap.map((a) => a.invoice_number),
+    multiplePos: new Set(candidates.map((c) => c.po.po_id)).size > 1,
+  }
+}
+
 export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowResult> {
   const inventoryId = parsePositiveInt(input?.inventoryId)
   if (inventoryId === null) return failure(400, "inventoryId is required")
   try {
+    // ---- 1. read-only: decide the supplier and the credit BEFORE anything is deleted ----
+    const peek = must(await db.from("inventory").select("*").eq("inventory_id", inventoryId).maybeSingle(), "load returned item")
+    if (!peek) return failure(404, "Returned item not found (it may already have been restocked or removed)")
+    if (!peek.is_returned) return failure(400, "This item is not a pending return")
+    // The quantity written off is the quantity actually held, never the one the browser sent.
+    const quantity = Number(peek.quantity) || 0
+    const productName: string = input?.productName || peek.outsourced_name || ""
+    const soNumber: string | null = input?.soNumber || peek.so_number || null
+    const explicitSupplierId = input?.supplierNameId ? Number(input.supplierNameId) || null : null
+
+    const receipt = await findOriginatingReceipt(db, peek, productName, soNumber, explicitSupplierId)
+    let supplierId: number | null
+    let unitCost: number
+    let amount: number
+    const noteParts: string[] = []
+    if (receipt) {
+      supplierId = receipt.supplierId
+      unitCost = receipt.unitCost
+      const creditQty = Math.min(quantity, receipt.receivedQty) // never more than the original received line value
+      amount = round2(creditQty * unitCost * (1 + receipt.vatRate))
+      noteParts.push(`Basis: received cost ${unitCost} x ${creditQty}${receipt.vatRate ? ` + ${receipt.vatRate * 100}% VAT` : " (PO without VAT)"} = ${amount}`)
+      if (quantity > receipt.receivedQty) noteParts.push(`Returned qty ${quantity} exceeds received qty ${receipt.receivedQty}: credit capped at the received line value`)
+      if (receipt.multiplePos) noteParts.push("Several POs received this item: the latest receipt was used")
+    } else {
+      supplierId = await resolveSupplierId(db, input, peek, productName, soNumber)
+      unitCost = supplierId ? await resolveCreditUnitCost(db, supplierId, productName, peek, input) : 0
+      amount = quantity * unitCost
+      noteParts.push("No matching goods receipt found: cost taken from the PO item/batch/browser fallback, no VAT, no cap")
+    }
+    if (!supplierId) return failure(409, "The supplier of this returned item could not be determined, so no credit can be recorded. Nothing was changed.", { code: "CREDIT_SUPPLIER_UNRESOLVED" })
+    if (!(amount > 0)) return failure(409, "The supplier credit would be 0 (no cost could be found for this item). Nothing was changed.", { code: "CREDIT_AMOUNT_ZERO" })
+
+    const dup = must(
+      await db.from("supplier_credits").select("credit_id").eq("reference_type", "inventory").eq("reference_id", inventoryId).eq("supplier_id", supplierId).eq("status", "active").limit(1),
+      "check duplicate credit",
+    ) as any[]
+    if (dup.length > 0) return failure(409, "A supplier credit already exists for this returned item. Nothing was changed.", { code: "CREDIT_DUPLICATE", creditId: dup[0].credit_id })
+
+    // Link to the originating PO's payable only when it is unambiguous (POs with duplicate AP rows are left unlinked).
+    let linkedInvoiceId: number | null = null
+    if (receipt) {
+      if (receipt.apInvoiceIds.length === 1) linkedInvoiceId = receipt.apInvoiceIds[0]
+      else if (receipt.apInvoiceIds.length > 1) noteParts.push(`AP invoice not linked: ${receipt.apInvoiceIds.length} payable rows exist for this PO (${receipt.apInvoiceNumbers.join(", ")})`)
+      else noteParts.push("AP invoice not linked: no payable row exists for this PO")
+    }
+    const refs = [receipt?.poNumber ? `PO ${receipt.poNumber}` : null, receipt?.grnNumber ? `GRN ${receipt.grnNumber}` : null, soNumber ? `SO ${soNumber}` : null].filter(Boolean)
+    const description = `Return of ${productName || "item"} (Qty: ${quantity} @ ${unitCost})${soNumber ? ` from ${soNumber}` : ""}${refs.length ? ` | ${refs.join(" | ")}` : ""}`
+
+    // ---- 2. claim the holding row (guarded delete: only one request can win) ----
     const claim = await claimHoldingRow(db, inventoryId)
     if (!claim.ok) return claim.result
     const row = claim.row
-    // The quantity written off is the quantity actually held, never the one the browser sent.
-    const quantity = Number(row.quantity) || 0
-    const productName: string = input?.productName || ""
-    const soNumber: string | null = input?.soNumber || null
 
-    let supplierId: number | null = null
     let creditId: number | null = null
     try {
-      supplierId = await resolveSupplierId(db, input, row, productName, soNumber)
-      if (supplierId) {
-        const trueUnitCost = await resolveCreditUnitCost(db, supplierId, productName, row, input)
-        const credit = must(
-          await db
-            .from("supplier_credits")
-            .insert({
-              supplier_id: supplierId,
-              amount: quantity * trueUnitCost,
-              credit_type: "return",
-              reference_type: "inventory",
-              reference_id: inventoryId,
-              description: `Return of ${productName || "item"} (Qty: ${quantity} @ ${trueUnitCost})${soNumber ? ` from ${soNumber}` : ""}`,
-              status: "active",
-              created_at: new Date().toISOString(),
-            })
-            .select("credit_id")
-            .single(),
-          "create supplier credit",
-        )
-        creditId = credit.credit_id
-      }
+      const credit = must(
+        await db
+          .from("supplier_credits")
+          .insert({
+            supplier_id: supplierId,
+            amount,
+            credit_type: "return",
+            invoice_id: linkedInvoiceId,
+            reference_type: "inventory",
+            reference_id: inventoryId,
+            description,
+            notes: noteParts.join("; "),
+            status: "active",
+            created_at: new Date().toISOString(),
+          })
+          .select("credit_id")
+          .single(),
+        "create supplier credit",
+      )
+      creditId = credit.credit_id
       if (row.product_id) await settleReturnedBatches(db, row.product_id, row.warehouse_id, "remove")
     } catch (e) {
       // Undo: put the item back and drop a credit created by this request, so the write-off can be retried cleanly.
@@ -891,7 +1020,7 @@ export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowRe
       }
       return failure(500, `Failed to remove the returned item: ${errText(e)}. Nothing was changed.`)
     }
-    return { status: 200, body: { message: "Returned item removed successfully", supplierId } }
+    return { status: 200, body: { message: "Returned item removed successfully", supplierId, creditId, amount, invoiceId: linkedInvoiceId } }
   } catch (error: any) {
     console.error("[returns] remove error:", errText(error))
     return failure(500, "Failed to remove the returned item. Nothing was changed.")

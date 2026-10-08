@@ -347,7 +347,11 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           <p className="text-xs text-green-700 dark:text-green-500 mt-1">
                             {new Date(credit.created_at).toLocaleDateString()}
                             {credit.credit_type && ` • ${credit.credit_type}`}
+                            {credit.po_number && ` • PO ${credit.po_number}`}
+                            {credit.invoice_number && ` • AP ${credit.invoice_number}`}
+                            {credit.unapplied !== false && " • Unapplied"}
                           </p>
+                          {credit.notes && <p className="text-xs text-green-700/80 dark:text-green-500/80 mt-0.5">{credit.notes}</p>}
                         </div>
                         <p className="font-semibold text-green-700 dark:text-green-400 ml-4">
                           EGP {Number(credit.amount).toLocaleString()}
@@ -356,7 +360,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                     ))}
                   </div>
                   <div className="border-t border-green-200 dark:border-green-800 mt-3 pt-3 flex justify-between items-center font-semibold">
-                    <span>Total Available Credit:</span>
+                    <span>Total Unapplied Credit:</span>
                     <span className="text-lg text-green-700 dark:text-green-400">
                       EGP {(supplierCredits[selectedSupplier.id] || 0).toLocaleString()}
                     </span>
