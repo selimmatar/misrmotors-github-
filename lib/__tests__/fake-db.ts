@@ -19,6 +19,9 @@ const PK: Record<string, string> = {
   purchase_order_items: "po_item_id",
   goods_receipts: "receipt_id",
   goods_receipt_lines: "line_id",
+  warehouse_transfers: "transfer_id",
+  warehouse_transfer_items: "item_id",
+  inventory_transactions: "transaction_id",
   products: "product_id",
   sales_orders: "so_id",
   accounts_payable: "invoice_id",
@@ -95,7 +98,13 @@ class Query {
   max: number | null = null
   conflict: string[] = []
   constructor(private db: FakeDb, private table: string) {}
-  select(_columns?: string) { this.wantRows = true; return this }
+  embeds: string[] = []
+  /** `child_table(*)` embeds are joined on the parent's primary-key column name (e.g. purchase_orders.po_id = purchase_order_items.po_id) */
+  select(columns?: string) {
+    this.wantRows = true
+    for (const m of String(columns || "").matchAll(/(\w+)\(\*\)/g)) this.embeds.push(m[1])
+    return this
+  }
   insert(p: any) { this.op = "insert"; this.payload = p; return this }
   update(p: any) { this.op = "update"; this.payload = p; return this }
   upsert(p: any, opts: { onConflict?: string } = {}) { this.op = "upsert"; this.payload = p; this.conflict = (opts.onConflict || "").split(",").filter(Boolean); return this }
@@ -104,6 +113,16 @@ class Query {
   neq(c: string, v: any) { this.filters.push((r) => r[c] !== v); return this }
   in(c: string, vs: any[]) { this.filters.push((r) => vs.includes(r[c])); return this }
   is(c: string, v: any) { this.filters.push((r) => (r[c] ?? null) === v); return this }
+  /** PostgREST `or`: only the "col.is.null" / "col.eq.value" terms the routes use */
+  or(expr: string) {
+    const terms = expr.split(",").map((t) => {
+      const [col, op, ...rest] = t.split(".")
+      const val = rest.join(".")
+      return (r: Row) => (op === "is" ? (val === "null" ? (r[col] ?? null) === null : String(r[col]) === val) : String(r[col]) === val)
+    })
+    this.filters.push((r) => terms.some((f) => f(r)))
+    return this
+  }
   like(c: string, pattern: string) {
     const re = new RegExp("^" + pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$")
     this.filters.push((r) => re.test(String(r[c] ?? "")))
@@ -136,6 +155,16 @@ class Query {
   }
   private shape(rows: Row[]) {
     let out = rows
+    const parentPk = PK[this.table]
+    if (this.embeds.length > 0 && parentPk) {
+      out = out.map((r) => {
+        const copy: Row = { ...r }
+        for (const child of this.embeds) {
+          if (this.db.tables[child]) copy[child] = this.db.tables[child].filter((c) => c[parentPk] === r[parentPk]).map((c) => ({ ...c }))
+        }
+        return copy
+      })
+    }
     if (this.sortBy) {
       const { col, asc } = this.sortBy
       out = [...out].sort((a, b) => (a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0) * (asc ? 1 : -1))
