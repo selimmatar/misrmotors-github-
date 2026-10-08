@@ -12,7 +12,7 @@ export async function GET() {
       .from("purchase_orders")
       .select("*")
       .eq("cost_finalized", true)
-      .in("status", ["received", "approved"]) // Include both statuses
+      .in("status", ["received", "received_with_issues", "approved"]) // received_with_issues = received with a discrepancy
       .order("cost_finalized_at", { ascending: false })
 
     if (posError) {

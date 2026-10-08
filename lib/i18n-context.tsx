@@ -452,6 +452,9 @@ const translations: Record<Language, Record<string, string>> = {
     "po.type-international-desc": "Import from international supplier",
 
     // PO (ensure these exist)
+    "po.status.received": "Received",
+    "po.status.partially_received": "Partially Received",
+    "po.status.received_with_issues": "Received with Issues",
     "po.title": "Purchase Orders",
     // Bank Fields
     "po.bank-details": "Bank Details",
@@ -1234,6 +1237,9 @@ const translations: Record<Language, Record<string, string>> = {
     "po.type-international-desc": "استيراد من مورد دولي",
 
     // PO (Arabic)
+    "po.status.received": "تم الاستلام",
+    "po.status.partially_received": "استلام جزئي",
+    "po.status.received_with_issues": "تم الاستلام مع ملاحظات",
     "po.title": "أوامر الشراء",
     // Bank Fields (Arabic)
     "po.bank-details": "تفاصيل البنك",

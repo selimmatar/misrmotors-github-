@@ -216,11 +216,11 @@ test("R18. a discrepancy / short receipt never closes the PO; the rest stays rec
   assert.equal(poStatus(db, 1), "received")
 })
 
-test("R18b. a discrepancy on the LAST quantity still ends 'received' by quantity, with GRN status discrepancy", async () => {
+test("R18b. a discrepancy on the LAST quantity closes the PO as received_with_issues, with GRN status discrepancy", async () => {
   const db = baseDb()
   assert.equal((await post(rec(1, [stock(10, { discrepancyType: "damaged" }), outs(5)]))).status, 200)
   assert.equal(db.tables.goods_receipts[0].status, "discrepancy")
-  assert.equal(poStatus(db, 1), "received")
+  assert.equal(poStatus(db, 1), "received_with_issues")
 })
 
 test("R19. the remaining quantity comes from database state (earlier GRN lines), not from the client", async () => {

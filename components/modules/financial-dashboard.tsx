@@ -208,7 +208,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
   const pendingPOs = purchaseOrders.filter((po) => po.status === "pending")
   const approvedPOs = purchaseOrders.filter((po) => po.status === "approved")
   const rejectedPOs = purchaseOrders.filter((po) => po.status === "rejected")
-  const receivedPOs = purchaseOrders.filter((po) => po.status === "received")
+  const receivedPOs = purchaseOrders.filter((po) => po.status === "received" || po.status === "received_with_issues")
 
   const totalSalesRevenue = customerInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0)
 

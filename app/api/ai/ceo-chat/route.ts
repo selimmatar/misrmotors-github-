@@ -38,7 +38,7 @@ async function getBusinessContext() {
     draft: purchaseOrders?.filter((p) => p.status === "draft").length || 0,
     pending: purchaseOrders?.filter((p) => p.status === "pending").length || 0,
     approved: purchaseOrders?.filter((p) => p.status === "approved").length || 0,
-    received: purchaseOrders?.filter((p) => p.status === "received").length || 0,
+    received: purchaseOrders?.filter((p) => p.status === "received" || p.status === "received_with_issues").length || 0,
   }
 
   const soStatus = {

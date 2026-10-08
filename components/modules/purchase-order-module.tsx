@@ -226,6 +226,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       pending: { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
       approved: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
       received: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
+      partially_received: { bg: "bg-sky-50", text: "text-sky-700", border: "border-sky-200" },
+      received_with_issues: { bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200" },
       rejected: { bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
     }
     return colors[status] || colors.draft
