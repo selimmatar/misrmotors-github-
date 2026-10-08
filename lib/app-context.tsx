@@ -597,11 +597,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           notes: order.notes,
           payment_type: order.paymentType,
           total: order.total,
+          ...(order.rejectionReason ? { rejectionReason: order.rejectionReason } : {}),
         }),
       })
 
       if (!response.ok) {
-        throw new Error("Failed to update purchase order")
+        const errorBody = await response.json().catch(() => null)
+        throw new Error(errorBody?.error || "Failed to update purchase order")
       }
 
       // Refresh multiple caches that might be affected

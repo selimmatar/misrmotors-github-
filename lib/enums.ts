@@ -69,7 +69,8 @@ export const SCHEDULE_STATUS_VALUES: readonly ScheduleStatus[] = [
 
 // ============================================================================
 // PURCHASE ORDERS
-// DB: CHECK (status IN ('draft', 'pending', 'approved', 'rejected', 'received'))
+// DB: CHECK (status IN ('draft', 'pending', 'approved', 'rejected', 'received', 'partially_received',
+//           'received_with_issues'))
 // ============================================================================
 export const PO_STATUS = {
   DRAFT: "draft",
@@ -77,6 +78,8 @@ export const PO_STATUS = {
   APPROVED: "approved",
   REJECTED: "rejected",
   RECEIVED: "received",
+  PARTIALLY_RECEIVED: "partially_received",
+  RECEIVED_WITH_ISSUES: "received_with_issues",
 } as const
 
 export type POStatus = (typeof PO_STATUS)[keyof typeof PO_STATUS]
@@ -87,6 +90,8 @@ export const PO_STATUS_VALUES: readonly POStatus[] = [
   PO_STATUS.APPROVED,
   PO_STATUS.REJECTED,
   PO_STATUS.RECEIVED,
+  PO_STATUS.PARTIALLY_RECEIVED,
+  PO_STATUS.RECEIVED_WITH_ISSUES,
 ] as const
 
 // ============================================================================

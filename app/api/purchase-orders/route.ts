@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
+import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES } from "@/lib/po-status"
 
 export const dynamic = "force-dynamic"
 
@@ -347,6 +348,47 @@ export async function POST(request: Request) {
   }
 }
 
+// Creates the AP invoice for an approved PO unless one already exists. Returns the error, or null when the invoice
+// exists afterwards. Payment is a separate explicit step (POST /api/accounts-payable/payments).
+async function ensureApInvoice(supabase: any, currentOrder: any) {
+  // limit(1) rather than maybeSingle(): a PO with duplicate AP rows (historical data) must not error here.
+  const { data: existingInvoices, error: lookupError } = await supabase
+    .from("accounts_payable")
+    .select("invoice_id")
+    .eq("po_id", currentOrder.po_id)
+    .limit(1)
+  if (lookupError) return lookupError
+  if (existingInvoices && existingInvoices.length > 0) return null
+
+  const paymentType = currentOrder.payment_type || currentOrder.payment_terms || "cash"
+  const invoiceData: any = {
+    invoice_number: `APINV-${currentOrder.po_number}`,
+    supplier_id: currentOrder.supplier_id,
+    po_id: currentOrder.po_id,
+    invoice_date: new Date().toISOString().split("T")[0],
+    due_date: currentOrder.down_payment_due_date || currentOrder.payment_start_date || new Date().toISOString().split("T")[0],
+    amount: currentOrder.total,
+    paid_amount: 0,
+    status: "pending",
+    payment_type: paymentType,
+    payment_terms: paymentType,
+    installment_months: currentOrder.installments || 1,
+    months_paid: 0,
+    down_payment_amount: currentOrder.down_payment_amount || null,
+    down_payment_percent: currentOrder.down_payment_percent || null,
+    down_payment_type: currentOrder.down_payment_type || null,
+    down_payment_due_date: currentOrder.down_payment_due_date || null,
+    remaining_amount: currentOrder.remaining_amount || null,
+    remaining_installment_months: currentOrder.remaining_installment_months || null,
+    monthly_amount: currentOrder.monthly_amount || null,
+    payment_start_date: currentOrder.payment_start_date || null,
+    schedule_entries: currentOrder.schedule_entries || null,
+    schedule_mode: currentOrder.schedule_mode || "AUTO",
+  }
+  const { error: invoiceError } = await supabase.from("accounts_payable").insert(invoiceData).select().single()
+  return invoiceError || null
+}
+
 export async function PUT(request: Request) {
   try {
     const supabase = createAdminClient()
@@ -486,15 +528,14 @@ export async function PUT(request: Request) {
       delete updates.paymentStartDate
     }
 
-    let scheduleEntriesValue = null
-    if (updates.schedule_entries) {
-      scheduleEntriesValue =
-        typeof updates.schedule_entries === "string"
+    // Only touch schedule_entries when the caller sent it (an approve/reject must not wipe it).
+    if (updates.schedule_entries !== undefined) {
+      updates.schedule_entries = updates.schedule_entries
+        ? typeof updates.schedule_entries === "string"
           ? updates.schedule_entries
           : JSON.stringify(updates.schedule_entries)
+        : null
     }
-
-    updates.schedule_entries = scheduleEntriesValue
 
     // Add bank details fields to updates
     if (updates.bankName !== undefined) {
@@ -527,25 +568,70 @@ export async function PUT(request: Request) {
       delete updates.bankHolderName
     }
 
-    const { data: order, error: orderError } = await supabase
-      .from("purchase_orders")
-      .update(updates)
-      .eq("po_id", id)
-      .select()
-      .single()
-
-    if (orderError || !order) {
-      console.error("Purchase Orders PUT: Error updating order", orderError)
-      return NextResponse.json({ error: orderError?.message || "Failed to update purchase order" }, { status: 500 })
+    const poId = Number.parseInt(id)
+    if (!Number.isFinite(poId)) {
+      return NextResponse.json({ error: "A valid purchase order id is required" }, { status: 400 })
     }
 
+    const { data: current, error: currentError } = await supabase
+      .from("purchase_orders")
+      .select("*")
+      .eq("po_id", poId)
+      .maybeSingle()
+    if (currentError) {
+      console.error("Purchase Orders PUT: Error reading order", currentError)
+      return NextResponse.json({ error: "Failed to read purchase order" }, { status: 500 })
+    }
+    if (!current) {
+      return NextResponse.json({ error: "Purchase order not found" }, { status: 404 })
+    }
+
+    const previousStatus: string = current.status
+    const targetStatus: string = updates.status !== undefined ? updates.status : previousStatus
+    if (!isAllowedPoTransition(previousStatus, targetStatus)) {
+      return NextResponse.json(
+        { error: `A purchase order cannot move from "${previousStatus}" to "${targetStatus}"`, code: "INVALID_PO_TRANSITION" },
+        { status: 409 },
+      )
+    }
+    if (items && !PO_ITEMS_EDITABLE_STATUSES.includes(previousStatus)) {
+      return NextResponse.json(
+        { error: `The items of a "${previousStatus}" purchase order cannot be changed`, code: "PO_ITEMS_LOCKED" },
+        { status: 409 },
+      )
+    }
+
+    const statusChanged = targetStatus !== previousStatus
+    const approving = statusChanged && targetStatus === "approved"
+    if (approving && updates.approved_at === undefined) updates.approved_at = new Date().toISOString()
+
+    // Compare-and-swap on the status we validated against, so two concurrent requests cannot both win.
+    let order: any = null
+    if (Object.keys(updates).length === 0) {
+      order = current // nothing to write (e.g. an items-only request)
+    } else {
+      let updateQuery = supabase.from("purchase_orders").update(updates).eq("po_id", poId)
+      if (statusChanged) updateQuery = updateQuery.eq("status", previousStatus)
+      const { data: updatedRows, error: orderError } = await updateQuery.select()
+      if (orderError) {
+        console.error("Purchase Orders PUT: Error updating order", orderError)
+        return NextResponse.json({ error: orderError.message || "Failed to update purchase order" }, { status: 500 })
+      }
+      order = Array.isArray(updatedRows) ? updatedRows[0] : null
+    }
+    if (!order) {
+      return NextResponse.json(
+        { error: "The purchase order was changed by someone else; reload and try again", code: "PO_STATUS_CONFLICT" },
+        { status: 409 },
+      )
+    }
 
     if (items) {
-      await supabase.from("purchase_order_items").delete().eq("po_id", id)
+      await supabase.from("purchase_order_items").delete().eq("po_id", poId)
 
       if (items.length > 0) {
         const itemsWithPoId = items.map((item: any) => ({
-          po_id: Number.parseInt(id),
+          po_id: poId,
           product_id: Number.parseInt(item.product_id || item.productId) || null,
           item_name_snapshot: item.productName || item.product_name || null,
           quantity: item.quantity,
@@ -566,75 +652,58 @@ export async function PUT(request: Request) {
       }
     }
 
-    if (updates.status === "approved") {
-      const { data: currentOrder } = await supabase.from("purchase_orders").select("*").eq("po_id", id).single()
+    // A repeat approval of an already approved PO repairs a missing AP invoice, except while the original
+    // approval (which owns the AP insert and a possible revert) is still in flight.
+    const approvalInFlight =
+      !approving && current.approved_at && Date.now() - new Date(current.approved_at).getTime() < 30_000
+    if (targetStatus === "approved" && !approvalInFlight) {
+      const apError = await ensureApInvoice(supabase, order)
 
-      if (currentOrder) {
-        // Dedup check: only create AP entry if one doesn't already exist for this PO
-        const { data: existingInvoice } = await supabase
-          .from("accounts_payable")
-          .select("invoice_id")
-          .eq("po_id", id)
-          .maybeSingle()
-
-        if (!existingInvoice) {
-          const paymentType = currentOrder.payment_type || currentOrder.payment_terms || "cash"
-
-          const invoiceData: any = {
-            invoice_number: `APINV-${currentOrder.po_number}`,
-            supplier_id: currentOrder.supplier_id,
-            po_id: currentOrder.po_id,
-            invoice_date: new Date().toISOString().split("T")[0],
-            due_date: currentOrder.down_payment_due_date || currentOrder.payment_start_date || new Date().toISOString().split("T")[0],
-            amount: currentOrder.total,
-            paid_amount: 0,
-            status: "pending", // payment is an explicit step (POST /api/accounts-payable/payments), never implied by approval
-            payment_type: paymentType,
-            payment_terms: paymentType,
-            installment_months: currentOrder.installments || 1,
-            months_paid: 0,
-            down_payment_amount: currentOrder.down_payment_amount || null,
-            down_payment_percent: currentOrder.down_payment_percent || null,
-            down_payment_type: currentOrder.down_payment_type || null,
-            down_payment_due_date: currentOrder.down_payment_due_date || null,
-            remaining_amount: currentOrder.remaining_amount || null,
-            remaining_installment_months: currentOrder.remaining_installment_months || null,
-            monthly_amount: currentOrder.monthly_amount || null,
-            payment_start_date: currentOrder.payment_start_date || null,
-            schedule_entries: currentOrder.schedule_entries || null,
-            schedule_mode: currentOrder.schedule_mode || "AUTO",
-          }
-
-          const { error: invoiceError } = await supabase
-            .from("accounts_payable")
-            .insert(invoiceData)
-            .select()
-            .single()
-
-          if (invoiceError) {
-            console.error("Purchase Orders PUT: Error creating AP invoice on approval", invoiceError)
-            return NextResponse.json(
-              {
-                error: "The purchase order was approved but its AP invoice could not be created. Contact an administrator.",
+      if (apError) {
+        console.error("Purchase Orders PUT: Error creating AP invoice on approval", apError)
+        let reverted = false
+        if (approving) {
+          // Put the PO back to pending so the failure is real to the user and the approval can simply be retried.
+          const { data: revertedRows, error: revertError } = await supabase
+            .from("purchase_orders")
+            .update({ status: previousStatus, approved_at: current.approved_at ?? null })
+            .eq("po_id", poId)
+            .eq("status", "approved")
+            .select("po_id")
+          reverted = !revertError && Array.isArray(revertedRows) && revertedRows.length > 0
+          if (!reverted) console.error("Purchase Orders PUT: could not revert approval after AP failure", revertError)
+        }
+        return NextResponse.json(
+          reverted
+            ? {
+                error: "The AP invoice could not be created, so the purchase order was NOT approved. Please try again.",
+                poApproved: false,
+                apInvoiceCreated: false,
+              }
+            : {
+                error: "The purchase order is approved but its AP invoice could not be created. Contact an administrator.",
                 poApproved: true,
                 apInvoiceCreated: false,
               },
-              { status: 500 },
-            )
-          }
+          { status: 500 },
+        )
+      }
+
+      // Notify only on the first successful approval; a notification failure must not fail a committed approval.
+      if (approving && typeof window === "undefined") {
+        try {
+          const { WebhookService } = await import("@/lib/webhook-service")
+          const webhookService = WebhookService.getInstance()
+          await webhookService.trigger("purchase_order.approved", {
+            orderId: order.po_id,
+            orderNumber: order.po_number,
+            status: order.status,
+            total: order.total,
+          })
+        } catch (webhookError) {
+          console.error("Purchase Orders PUT: purchase_order.approved webhook failed", webhookError)
         }
       }
-    }
-
-    if (updates.status === "approved" && typeof window === "undefined") {
-      const { WebhookService } = await import("@/lib/webhook-service")
-      const webhookService = WebhookService.getInstance()
-      await webhookService.trigger("purchase_order.approved", {
-        orderId: order.po_id,
-        orderNumber: order.po_number,
-        status: order.status,
-        total: order.total,
-      })
     }
 
     return NextResponse.json({ ...order, id: order.po_id.toString(), items })

@@ -496,7 +496,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       alert(`Purchase order ${order.poNumber} has been approved and added to Accounts Payable`)
     } catch (error) {
       console.error("Error approving PO:", error)
-      alert("Failed to approve purchase order. Please try again.")
+      alert(`Failed to approve purchase order: ${error instanceof Error ? error.message : "please try again"}`)
     }
   }
 
@@ -1034,7 +1034,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       alert(`Purchase order ${order.poNumber} has been rejected`)
     } catch (error) {
       console.error("Error rejecting PO:", error)
-      alert("Failed to reject purchase order. Please try again.")
+      alert(`Failed to reject purchase order: ${error instanceof Error ? error.message : "please try again"}`)
     }
   }
 

@@ -38,7 +38,19 @@ const adminStub = {
     return current
   },
 }
-const webhookStub = { WebhookService: { getInstance: () => ({ trigger: async () => undefined }) } }
+/** Webhook events the routes fired (cleared by the tests that look at it). */
+export const webhookCalls: { event: string; payload: any }[] = []
+export const webhookControl = { fail: false }
+const webhookStub = {
+  WebhookService: {
+    getInstance: () => ({
+      trigger: async (event: string, payload: any) => {
+        if (webhookControl.fail) throw new Error("webhook down")
+        webhookCalls.push({ event, payload })
+      },
+    }),
+  },
+}
 
 const M = Module as any
 const originalLoad = M._load
