@@ -20,7 +20,6 @@ import { Eye, Upload, CheckCircle, Loader2, Wrench } from "lucide-react"
 import { ReportGenerator } from "@/components/report-generator"
 import { MaintenanceInvoiceTab } from "@/components/accounting/maintenance-invoice-tab"
 import { resolveInstallmentCount } from "@/lib/payment-type"
-import { buildMarkAsPaidRequest } from "@/lib/ap-mark-paid"
 
 export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
   const { t, formatNumber, formatCurrency, language } = useI18n()
@@ -748,23 +747,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                           </div>
                         </div>
                         <div className="flex gap-2 mt-4">
-                          {invoice.status === "pending" && paymentDue && (
-                            // Supplier payments are recorded only by POST /api/accounts-payable/payments, which needs a
-                            // payment method and a receipt. This button has neither, so it is disabled with the reason
-                            // and never writes to the invoice or the ledger itself.
-                            <Button
-                              size="sm"
-                              disabled
-                              title={(() => {
-                                const plan = buildMarkAsPaidRequest({ invoice, installmentMonths })
-                                return plan.ok
-                                  ? "Record this payment from the Accounts Payable screen"
-                                  : plan.reason
-                              })()}
-                            >
-                              {t("button.mark_as_paid")}
-                            </Button>
-                          )}
                           <Button
                             size="sm"
                             variant="outline"
