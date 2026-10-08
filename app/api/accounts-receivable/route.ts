@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
+import { resolveInstallmentCount } from "@/lib/payment-type"
 import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
@@ -71,7 +72,9 @@ export async function GET() {
         amount: invoice.amount,
         collectedAmount: invoice.collected_amount || 0,
         status: invoice.status,
-        installmentMonths: invoice.installment_months || 0,
+        // Single-payment invoices (cash / bank transfer / cheque) are always 1 payment; a stale stored 6 is
+        // never exposed as an installment plan. Display-only: the stored value is not modified.
+        installmentMonths: resolveInstallmentCount(invoice.payment_terms, invoice.installment_months) || 0,
         monthsPaid: invoice.months_paid || 0,
         isMaintenance: invoice.invoice_number?.startsWith("INV-MNT-") || false,
         items: invoice.items || [],

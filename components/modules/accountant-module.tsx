@@ -19,6 +19,7 @@ import type { SupplierInvoice, CustomerInvoice, SalesOrder } from "@/lib/types"
 import { Eye, Upload, CheckCircle, Loader2, Wrench } from "lucide-react"
 import { ReportGenerator } from "@/components/report-generator"
 import { MaintenanceInvoiceTab } from "@/components/accounting/maintenance-invoice-tab"
+import { resolveInstallmentCount } from "@/lib/payment-type"
 
 export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
   const { t, formatNumber, formatCurrency, language } = useI18n()
@@ -193,7 +194,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     if (markReceivedInFlightRef.current) return
 
     const so = salesOrders.find((s) => s.id === invoice.soId)
-    const installmentMonths = so?.installments || 0
+    const installmentMonths = resolveInstallmentCount(so?.paymentType || so?.paymentTerms, so?.installments) || 0
     if (installmentMonths <= 0) {
       alert("This invoice has no installment plan on its sales order, so the instalment amount cannot be determined. Use the Accounts Receivable screen to record the payment.")
       return
@@ -845,7 +846,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                 <div className="space-y-4">
                   {installmentCustomerInvoices.map((invoice) => {
                     const so = salesOrders.find((s) => s.id === invoice.soId)
-                    const installmentMonths = so?.installments || 0
+                    const installmentMonths = resolveInstallmentCount(so?.paymentType || so?.paymentTerms, so?.installments) || 0
                     const monthlyAmount = installmentMonths ? invoice.amount / installmentMonths : 0
                     const progressPercentage = installmentMonths
                       ? ((invoice.monthsPaid || 0) / installmentMonths) * 100

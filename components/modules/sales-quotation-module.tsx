@@ -27,6 +27,7 @@ import { DiscountFields, calculateDiscount, type DiscountType } from "@/componen
 import { OrderSummaryCard } from "@/components/order-summary-card"
 import { getOrCreateClientId } from "@/lib/client-id"
 import * as XLSX from "xlsx"
+import { normalizeQuotationPaymentDetails } from "@/lib/payment-type"
 
 interface QuotationItem {
   id: string
@@ -759,7 +760,8 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
           notes: notes,
           // Payment fields
           payment_type: paymentType,
-          payment_details: paymentDetails,
+          // Stored with the real payment type; single-payment types drop the installment defaults.
+          payment_details: normalizeQuotationPaymentDetails(paymentType, paymentDetails),
           // Discount fields
           discount_type: discountType,
           discount_value: discountValue,

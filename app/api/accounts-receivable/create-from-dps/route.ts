@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { resolveInstallmentCount } from "@/lib/payment-type"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
@@ -136,7 +137,9 @@ export async function POST(request: Request) {
         .eq("so_id", firstSoId)
         .single()
       
-      const installmentMonths = soData?.installments || 1
+      // Cash / bank transfer / cheque are single payments: always 1, even if the SO still carries a stale
+      // default of 6. Installments and hybrid keep the SO's stored count.
+      const installmentMonths = resolveInstallmentCount(paymentType, soData?.installments) || 1
 
       // NOTE: We intentionally do NOT block on "an invoice already exists for this SO".
       // One sales order can have multiple delivery permits, and the accountant may

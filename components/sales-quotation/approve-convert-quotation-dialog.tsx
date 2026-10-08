@@ -20,6 +20,7 @@ import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
 import { PaymentTypeSelector, InstallmentFields, ChequeFields } from "@/components/payment"
 import type { PaymentType, PaymentDetails, ItemCategory } from "@/lib/types"
+import { normalizeQuotationPaymentDetails } from "@/lib/payment-type"
 
 interface QuotationItemInput {
   id?: number
@@ -307,7 +308,9 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
           total: netTotal,
           net_total: netTotal,
           payment_type: paymentType,
-          payment_details: isHybrid ? quotation.payment_details : paymentDetails,
+          payment_details: isHybrid
+            ? quotation.payment_details
+            : normalizeQuotationPaymentDetails(paymentType, paymentDetails),
           items: payloadItems,
         }),
       })

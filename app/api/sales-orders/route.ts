@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
+import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
 
 export const dynamic = "force-dynamic"
 
@@ -259,18 +260,8 @@ export async function POST(request: Request) {
     }
 
 
-    let finalPaymentTerms = paymentTerms
-    if (!finalPaymentTerms) {
-      if (finalPaymentType === "cash") {
-        finalPaymentTerms = "prepaid"
-      } else if (finalPaymentType === "installments" || finalPaymentType === "hybrid") {
-        finalPaymentTerms = "installment"
-      } else if (finalPaymentType === "cheque") {
-        finalPaymentTerms = "cheque"
-      } else {
-        finalPaymentTerms = "prepaid"
-      }
-    }
+    // payment_terms only allows 'prepaid' | 'installment' (DB CHECK); cheque is a single payment -> 'prepaid'.
+    const finalPaymentTerms = paymentTerms || toSalesOrderPaymentTerms(finalPaymentType)
 
     const finalWarehouseId = warehouseId || warehouse_id || null
     
@@ -284,7 +275,8 @@ export async function POST(request: Request) {
       delivery_contact_name: finalDeliveryContactName || "",
       delivery_contact_phone: finalDeliveryContactPhone || "",
       payment_terms: finalPaymentTerms,
-      installments: installments,
+      // Single-payment types (cash / bank transfer / cheque) always have exactly 1 installment.
+      installments: resolveInstallmentCount(finalPaymentType || "cash", installments),
       total: total,
       status: status || "draft",
       notes: notes || "",
@@ -583,6 +575,9 @@ export async function PUT(request: Request) {
     if (finalDeliveryContactPhone) dbUpdates.delivery_contact_phone = finalDeliveryContactPhone
     if (updates.paymentTerms) dbUpdates.payment_terms = updates.paymentTerms
     if (updates.installments !== undefined) dbUpdates.installments = updates.installments
+    // A single-payment type (cash / bank transfer / cheque) is always 1 installment, even if the editing
+    // form sent its stale default (6).
+    if (isSinglePayment(finalPaymentType)) dbUpdates.installments = 1
     if (updates.total !== undefined) dbUpdates.total = updates.total
     if (status) dbUpdates.status = status
     // notes is destructured separately from ...updates, so check the standalone variable
@@ -617,7 +612,8 @@ export async function PUT(request: Request) {
         dbUpdates.down_payment_cheque_bank = paymentDetails.downPaymentChequeBank
       if (paymentDetails.downPaymentChequeDueDate !== undefined)
         dbUpdates.down_payment_cheque_due_date = paymentDetails.downPaymentChequeDueDate
-      if (paymentDetails.installmentMonths !== undefined) dbUpdates.installments = paymentDetails.installmentMonths
+      if (paymentDetails.installmentMonths !== undefined && !isSinglePayment(finalPaymentType))
+        dbUpdates.installments = paymentDetails.installmentMonths
     }
 
     if (schedule_entries) {

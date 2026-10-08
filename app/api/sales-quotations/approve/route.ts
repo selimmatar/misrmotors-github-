@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getConvertedSo, LOCKED_QUOTATION_STATUSES } from "@/lib/sales-quotations/converted"
+import { buildSalesOrderPaymentFields } from "@/lib/payment-type"
 import { type NextRequest, NextResponse } from "next/server"
 
 // Converts a quotation into a sales order using the values STORED on the quotation.
@@ -102,29 +103,11 @@ export async function POST(request: NextRequest) {
         discount_type: quotation.discount_type || 'none',
         discount_value: quotation.discount_value || 0,
         discount_amount: quotation.discount_amount || 0,
-        // Payment info
-        payment_type: paymentType,
-        // payment_terms only allows 'prepaid' or 'installment' - map accordingly
-        payment_terms: paymentType === "installments" || paymentType === "hybrid" ? "installment" : "prepaid",
-        installments: paymentDetails.installmentMonths || null,
-        monthly_amount: paymentDetails.monthlyAmount || null,
-        payment_start_date: safeDate(paymentDetails.paymentStartDate),
-        // Down payment (for hybrid)
-        down_payment_type: paymentDetails.downPaymentType || null,
-        down_payment_percent: paymentDetails.downPaymentPercent || null,
-        down_payment_amount: paymentDetails.downPaymentAmount || null,
-        down_payment_due_date: safeDate(paymentDetails.downPaymentDueDate),
-        down_payment_cheque_number: paymentDetails.downPaymentChequeNumber || null,
-        down_payment_cheque_bank: paymentDetails.downPaymentChequeBank || null,
-        down_payment_cheque_due_date: safeDate(paymentDetails.downPaymentChequeDueDate),
-        remaining_installment_months: paymentDetails.remainingInstallmentMonths || null,
-        remaining_amount: paymentDetails.remainingAmount || null,
-        // Cheque info
-        cheque_number: paymentDetails.chequeNumber || null,
-        cheque_bank_name: paymentDetails.chequeBankName || null,
-        cheque_due_date: safeDate(paymentDetails.chequeDueDate),
-        cheque_amount: paymentDetails.chequeAmount || null,
-        cheque_notes: paymentDetails.chequeNotes || null,
+        // Payment info. payment_terms only allows 'prepaid' or 'installment' (DB CHECK, unchanged).
+        // Cash / bank transfer / cheque are single payments: they get installments = 1 and no installment,
+        // down-payment or (for non-cheque) cheque fields, whatever default values the quotation JSON holds.
+        // Installments and hybrid are copied exactly as before.
+        ...buildSalesOrderPaymentFields(paymentType, paymentDetails),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

@@ -70,6 +70,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { EditApprovedOrderDialog } from "@/components/sales-order/edit-approved-order-dialog"
+import { toSalesOrderPaymentTerms } from "@/lib/payment-type"
 
 // Declare SalesOrderModuleProps type
 type SalesOrderModuleProps = {
@@ -809,7 +810,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       netTotal: finalNetTotal, // Explicit net total field
       notes: formData.notes,
       paymentType,
-      paymentTerms: paymentType === "cash" || paymentType === "bank_transfer" ? "prepaid" : "installment",
+      paymentTerms: toSalesOrderPaymentTerms(paymentType), // cheque is a single payment -> "prepaid" (same as quotation conversion)
       installments:
         paymentType === "installments"
           ? paymentDetails.installmentMonths

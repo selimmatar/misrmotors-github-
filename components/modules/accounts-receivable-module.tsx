@@ -19,6 +19,7 @@ import { Progress } from "@/components/ui/progress"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import type { CustomerInvoice } from "@/lib/types"
+import { isSinglePayment } from "@/lib/payment-type"
 import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, ChevronDown, Upload, Search } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -316,10 +317,13 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     if (invoice.isMaintenance || invoice.invoiceNumber?.startsWith("INV-MNT-")) {
       return invoice.installmentMonths && invoice.installmentMonths > 0 ? invoice.installmentMonths : 1
     }
+    const so = salesOrders.find((s) => s.id === invoice.soId)
+    // Cash / bank transfer / cheque are single payments, whatever stale installment count is stored.
+    // (Only when the sales order is known, so a not-yet-loaded order cannot turn an installment plan into 1.)
+    if (so && isSinglePayment(getSOPaymentType(invoice.soId, invoice))) return 1
     if (invoice.installmentMonths && invoice.installmentMonths > 0) {
       return invoice.installmentMonths
     }
-    const so = salesOrders.find((s) => s.id === invoice.soId)
     return so?.installments || 1
   }
 
