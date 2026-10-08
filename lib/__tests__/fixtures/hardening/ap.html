@@ -1,88 +1,9 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
-import { escapeHtml } from "@/lib/html-escape"
 
-export const dynamic = "force-dynamic"
-
-// Numbers formatter - returns English (Western) numerals to avoid calculation issues
-function toArabicNumbers(num: number | string): string {
-  return String(num)
-}
-
-// Format date in Arabic
-function formatArabicDate(dateStr: string): string {
-  if (!dateStr) return "-"
-  const date = new Date(dateStr)
-  const day = toArabicNumbers(date.getDate())
-  const month = toArabicNumbers(date.getMonth() + 1)
-  const year = toArabicNumbers(date.getFullYear())
-  return `${day}/${month}/${year}`
-}
-
-// Format currency in Arabic
-function formatArabicCurrency(amount: number): string {
-  return `${toArabicNumbers(amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} ج.م`
-}
-
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params
-    const invoiceId = Number.parseInt(id)
-
-    if (!invoiceId || isNaN(invoiceId)) {
-      return NextResponse.json({ error: "Invalid invoice ID" }, { status: 400 })
-    }
-
-    const supabase = createAdminClient()
-
-    // Fetch AP invoice with related data
-    const { data: invoice, error: invoiceError } = await supabase
-      .from("accounts_payable")
-      .select(`
-        *,
-        suppliers:supplier_id (supplier_name, phone, address, city),
-        purchase_orders:po_id (
-          po_number,
-          order_date,
-          total,
-          payment_type,
-          payment_terms,
-          purchase_order_items (
-            quantity,
-            unit_price,
-            total,
-            item_type,
-            outsourced_name,
-            item_name_snapshot,
-            products:product_id (product_name, sku)
-          )
-        )
-      `)
-      .eq("invoice_id", invoiceId)
-      .single()
-
-    if (invoiceError || !invoice) {
-      console.error("AP Invoice PDF - Invoice not found:", invoiceId, invoiceError)
-      return new NextResponse(generateErrorHtml("فاتورة المورد غير موجودة", `Invoice ID: ${id}`), {
-        status: 404,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      })
-    }
-
-    const items = invoice.purchase_orders?.purchase_order_items || []
-    const supplier = invoice.suppliers || {}
-    const po = invoice.purchase_orders || {}
-
-    const paymentType = invoice.payment_type || "cash"
-
-    // Generate HTML invoice
-    const html = `
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>فاتورة مورد - ${escapeHtml(invoice.invoice_number)}</title>
+  <title>فاتورة مورد - APINV-PO-2026-0001</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
     
@@ -318,7 +239,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 </head>
 <body>
   <div class="print-bar no-print">
-    <span>فاتورة مورد - ${escapeHtml(invoice.invoice_number)}</span>
+    <span>فاتورة مورد - APINV-PO-2026-0001</span>
     <div>
       <button onclick="window.print()">🖨️ طباعة</button>
       <button onclick="window.close()" style="background: #fee2e2; color: #dc2626;">✕ إغلاق</button>
@@ -329,14 +250,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   <div class="invoice-container">
     <div class="header">
       <div class="company-header">
-        <div class="company-name-ar">${COMPANY_SETTINGS.nameAr}</div>
-        <div class="company-name-en">${COMPANY_SETTINGS.nameEn}</div>
+        <div class="company-name-ar">شركة مصر للمحركات</div>
+        <div class="company-name-en">Misr Motors Co.</div>
         <div class="company-details">
-          <div>العنوان: ${COMPANY_SETTINGS.address}</div>
-          <div>تليفون: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax}</div>
-          <div>البريد الإلكتروني: ${COMPANY_SETTINGS.email}</div>
+          <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
+          <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
+          <div>البريد الإلكتروني: sales@misrmotors.com</div>
         </div>
-        <div class="tax-info">${getTaxInfo()}</div>
+        <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
       </div>
       <div class="document-title">
         <h1>فاتورة مورد</h1>
@@ -350,45 +271,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     <div class="document-info">
       <div class="info-row">
         <span class="info-label">رقم الفاتورة:</span>
-        <span class="info-value">${escapeHtml(invoice.invoice_number)}</span>
+        <span class="info-value">APINV-PO-2026-0001</span>
       </div>
       <div class="info-row">
         <span class="info-label">تاريخ الفاتورة:</span>
-        <span class="info-value">${formatArabicDate(invoice.invoice_date)}</span>
+        <span class="info-value"><DATE></span>
       </div>
       <div class="info-row">
         <span class="info-label">رقم أمر الشراء:</span>
-        <span class="info-value">${escapeHtml(po.po_number || "-")}</span>
+        <span class="info-value">PO-2026-0001</span>
       </div>
       <div class="info-row">
         <span class="info-label">تاريخ الاستحقاق:</span>
-        <span class="info-value">${formatArabicDate(invoice.due_date)}</span>
+        <span class="info-value"><DATE></span>
       </div>
       <div class="info-row">
         <span class="info-label">الحالة:</span>
-        <span class="status-badge status-${escapeHtml(invoice.status)}">${
-          invoice.status === "pending"
-            ? "قيد الا��تظار"
-            : invoice.status === "paid"
-              ? "مدفوعة"
-              : invoice.status === "partially_paid"
-                ? "مدفوعة جزئياً"
-                : escapeHtml(invoice.status)
-        }</span>
+        <span class="status-badge status-partially_paid">مدفوعة جزئياً</span>
       </div>
       <div class="info-row">
         <span class="info-label">نوع الدفع:</span>
-        <span class="info-value">${
-          paymentType === "hybrid"
-            ? "هجين (مقدم + أقساط)"
-            : paymentType === "installments"
-              ? "أقساط"
-              : paymentType === "cash"
-                ? "نقدي"
-                : paymentType === "bank_transfer"
-                  ? "تحويل بنكي"
-                  : escapeHtml(paymentType)
-        }</span>
+        <span class="info-value">هجين (مقدم + أقساط)</span>
       </div>
     </div>
     
@@ -397,19 +300,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       <div class="supplier-info">
         <div class="info-row">
           <span class="info-label">اسم المورد:</span>
-          <span class="info-value">${escapeHtml(supplier.supplier_name || "-")}</span>
+          <span class="info-value">Supplier Three</span>
         </div>
         <div class="info-row">
           <span class="info-label">الهاتف:</span>
-          <span class="info-value">${escapeHtml(supplier.phone || "-")}</span>
+          <span class="info-value">Phone-0400</span>
         </div>
         <div class="info-row">
           <span class="info-label">العنوان:</span>
-          <span class="info-value">${escapeHtml(supplier.address || "-")}</span>
+          <span class="info-value">AP Street</span>
         </div>
         <div class="info-row">
           <span class="info-label">المدينة:</span>
-          <span class="info-value">${escapeHtml(supplier.city || "-")}</span>
+          <span class="info-value">Giza</span>
         </div>
       </div>
     </div>
@@ -428,20 +331,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           </tr>
         </thead>
         <tbody>
-          ${items
-            .map(
-              (item: any, index: number) => `
+          
             <tr>
-              <td class="number-col">${toArabicNumbers(index + 1)}</td>
-              <td>${escapeHtml(item.products?.product_name || item.item_name_snapshot || item.outsourced_name || "-")}</td>
-              <td>${escapeHtml(item.products?.sku || (item.item_type === "outsourced" ? "خارجي" : "-"))}</td>
-              <td class="qty-col">${toArabicNumbers(item.quantity)}</td>
-              <td class="price-col">${formatArabicCurrency(item.unit_price || 0)}</td>
-              <td class="price-col">${formatArabicCurrency(item.total || 0)}</td>
+              <td class="number-col">1</td>
+              <td>Gasket G</td>
+              <td>SKU-G</td>
+              <td class="qty-col">4</td>
+              <td class="price-col">250.00 ج.م</td>
+              <td class="price-col">1,000.00 ج.م</td>
             </tr>
-          `,
-            )
-            .join("")}
+          
+            <tr>
+              <td class="number-col">2</td>
+              <td>Outsourced Job</td>
+              <td>خارجي</td>
+              <td class="qty-col">1</td>
+              <td class="price-col">150.00 ج.م</td>
+              <td class="price-col">150.00 ج.م</td>
+            </tr>
+          
         </tbody>
       </table>
     </div>
@@ -450,56 +358,52 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       <div class="totals-box">
         <div class="total-row">
           <span>إجمالي الفاتورة</span>
-          <span>${formatArabicCurrency(invoice.amount || 0)}</span>
+          <span>1,150.00 ج.م</span>
         </div>
         <div class="total-row">
           <span>المدفوع</span>
-          <span>${formatArabicCurrency(invoice.paid_amount || 0)}</span>
+          <span>300.00 ج.م</span>
         </div>
         <div class="total-row">
           <span>المتبقي</span>
-          <span>${formatArabicCurrency((invoice.amount || 0) - (invoice.paid_amount || 0))}</span>
+          <span>850.00 ج.م</span>
         </div>
       </div>
     </div>
     
-    ${
-      paymentType === "hybrid"
-        ? `
+    
     <div class="section">
       <div class="section-title">تفاصيل الدفع الهجين</div>
       <div class="payment-info">
         <div class="payment-grid">
           <div class="payment-item">
             <div class="payment-label">المقدم</div>
-            <div class="payment-value">${formatArabicCurrency(invoice.down_payment_amount || 0)}</div>
+            <div class="payment-value">345.00 ج.م</div>
           </div>
           <div class="payment-item">
             <div class="payment-label">المتبقي</div>
-            <div class="payment-value">${formatArabicCurrency(invoice.remaining_amount || 0)}</div>
+            <div class="payment-value">805.00 ج.م</div>
           </div>
           <div class="payment-item">
             <div class="payment-label">عدد الأقساط</div>
-            <div class="payment-value">${toArabicNumbers(invoice.remaining_installment_months || 0)} شهر</div>
+            <div class="payment-value">4 شهر</div>
           </div>
           <div class="payment-item">
             <div class="payment-label">القسط الشهري</div>
-            <div class="payment-value">${formatArabicCurrency(invoice.monthly_amount || 0)}</div>
+            <div class="payment-value">201.25 ج.م</div>
           </div>
           <div class="payment-item">
             <div class="payment-label">تاريخ استحقاق المقدم</div>
-            <div class="payment-value">${formatArabicDate(invoice.down_payment_due_date)}</div>
+            <div class="payment-value">-</div>
           </div>
           <div class="payment-item">
             <div class="payment-label">بداية الأقساط</div>
-            <div class="payment-value">${formatArabicDate(invoice.payment_start_date)}</div>
+            <div class="payment-value"><DATE></div>
           </div>
         </div>
       </div>
     </div>
-    `
-        : ""
-    }
+    
     
     <div class="footer">
       <p>تم إنشاء هذه الفاتورة آلياً من نظام إدارة الموارد</p>
@@ -508,39 +412,4 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   </div>
 </body>
 </html>
-    `
-
-    return new NextResponse(html, {
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    })
-  } catch (error) {
-    console.error("AP Invoice PDF error:", error)
-    return NextResponse.json({ error: "Failed to generate PDF" }, { status: 500 })
-  }
-}
-
-function generateErrorHtml(title: string, details: string): string {
-  return `
-<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-  <meta charset="UTF-8">
-  <title>خطأ</title>
-  <style>
-    body { font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f3f4f6; }
-    .error-box { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; }
-    h1 { color: #dc2626; }
-    .details { font-size: 12px; color: #9ca3af; background: #f9fafb; padding: 10px; border-radius: 5px; margin-top: 15px; }
-    button { background: #dc2626; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 15px; }
-  </style>
-</head>
-<body>
-  <div class="error-box">
-    <h1>⚠️ ${escapeHtml(title)}</h1>
-    <div class="details">${escapeHtml(details)}</div>
-    <button onclick="window.close()">إغلاق</button>
-  </div>
-</body>
-</html>
-  `
-}
+    

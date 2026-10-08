@@ -57,17 +57,11 @@ export async function POST(request: Request) {
   }
 }
 
+// Hardening: this handler used to delete EVERY balance entry on an unauthenticated, id-less DELETE. No UI caller
+// uses it, and a ledger row must not be deletable through it (voiding is the supported way), so it now refuses.
 export async function DELETE() {
-  try {
-    await withRetry(async () => {
-      const supabase = getAdminClient()
-      const { error } = await supabase.from("balance_entries").delete().neq("entry_id", 0)
-      if (error) throw error
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Error deleting balance entries:", error)
-    return NextResponse.json({ error: "Failed to delete balance entries" }, { status: 500 })
-  }
+  return NextResponse.json(
+    { error: "Deleting balance entries is not allowed. Void the entry instead." },
+    { status: 400 },
+  )
 }

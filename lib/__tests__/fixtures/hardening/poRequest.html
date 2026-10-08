@@ -1,87 +1,10 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
-import { escapeHtml } from "@/lib/html-escape"
 
-export const dynamic = "force-dynamic"
-
-export async function GET(request: NextRequest) {
-  try {
-    const supabase = createAdminClient()
-    const { searchParams } = new URL(request.url)
-    const requestId = searchParams.get("requestId")
-
-    if (!requestId) {
-      return new NextResponse(generateErrorHTML("PO Request ID is required"), {
-        status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      })
-    }
-
-    // Fetch PO Request with items and supplier
-    const { data: poRequest, error: requestError } = await supabase
-      .from("po_requests")
-      .select(`
-        *,
-        suppliers (
-          supplier_id,
-          supplier_name,
-          email,
-          phone,
-          address,
-          city,
-          country
-        ),
-        po_request_items (
-          item_id,
-          product_id,
-          product_name,
-          quantity,
-          unit,
-          notes,
-          products (
-            product_id,
-            product_name,
-            sku,
-            unit
-          )
-        )
-      `)
-      .eq("request_id", Number.parseInt(requestId))
-      .single()
-
-    if (requestError || !poRequest) {
-      console.error("PO Request PDF fetch error:", requestError)
-      return new NextResponse(
-        generateErrorHTML(`PO Request not found. ID: ${requestId}`, requestError?.message),
-        { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } }
-      )
-    }
-
-    // Fetch logo and convert to base64
-    let logoDataUrl = ""
-    try {
-      const baseUrl = request.nextUrl.origin
-      const logoResponse = await fetch(`${baseUrl}/images/image.png`)
-      if (logoResponse.ok) {
-        const logoBuffer = await logoResponse.arrayBuffer()
-        const base64 = Buffer.from(logoBuffer).toString("base64")
-        logoDataUrl = `data:image/png;base64,${base64}`
-      }
-    } catch (e) {
-      console.error("Failed to load logo:", e)
-    }
-
-    const supplier = poRequest.suppliers || {}
-    const items = poRequest.po_request_items || []
-
-    const html = `
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>طلب عرض أسعار - ${escapeHtml(poRequest.request_number)}</title>
+  <title>طلب عرض أسعار - REQ-1</title>
   <style>
     * {
       margin: 0;
@@ -315,15 +238,15 @@ export async function GET(request: NextRequest) {
   <div class="container">
     <!-- Company Header -->
     <div class="company-header">
-      ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Misr Motors Logo" class="company-logo" />` : `<div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div>`}
-      <div class="company-name-ar">${COMPANY_SETTINGS.nameAr}</div>
-      <div class="company-name-en">${COMPANY_SETTINGS.nameEn}</div>
+      <div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div>
+      <div class="company-name-ar">شركة مصر للمحركات</div>
+      <div class="company-name-en">Misr Motors Co.</div>
       <div class="company-details">
-        <div>العنوان: ${COMPANY_SETTINGS.address}</div>
-        <div>تليفون: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax}</div>
-        <div>البريد الإلكتروني: ${COMPANY_SETTINGS.email}</div>
+        <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
+        <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
+        <div>البريد الإلكتروني: sales@misrmotors.com</div>
       </div>
-      <div class="tax-info">${getTaxInfo()}</div>
+      <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
     </div>
     
     <!-- Document Title -->
@@ -337,21 +260,21 @@ export async function GET(request: NextRequest) {
         <h3>بيانات الطلب / Request Details</h3>
         <div class="info-row">
           <span class="info-label">رقم الطلب:</span>
-          <span class="info-value">${escapeHtml(poRequest.request_number)}</span>
+          <span class="info-value">REQ-1</span>
         </div>
         <div class="info-row">
           <span class="info-label">تاريخ الطلب:</span>
-          <span class="info-value">${new Date(poRequest.request_date || poRequest.created_at).toLocaleDateString("ar-EG")}</span>
+          <span class="info-value"><DATE></span>
         </div>
-        ${poRequest.expected_delivery_date ? `
+        
         <div class="info-row">
           <span class="info-label">تاريخ التسليم المتوقع:</span>
-          <span class="info-value">${new Date(poRequest.expected_delivery_date).toLocaleDateString("ar-EG")}</span>
+          <span class="info-value"><DATE></span>
         </div>
-        ` : ""}
+        
         <div class="info-row">
           <span class="info-label">الحالة:</span>
-          <span class="info-value">${escapeHtml(poRequest.status === "pending" ? "في انتظار عرض السعر" : poRequest.status)}</span>
+          <span class="info-value">في انتظار عرض السعر</span>
         </div>
       </div>
       
@@ -359,19 +282,19 @@ export async function GET(request: NextRequest) {
         <h3>بيانات المورد / Supplier Details</h3>
         <div class="info-row">
           <span class="info-label">اسم المورد:</span>
-          <span class="info-value">${escapeHtml(supplier.supplier_name || "-")}</span>
+          <span class="info-value">Supplier One</span>
         </div>
         <div class="info-row">
           <span class="info-label">التليفون:</span>
-          <span class="info-value">${escapeHtml(supplier.phone || "-")}</span>
+          <span class="info-value">Phone-0200</span>
         </div>
         <div class="info-row">
           <span class="info-label">البريد الإلكتروني:</span>
-          <span class="info-value">${escapeHtml(supplier.email || "-")}</span>
+          <span class="info-value">s@example.com</span>
         </div>
         <div class="info-row">
           <span class="info-label">العنوان:</span>
-          <span class="info-value">${escapeHtml(supplier.address || "-")}</span>
+          <span class="info-value">Supplier Street</span>
         </div>
       </div>
     </div>
@@ -389,16 +312,25 @@ export async function GET(request: NextRequest) {
         </tr>
       </thead>
       <tbody>
-        ${items.map((item: any, index: number) => `
+        
           <tr>
-            <td>${index + 1}</td>
-            <td style="text-align: right;">${escapeHtml(item.products?.product_name || item.product_name || "-")}</td>
-            <td>${escapeHtml(item.products?.sku || "-")}</td>
-            <td>${escapeHtml(item.quantity)}</td>
-            <td>${escapeHtml(item.unit || item.products?.unit || "-")}</td>
-            <td style="text-align: right;">${escapeHtml(item.notes || "-")}</td>
+            <td>1</td>
+            <td style="text-align: right;">Filter F</td>
+            <td>SKU-F</td>
+            <td>5</td>
+            <td>Unit Box</td>
+            <td style="text-align: right;">Item note</td>
           </tr>
-        `).join("")}
+        
+          <tr>
+            <td>2</td>
+            <td style="text-align: right;">Loose item</td>
+            <td>-</td>
+            <td>2</td>
+            <td>-</td>
+            <td style="text-align: right;">-</td>
+          </tr>
+        
       </tbody>
     </table>
     
@@ -415,12 +347,12 @@ export async function GET(request: NextRequest) {
       </ul>
     </div>
     
-    ${poRequest.notes ? `
+    
     <div class="notes-section">
       <h4>ملاحظات إضافية / Additional Notes:</h4>
-      <p>${escapeHtml(poRequest.notes)}</p>
+      <p>Request notes</p>
     </div>
-    ` : ""}
+    
     
     <!-- Signature Section -->
     <div class="signature-section">
@@ -434,64 +366,9 @@ export async function GET(request: NextRequest) {
     
     <!-- Footer -->
     <div class="footer">
-      <p>شركة مصر للمحركات - ${COMPANY_SETTINGS.address}</p>
-      <p>هاتف: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax} | ${COMPANY_SETTINGS.email}</p>
+      <p>شركة مصر للمحركات - 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</p>
+      <p>هاتف: 02-33039811 | فاكس: 02-33039818 | sales@misrmotors.com</p>
     </div>
   </div>
 </body>
 </html>
-`
-
-    return new NextResponse(html, {
-      status: 200,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    })
-  } catch (error) {
-    console.error("PO Request PDF error:", error)
-    return new NextResponse(generateErrorHTML("Internal server error"), {
-      status: 500,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    })
-  }
-}
-
-function generateErrorHTML(message: string, details?: string): string {
-  return `
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="UTF-8">
-  <title>خطأ</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-      background: #fef2f2;
-    }
-    .error-box {
-      background: white;
-      padding: 40px;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      text-align: center;
-      max-width: 500px;
-    }
-    h1 { color: #dc2626; margin-bottom: 15px; }
-    p { color: #666; margin: 10px 0; }
-    .details { font-size: 12px; color: #999; margin-top: 15px; }
-  </style>
-</head>
-<body>
-  <div class="error-box">
-    <h1>⚠️ خطأ</h1>
-    <p>${escapeHtml(message)}</p>
-    ${details ? `<p class="details">${escapeHtml(details)}</p>` : ""}
-  </div>
-</body>
-</html>
-`
-}

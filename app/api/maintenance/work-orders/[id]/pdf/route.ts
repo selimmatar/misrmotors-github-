@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
+import { escapeHtml } from "@/lib/html-escape"
 
 export const dynamic = "force-dynamic"
 
@@ -113,29 +114,29 @@ ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Misr Motors Logo" class="company
 <div class="tax-info">${getTaxInfo()}</div>
 </div>
 
-<div class="doc-title">\u062A\u0642\u0631\u064A\u0631 \u0635\u064A\u0627\u0646\u0629 \u0631\u0642\u0645: ${workOrder.work_order_number}</div>
+<div class="doc-title">\u062A\u0642\u0631\u064A\u0631 \u0635\u064A\u0627\u0646\u0629 \u0631\u0642\u0645: ${escapeHtml(workOrder.work_order_number)}</div>
 
 <div class="section">
 <div class="section-title">\u0628\u064A\u0627\u0646\u0627\u062A \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0635\u064A\u0627\u0646\u0629</div>
-<div class="field"><span class="field-label">\u0631\u0642\u0645 \u0627\u0644\u062A\u0642\u0631\u064A\u0631:</span><span class="field-value">${workOrder.work_order_number}</span></div>
-<div class="field"><span class="field-label">\u0631\u0642\u0645 \u0623\u0645\u0631 \u0627\u0644\u0628\u064A\u0639:</span><span class="field-value">${salesOrder?.so_number || na}</span></div>
+<div class="field"><span class="field-label">\u0631\u0642\u0645 \u0627\u0644\u062A\u0642\u0631\u064A\u0631:</span><span class="field-value">${escapeHtml(workOrder.work_order_number)}</span></div>
+<div class="field"><span class="field-label">\u0631\u0642\u0645 \u0623\u0645\u0631 \u0627\u0644\u0628\u064A\u0639:</span><span class="field-value">${escapeHtml(salesOrder?.so_number || na)}</span></div>
 <div class="field"><span class="field-label">\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0646\u0634\u0627\u0621:</span><span class="field-value">${dateStr}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u062D\u0627\u0644\u0629:</span><span class="field-value">${statusAr}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u0641\u0646\u064A \u0627\u0644\u0645\u0633\u0624\u0648\u0644:</span><span class="field-value">${assignedEmployeeName || na}</span></div>
+<div class="field"><span class="field-label">\u0627\u0644\u062D\u0627\u0644\u0629:</span><span class="field-value">${escapeHtml(statusAr)}</span></div>
+<div class="field"><span class="field-label">\u0627\u0644\u0641\u0646\u064A \u0627\u0644\u0645\u0633\u0624\u0648\u0644:</span><span class="field-value">${escapeHtml(assignedEmployeeName || na)}</span></div>
 </div>
 
 <div class="section">
 <div class="section-title">\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644</div>
-<div class="field"><span class="field-label">\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644:</span><span class="field-value">${customer?.customer_name || na}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646 / \u0627\u0644\u0645\u0648\u0642\u0639:</span><span class="field-value">${customer?.address || workOrder.location || na}</span></div>
-<div class="field"><span class="field-label">\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641:</span><span class="field-value">${customer?.phone || na}</span></div>
+<div class="field"><span class="field-label">\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644:</span><span class="field-value">${escapeHtml(customer?.customer_name || na)}</span></div>
+<div class="field"><span class="field-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646 / \u0627\u0644\u0645\u0648\u0642\u0639:</span><span class="field-value">${escapeHtml(customer?.address || workOrder.location || na)}</span></div>
+<div class="field"><span class="field-label">\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641:</span><span class="field-value">${escapeHtml(customer?.phone || na)}</span></div>
 </div>
 
 <div class="section">
 <div class="section-title">\u0648\u0635\u0641 \u0627\u0644\u0639\u0645\u0644</div>
-<div class="field"><span class="field-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646:</span><span class="field-value">${workOrder.title}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u0648\u0635\u0641:</span><span class="field-value">${workOrder.description}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u062A\u0635\u0646\u064A\u0641:</span><span class="field-value">${categoryAr}</span></div>
+<div class="field"><span class="field-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646:</span><span class="field-value">${escapeHtml(workOrder.title)}</span></div>
+<div class="field"><span class="field-label">\u0627\u0644\u0648\u0635\u0641:</span><span class="field-value">${escapeHtml(workOrder.description)}</span></div>
+<div class="field"><span class="field-label">\u0627\u0644\u062A\u0635\u0646\u064A\u0641:</span><span class="field-value">${escapeHtml(categoryAr)}</span></div>
 </div>
 
 <div class="section">
@@ -165,7 +166,7 @@ ${emptyRows}
     return new Response(html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `inline; filename="work-order-${workOrder.work_order_number}.html"`,
+        "Content-Disposition": `inline; filename="work-order-${String(workOrder.work_order_number).replace(/[^A-Za-z0-9._-]/g, "_")}.html"`,
       },
     })
   } catch (error) {

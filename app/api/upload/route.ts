@@ -1,6 +1,21 @@
 import { put } from "@vercel/blob"
 import { NextResponse } from "next/server"
 
+// Only the file kinds the UI really uploads (receipts, invoices, signed permits, photos, reports, approval documents).
+// Extension AND (when the browser sent one) the MIME type must match. SVG/HTML are deliberately not allowed.
+const ALLOWED_TYPES: Record<string, string[]> = {
+  pdf: ["application/pdf"],
+  jpg: ["image/jpeg", "image/pjpeg"],
+  jpeg: ["image/jpeg", "image/pjpeg"],
+  png: ["image/png"],
+  gif: ["image/gif"],
+  webp: ["image/webp"],
+  heic: ["image/heic", "image/heif"],
+  heif: ["image/heif", "image/heic"],
+  doc: ["application/msword"],
+  docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData()
@@ -18,6 +33,16 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: `File too large. Maximum size is ${maxSize / 1024 / 1024}MB` },
         { status: 413 }
+      )
+    }
+
+    const ext = String(file.name || "").split(".").pop()?.toLowerCase() || ""
+    const allowedMimes = Object.prototype.hasOwnProperty.call(ALLOWED_TYPES, ext) ? ALLOWED_TYPES[ext] : undefined
+    const mime = String(file.type || "").toLowerCase()
+    if (!allowedMimes || (mime && mime !== "application/octet-stream" && !allowedMimes.includes(mime))) {
+      return NextResponse.json(
+        { error: "Unsupported file type. Allowed: PDF, JPG, PNG, GIF, WEBP, HEIC, DOC, DOCX" },
+        { status: 415 },
       )
     }
 

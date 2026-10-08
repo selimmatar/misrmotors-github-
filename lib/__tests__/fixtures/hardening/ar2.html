@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AR Invoice INV-2026-0001</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
+    .page { max-width: 800px; margin: 0 auto; padding: 40px; }
+
+    /* Header */
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 2px solid #1a1a1a; }
+    .company-info h1 { font-size: 22px; font-weight: 700; color: #1a1a1a; }
+    .company-info p { font-size: 12px; color: #555; margin-top: 2px; }
+    .logo { max-height: 64px; max-width: 180px; object-fit: contain; }
+    .invoice-title { text-align: right; }
+    .invoice-title h2 { font-size: 28px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.5px; }
+    .invoice-title .invoice-number { font-size: 14px; color: #555; margin-top: 4px; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; margin-top: 6px; }
+    .badge-pending { background: #fef3c7; color: #92400e; }
+    .badge-paid { background: #d1fae5; color: #065f46; }
+    .badge-overdue { background: #fee2e2; color: #991b1b; }
+    .badge-partial { background: #dbeafe; color: #1e40af; }
+
+    /* Meta grid */
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
+    .meta-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
+    .meta-box h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b7280; margin-bottom: 10px; letter-spacing: 0.05em; }
+    .meta-box p { font-size: 13px; color: #1a1a1a; line-height: 1.6; }
+    .meta-box p span { color: #6b7280; font-size: 12px; }
+
+    /* Details row */
+    .details-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+    .detail-cell { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; }
+    .detail-cell .label { font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+    .detail-cell .value { font-size: 13px; font-weight: 600; color: #1a1a1a; }
+
+    /* Items table */
+    .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    thead th { background: #1a1a1a; color: #fff; padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    thead th:last-child { text-align: right; }
+    tbody tr { border-bottom: 1px solid #e5e7eb; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody td { padding: 10px 12px; font-size: 13px; color: #1a1a1a; vertical-align: top; }
+    tbody td:last-child { text-align: right; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    .item-name { font-weight: 500; }
+    .item-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+    /* Totals */
+    .totals-wrap { display: flex; justify-content: flex-end; margin-bottom: 28px; }
+    .totals-box { width: 280px; }
+    .totals-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+    .totals-row:last-child { border-bottom: none; }
+    .totals-row.total { font-weight: 700; font-size: 14px; }
+    .totals-row.balance { font-weight: 700; font-size: 15px; color: #dc2626; }
+    .totals-row.paid { color: #059669; }
+
+    /* Footer */
+    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; text-align: center; font-size: 11px; color: #9ca3af; }
+
+    @media print {
+      body { font-size: 12px; }
+      .page { padding: 20px; }
+      @page { margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="company-info">
+      <h1>Misr Motors Test</h1>
+      
+      
+      
+      
+    </div>
+    <div class="invoice-title">
+      <h2>SALES INVOICE</h2>
+      <div class="invoice-number">INV-2026-0001</div>
+      <span class="badge badge-pending">
+        pending
+      </span>
+    </div>
+  </div>
+
+  <!-- Meta: From / To -->
+  <div class="meta-grid">
+    <div class="meta-box">
+      <h3>From (Seller)</h3>
+      <p style="font-weight:600;font-size:14px;">Misr Motors Test</p>
+      
+      
+      
+    </div>
+    <div class="meta-box">
+      <h3>Billed To (Customer)</h3>
+      <p style="font-weight:600;font-size:14px;">Customer Co</p>
+      <p><span>Email: </span>c@example.com</p>
+      <p><span>Phone: </span>Phone-0500</p>
+      <p>AR Street, Alex, Egypt</p>
+      <p><span>Delivery: </span>Site 4</p>
+    </div>
+  </div>
+
+  <!-- Details row -->
+  <div class="details-row">
+    <div class="detail-cell">
+      <div class="label">Invoice Date</div>
+      <div class="value">05 October 2026</div>
+    </div>
+    <div class="detail-cell">
+      <div class="label">Due Date</div>
+      <div class="value">04 November 2026</div>
+    </div>
+    <div class="detail-cell">
+      <div class="label">SO Number</div>
+      <div class="value">SO-1001</div>
+    </div>
+    <div class="detail-cell">
+      <div class="label">Payment Type</div>
+      <div class="value">Installments</div>
+    </div>
+  </div>
+
+  <!-- Line Items -->
+  <div class="section-title">Items</div>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Item</th>
+        <th>Type</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+              <td>1</td>
+              <td>
+                <div class="item-name">Pump A</div>
+                <div class="item-sub">SKU: SKU-A</div>
+              </td>
+              <td>Product</td>
+              <td>2</td>
+              <td>EGP 500.00</td>
+              <td>EGP 1,000.00</td>
+            </tr><tr>
+              <td>2</td>
+              <td>
+                <div class="item-name">Outsourced Part</div>
+                
+              </td>
+              <td>Outsourced</td>
+              <td>1</td>
+              <td>EGP 100.00</td>
+              <td>EGP 100.00</td>
+            </tr>
+    </tbody>
+  </table>
+
+  <!-- Totals -->
+  <div class="totals-wrap">
+    <div class="totals-box">
+      <div class="totals-row total">
+        <span>Invoice Total</span>
+        <span>EGP 1,140.00</span>
+      </div>
+      <div class="totals-row paid">
+        <span>Amount Collected</span>
+        <span>EGP 0.00</span>
+      </div>
+      <div class="totals-row balance">
+        <span>Balance Due</span>
+        <span>EGP 1,140.00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payment Terms Note -->
+  
+  <div class="meta-box" style="margin-bottom:24px;">
+    <h3>Payment Schedule</h3>
+    <p>
+      3 monthly installments
+      of EGP 380.00 / month
+      
+      
+    </p>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>Generated on <DATE> &bull; Misr Motors Test</p>
+  </div>
+
+</div>
+<script>window.onload = () => window.print()</script>
+</body>
+</html>

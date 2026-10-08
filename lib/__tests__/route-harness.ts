@@ -52,10 +52,29 @@ const webhookStub = {
   },
 }
 
+// Additive stubs used by the hardening tests: next/cache (revalidatePath), @vercel/blob (put) and lib/supabase/server
+// (the work-order print route takes its admin client from there).
+export const blobCalls: { name: string; contentType?: string; size: number }[] = []
+const nextCacheStub = { revalidatePath: () => {}, revalidateTag: () => {} }
+const blobStub = {
+  put: async (name: string, body: ArrayBuffer, opts: { contentType?: string } = {}) => {
+    blobCalls.push({ name, contentType: opts.contentType, size: body.byteLength })
+    return { url: `https://blob.test/${name}` }
+  },
+  del: async () => {},
+}
+const SERVER_FILE = path.join(OUT_ROOT, "lib", "supabase", "server.js")
+const serverStub = {
+  createAdminClient: adminStub.createAdminClient,
+  createClient: async () => adminStub.createAdminClient(),
+}
+
 const M = Module as any
 const originalLoad = M._load
 M._load = function (request: string, parent: any, isMain: boolean) {
   if (request === "next/server") return nextServerStub
+  if (request === "next/cache") return nextCacheStub
+  if (request === "@vercel/blob") return blobStub
   const mapped = request.startsWith("@/") ? path.join(OUT_ROOT, request.slice(2)) : request
   if (mapped.startsWith("/") || mapped.startsWith(".")) {
     let resolved: string | null = null
@@ -65,6 +84,7 @@ M._load = function (request: string, parent: any, isMain: boolean) {
       resolved = null
     }
     if (resolved === ADMIN_FILE) return adminStub
+    if (resolved === SERVER_FILE) return serverStub
     if (resolved === WEBHOOK_FILE) return webhookStub
     return originalLoad.call(this, resolved ?? mapped, parent, isMain)
   }

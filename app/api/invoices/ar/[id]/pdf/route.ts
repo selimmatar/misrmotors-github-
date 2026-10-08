@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
+import { escapeHtml } from "@/lib/html-escape"
 import { VAT_RATE, computeInvoiceAmount, computeWholeOrderAmount, loadSoInvoicingState, round2 } from "@/lib/invoicing"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 
@@ -221,7 +222,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>فاتورة - ${invoice.invoice_number}</title>
+  <title>فاتورة - ${escapeHtml(invoice.invoice_number)}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
     
@@ -443,7 +444,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   <table class="header-table">
     <tr>
       <td style="width: 25%;"><strong>رقم الفاتورة:</strong></td>
-      <td style="width: 25%;">${invoice.invoice_number}</td>
+      <td style="width: 25%;">${escapeHtml(invoice.invoice_number)}</td>
       <td style="width: 25%;"><strong>التاريخ:</strong></td>
       <td style="width: 25%;">${formatInvoiceDate(invoice.invoice_date)}</td>
     </tr>
@@ -451,7 +452,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       qrNumber
         ? `<tr>
       <td style="width: 25%;"><strong>رقم طلب التسعير:</strong></td>
-      <td colspan="3">${qrNumber}</td>
+      <td colspan="3">${escapeHtml(qrNumber)}</td>
     </tr>`
         : ""
     }
@@ -459,20 +460,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       deliveryPermits.length > 0
         ? `<tr>
       <td style="width: 25%;"><strong>أذونات التسليم:</strong></td>
-      <td colspan="3">${deliveryPermits.map((dp: any) => dp.permit_no).join(" - ")}</td>
+      <td colspan="3">${deliveryPermits.map((dp: any) => escapeHtml(dp.permit_no)).join(" - ")}</td>
     </tr>`
         : ""
     }
     <tr>
       <td colspan="4">
-        <strong>المطلوب من السيد:</strong> ${customer.customer_name || "-"}
+        <strong>المطلوب من السيد:</strong> ${escapeHtml(customer.customer_name || "-")}
       </td>
     </tr>
     ${
       so.department_name
         ? `<tr>
       <td colspan="4">
-        <strong>القسم ورقم طلب التسعير:</strong> ${so.department_name}
+        <strong>القسم ورقم طلب التسعير:</strong> ${escapeHtml(so.department_name)}
       </td>
     </tr>`
         : ""
@@ -481,14 +482,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       so.receiver_name || so.delivery_contact_name
         ? `<tr>
       <td colspan="4">
-        <strong>اسم المستلم:</strong> ${so.receiver_name || so.delivery_contact_name}${so.delivery_contact_phone ? ` - تليفون: ${so.delivery_contact_phone}` : ""}
+        <strong>اسم المستلم:</strong> ${escapeHtml(so.receiver_name || so.delivery_contact_name)}${so.delivery_contact_phone ? ` - تليفون: ${escapeHtml(so.delivery_contact_phone)}` : ""}
       </td>
     </tr>`
         : ""
     }
     <tr>
       <td colspan="4">
-        <strong>العنوان:</strong> ${customer.address || "-"}, ${customer.city || "-"}
+        <strong>العنوان:</strong> ${escapeHtml(customer.address || "-")}, ${escapeHtml(customer.city || "-")}
       </td>
     </tr>
   </table>
@@ -528,7 +529,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           return `
         <tr>
           <td class="center">${quantity}</td>
-          <td>${itemName}</td>
+          <td>${escapeHtml(itemName)}</td>
           <td class="currency-col">${unitGineh.toLocaleString('en-US')}</td>
           <td class="currency-col">${unitQirsh.toString().padStart(2, '0')}</td>
           <td class="currency-col">${totalGineh.toLocaleString('en-US')}</td>
@@ -602,8 +603,8 @@ function generateErrorHtml(title: string, details: string): string {
 </head>
 <body>
   <div class="error-box">
-    <h1>⚠️ ${title}</h1>
-    <div class="details">${details}</div>
+    <h1>⚠️ ${escapeHtml(title)}</h1>
+    <div class="details">${escapeHtml(details)}</div>
     <button onclick="window.close()">إغلاق</button>
   </div>
 </body>

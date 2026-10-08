@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES, buildApprovalRevert } from "@/lib/po-status"
@@ -784,22 +785,27 @@ export async function DELETE(request: Request) {
     const supabase = createAdminClient()
 
     const { searchParams } = new URL(request.url)
-    const id = searchParams.get("id")
+    const poId = parsePositiveId(searchParams.get("id"))
 
-    if (id) {
-      // Delete single order and its items
-      await supabase.from("purchase_order_items").delete().eq("po_id", id)
-      const { error } = await supabase.from("purchase_orders").delete().eq("id", id)
-      if (error) throw error
-    } else {
-      // Delete all orders (for reset)
-      await supabase.from("purchase_order_items").delete().neq("po_id", "00000000-0000-0000-0000-000000000000")
-      const { error } = await supabase
-        .from("purchase_orders")
-        .delete()
-        .neq("id", "00000000-0000-0000-0000-000000000000")
-      if (error) throw error
+    if (poId === null) {
+      return NextResponse.json({ error: "A valid numeric id is required" }, { status: 400 })
     }
+
+    const { data: existing, error: lookupError } = await supabase
+      .from("purchase_orders")
+      .select("po_id")
+      .eq("po_id", poId)
+      .limit(1)
+    if (lookupError) throw lookupError
+    if (!existing || existing.length === 0) {
+      return NextResponse.json({ error: "Purchase order not found" }, { status: 404 })
+    }
+
+    // Delete the order's items, then the order itself
+    const { error: itemsError } = await supabase.from("purchase_order_items").delete().eq("po_id", poId)
+    if (itemsError) throw itemsError
+    const { error } = await supabase.from("purchase_orders").delete().eq("po_id", poId)
+    if (error) throw error
 
     return NextResponse.json({ success: true })
   } catch (error) {

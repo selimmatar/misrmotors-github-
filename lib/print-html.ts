@@ -2,24 +2,9 @@
 // from route handlers.
 import type { PrintTotals, SoPrintTotals } from "./print-totals"
 import { round2 } from "./print-totals"
+import { escapeHtml } from "./html-escape"
 
-/** Escapes text for an HTML text or attribute position. Null/undefined become "". */
-export function escapeHtml(value: unknown): string {
-  return String(value ?? "").replace(/[&<>"']/g, (c) => {
-    switch (c) {
-      case "&":
-        return "&amp;"
-      case "<":
-        return "&lt;"
-      case ">":
-        return "&gt;"
-      case '"':
-        return "&quot;"
-      default:
-        return "&#39;"
-    }
-  })
-}
+export { escapeHtml }
 
 /** Egyptian paper layout splits money into pounds (جنيه) and piastres (قرش) columns. Exact: derived from cents. */
 export function splitMoney(amount: number): { pounds: string; piastres: string; negative: boolean } {
