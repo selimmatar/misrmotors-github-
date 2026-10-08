@@ -276,8 +276,18 @@ export const accountsPayable = {
     return serviceFetch("/api/accounts-payable")
   },
 
-  async recordPayment(payload: any): Promise<ServiceResult<any>> {
-    return serviceFetch("/api/supplier-payments", {
+  // Body shape of recordApPayment (lib/ap-payments.ts). The old /api/supplier-payments POST is retired (410).
+  async recordPayment(payload: {
+    invoiceId: number
+    amount: number
+    paymentMethod: "cash" | "cheque" | "bank_transfer"
+    receiptUrl: string
+    idempotencyKey: string
+    scheduleId?: number
+    paymentDate?: string
+    allowOverpayment?: boolean
+  }): Promise<ServiceResult<any>> {
+    return serviceFetch("/api/accounts-payable/payments", {
       method: "POST",
       body: JSON.stringify(payload),
     })
