@@ -5,8 +5,26 @@ import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES } from "@/lib/po-stat
 import { checkPoOverOrder } from "@/lib/po-over-order"
 
 // Shared by POST and PUT so editing a PO's items keeps the SO link and the outsourced data.
-function mapPoItem(item: any, poId: number) {
-  const itemType = item.itemType || item.item_type || "stock"
+// `existingItems` (PUT only) are the PO's current rows: a line sent without item_type keeps its existing type
+// instead of silently becoming 'stock'. Only genuinely new lines default to 'stock'.
+function findExistingPoItem(item: any, existingItems: any[]) {
+  const id = Number.parseInt(item.id ?? item.poItemId ?? item.po_item_id)
+  if (Number.isFinite(id)) {
+    const byId = existingItems.find((e) => e.po_item_id === id)
+    if (byId) return byId
+  }
+  const sourceItemId = Number.parseInt(item.sourceSoItemId || item.source_so_item_id)
+  if (Number.isFinite(sourceItemId)) {
+    const bySource = existingItems.find((e) => e.source_so_item_id === sourceItemId)
+    if (bySource) return bySource
+  }
+  const name = String(item.outsourcedName || item.outsourced_name || "").trim().toLowerCase()
+  if (name) return existingItems.find((e) => String(e.outsourced_name || "").trim().toLowerCase() === name)
+  return undefined
+}
+
+function mapPoItem(item: any, poId: number, existingItems: any[] = []) {
+  const itemType = item.itemType || item.item_type || findExistingPoItem(item, existingItems)?.item_type || "stock"
   const isOutsourced = itemType === "outsourced"
   const rawProductId = item.productId || item.product_id
   return {
@@ -653,11 +671,21 @@ export async function PUT(request: Request) {
     }
 
     if (items) {
+      // Read the current rows first so lines without an item_type keep theirs (see mapPoItem).
+      const { data: existingRows, error: existingError } = await supabase
+        .from("purchase_order_items")
+        .select("po_item_id, item_type, source_so_item_id, outsourced_name")
+        .eq("po_id", poId)
+      if (existingError) {
+        console.error("Purchase Orders PUT: Error reading existing items", existingError)
+        throw existingError
+      }
+      const existingItems = (existingRows || []) as any[]
       await supabase.from("purchase_order_items").delete().eq("po_id", poId)
 
       if (items.length > 0) {
         const itemsWithPoId = items.map((item: any) => ({
-          ...mapPoItem(item, poId),
+          ...mapPoItem(item, poId, existingItems),
           allocated_tax: item.allocatedTax || item.allocated_tax,
           allocated_overhead: item.allocatedOverhead || item.allocated_overhead,
           landed_cost: item.landedCost || item.landed_cost,
