@@ -312,7 +312,7 @@ test("SO delivered logic unchanged: partial approval -> PARTIALLY_DELIVERED, las
   const db = mk({
     sales_orders: [so(1, "ready_for_delivery")],
     sales_order_items: [line(1, 1, 7, 10)],
-    delivery_permits: [permit(1, 1, "SUBMITTED_SIGNED"), permit(2, 1, "READY_FOR_PICKUP")],
+    delivery_permits: [permit(1, 1, "SUBMITTED_SIGNED"), permit(2, 1, "OUT_FOR_DELIVERY")],
     delivery_permit_items: [pitem(1, 1, 7, 4), pitem(2, 2, 7, 6)],
     inventory: [inv(1, 7, 1, 20)],
   })
@@ -321,6 +321,7 @@ test("SO delivered logic unchanged: partial approval -> PARTIALLY_DELIVERED, las
   assert.equal(db.tables.sales_orders[0].status, "ready_for_delivery")
   assert.equal(db.tables.sales_orders[0].payment_active, true)
   assert.equal((await loadHeldByProduct(db)).get(7), 6) // 10 - 4 deducted
+  await call(dpRoute.PUT, "PUT", { permitId: "2", action: "MARK_SUBMITTED_SIGNED" }) // the real flow signs before approving
   await approve(2)
   assert.equal(db.tables.sales_orders[0].status, "delivered")
   assert.equal(db.tables.sales_orders[0].fulfillment_status, "DELIVERED")

@@ -476,50 +476,6 @@ export async function POST(request: Request) {
 
     }
 
-    // Create payment schedules if this is an installment order
-    if ((finalPaymentType === "installments" || finalPaymentType === "hybrid") && schedule_entries) {
-      
-      try {
-        const scheduleEntries = typeof schedule_entries === "string" 
-          ? JSON.parse(schedule_entries) 
-          : schedule_entries
-        
-        const directSchedules = scheduleEntries.map((entry: any) => ({
-          so_id: order.so_id,
-          installment_number: entry.installment_number,
-          due_date: entry.due_date,
-          amount: entry.amount,
-          is_down_payment: entry.is_down_payment || false,
-          status: "pending",
-        }))
-
-        const scheduleResponse = await fetch("http://localhost:3000/api/payment-schedules", {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "x-caller-context": "sales-orders-post",
-          },
-          body: JSON.stringify({
-            soId: order.so_id,
-            amount: total,
-            directSchedules,
-            scheduleMode: "CUSTOM_DATES",
-          }),
-        })
-
-        if (!scheduleResponse.ok) {
-          const scheduleError = await scheduleResponse.json()
-          console.error("Sales Orders POST: Error creating payment schedules", scheduleError)
-          // Don't throw - payment schedules can be created manually later
-        } else {
-          const scheduleData = await scheduleResponse.json()
-        }
-      } catch (scheduleError) {
-        console.error("Sales Orders POST: Exception creating payment schedules", scheduleError)
-        // Don't throw - payment schedules can be created manually later
-      }
-    }
-
     if (typeof window === "undefined") {
       const { WebhookService } = await import("@/lib/webhook-service")
       const webhookService = WebhookService.getInstance()
@@ -707,6 +663,13 @@ export async function PUT(request: Request) {
 
     // Batch 2: once delivery permits exist (and especially after a return) the order's history must stay intact.
     // Checked BEFORE anything is written so a refused edit changes nothing.
+    // The accountant "reject" button sends "rejected", which the status CHECK does not allow: a quotation-type order
+    // becomes rejected_quotation, a normal order becomes cancelled (the only red/terminal status the order UI knows).
+    if (dbUpdates.status === "rejected") {
+      const { data: current } = await supabase.from("sales_orders").select("entity_type").eq("so_id", numericId).limit(1)
+      dbUpdates.status = current?.[0]?.entity_type === "quotation" ? "rejected_quotation" : "cancelled"
+    }
+
     const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items })
     if (!editVerdict.ok) {
       return NextResponse.json({ error: editVerdict.error }, { status: editVerdict.status })
@@ -813,22 +776,6 @@ export async function PUT(request: Request) {
         await syncSalesOrderNetTotal(supabase, numericId)
       } catch (syncError: any) {
         console.error("Sales Orders PUT: could not refresh the net total:", syncError?.message)
-      }
-    }
-
-    if (quotationRequests) {
-      await supabase.from("quotation_requests").delete().eq("so_id", finalId)
-
-      if (quotationRequests.length > 0) {
-        const requestsWithOrderId = quotationRequests.map((request: any) => ({
-          so_id: Number.parseInt(finalId),
-          quotation_request_id: request.quotation_request_id,
-          request_date: request.request_date,
-          status: request.status,
-          requested_by: request.requested_by,
-        }))
-
-        await supabase.from("quotation_requests").insert(requestsWithOrderId)
       }
     }
 
