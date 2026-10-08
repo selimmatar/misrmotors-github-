@@ -15,6 +15,12 @@ const PK: Record<string, string> = {
   sales_order_items: "so_item_id",
   delivery_permits: "permit_id",
   delivery_permit_items: "item_id",
+  purchase_orders: "po_id",
+  purchase_order_items: "po_item_id",
+  goods_receipts: "receipt_id",
+  goods_receipt_lines: "line_id",
+  products: "product_id",
+  sales_orders: "so_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
@@ -23,6 +29,7 @@ const UNIQUE: Record<string, string[][]> = {
   accounts_receivable: [["invoice_number"]],
   invoice_delivery_permits: [["permit_id"]],
   delivery_permits: [["permit_no"]],
+  goods_receipts: [["grn_number"]],
 }
 const STAMP_CREATED_AT = new Set(["product_returns", "accounts_receivable", "return_items"])
 
@@ -42,6 +49,20 @@ export class FakeDb {
     for (const [table, pk] of Object.entries(PK)) {
       this.seq[table] = Math.max(0, ...(this.tables[table] || []).map((r) => Number(r[pk]) || 0))
     }
+  }
+  /** rpc name -> handler (Batch 4A: get_next_grn_number, generate_product_sku) */
+  rpcHandlers: Record<string, (args: any) => any> = {}
+  grnSeq = 0
+  skuSeq = 0
+  async rpc(name: string, args: any = {}) {
+    await this.tick()
+    const key = `rpc:${name}`
+    this.calls[key] = (this.calls[key] || 0) + 1
+    if (this.failOn[key]) return { data: null, error: { message: this.failOn[key], code: "XX000" } }
+    if (this.rpcHandlers[name]) return { data: this.rpcHandlers[name](args), error: null }
+    if (name === "get_next_grn_number") return { data: ++this.grnSeq, error: null }
+    if (name === "generate_product_sku") return { data: `SKU-${100000 + ++this.skuSeq}`, error: null }
+    return { data: null, error: { message: `unknown rpc ${name}`, code: "42883" } }
   }
   from(table: string) {
     this.tables[table] ||= []

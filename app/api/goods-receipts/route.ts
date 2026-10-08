@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { receiveGoods } from "@/lib/goods-receiving"
 
 // GET: Fetch all goods receipts (with filtering)
 export const dynamic = "force-dynamic"
@@ -75,267 +76,22 @@ export async function GET(request: Request) {
   }
 }
 
-// POST: Create a new goods receipt
+// POST: Create a new goods receipt.
+// All rules (receivable PO, line ownership, cumulative quantity cap, partial receipts, idempotency, per-PO
+// serialisation, undo on failure) live in lib/goods-receiving.ts. The response shape is unchanged
+// ({ success, receipt: { id, grnNumber, status } }) plus poStatus / replayed.
 export async function POST(request: Request) {
+  let body: any
   try {
-    const supabase = createAdminClient()
-    const body = await request.json()
-    const { poId, lines, receivedBy, notes } = body
-
-
-    // Fetch PO details
-    const { data: po, error: poError } = await supabase
-      .from("purchase_orders")
-      .select("po_number, po_id")
-      .eq("po_id", poId)
-      .single()
-
-    if (poError || !po) {
-      return NextResponse.json(
-        { error: "Purchase order not found" },
-        { status: 404 },
-      )
-    }
-
-    // Auto-provision a catalog product for stock items that were added to the PO
-    // manually (typed name, no matching catalog product). Without a real product_id,
-    // these items could never be added to inventory when received.
-    const provisionedProductIds = new Map<string, number>()
-    for (const line of lines) {
-      if (line.itemType !== "outsourced" && !line.productId && line.poItemId) {
-        const cacheKey = String(line.poItemId)
-        const cached = provisionedProductIds.get(cacheKey)
-        if (cached) {
-          line.productId = cached
-          continue
-        }
-
-        // Generate a short numeric SKU (e.g. "SKU-482910") server-side instead of a
-        // long "AUTO-{id}-{timestamp}-{random}" string - still guaranteed unique,
-        // just not exposing internal ids/timestamps to whoever sees the SKU.
-        const { data: generatedSku, error: skuError } = await supabase.rpc("generate_product_sku")
-        if (skuError || !generatedSku) {
-          throw skuError || new Error("Failed to generate product SKU")
-        }
-
-        const { data: newProduct, error: newProductError } = await supabase
-          .from("products")
-          .insert({
-            product_name: line.productName || `PO Item ${line.poItemId}`,
-            sku: generatedSku as string,
-            unit_price: line.unitCost || 0,
-            unit: "pcs",
-            is_active: true,
-          })
-          .select("product_id")
-          .single()
-
-        if (newProductError || !newProduct) {
-          throw newProductError || new Error("Failed to create catalog product for stock item")
-        }
-
-        // Link the new product back to the PO item so future lookups (invoices,
-        // reorder suggestions, tracking, etc.) resolve to a real catalog product.
-        await supabase
-          .from("purchase_order_items")
-          .update({ product_id: newProduct.product_id })
-          .eq("po_item_id", Number.parseInt(line.poItemId))
-
-        provisionedProductIds.set(cacheKey, newProduct.product_id)
-        line.productId = newProduct.product_id
-      }
-    }
-
-    // Generate GRN number
-    const { data: seqData } = await supabase.rpc("get_next_grn_number")
-    const grnNumber = `GRN-${new Date().getFullYear()}-${String(seqData || 1).padStart(4, "0")}`
-
-    // Determine overall receipt status
-    const hasDiscrepancies = lines.some((l: any) => l.discrepancyType)
-    const allFullyReceived = lines.every((l: any) => l.quantityReceived >= l.quantityOrdered)
-    const anyReceived = lines.some((l: any) => l.quantityReceived > 0)
-
-    let receiptStatus = "pending"
-    if (hasDiscrepancies) {
-      receiptStatus = "discrepancy"
-    } else if (allFullyReceived) {
-      receiptStatus = "complete"
-    } else if (anyReceived) {
-      receiptStatus = "partial"
-    }
-
-    // Create goods receipt header
-    const { data: receipt, error: receiptError } = await supabase
-      .from("goods_receipts")
-      .insert({
-        grn_number: grnNumber,
-        po_id: poId,
-        po_number: po.po_number,
-        receipt_date: new Date().toISOString().split("T")[0],
-        status: receiptStatus,
-        received_by: receivedBy,
-        notes: notes || null,
-      })
-      .select()
-      .single()
-
-    if (receiptError) throw receiptError
-
-    // Create goods receipt lines
-    const linesToInsert = lines.map((line: any) => ({
-      receipt_id: receipt.receipt_id,
-      po_item_id: line.poItemId ? Number.parseInt(line.poItemId) : null,
-      // Outsourced items have no product_id — store null (column is now nullable)
-      product_id: line.itemType === 'outsourced' ? null : (line.productId ? Number.parseInt(line.productId) : null),
-      outsourced_name: line.outsourcedName || null,
-      item_type: line.itemType || 'stock',
-      source_so_item_id: line.sourceSoItemId ? Number.parseInt(line.sourceSoItemId) : null,
-      quantity_ordered: line.quantityOrdered,
-      quantity_received: line.quantityReceived,
-      discrepancy_type: line.discrepancyType || null,
-      discrepancy_notes: line.discrepancyNotes || null,
-      warehouse_id: line.warehouseId ? Number.parseInt(line.warehouseId) : null,
-      unit_cost: line.unitCost,
-      received_date: new Date().toISOString().split("T")[0],
-    }))
-
-    const { error: linesError } = await supabase
-      .from("goods_receipt_lines")
-      .insert(linesToInsert)
-
-    if (linesError) throw linesError
-
-    // Update inventory for stock items only
-    for (const line of lines) {
-      if (line.quantityReceived > 0 && line.itemType !== 'outsourced' && line.productId) {
-        const productId = Number.parseInt(line.productId)
-        const warehouseId = line.warehouseId ? Number.parseInt(line.warehouseId) : null
-
-        let query = supabase
-          .from("inventory")
-          .select("inventory_id, quantity")
-          .eq("product_id", productId)
-          // A product can also have a separate returned-holding row (is_returned = true).
-          // Newly received stock must only merge into the normal on-hand row, never the
-          // returned-holding row, and this filter also keeps the lookup to a single row.
-          .eq("is_returned", false)
-
-        if (warehouseId !== null) {
-          query = query.eq("warehouse_id", warehouseId)
-        } else {
-          query = query.is("warehouse_id", null)
-        }
-
-        const { data: existingInv } = await query.maybeSingle()
-
-        if (existingInv) {
-          await supabase
-            .from("inventory")
-            .update({
-              quantity: existingInv.quantity + line.quantityReceived,
-              unit_cost: line.unitCost,
-              last_updated: new Date().toISOString(),
-            })
-            .eq("inventory_id", existingInv.inventory_id)
-        } else {
-          await supabase.from("inventory").insert({
-            product_id: productId,
-            quantity: line.quantityReceived,
-            unit_cost: line.unitCost,
-            warehouse_id: warehouseId,
-            reorder_point: 0,
-            is_returned: false,
-            last_updated: new Date().toISOString(),
-          })
-        }
-
-        const { data: lastBatch } = await supabase
-          .from("inventory_batches")
-          .select("batch_sequence")
-          .eq("product_id", productId)
-          .order("batch_sequence", { ascending: false })
-          .limit(1)
-          .single()
-
-        const nextSequence = (lastBatch?.batch_sequence || 0) + 1
-
-        await supabase.from("inventory_batches").insert({
-          product_id: productId,
-          po_id: poId,
-          po_number: po.po_number,
-          quantity_received: line.quantityReceived,
-          quantity_available: line.quantityReceived,
-          unit_cost: line.unitCost,
-          landed_cost_per_unit: line.unitCost,
-          received_date: new Date().toISOString().split("T")[0],
-          warehouse_id: warehouseId,
-          batch_sequence: nextSequence,
-        })
-      }
-    }
-
-    // Mark ALL linked SO items as fulfilled (both stock and outsourced lines)
-    const soLinkedLines = lines.filter((l: any) => l.sourceSoItemId && l.quantityReceived > 0)
-    if (soLinkedLines.length > 0) {
-      const soItemIds = soLinkedLines.map((l: any) => Number.parseInt(l.sourceSoItemId))
-      const { error: soUpdateError } = await supabase
-        .from("sales_order_items")
-        .update({ fulfilled_at: new Date().toISOString() })
-        .in("so_item_id", soItemIds)
-      if (soUpdateError) {
-        console.error("Error marking SO items as fulfilled:", soUpdateError)
-      } else {
-      }
-
-      // Find which sales orders these items belong to
-      const { data: affectedItems } = await supabase
-        .from("sales_order_items")
-        .select("so_id")
-        .in("so_item_id", soItemIds)
-
-      const affectedSoIds = [...new Set((affectedItems || []).map((i: any) => i.so_id))]
-
-      // For each affected SO, if ALL its items are now fulfilled, mark it ready for delivery
-      for (const soId of affectedSoIds) {
-        const { data: allItems } = await supabase
-          .from("sales_order_items")
-          .select("so_item_id, fulfilled_at")
-          .eq("so_id", soId)
-
-        const allFulfilled = (allItems || []).length > 0 && (allItems || []).every((i: any) => i.fulfilled_at)
-
-        if (allFulfilled) {
-          await supabase
-            .from("sales_orders")
-            .update({ fulfillment_status: "READY_FOR_FULFILLMENT" })
-            .eq("so_id", soId)
-        }
-      }
-    }
-
-    // Update PO status when goods are received (even with discrepancies)
-    // This removes the PO from the "awaiting receipt" list
-    if (receiptStatus === "complete" || receiptStatus === "discrepancy") {
-      await supabase
-        .from("purchase_orders")
-        .update({ status: "received" })
-        .eq("po_id", poId)
-    }
-
-
-    return NextResponse.json({
-      success: true,
-      receipt: {
-        id: receipt.receipt_id.toString(),
-        grnNumber,
-        status: receiptStatus,
-      },
-    })
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body", message: "Invalid JSON body" }, { status: 400 })
+  }
+  try {
+    const result = await receiveGoods(createAdminClient(), body)
+    return NextResponse.json(result.body, { status: result.status })
   } catch (error) {
     console.error("Error creating goods receipt:", error)
-    return NextResponse.json(
-      { error: "Failed to create goods receipt" },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Failed to create goods receipt" }, { status: 500 })
   }
 }

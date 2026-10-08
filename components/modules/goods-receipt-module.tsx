@@ -46,7 +46,8 @@ interface ReceiptLineItem {
   poItemId: string
   productName: string
   itemType: 'stock' | 'outsourced'
-  quantityOrdered: number
+  quantityOrdered: number // quantity still open on the order (ordered minus earlier receipts)
+  alreadyReceived: number
   quantityReceived: number
   unitPrice: number
   discrepancyType: '' | 'missing' | 'damaged' | 'wrong_item' | 'quantity_mismatch' | 'other'
@@ -79,12 +80,16 @@ export function GoodsReceiptModule() {
   const [photoNotes, setPhotoNotes] = useState<Record<string, string>>({})
   const [receiptLines, setReceiptLines] = useState<ReceiptLineItem[]>([])
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  // One idempotency key per receipt dialog: a double click / retry of the same submission can never create a second GRN
+  const receiveKeyRef = useRef<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [showAddWarehouseDialog, setShowAddWarehouseDialog] = useState(false) // Declared variable
 
   const warehouses = warehousesFromContext
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("default")
 
-  const approvedPOs = purchaseOrders.filter((po) => po.status === "approved" && po.status !== "received")
+  // approved and partially received orders are open for receiving (the server makes the final decision)
+  const approvedPOs = purchaseOrders.filter((po) => ["approved", "partially_received"].includes(po.status as string))
 
   useEffect(() => {
     // Set default warehouse if available
@@ -124,7 +129,7 @@ export function GoodsReceiptModule() {
     }
   }
 
-  const initializePhotoState = (po: any) => {
+  const initializePhotoState = async (po: any) => {
     const photos: ItemPhoto[] = po.items.map((item: any) => ({
       productId: item.productId,
       productName: item.productName,
@@ -138,8 +143,26 @@ export function GoodsReceiptModule() {
     // Get default warehouse
     const defaultWh = warehouses.find((w: any) => w.isDefault) || warehouses[0]
     
+    // Earlier receipts for this order (display only - the server recalculates the remaining quantity itself)
+    const receivedByItem: Record<string, number> = {}
+    try {
+      const res = await fetch(`/api/goods-receipts?po_id=${encodeURIComponent(String(po.id))}`)
+      if (res.ok) {
+        const receipts = await res.json()
+        for (const r of Array.isArray(receipts) ? receipts : []) {
+          for (const l of r.lines || []) {
+            if (l.poItemId) receivedByItem[String(l.poItemId)] = (receivedByItem[String(l.poItemId)] || 0) + (Number(l.quantityReceived) || 0)
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Could not load earlier receipts for this order', e)
+    }
+
     const lines: ReceiptLineItem[] = po.items.map((item: any) => {
-      const qty = Number(item.quantity) || 0
+      const ordered = Number(item.quantity) || 0
+      const already = receivedByItem[String(item.id)] || 0
+      const qty = Math.max(0, ordered - already)
       // Trust the item's actual item_type. A stock item without a matching catalog
       // product (manually typed on the PO) is still a stock item — it must still be
       // allocated to a warehouse and added to inventory, not silently dropped as "outsourced".
@@ -150,6 +173,7 @@ export function GoodsReceiptModule() {
         productName: item.productName || item.outsourcedName || 'Unknown',
         itemType: isOutsourced ? 'outsourced' : 'stock',
         quantityOrdered: qty,
+        alreadyReceived: already,
         quantityReceived: qty,
         unitPrice: item.unitPrice,
         discrepancyType: '',
@@ -161,8 +185,17 @@ export function GoodsReceiptModule() {
           quantity: qty
         }] : [])
       }
-    })
-    
+    }).filter((l: ReceiptLineItem) => l.quantityOrdered > 0)
+
+    if (lines.length === 0) {
+      alert('Every item on this purchase order has already been received.')
+      return
+    }
+
+    receiveKeyRef.current =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `rcv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     setItemPhotos(photos)
     setReceiptLines(lines)
     setPhotoNotes({})
@@ -240,6 +273,8 @@ export function GoodsReceiptModule() {
   }
 
   const handleAcceptWithPhotos = async () => {
+    if (isSubmitting) return // a second click while the first request is running does nothing
+
     // Only validate warehouse allocation for stock items (not outsourced)
     for (const line of receiptLines) {
       if (line.itemType === 'outsourced') continue
@@ -250,48 +285,41 @@ export function GoodsReceiptModule() {
       }
     }
 
-    const hasPhotosToUpload = itemPhotos.some((p) => p.file && !p.uploaded)
-    if (hasPhotosToUpload) {
-      await uploadPhotos()
+    // Lines that were not received in this delivery are simply not part of this receipt
+    // (the server only accepts positive quantities, and the order stays open for the rest).
+    const lineSpecs = receiptLines.filter((line) => line.quantityReceived > 0)
+    if (lineSpecs.length === 0) {
+      alert('Enter a received quantity greater than zero for at least one item.')
+      return
     }
 
+    setIsSubmitting(true)
     try {
+      const hasPhotosToUpload = itemPhotos.some((p) => p.file && !p.uploaded)
+      if (hasPhotosToUpload) {
+        await uploadPhotos()
+      }
+
       const allLines: any[] = []
 
-      for (const line of receiptLines) {
-        const poItem = selectedPOForPhotos.items.find(
-          (item: any) => (line.poItemId && String(item.id) === line.poItemId) || item.productId === line.productId || item.outsourcedName === line.productName
-        )
-
+      for (const line of lineSpecs) {
         if (line.itemType === 'outsourced') {
-          // Outsourced services: single line, no warehouse, mark fulfilled
+          // Outsourced services: single line, no warehouse
           allLines.push({
-            poItemId: poItem?.id || null,
-            productId: null,
-            outsourcedName: line.productName,
+            poItemId: line.poItemId,
             itemType: 'outsourced',
-            sourceSoItemId: poItem?.sourceSoItemId || null,
-            quantityOrdered: line.quantityOrdered,
             quantityReceived: line.quantityReceived,
-            discrepancyType: null,
-            discrepancyNotes: null,
-            warehouseId: null,
             unitCost: line.unitPrice,
           })
         } else {
-          // Stock items: one line per warehouse allocation.
-          // poItem.productId is the real catalog product id (may be missing if this
-          // was a manually-typed item on the PO) — pass productName along so the
-          // server can provision a catalog product for it when needed.
+          // Stock items: one line per warehouse allocation. The server resolves product, SO link and cost
+          // basis from the purchase order item itself.
           for (const allocation of line.warehouseAllocations) {
             if (allocation.quantity > 0) {
               allLines.push({
-                poItemId: poItem?.id || null,
-                productId: poItem?.productId || null,
+                poItemId: line.poItemId,
                 productName: line.productName,
                 itemType: 'stock',
-                sourceSoItemId: null,
-                quantityOrdered: line.quantityOrdered,
                 quantityReceived: allocation.quantity,
                 discrepancyType: line.discrepancyType && line.discrepancyType !== 'none' ? line.discrepancyType : null,
                 discrepancyNotes: line.discrepancyNotes || null,
@@ -310,24 +338,29 @@ export function GoodsReceiptModule() {
           poId: selectedPOForPhotos.id,
           receivedBy: user?.id,
           notes: selectedPOForPhotos.notes || '',
+          idempotencyKey: receiveKeyRef.current,
           lines: allLines,
         }),
       })
 
+      const result = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create goods receipt')
+        // The server is the authority: show its reason and keep the dialog open so nothing is lost.
+        // The same idempotency key stays valid for a retry of the same submission.
+        throw new Error(result.error || 'Failed to create goods receipt')
       }
 
-      const result = await response.json()
-
       await loadData()
-      alert(`Goods received successfully! GRN: ${result.receipt.grnNumber}`)
+      alert(`Goods received successfully! GRN: ${result.receipt.grnNumber}${result.poStatus === 'partially_received' ? ' (order partially received - the rest can still be received)' : ''}`)
     } catch (error: any) {
       console.error('Error creating goods receipt:', error)
       alert(`Error: ${error.message}`)
+      setIsSubmitting(false)
+      return
     }
 
+    receiveKeyRef.current = null
+    setIsSubmitting(false)
     setShowPhotoModal(false)
     setSelectedPOForPhotos(null)
     setItemPhotos([])
@@ -561,7 +594,7 @@ export function GoodsReceiptModule() {
                           <div className="flex items-center justify-between gap-4">
                             <div className="flex-1">
                               <p className="font-medium">{line.productName}</p>
-                              <p className="text-sm text-muted-foreground">Outsourced service — Ordered: {line.quantityOrdered}</p>
+                              <p className="text-sm text-muted-foreground">Outsourced service — Ordered: {line.quantityOrdered + line.alreadyReceived}{line.alreadyReceived > 0 ? ` (already received ${line.alreadyReceived}, remaining ${line.quantityOrdered})` : ''}</p>
                             </div>
                             <div className="flex items-center gap-3">
                               <Label htmlFor={`outsourced-qty-${globalIndex}`} className="text-sm">Qty Received</Label>
@@ -569,6 +602,7 @@ export function GoodsReceiptModule() {
                                 id={`outsourced-qty-${globalIndex}`}
                                 type="number"
                                 min="0"
+                                max={line.quantityOrdered}
                                 value={line.quantityReceived}
                                 onChange={(e) => {
                                   const newQty = parseInt(e.target.value) || 0
@@ -606,7 +640,7 @@ export function GoodsReceiptModule() {
                             <div className="flex items-start justify-between">
                               <div>
                                 <p className="font-medium">{line.productName}</p>
-                                <p className="text-sm text-muted-foreground">Ordered: {line.quantityOrdered} units</p>
+                                <p className="text-sm text-muted-foreground">Ordered: {line.quantityOrdered + line.alreadyReceived} units{line.alreadyReceived > 0 ? ` (already received ${line.alreadyReceived}, remaining ${line.quantityOrdered})` : ''}</p>
                               </div>
                             </div>
 
@@ -867,7 +901,7 @@ export function GoodsReceiptModule() {
               >
                 {t("action.cancel")}
               </Button>
-              <Button onClick={handleAcceptWithPhotos} disabled={!selectedWarehouseId} className="gap-2">
+              <Button onClick={handleAcceptWithPhotos} disabled={!selectedWarehouseId || isSubmitting} className="gap-2">
                 <CheckCircle className="w-4 h-4" />
                 {t("gr.confirm-receipt")}
               </Button>
