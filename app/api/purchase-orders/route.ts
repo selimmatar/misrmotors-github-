@@ -801,6 +801,19 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Purchase order not found" }, { status: 404 })
     }
 
+    // Never delete an order that other records point at (receipts, payables): refuse before touching anything.
+    const dependents = await Promise.all([
+      supabase.from("goods_receipts").select("receipt_id").eq("po_id", poId).limit(1),
+      supabase.from("accounts_payable").select("invoice_id").eq("po_id", poId).limit(1),
+    ])
+    for (const d of dependents) if (d.error) throw d.error
+    if (dependents.some((d) => (d.data || []).length > 0)) {
+      return NextResponse.json(
+        { error: "This purchase order has goods receipts or payables and cannot be deleted" },
+        { status: 409 },
+      )
+    }
+
     // Delete the order's items, then the order itself
     const { error: itemsError } = await supabase.from("purchase_order_items").delete().eq("po_id", poId)
     if (itemsError) throw itemsError

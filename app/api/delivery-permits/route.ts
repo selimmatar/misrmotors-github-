@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkIdempotency, completeIdempotency, generateDPApprovalIdempotencyKey } from "@/lib/idempotency"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
-import { isSOFullyDelivered } from "@/lib/delivery-status"
+import { isSOFullyDelivered, DP_DELIVERED_STATUSES } from "@/lib/delivery-status"
 import { isAllowedDpTransition } from "@/lib/dp-transitions"
 import { abortDeduction, deductStockForPermit, finishDeduction, type StockMove } from "@/lib/dp-stock"
 
@@ -681,6 +681,32 @@ export async function PUT(request: NextRequest) {
           }
         }
         updates.rejection_reason = rejectionReason
+        // A permit that was already signed may have been what made the SO "delivered": once it is rejected the SO is
+        // no longer fully delivered, so take the SO back (status only if it was delivered) instead of leaving it stale.
+        if (currentPermit.status === "SUBMITTED_SIGNED" && currentPermit.sales_order_id) {
+          const stillDelivered = await isSOFullyDelivered(
+            supabase,
+            currentPermit.sales_order_id,
+            Number.parseInt(permitId),
+            "REJECTED",
+          )
+          if (!stillDelivered) {
+            const { data: soRows } = await supabase
+              .from("sales_orders")
+              .select("status")
+              .eq("so_id", currentPermit.sales_order_id)
+              .limit(1)
+            if (soRows?.[0]?.status === "delivered") soUpdates.status = "ready_for_delivery"
+            const { data: otherPermits } = await supabase
+              .from("delivery_permits")
+              .select("permit_id, status")
+              .eq("sales_order_id", currentPermit.sales_order_id)
+            const anyOtherDelivered = (otherPermits || []).some(
+              (p: any) => p.permit_id !== Number.parseInt(permitId) && DP_DELIVERED_STATUSES.includes(p.status),
+            )
+            soUpdates.fulfillment_status = anyOtherDelivered ? "PARTIALLY_DELIVERED" : "READY_FOR_PICKUP"
+          }
+        }
         break
 
       default:

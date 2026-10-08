@@ -5,8 +5,8 @@ import { NextResponse } from "next/server"
 // Extension AND (when the browser sent one) the MIME type must match. SVG/HTML are deliberately not allowed.
 const ALLOWED_TYPES: Record<string, string[]> = {
   pdf: ["application/pdf"],
-  jpg: ["image/jpeg", "image/pjpeg"],
-  jpeg: ["image/jpeg", "image/pjpeg"],
+  jpg: ["image/jpeg", "image/pjpeg", "image/jpg"],
+  jpeg: ["image/jpeg", "image/pjpeg", "image/jpg"],
   png: ["image/png"],
   gif: ["image/gif"],
   webp: ["image/webp"],

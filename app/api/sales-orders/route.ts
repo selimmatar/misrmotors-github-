@@ -908,6 +908,20 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Sales order not found" }, { status: 404 })
     }
 
+    // Never delete an order that other records point at (permits, invoices, purchase lines): refuse before touching anything.
+    const dependents = await Promise.all([
+      supabase.from("delivery_permits").select("permit_id").eq("sales_order_id", soId).limit(1),
+      supabase.from("accounts_receivable").select("invoice_id").eq("so_id", soId).limit(1),
+      supabase.from("purchase_order_items").select("po_item_id").eq("source_so_id", soId).limit(1),
+    ])
+    for (const d of dependents) if (d.error) throw d.error
+    if (dependents.some((d) => (d.data || []).length > 0)) {
+      return NextResponse.json(
+        { error: "This sales order has delivery permits, invoices or purchase orders and cannot be deleted" },
+        { status: 409 },
+      )
+    }
+
     const { error: itemsError } = await supabase.from("sales_order_items").delete().eq("so_id", soId)
     if (itemsError) throw itemsError
     const { error } = await supabase.from("sales_orders").delete().eq("so_id", soId)

@@ -299,3 +299,23 @@ test("E4. not-found / error pages escape the id and the database message that th
   assert.ok(pages[3].includes("Invoice ID: 9&lt;b id=&quot;PWN&quot;&gt;&amp;"))
   assert.ok(pages[4].includes("Invoice ID: 9&lt;b id=&quot;PWN&quot;&gt;&amp;"))
 })
+
+test("D6. DELETE sales order / purchase order with dependent records returns 409 and deletes nothing", async () => {
+  let db = new FakeDb({
+    sales_orders: [{ so_id: 1 }], sales_order_items: [{ so_item_id: 1, so_id: 1 }],
+    delivery_permits: [{ permit_id: 1, sales_order_id: 1 }], accounts_receivable: [], purchase_order_items: [],
+  })
+  useDb(db)
+  assert.equal((await del(soRoute.DELETE, "?id=1")).status, 409)
+  assert.equal(db.tables.sales_orders.length, 1)
+  assert.equal(db.tables.sales_order_items.length, 1, "lines are kept")
+
+  db = new FakeDb({
+    purchase_orders: [{ po_id: 1 }], purchase_order_items: [{ po_item_id: 1, po_id: 1 }],
+    goods_receipts: [{ receipt_id: 1, po_id: 1 }], accounts_payable: [],
+  })
+  useDb(db)
+  assert.equal((await del(poRoute.DELETE, "?id=1")).status, 409)
+  assert.equal(db.tables.purchase_orders.length, 1)
+  assert.equal(db.tables.purchase_order_items.length, 1)
+})

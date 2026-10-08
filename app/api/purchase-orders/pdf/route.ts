@@ -337,7 +337,9 @@ export async function GET(request: NextRequest) {
               po.status === "pending" ? "معلق" :
               po.status === "approved" ? "معتمد" :
               po.status === "rejected" ? "مرفوض" :
-              po.status === "received" ? "مستلم" : escapeHtml(po.status)
+              po.status === "received" ? "مستلم" :
+              po.status === "partially_received" ? "مستلم جزئياً" :
+              po.status === "received_with_issues" ? "مستلم مع ملاحظات" : escapeHtml(po.status)
             }</span>
           </span>
         </div>

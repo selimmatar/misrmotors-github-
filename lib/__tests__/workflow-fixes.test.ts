@@ -181,3 +181,29 @@ test("SO PUT with quotationRequests no longer touches quotation_requests (table 
   assert.equal(r.status, 200, JSON.stringify(r.body))
   assert.equal(db.tables.quotation_requests, undefined)
 })
+
+// ---- review fix: rejecting a signed permit takes a "delivered" SO back ----
+test("REJECT of the SUBMITTED_SIGNED permit that made the SO delivered: SO is no longer delivered", async () => {
+  const db = dpDb(
+    [permit(1, "SUBMITTED_SIGNED")],
+    [{ item_id: 1, permit_id: 1, product_id: 7, quantity: 10 }],
+  )
+  db.tables.sales_orders[0].status = "delivered"
+  db.tables.sales_orders[0].fulfillment_status = "DELIVERED"
+  const r = await put(1, "REJECT", { rejectionReason: "wrong goods" })
+  assert.equal(r.status, 200)
+  assert.equal(st(db), "REJECTED")
+  assert.equal(db.tables.sales_orders[0].status, "ready_for_delivery")
+  assert.equal(db.tables.sales_orders[0].fulfillment_status, "READY_FOR_PICKUP")
+})
+
+test("REJECT of one of two delivered permits: SO falls back to PARTIALLY_DELIVERED", async () => {
+  const db = dpDb(
+    [permit(1, "SUBMITTED_SIGNED"), permit(2, "APPROVED")],
+    [{ item_id: 1, permit_id: 1, product_id: 7, quantity: 5 }, { item_id: 2, permit_id: 2, product_id: 7, quantity: 5 }],
+  )
+  db.tables.sales_orders[0].status = "delivered"
+  db.tables.sales_orders[0].fulfillment_status = "DELIVERED"
+  await put(1, "REJECT", { rejectionReason: "x" })
+  assert.equal(db.tables.sales_orders[0].fulfillment_status, "PARTIALLY_DELIVERED")
+})
