@@ -163,6 +163,9 @@ export interface InventoryItem {
   sku: string
   category?: string
   quantity: number
+  /** stock held for approved sales orders, product level (null: not available) */
+  onHold?: number | null
+  available?: number | null
   unit: string
   reorderPoint: number
   unitCost: number

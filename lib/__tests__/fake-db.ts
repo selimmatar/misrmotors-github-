@@ -25,6 +25,7 @@ const PK: Record<string, string> = {
   payment_schedules: "schedule_id",
   supplier_payments: "payment_id",
   balance_entries: "entry_id",
+  inventory_transactions: "transaction_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
@@ -102,6 +103,9 @@ class Query {
   delete() { this.op = "delete"; return this }
   eq(c: string, v: any) { this.filters.push((r) => r[c] === v); return this }
   neq(c: string, v: any) { this.filters.push((r) => r[c] !== v); return this }
+  gte(c: string, v: any) { this.filters.push((r) => r[c] >= v); return this }
+  gt(c: string, v: any) { this.filters.push((r) => r[c] > v); return this }
+  lte(c: string, v: any) { this.filters.push((r) => r[c] <= v); return this }
   in(c: string, vs: any[]) { this.filters.push((r) => vs.includes(r[c])); return this }
   is(c: string, v: any) { this.filters.push((r) => (r[c] ?? null) === v); return this }
   like(c: string, pattern: string) {

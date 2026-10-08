@@ -4,6 +4,7 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkIdempotency, completeIdempotency, generateDPApprovalIdempotencyKey } from "@/lib/idempotency"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { isSOFullyDelivered } from "@/lib/delivery-status"
+import { abortDeduction, deductStockForPermit, finishDeduction, type StockMove } from "@/lib/dp-stock"
 
 export const dynamic = "force-dynamic"
 
@@ -404,6 +405,8 @@ export async function PUT(request: NextRequest) {
     const updates: any = { updated_at: new Date().toISOString() }
     let newStatus = currentPermit.status
     const soUpdates: any = {}
+    // Batch 4E-stock: stock taken out of inventory by this APPROVE (undone if the permit cannot be approved).
+    let stockMoves: StockMove[] = []
 
     switch (action) {
       case "UPDATE_DETAILS":
@@ -566,10 +569,24 @@ export async function PUT(request: NextRequest) {
               // through the Accounts Receivable module using "Create from DPs" button.
             }
           }
+
+          // Batch 4E-stock: stock is DEDUCTED when the permit is approved (it was on hold since the SO was approved).
+          // Done last, right before the status change, so a refusal changes nothing. A permit that is already
+          // APPROVED (including every permit approved before this change) is never deducted (again).
+          if (currentPermit.status !== "APPROVED") {
+            const deduction = await deductStockForPermit(supabase, currentPermit)
+            if (!deduction.ok) {
+              await completeIdempotency("dp_approval", dpApprovalKey, false, deduction.body.error)
+              return NextResponse.json(deduction.body, { status: deduction.status })
+            }
+            if (deduction.state === "deducted") stockMoves = deduction.moves
+          }
+
           // After successful approval:
           await completeIdempotency("dp_approval", dpApprovalKey, true)
           updates.approval_processing = false
         } catch (error: any) {
+          if (stockMoves.length > 0) await abortDeduction(supabase, currentPermit, stockMoves, error.message)
           await completeIdempotency("dp_approval", dpApprovalKey, false, error.message)
           updates.approval_processing = false
           throw error
@@ -589,14 +606,34 @@ export async function PUT(request: NextRequest) {
     }
 
     // Update permit
-    const { data: updatedPermit, error: updateError } = await withRetry(() =>
-      supabase.from("delivery_permits").update(updates).eq("permit_id", Number.parseInt(permitId)).select().single(),
-    )
+    let updatedPermit: any
+    let updateError: any
+    try {
+      const result = await withRetry(() =>
+        supabase.from("delivery_permits").update(updates).eq("permit_id", Number.parseInt(permitId)).select().single(),
+      )
+      updatedPermit = result.data
+      updateError = result.error
+    } catch (thrown: any) {
+      updateError = { message: thrown?.message || "Failed to update delivery permit" }
+    }
 
     if (updateError) {
       console.error("Delivery Permit update error:", updateError)
+      if (stockMoves.length > 0) {
+        const restored = await abortDeduction(supabase, currentPermit, stockMoves, updateError.message)
+        return NextResponse.json(
+          {
+            error: restored
+              ? `${updateError.message}. The permit was not approved and the stock was put back.`
+              : `${updateError.message}. The permit was not approved but the stock could not be fully put back: contact an administrator.`,
+          },
+          { status: 500 },
+        )
+      }
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
+    if (stockMoves.length > 0) await finishDeduction(supabase, currentPermit, stockMoves, userId)
 
 
     // Update sales order if needed

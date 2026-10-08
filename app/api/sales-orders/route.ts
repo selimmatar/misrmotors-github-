@@ -3,6 +3,7 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "@/lib/return-lines"
+import { loadAvailability } from "@/lib/stock-hold"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
 import { reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
 
@@ -275,30 +276,21 @@ export async function POST(request: Request) {
       const inventoryItems = items.filter((item: any) => item.productId && item.productId !== "")
       
       if (inventoryItems.length > 0) {
-        const productIds = inventoryItems.map((item: any) => item.productId)
-        const { data: inventoryData, error: inventoryError } = await supabase
-          .from("inventory")
-          .select("product_id, quantity")
-          .in("product_id", productIds)
-          // Returned-holding stock isn't sellable yet (it hasn't been restocked), and a
-          // product can have both a normal row and a returned row per warehouse, so it
-          // must be excluded here rather than counted as available.
-          .eq("is_returned", false)
-
-        if (inventoryError) {
+        // Batch 4E-stock: available = on-hand (non-returned stock, all warehouses) - stock held by other approved
+        // sales orders that is not yet deducted by an approved delivery permit (lib/stock-hold.ts).
+        let availability: Awaited<ReturnType<typeof loadAvailability>>
+        try {
+          availability = await loadAvailability(
+            supabase,
+            inventoryItems.map((item: any) => Number(item.productId)),
+          )
+        } catch (inventoryError) {
           console.error("Sales Orders POST: Error fetching inventory", inventoryError)
           return Response.json({ error: "Failed to validate inventory" }, { status: 500 })
         }
 
-        // Sum across warehouses (a product can have one on-hand row per warehouse).
-        const inventoryMap = new Map<string, number>()
-        for (const inv of inventoryData || []) {
-          const key = String(inv.product_id)
-          inventoryMap.set(key, (inventoryMap.get(key) || 0) + (inv.quantity || 0))
-        }
-
         for (const item of inventoryItems) {
-          const availableQty = inventoryMap.get(String(item.productId)) || 0
+          const availableQty = availability.get(Number(item.productId))?.available || 0
           if (item.quantity > availableQty) {
             console.error(
               `[v0] Sales Orders POST: Insufficient inventory for product ${item.productId}. Requested: ${item.quantity}, Available: ${availableQty}`,
