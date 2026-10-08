@@ -41,6 +41,11 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
       if (!response.ok) {
         const errorData = await response.json()
         console.error("DeliveryPermitCard - Update failed:", errorData)
+        if (errorData.code === "INSUFFICIENT_STOCK") {
+          // Stock is deducted on approval: show which lines are short (the permit stays as it was)
+          alert(errorData.error)
+          return
+        }
         throw new Error(errorData.error || "Failed to update permit")
       }
 

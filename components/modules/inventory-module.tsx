@@ -700,6 +700,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                       <TableHead>{t("field.product-name")}</TableHead>
                       <TableHead>{t("field.sku")}</TableHead>
                       <TableHead>{t("field.quantity")}</TableHead>
+                      <TableHead>{t("inventory.on-hold")}</TableHead>
                       <TableHead>{t("inventory.reorder-point")}</TableHead>
                       <TableHead>{t("field.unit-cost")}</TableHead>
                       <TableHead>{t("field.total-value")}</TableHead>
@@ -726,6 +727,9 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                         </TableCell>
                         <TableCell>{item.sku}</TableCell>
                         <TableCell>{formatNumber(item.quantity)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {item.onHold ? formatNumber(item.onHold) : "-"}
+                        </TableCell>
                         <TableCell>{formatNumber(item.reorderPoint)}</TableCell>
                         <TableCell>{formatCurrency(item.unitCost ?? 0)}</TableCell>
                         <TableCell>{formatCurrency(item.quantity * (item.unitCost ?? 0))}</TableCell>

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
+import { loadHeldByProduct } from "@/lib/stock-hold"
 
 export const dynamic = "force-dynamic"
 
@@ -32,7 +33,25 @@ export async function GET() {
       return data || []
     })
 
+    // Batch 4E-stock: stock on hold for approved sales orders (derived, product level) and what is left to sell.
+    // onHold/available are null when the hold cannot be computed (the list itself is still returned).
+    let heldByProduct: Map<number, number> | null = null
+    try {
+      heldByProduct = await loadHeldByProduct(createAdminClient())
+    } catch (holdError) {
+      console.error("Inventory GET: could not compute stock on hold:", holdError)
+    }
+    const onHandByProduct = new Map<number, number>()
+    for (const item of result as any[]) {
+      if (item.product_id && !item.is_returned) {
+        onHandByProduct.set(item.product_id, (onHandByProduct.get(item.product_id) || 0) + (Number(item.quantity) || 0))
+      }
+    }
+
     const transformed = result.map((item: any) => {
+      const sellable = !!item.product_id && !item.is_returned
+      const onHold = heldByProduct && sellable ? heldByProduct.get(item.product_id) || 0 : heldByProduct ? 0 : null
+      const available = heldByProduct && sellable ? Math.max(0, (onHandByProduct.get(item.product_id) || 0) - (onHold || 0)) : heldByProduct ? 0 : null
       const isOutsourced = item.is_outsourced || !item.product_id
       const productName = isOutsourced
         ? (item.outsourced_name || "Outsourced Item")
@@ -43,6 +62,9 @@ export async function GET() {
         inventoryId: item.inventory_id,
         productId: item.product_id?.toString() || "",
         quantity: item.quantity,
+        // product-level (all warehouses): same value on every row of the product
+        onHold,
+        available,
         unitCost: item.unit_cost ?? 0,
         reorderPoint: item.reorder_point || 5,
         location: item.location || "Warehouse - Main",

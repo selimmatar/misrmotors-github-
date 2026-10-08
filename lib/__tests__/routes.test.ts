@@ -28,7 +28,11 @@ function baseDb(extra: Record<string, Row[]> = {}) {
     sales_order_items: [{ so_item_id: 1, so_id: 1, product_id: 7, outsourced_name: null, quantity: 10, unit_price: 10000, total: 100000, item_type: "stock" }],
     delivery_permits: [{ permit_id: 1, permit_no: "DP-T-1", sales_order_id: 1, customer_id: 5, status: "APPROVED" }],
     delivery_permit_items: [{ item_id: 11, permit_id: 1, product_id: 7, item_name_snapshot: "Pump A", sku_snapshot: "A", quantity: 10, unit_price: 10000, total: 100000, supplier_id: null, outsourced_name: null }],
-    inventory: [{ inventory_id: 100, product_id: 7, warehouse_id: 1, is_returned: false, quantity: 5, unit_cost: 5000, reorder_point: 10 }],
+    inventory: [
+      { inventory_id: 100, product_id: 7, warehouse_id: 1, is_returned: false, quantity: 5, unit_cost: 5000, reorder_point: 10 },
+      // Batch 4E-stock: approving a permit now deducts stock, so the replacement item B must exist in stock
+      { inventory_id: 101, product_id: 8, warehouse_id: 1, is_returned: false, quantity: 50, unit_cost: 6000, reorder_point: 10 },
+    ],
     invoice_delivery_permits: [],
     accounts_receivable: [],
     ...extra,

@@ -245,6 +245,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sku: inv.products?.sku || inv.sku || "",
     unit: inv.products?.unit || inv.unit || "unit",
     quantity: inv.quantity,
+    onHold: inv.onHold ?? null,
+    available: inv.available ?? null,
     reorderPoint: inv.reorder_point ?? inv.reorderPoint,
     location: inv.location,
     warehouseId: inv.warehouse_id ?? inv.warehouseId,
