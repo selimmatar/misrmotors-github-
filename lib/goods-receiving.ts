@@ -488,7 +488,7 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
     return reject(
       409,
       `Cannot receive ${p.requested} of PO item ${p.poItemId}: ordered ${p.ordered}, already received ${p.alreadyReceived}, remaining ${p.remaining}. Nothing was recorded.`,
-      { code: "OVER_RECEIPT", items: problems },
+      { code: "OVER_RECEIPT", items: problems, lines: problems },
     )
   }
 
@@ -497,9 +497,11 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
   for (const item of items) after.set(item.po_item_id, (previous.get(item.po_item_id) || 0) + (requested.get(item.po_item_id) || 0))
   const poFullyReceived = items.length > 0 && items.every((i) => (after.get(i.po_item_id) || 0) >= (Number(i.quantity) || 0))
   const hasDiscrepancy = lines.some((l) => l.discrepancyType)
-  // GRN status keeps its meaning (partial | complete | discrepancy); the PO status never follows it.
+  // GRN status keeps its meaning (partial | complete | discrepancy). The PO status follows the CUMULATIVE
+  // position: not everything received -> partially_received (stays receivable, even when this GRN has a
+  // discrepancy); everything received -> received, or received_with_issues when this receipt carries a discrepancy.
   const receiptStatus = hasDiscrepancy ? "discrepancy" : poFullyReceived ? "complete" : "partial"
-  const newPoStatus = poFullyReceived ? "received" : "partially_received"
+  const newPoStatus = !poFullyReceived ? "partially_received" : hasDiscrepancy ? "received_with_issues" : "received"
 
   // ---- 4. Stock items typed in by hand get a catalogue product (existing behaviour) -------------------
   const productByItem = new Map<number, number>()

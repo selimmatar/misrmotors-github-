@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     const draftPOs = purchaseOrders.filter((po: any) => po.status === "draft")
     const pendingPOs = purchaseOrders.filter((po: any) => po.status === "pending")
     const approvedPOs = purchaseOrders.filter((po: any) => po.status === "approved")
-    const receivedPOs = purchaseOrders.filter((po: any) => po.status === "received")
+    const receivedPOs = purchaseOrders.filter((po: any) => po.status === "received" || po.status === "received_with_issues")
 
     // 5. Sales Orders
     const draftSOs = salesOrders.filter((so: any) => so.status === "draft")

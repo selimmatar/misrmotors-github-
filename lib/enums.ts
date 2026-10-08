@@ -6,6 +6,8 @@
  * NEVER use raw strings for status values - import from this module instead.
  */
 
+import { computeArStatus } from "./ar-status"
+
 // ============================================================================
 // ACCOUNTS PAYABLE (AP) / SUPPLIER INVOICES
 // DB: CHECK (status IN ('pending', 'partially_paid', 'paid', 'overdue'))
@@ -96,10 +98,17 @@ export const PO_STATUS_VALUES: readonly POStatus[] = [
 
 // ============================================================================
 // SALES ORDERS
-// DB: CHECK (status IN ('draft', 'pending', 'pending_accountant', 'accountant_approved',
+// DB: CHECK (status IN ('draft_quotation', 'pending_approval', 'approved_quotation', 'rejected_quotation',
+//           'expired_quotation', 'draft', 'pending', 'pending_accountant', 'accountant_approved',
 //           'ready_for_delivery', 'shipped', 'delivered', 'cancelled'))
+// The *_quotation / pending_approval values belong to the legacy sales_orders.entity_type = 'quotation' model.
 // ============================================================================
 export const SO_STATUS = {
+  DRAFT_QUOTATION: "draft_quotation",
+  PENDING_APPROVAL: "pending_approval",
+  APPROVED_QUOTATION: "approved_quotation",
+  REJECTED_QUOTATION: "rejected_quotation",
+  EXPIRED_QUOTATION: "expired_quotation",
   DRAFT: "draft",
   PENDING: "pending",
   PENDING_ACCOUNTANT: "pending_accountant",
@@ -113,6 +122,11 @@ export const SO_STATUS = {
 export type SOStatus = (typeof SO_STATUS)[keyof typeof SO_STATUS]
 
 export const SO_STATUS_VALUES: readonly SOStatus[] = [
+  SO_STATUS.DRAFT_QUOTATION,
+  SO_STATUS.PENDING_APPROVAL,
+  SO_STATUS.APPROVED_QUOTATION,
+  SO_STATUS.REJECTED_QUOTATION,
+  SO_STATUS.EXPIRED_QUOTATION,
   SO_STATUS.DRAFT,
   SO_STATUS.PENDING,
   SO_STATUS.PENDING_ACCOUNTANT,
@@ -125,11 +139,12 @@ export const SO_STATUS_VALUES: readonly SOStatus[] = [
 
 // ============================================================================
 // DELIVERY PERMITS
-// DB: CHECK (status IN ('DRAFT', 'PRINTED', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY',
+// DB: CHECK (status IN ('DRAFT', 'READY_FOR_SHIPMENT', 'PRINTED', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY',
 //           'SUBMITTED_SIGNED', 'APPROVED', 'REJECTED'))
 // ============================================================================
 export const DP_STATUS = {
   DRAFT: "DRAFT",
+  READY_FOR_SHIPMENT: "READY_FOR_SHIPMENT",
   PRINTED: "PRINTED",
   READY_FOR_PICKUP: "READY_FOR_PICKUP",
   OUT_FOR_DELIVERY: "OUT_FOR_DELIVERY",
@@ -139,6 +154,33 @@ export const DP_STATUS = {
 } as const
 
 export type DPStatus = (typeof DP_STATUS)[keyof typeof DP_STATUS]
+
+// ============================================================================
+// SALES QUOTATIONS
+// DB: CHECK (status IN ('draft', 'sent', 'accepted', 'rejected', 'expired'))
+// ============================================================================
+export const QUOTATION_STATUS = {
+  DRAFT: "draft",
+  SENT: "sent",
+  ACCEPTED: "accepted",
+  REJECTED: "rejected",
+  EXPIRED: "expired",
+} as const
+
+export type QuotationStatus = (typeof QUOTATION_STATUS)[keyof typeof QUOTATION_STATUS]
+
+// ============================================================================
+// GOODS RECEIPTS
+// DB: CHECK (status IN ('pending', 'partial', 'complete', 'discrepancy'))
+// ============================================================================
+export const GRN_STATUS = {
+  PENDING: "pending",
+  PARTIAL: "partial",
+  COMPLETE: "complete",
+  DISCREPANCY: "discrepancy",
+} as const
+
+export type GRNStatus = (typeof GRN_STATUS)[keyof typeof GRN_STATUS]
 
 // ============================================================================
 // BALANCE ENTRIES
@@ -203,31 +245,11 @@ export function isValidScheduleStatus(value: unknown): value is ScheduleStatus {
 }
 
 /**
- * Computes invoice status based on paid vs total amount
- * Returns DB-valid status values only (partially_paid, NOT partial)
+ * Computes invoice status based on paid vs total amount (AR and AP share the same four DB values).
+ * Delegates to lib/ar-status.ts, the single implementation. Returns DB-valid values only (partially_paid, NOT partial).
  */
 export function computeInvoiceStatus(paidAmount: number, totalAmount: number, dueDate?: string | Date): APStatus {
-  if (paidAmount >= totalAmount) {
-    return AP_STATUS.PAID
-  }
-
-  if (paidAmount > 0) {
-    return AP_STATUS.PARTIALLY_PAID // NEVER "partial" for invoices!
-  }
-
-  // Check if overdue
-  if (dueDate) {
-    const due = new Date(dueDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    due.setHours(0, 0, 0, 0)
-
-    if (due < today) {
-      return AP_STATUS.OVERDUE
-    }
-  }
-
-  return AP_STATUS.PENDING
+  return computeArStatus({ amount: totalAmount, collectedAmount: paidAmount, dueDate })
 }
 
 /**

@@ -201,13 +201,27 @@ export async function getSalesMetrics(dateRange?: DateRange): Promise<SalesMetri
 export async function getInventoryMetrics(): Promise<InventoryMetrics> {
   const supabase = createAdminClient()
 
-  // Use the report_inventory_valuation view
-  const { data: inventoryData, error } = await supabase.from("report_inventory_valuation").select("*")
+  // The report_inventory_valuation view no longer exists: read the base tables with the same definition
+  // (total_value = quantity * unit_cost; low_stock = 0 < quantity <= reorder_point; out_of_stock = quantity 0).
+  const { data: rawInventory, error } = await supabase
+    .from("inventory")
+    .select("quantity, unit_cost, reorder_point, products(product_name, product_categories(category_name))")
 
   if (error) {
     console.error("[Metrics] Error fetching inventory:", error)
     throw error
   }
+
+  const inventoryData = (rawInventory || []).map((row: any) => {
+    const quantity = Number(row.quantity) || 0
+    const reorderPoint = Number(row.reorder_point) || 0
+    return {
+      quantity,
+      total_value: quantity * (Number(row.unit_cost) || 0),
+      category: row.products?.product_categories?.category_name || null,
+      stock_status: quantity <= 0 ? "out_of_stock" : quantity <= reorderPoint ? "low_stock" : "in_stock",
+    }
+  })
 
   const items = inventoryData || []
 
@@ -244,65 +258,20 @@ export async function getInventoryMetrics(): Promise<InventoryMetrics> {
     lowStockCount,
     outOfStockCount,
     valueByCategory,
-    _query: "SELECT * FROM report_inventory_valuation",
+    _query: "SELECT quantity, unit_cost, reorder_point FROM inventory JOIN products",
     _recordCount: items.length,
   }
 }
 
 /**
  * FORMULA: Accounts Receivable
- * Uses report_ar_summary view for consistent calculations
+ * Calculated directly from accounts_receivable (the report_ar_* views were dropped)
  */
 export async function getARMetrics(dateRange?: DateRange): Promise<ARMetrics> {
   const supabase = createAdminClient()
 
-  // Get summary from view
-  const { data: summaryData, error: summaryError } = await supabase.from("report_ar_summary").select("*").single()
-
-  // Get aging data from view
-  const { data: agingData, error: agingError } = await supabase.from("report_ar_aging").select("*")
-
-  if (summaryError || agingError) {
-    console.error("[Metrics] Error fetching AR data:", summaryError || agingError)
-    // Fallback to direct calculation
-    return calculateARMetricsFallback(dateRange)
-  }
-
-  const summary = summaryData || {}
-  const aging = agingData || []
-
-  // Calculate aging buckets from detail data
-  const agingBuckets = {
-    current: 0,
-    days30: 0,
-    days60: 0,
-    days90plus: 0,
-  }
-
-  aging.forEach((inv) => {
-    if (inv.status === "paid") return
-    const bucket = inv.aging_bucket || "current"
-    const balance = Number(inv.balance_due) || 0
-
-    if (bucket === "Current" || bucket === "current") agingBuckets.current += balance
-    else if (bucket === "1-30 Days" || bucket === "30_days") agingBuckets.days30 += balance
-    else if (bucket === "31-60 Days" || bucket === "60_days") agingBuckets.days60 += balance
-    else agingBuckets.days90plus += balance
-  })
-
-  return {
-    totalInvoiced: Number(summary.total_invoiced) || 0,
-    totalCollected: Number(summary.total_collected) || 0,
-    totalOutstanding: Number(summary.total_outstanding) || 0,
-    overdueAmount: Number(summary.overdue_amount) || 0,
-    totalInvoices: Number(summary.total_invoices) || 0,
-    openInvoices: Number(summary.open_invoices) || 0,
-    paidInvoices: Number(summary.paid_invoices) || 0,
-    overdueInvoices: Number(summary.overdue_invoices) || 0,
-    agingBuckets,
-    _query: "SELECT * FROM report_ar_summary; SELECT * FROM report_ar_aging",
-    _recordCount: aging.length,
-  }
+  // The report_ar_* views were dropped; the direct calculation below is the single implementation.
+  return calculateARMetricsFallback(dateRange)
 }
 
 async function calculateARMetricsFallback(dateRange?: DateRange): Promise<ARMetrics> {
@@ -372,58 +341,13 @@ async function calculateARMetricsFallback(dateRange?: DateRange): Promise<ARMetr
 
 /**
  * FORMULA: Accounts Payable
- * Uses report_ap_summary view for consistent calculations
+ * Calculated directly from accounts_payable (the report_ap_* views were dropped)
  */
 export async function getAPMetrics(dateRange?: DateRange): Promise<APMetrics> {
   const supabase = createAdminClient()
 
-  // Get summary from view
-  const { data: summaryData, error: summaryError } = await supabase.from("report_ap_summary").select("*").single()
-
-  // Get aging data from view
-  const { data: agingData, error: agingError } = await supabase.from("report_ap_aging").select("*")
-
-  if (summaryError || agingError) {
-    console.error("[Metrics] Error fetching AP data:", summaryError || agingError)
-    // Fallback to direct calculation
-    return calculateAPMetricsFallback(dateRange)
-  }
-
-  const summary = summaryData || {}
-  const aging = agingData || []
-
-  // Calculate aging buckets from detail data
-  const agingBuckets = {
-    current: 0,
-    days30: 0,
-    days60: 0,
-    days90plus: 0,
-  }
-
-  aging.forEach((inv) => {
-    if (inv.status === "paid") return
-    const bucket = inv.aging_bucket || "current"
-    const balance = Number(inv.balance_due) || 0
-
-    if (bucket === "Current" || bucket === "current") agingBuckets.current += balance
-    else if (bucket === "1-30 Days" || bucket === "30_days") agingBuckets.days30 += balance
-    else if (bucket === "31-60 Days" || bucket === "60_days") agingBuckets.days60 += balance
-    else agingBuckets.days90plus += balance
-  })
-
-  return {
-    totalInvoiced: Number(summary.total_invoiced) || 0,
-    totalPaid: Number(summary.total_paid) || 0,
-    totalOutstanding: Number(summary.total_outstanding) || 0,
-    overdueAmount: Number(summary.overdue_amount) || 0,
-    totalInvoices: Number(summary.total_invoices) || 0,
-    openInvoices: Number(summary.open_invoices) || 0,
-    paidInvoices: Number(summary.paid_invoices) || 0,
-    overdueInvoices: Number(summary.overdue_invoices) || 0,
-    agingBuckets,
-    _query: "SELECT * FROM report_ap_summary; SELECT * FROM report_ap_aging",
-    _recordCount: aging.length,
-  }
+  // The report_ap_* views were dropped; the direct calculation below is the single implementation.
+  return calculateAPMetricsFallback(dateRange)
 }
 
 async function calculateAPMetricsFallback(dateRange?: DateRange): Promise<APMetrics> {
@@ -586,7 +510,7 @@ export async function getAllKPIs(dateRange?: DateRange): Promise<KPIMetrics> {
   }
 
   const { data: purchaseOrders } = await totalCostsQuery
-  const completedPOStatuses = ["received", "approved", "completed"]
+  const completedPOStatuses = ["received", "received_with_issues", "approved", "completed"]
   const totalCosts = (purchaseOrders || [])
     .filter((po) => completedPOStatuses.includes(po.status))
     .reduce((sum, po) => sum + (Number(po.total) || 0), 0)
@@ -657,16 +581,19 @@ export async function validateMetrics(): Promise<
 
   // Validate Inventory Value
   const inventoryMetrics = await getInventoryMetrics()
-  const { data: rawInventory } = await supabase.from("report_inventory_valuation").select("total_value")
+  const { data: rawInventory } = await supabase.from("inventory").select("quantity, unit_cost")
 
-  const rawInventoryValue = (rawInventory || []).reduce((sum, item) => sum + (Number(item.total_value) || 0), 0)
+  const rawInventoryValue = (rawInventory || []).reduce(
+    (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0),
+    0,
+  )
 
   results.push({
     kpi: "Inventory Value",
     expected: rawInventoryValue,
     actual: inventoryMetrics.totalValue,
     match: Math.abs(rawInventoryValue - inventoryMetrics.totalValue) < 0.01,
-    query: "SELECT SUM(total_value) FROM report_inventory_valuation",
+    query: "SELECT SUM(quantity * unit_cost) FROM inventory",
   })
 
   // Validate AR Outstanding
