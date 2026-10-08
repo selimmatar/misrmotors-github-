@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import useSWR from "swr"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,7 +26,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     supplierInvoices,
     updateSupplierInvoice,
     customerInvoices,
-    updateCustomerInvoice,
+    loadData,
     salesOrders,
     updateSalesOrder,
     suppliers,
@@ -34,6 +34,9 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     purchaseOrders,
     addCustomerInvoice,
   } = useAppContext()
+
+  const markReceivedAttemptRef = useRef<{ scope: string; key: string } | null>(null)
+  const markReceivedInFlightRef = useRef(false)
 
   const [selectedSupplierInvoice, setSelectedSupplierInvoice] = useState<SupplierInvoice | null>(null)
   const [selectedCustomerInvoice, setSelectedCustomerInvoice] = useState<CustomerInvoice | null>(null)
@@ -180,33 +183,68 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     }
   }
 
-  const handleMarkCustomerReceived = (id: string) => {
+  // "Mark payment received" records one installment (invoice amount / the SO's installment count, as
+  // before) through the authoritative AR payment endpoint. The server validates the amount, updates the
+  // invoice with a guarded update and writes customer_payments + balance_entries; nothing else is written
+  // from here.
+  const handleMarkCustomerReceived = async (id: string) => {
     const invoice = customerInvoices.find((i) => i.id === id)
     if (!invoice) return
+    if (markReceivedInFlightRef.current) return
 
     const so = salesOrders.find((s) => s.id === invoice.soId)
     const installmentMonths = so?.installments || 0
-    const currentMonthsPaid = invoice.monthsPaid || 0
-    const newMonthsPaid = currentMonthsPaid + 1
-
-
-    const updatedInvoice = {
-      ...invoice,
-      monthsPaid: newMonthsPaid,
-      status: (newMonthsPaid >= installmentMonths ? "paid" : invoice.status) as const,
+    if (installmentMonths <= 0) {
+      alert("This invoice has no installment plan on its sales order, so the instalment amount cannot be determined. Use the Accounts Receivable screen to record the payment.")
+      return
     }
-    updateCustomerInvoice(updatedInvoice)
 
-    const monthlyAmount = installmentMonths ? invoice.amount / installmentMonths : 0
+    const invoiceAmount = invoice.amount || 0
+    const collectedSoFar = invoice.collectedAmount || 0
+    const monthsPaidSoFar = invoice.monthsPaid || 0
+    const remaining = Math.round((invoiceAmount - collectedSoFar) * 100) / 100
+    const installmentAmount = Math.round((invoiceAmount / installmentMonths) * 100) / 100
+    const isFinalInstallment = monthsPaidSoFar + 1 >= installmentMonths
+    // Final installment settles the exact remaining balance (avoids a rounding overshoot); otherwise never
+    // more than the remaining balance. The server still rejects anything above the remaining balance.
+    const paymentAmount =
+      remaining > 0.005 ? (isFinalInstallment ? remaining : Math.min(installmentAmount, remaining)) : installmentAmount
 
-    if (so) {
-      addBalanceEntry({
-        type: "ar_payment",
-        referenceId: invoice.id,
-        referenceNumber: invoice.invoiceNumber,
-        amount: monthlyAmount, // Positive for income
-        description: `AR installment received for ${so.soNumber} (${newMonthsPaid}/${installmentMonths})`,
+    const scope = `accountant|${invoice.id}|${paymentAmount}|${collectedSoFar}|${monthsPaidSoFar}`
+    if (!markReceivedAttemptRef.current || markReceivedAttemptRef.current.scope !== scope) {
+      const unique =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      markReceivedAttemptRef.current = { scope, key: `ui-${unique}` }
+    }
+
+    markReceivedInFlightRef.current = true
+    try {
+      const response = await fetch("/api/accounts-receivable/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoiceId: invoice.id,
+          amount: paymentAmount,
+          paymentMethod: "installment_payment",
+          label: `Month ${monthsPaidSoFar + 1}/${installmentMonths}`,
+          idempotencyKey: markReceivedAttemptRef.current.key,
+        }),
       })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.success) {
+        if (response.status === 409 || data?.partialFailure) await loadData()
+        alert(`${t("message.error")}: ${data?.error || `Payment failed (HTTP ${response.status})`}`)
+        return
+      }
+      markReceivedAttemptRef.current = null
+      await loadData()
+    } catch (error: any) {
+      console.error("Error recording customer payment:", error)
+      alert(`${t("message.error")}: ${error?.message || ""}`)
+    } finally {
+      markReceivedInFlightRef.current = false
     }
   }
 

@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -44,7 +44,11 @@ interface AccountsReceivableModuleProps {
 
 export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleProps) {
   const { t, formatNumber, formatCurrency, language } = useI18n()
-  const { customerInvoices, customers, salesOrders, updateCustomerInvoice, loadData } = useAppContext()
+  const { customerInvoices, customers, salesOrders, loadData } = useAppContext()
+  // One idempotency key per payment attempt (re-used if the same attempt is retried), and a guard against
+  // a second submit while one is in flight.
+  const paymentAttemptRef = useRef<{ scope: string; key: string } | null>(null)
+  const paymentInFlightRef = useRef(false)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<CustomerInvoice | null>(null)
   const [paymentReceiptFile, setPaymentReceiptFile] = useState<File | null>(null)
@@ -739,6 +743,67 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     }
   }
 
+  // Single entry point for recording an AR payment. All payment UI goes through
+  // POST /api/accounts-receivable/payments; nothing else writes the AR payment ledgers from the browser.
+  const submitArPayment = async (params: {
+    invoiceId: string
+    amount: number
+    paymentMethod?: string
+    receiptUrl?: string
+    scheduleId?: string
+    label?: string
+    scope: string
+  }) => {
+    if (!paymentAttemptRef.current || paymentAttemptRef.current.scope !== params.scope) {
+      const unique =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      paymentAttemptRef.current = { scope: params.scope, key: `ui-${unique}` }
+    }
+
+    const response = await fetch("/api/accounts-receivable/payments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        invoiceId: params.invoiceId,
+        amount: params.amount,
+        paymentMethod: params.paymentMethod,
+        receiptUrl: params.receiptUrl,
+        scheduleId: params.scheduleId,
+        label: params.label,
+        idempotencyKey: paymentAttemptRef.current.key,
+      }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok || !data?.success) {
+      const error: any = new Error(data?.error || `Payment failed (HTTP ${response.status})`)
+      error.status = response.status
+      error.partialFailure = !!data?.partialFailure
+      throw error
+    }
+
+    // The attempt is finished; the next payment gets a fresh key.
+    paymentAttemptRef.current = null
+    return data as {
+      success: true
+      isDuplicate?: boolean
+      invoice: { collectedAmount: number; balance: number; monthsPaid: number; status: string }
+    }
+  }
+
+  // After a rejected/partially applied payment, re-read server state so the screen never shows a stale
+  // or imagined balance.
+  const refreshAfterPaymentError = async (error: any) => {
+    if (error?.status === 409 || error?.partialFailure) {
+      try {
+        await loadData()
+      } catch (refreshError) {
+        console.error("AR - refresh after payment error failed:", refreshError)
+      }
+    }
+  }
+
   const handleRecordSchedulePayment = async () => {
     if (!selectedScheduleForPayment || !schedulePaymentFile || !selectedInvoiceForSchedule) {
       alert(t("ar.upload-receipt-required"))
@@ -752,6 +817,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       return
     }
 
+    if (paymentInFlightRef.current) return
+    paymentInFlightRef.current = true
     setIsUploading(true)
     try {
       // Upload receipt file
@@ -767,67 +834,31 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       const { url: receiptUrl } = await uploadResponse.json()
 
       const paymentAmount = selectedScheduleForPayment.amount
-      const newCollectedAmount = (selectedInvoiceForSchedule.collectedAmount || 0) + paymentAmount
-      const newMonthsPaid = (selectedInvoiceForSchedule.monthsPaid || 0) + 1
-      const isFullyPaid = newCollectedAmount >= (selectedInvoiceForSchedule.amount || 0)
+      const paymentLabel =
+        selectedScheduleForPayment.isDownPayment || selectedScheduleForPayment.installmentNumber === 0
+          ? "Down Payment"
+          : `Installment ${selectedScheduleForPayment.installmentNumber}`
 
-      // Check if this is a generated schedule (no real ID in database)
-      if (selectedScheduleForPayment.id.startsWith("gen-")) {
-        // For generated schedules, just update the invoice directly
-        await updateCustomerInvoice(invoiceId, {
-          collectedAmount: newCollectedAmount,
-          monthsPaid: newMonthsPaid,
-          status: isFullyPaid ? "paid" : "partially_paid",
-        })
-      } else {
-        // Update payment schedule in database
-        const response = await fetch("/api/payment-schedules", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            scheduleId: selectedScheduleForPayment.id,
-            paidAmount: paymentAmount,
-            paymentDate: new Date().toISOString().split("T")[0],
-            receiptUrl: receiptUrl,
-            scheduleType: "receivable", // Added scheduleType to identify this is AR
-          }),
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to record payment")
-        }
-
-        // Update AR invoice with correct function signature
-        await updateCustomerInvoice(invoiceId, {
-          collectedAmount: newCollectedAmount,
-          monthsPaid: newMonthsPaid,
-          status: isFullyPaid ? "paid" : "partially_paid",
-        })
-      }
-
-      // Record in balance
-      await fetch("/api/balance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "ar_payment",
-          referenceId: Number.parseInt(invoiceId) || 0,
-          referenceNumber: `${selectedInvoiceForSchedule?.invoiceNumber}-Inst-${selectedScheduleForPayment.installmentNumber}`,
-          amount: paymentAmount,
-          description: `AR Payment - ${selectedInvoiceForSchedule?.invoiceNumber} (${selectedScheduleForPayment.isDownPayment || selectedScheduleForPayment.installmentNumber === 0 ? "Down Payment" : `Installment ${selectedScheduleForPayment.installmentNumber}`})`,
-        }),
+      // The server decides whether the payment is acceptable and returns the updated invoice.
+      const result = await submitArPayment({
+        invoiceId,
+        amount: paymentAmount,
+        paymentMethod: selectedInvoiceForSchedule.paymentTerms || "installment_payment",
+        receiptUrl,
+        scheduleId: selectedScheduleForPayment.id, // "gen-..." ids are ignored by the server
+        label: paymentLabel,
+        scope: `schedule|${invoiceId}|${selectedScheduleForPayment.id}|${paymentAmount}|${selectedInvoiceForSchedule.collectedAmount || 0}|${selectedInvoiceForSchedule.monthsPaid || 0}`,
       })
 
       await loadData()
 
-      // Update local state for immediate UI feedback
+      // Local state mirrors the server response, not a client-side guess.
       const updatedInvoice = {
         ...selectedInvoiceForSchedule,
-        collectedAmount: newCollectedAmount,
-        balance: (selectedInvoiceForSchedule.amount || 0) - newCollectedAmount, // UI only
-        monthsPaid: newMonthsPaid,
-        status: isFullyPaid ? "paid" : "partially_paid",
+        collectedAmount: result.invoice.collectedAmount,
+        balance: result.invoice.balance,
+        monthsPaid: result.invoice.monthsPaid,
+        status: result.invoice.status as CustomerInvoice["status"],
       }
       setSelectedInvoiceForSchedule(updatedInvoice)
       await fetchPaymentSchedule(updatedInvoice)
@@ -836,10 +867,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       setSelectedScheduleForPayment(null)
       setSchedulePaymentFile(null)
       alert(t("message.success"))
-    } catch (error) {
+    } catch (error: any) {
       console.error("AR - Error recording schedule payment:", error)
-      alert(t("message.error"))
+      await refreshAfterPaymentError(error)
+      alert(`${t("message.error")}: ${error?.message || ""}`)
     } finally {
+      paymentInFlightRef.current = false
       setIsUploading(false)
     }
   }
@@ -850,6 +883,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       return
     }
 
+    if (paymentInFlightRef.current) return
+    paymentInFlightRef.current = true
     setIsUploading(true)
     try {
       // Upload receipt file
@@ -862,59 +897,40 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       if (!uploadResponse.ok) throw new Error("Upload failed")
       const { url: receiptUrl } = await uploadResponse.json()
 
+      // Same installment amount as before (invoice amount / installment months), rounded to cents. It is
+      // limited to the remaining balance so that rounding on the final installment cannot over-collect;
+      // the server still validates the amount and rejects anything above the remaining balance.
       const installmentMonths = getInstallmentMonths(selectedInvoiceForPayment)
-      const monthlyPayment = (selectedInvoiceForPayment.amount || 0) / installmentMonths
-      const currentCollectedAmount = selectedInvoiceForPayment.collectedAmount || 0
-      const newCollectedAmount = currentCollectedAmount + monthlyPayment
-      const newMonthsPaid = (selectedInvoiceForPayment.monthsPaid || 0) + 1
-      const isFullyPaid = newMonthsPaid >= installmentMonths
+      const invoiceAmount = selectedInvoiceForPayment.amount || 0
+      const collectedSoFar = selectedInvoiceForPayment.collectedAmount || 0
+      const monthsPaidSoFar = selectedInvoiceForPayment.monthsPaid || 0
+      const remaining = Math.round((invoiceAmount - collectedSoFar) * 100) / 100
+      const installmentAmount = Math.round((invoiceAmount / installmentMonths) * 100) / 100
+      const isFinalInstallment = monthsPaidSoFar + 1 >= installmentMonths
+      const paymentAmount =
+        remaining > 0.005 ? (isFinalInstallment ? remaining : Math.min(installmentAmount, remaining)) : installmentAmount
 
-      // Record in balance
-      await fetch("/api/balance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "ar_payment",
-          referenceId: Number.parseInt(selectedInvoiceForPayment.id) || 0,
-          referenceNumber: `${selectedInvoiceForPayment.invoiceNumber}-Month-${newMonthsPaid}`,
-          amount: monthlyPayment,
-          description: `AR Payment from ${getCustomerName(selectedInvoiceForPayment.customerId)} - ${selectedInvoiceForPayment.invoiceNumber} (Month ${newMonthsPaid}/${installmentMonths})`,
-        }),
+      await submitArPayment({
+        invoiceId: selectedInvoiceForPayment.id,
+        amount: paymentAmount,
+        paymentMethod: "installment_payment",
+        receiptUrl,
+        label: `Month ${monthsPaidSoFar + 1}/${installmentMonths}`,
+        scope: `plain|${selectedInvoiceForPayment.id}|${paymentAmount}|${collectedSoFar}|${monthsPaidSoFar}`,
       })
 
-      // Record customer payment
-      await fetch("/api/customer-payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invoiceId: selectedInvoiceForPayment.id,
-          customerId: selectedInvoiceForPayment.customerId,
-          amount: monthlyPayment,
-          paymentDate: new Date().toISOString().split("T")[0],
-          paymentMethod: "installment_payment",
-          referenceNumber: `${selectedInvoiceForPayment.invoiceNumber}-Month-${newMonthsPaid}`,
-          receiptUrl: receiptUrl,
-        }),
-      })
-
-      // Update invoice
-      const updatedInvoice: Partial<CustomerInvoice> = {
-        collectedAmount: newCollectedAmount,
-        balance: (selectedInvoiceForPayment.amount || 0) - newCollectedAmount,
-        monthsPaid: newMonthsPaid,
-        status: isFullyPaid ? "paid" : "partially_paid",
-      }
-
-      await updateCustomerInvoice(selectedInvoiceForPayment.id, updatedInvoice)
+      await loadData()
 
       setPaymentDialogOpen(false)
       setSelectedInvoiceForPayment(null)
       setPaymentReceiptFile(null)
       alert(t("message.success"))
-    } catch (error) {
+    } catch (error: any) {
       console.error("AR - Error recording payment:", error)
-      alert(t("message.error"))
+      await refreshAfterPaymentError(error)
+      alert(`${t("message.error")}: ${error?.message || ""}`)
     } finally {
+      paymentInFlightRef.current = false
       setIsUploading(false)
     }
   }
