@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -73,6 +73,8 @@ interface ApproveConvertQuotationDialogProps {
   quotation: QuotationInput
   onOpenChange: (open: boolean) => void
   onApproved: (soNumber: string) => void
+  // Called after the quotation was saved successfully (so the parent can refresh its list).
+  onSaved?: () => void
 }
 
 let rowKeyCounter = 0
@@ -83,7 +85,7 @@ function nextRowKey() {
 
 const formatCurrency = (amount: number) => `${(amount || 0).toFixed(2)} EGP`
 
-export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onApproved }: ApproveConvertQuotationDialogProps) {
+export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onApproved, onSaved }: ApproveConvertQuotationDialogProps) {
   const { customers, products, suppliers, inventory } = useAppContext()
 
   const [customerId, setCustomerId] = useState(quotation.customer_id ? String(quotation.customer_id) : "")
@@ -144,6 +146,25 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   const [saving, setSaving] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [uploadingDocument, setUploadingDocument] = useState(false)
+  const approveInFlight = useRef(false)
+
+  // Approve & Convert uses the values stored on the quotation, so any edit made in this
+  // dialog has to be saved first. The signature below describes everything the user can
+  // edit; the form is "dirty" while it differs from the last saved (or initially loaded) state.
+  const currentSignature = JSON.stringify({
+    customerId,
+    deliveryAddress,
+    deliveryContactName,
+    deliveryContactPhone,
+    notes,
+    items: items.map(({ key: _key, ...rest }) => rest),
+    discountType,
+    discountValue,
+    paymentType,
+    paymentDetails,
+  })
+  const [savedSignature, setSavedSignature] = useState(() => currentSignature)
+  const hasUnsavedChanges = currentSignature !== savedSignature
 
   const aggregatedInventory = useMemo(() => {
     const totals = new Map<string, number>()
@@ -253,6 +274,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     const customerPhone = customer?.phone || quotation.customer_phone
     const customerEmail = customer?.email || quotation.customer_email
 
+    const signatureAtSave = currentSignature
     setPrinting(true)
     try {
       const payloadItems = items.map((item) => ({
@@ -294,6 +316,22 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         const error = await saveResponse.json()
         throw new Error(error.error || "Failed to save quotation changes")
       }
+
+      // Confirm what was stored: re-read the quotation and compare the item count with what was sent,
+      // so a save that silently lost lines is reported instead of looking successful.
+      const verifyResponse = await fetch(`/api/sales-quotations?id=${quotation.id}`)
+      if (!verifyResponse.ok) {
+        throw new Error("The quotation was saved but could not be re-read to verify it. Please reopen it and check the items.")
+      }
+      const verifyData = await verifyResponse.json()
+      const storedItemCount = (verifyData.quotation?.items || []).length
+      if (storedItemCount !== payloadItems.length) {
+        throw new Error(
+          `Saved items do not match: sent ${payloadItems.length} item(s) but ${storedItemCount} are stored. Please reopen the quotation and check it.`,
+        )
+      }
+      setSavedSignature(signatureAtSave)
+      onSaved?.()
 
     const itemsHtml = items
       .map((item, idx) => {
@@ -593,6 +631,11 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   }
 
   const handleApproveAndConvert = async () => {
+    if (approveInFlight.current) return
+    if (hasUnsavedChanges) {
+      alert("You have unsaved changes. Please use \"Save & Print QT\" to save them before approving.")
+      return
+    }
     if (!approvalDocument) {
       alert("Please upload an approval document before approving")
       return
@@ -610,6 +653,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       return
     }
 
+    approveInFlight.current = true
     setSaving(true)
     setUploadingDocument(true)
     try {
@@ -630,41 +674,13 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       }
       setUploadingDocument(false)
 
-      const payloadItems = items.map((item) => ({
-        id: item.id,
-        product_id: item.itemType === "stock" ? item.productId || null : null,
-        product_name: item.productName,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        total: item.quantity * item.unitPrice,
-        item_type: item.itemType,
-        item_category: item.itemCategory,
-        outsourced_unit: item.outsourcedUnit,
-        supplier_id: item.itemType === "outsourced" ? item.supplierId || null : null,
-        supplier_name: item.itemType === "outsourced" ? item.supplierName : null,
-      }))
-
+      // The server converts the stored quotation; only the quotation id and the approval document are sent.
       const response = await fetch("/api/sales-quotations/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           quotation_id: quotation.id,
           approval_document_url: documentUrl,
-          customer_id: customerId ? Number(customerId) : null,
-          delivery_address: deliveryAddress,
-          delivery_contact_name: deliveryContactName,
-          delivery_contact_phone: deliveryContactPhone,
-          notes,
-          discount_type: discountType,
-          discount_value: discountValue,
-          discount_amount: discountAmount,
-          subtotal: subtotalAfterDiscount,
-          tax: vatAmount,
-          total: netTotal,
-          net_total: netTotal,
-          payment_type: paymentType,
-          payment_details: isHybrid ? quotation.payment_details : paymentDetails,
-          items: payloadItems,
         }),
       })
 
@@ -679,6 +695,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       console.error("Error approving quotation:", error)
       alert(error instanceof Error ? error.message : "Failed to approve quotation")
     } finally {
+      approveInFlight.current = false
       setSaving(false)
       setUploadingDocument(false)
     }
@@ -691,7 +708,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
           <DialogTitle>Approve &amp; Convert to Sales Order: {quotation.quotation_number}</DialogTitle>
           <DialogDescription>
             Review and adjust the quotation before converting it into a sales order &mdash; useful when the customer
-            only approved some of the requested items.
+            only approved some of the requested items. Changes must be saved (&ldquo;Save &amp; Print QT&rdquo;) before the quotation can be approved.
           </DialogDescription>
         </DialogHeader>
 
@@ -944,7 +961,10 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
             {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
             Save &amp; Print QT
           </Button>
-          <Button onClick={handleApproveAndConvert} disabled={saving || printing || !approvalDocument}>
+          {hasUnsavedChanges && (
+            <span className="self-center text-sm text-amber-600 mr-auto">Save changes before approving</span>
+          )}
+          <Button onClick={handleApproveAndConvert} disabled={saving || printing || !approvalDocument || hasUnsavedChanges}>
             {saving ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />

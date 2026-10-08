@@ -84,24 +84,27 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
     fetchQuotations()
   }, [])
 
-  const fetchQuotations = async () => {
+  // `silent` refreshes the list without the full-page spinner (used after saving from inside the
+  // Approve & Convert dialog, which would otherwise be unmounted while the list reloads).
+  const fetchQuotations = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       // Fetch from sales_quotations table
       const response = await fetch("/api/sales-quotations")
       if (!response.ok) throw new Error("Failed to fetch quotations")
       
       const data = await response.json()
       // Get quotations with pending/draft status
-      const pendingQuotations = (data.quotations || []).filter((q: any) =>
-        q.status === "sent" || q.status === "pending"
+      // Quotations already converted into a sales order (converted_so) are not listed again.
+      const pendingQuotations = (data.quotations || []).filter(
+        (q: any) => (q.status === "sent" || q.status === "pending") && !q.converted_so,
       )
       
       setQuotations(pendingQuotations)
     } catch (error) {
       console.error("Failed to fetch quotations:", error)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -558,6 +561,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
             if (!open) setSelectedQuotation(null)
           }}
           onApproved={handleQuotationApproved}
+          onSaved={() => fetchQuotations(true)}
         />
       )}
 

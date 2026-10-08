@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getQuotationLockReason } from "@/lib/sales-quotations/converted"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
@@ -22,9 +23,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
     }
 
-    // Check if already processed
-    if (existingQuotation.status === "approved" || existingQuotation.status === "rejected") {
-      return NextResponse.json({ error: "Quotation has already been processed" }, { status: 400 })
+    // Rejected / expired / already-converted quotations can't be rejected.
+    const lockReason = await getQuotationLockReason(supabase, existingQuotation)
+    if (lockReason) {
+      return NextResponse.json({ error: lockReason }, { status: 400 })
     }
 
     // Update quotation status to rejected

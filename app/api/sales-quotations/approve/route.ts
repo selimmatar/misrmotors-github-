@@ -1,42 +1,18 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getConvertedSo, LOCKED_QUOTATION_STATUSES } from "@/lib/sales-quotations/converted"
 import { type NextRequest, NextResponse } from "next/server"
 
+// Converts a quotation into a sales order using the values STORED on the quotation.
+// Edits made in the "Approve & Convert" dialog must be saved first (PATCH
+// /api/sales-quotations); any edit fields sent in the request body are ignored.
 export async function POST(request: NextRequest) {
   try {
     const supabase = createAdminClient()
     const body = await request.json()
-    const {
-      quotation_id,
-      approval_document_url,
-      // Optional overrides from the sales rep editing the quotation at the "Approve &
-      // Convert to SO" step (e.g. the customer only approved some of the requested
-      // items). When `items` is present, every override field below is authoritative;
-      // any field omitted from the payload falls back to the stored quotation value.
-      items: overrideItems,
-      customer_id: overrideCustomerId,
-      delivery_address: overrideDeliveryAddress,
-      delivery_contact_name: overrideDeliveryContactName,
-      delivery_contact_phone: overrideDeliveryContactPhone,
-      notes: overrideNotes,
-      discount_type: overrideDiscountType,
-      discount_value: overrideDiscountValue,
-      discount_amount: overrideDiscountAmount,
-      subtotal: overrideSubtotal,
-      tax: overrideTax,
-      total: overrideTotal,
-      net_total: overrideNetTotal,
-      payment_type: overridePaymentType,
-      payment_details: overridePaymentDetails,
-    } = body
-
-    const hasEdits = Array.isArray(overrideItems)
+    const { quotation_id, approval_document_url } = body
 
     if (!quotation_id) {
       return NextResponse.json({ error: "Quotation ID is required" }, { status: 400 })
-    }
-
-    if (hasEdits && overrideItems.length === 0) {
-      return NextResponse.json({ error: "At least one item is required to convert to a sales order" }, { status: 400 })
     }
 
     // Fetch the quotation from sales_quotations table
@@ -51,12 +27,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
     }
 
-    // Check if it's in an approvable state
-    if (quotation.status === "approved" || quotation.status === "rejected") {
-      console.error("Quotation already processed, current status:", quotation.status)
-      return NextResponse.json({ 
-        error: `This quotation has already been ${quotation.status}.` 
-      }, { status: 400 })
+    // Rejected / expired quotations can't be converted.
+    if (LOCKED_QUOTATION_STATUSES.includes(quotation.status)) {
+      console.error("Quotation not convertible, current status:", quotation.status)
+      return NextResponse.json({ error: `This quotation is ${quotation.status} and cannot be converted.` }, { status: 400 })
+    }
+
+    // A quotation can only be converted once: a sales order already points at it.
+    const alreadyConverted = await getConvertedSo(supabase, quotation.id)
+    if (alreadyConverted) {
+      return NextResponse.json(
+        { error: `This quotation has already been converted to Sales Order ${alreadyConverted.so_number}.` },
+        { status: 409 },
+      )
+    }
+
+    const quotationItems: any[] = [...(quotation.items || [])].sort((x, y) => (x.line_no || 0) - (y.line_no || 0))
+    if (quotationItems.length === 0) {
+      return NextResponse.json({ error: "This quotation has no items and cannot be converted to a sales order." }, { status: 400 })
+    }
+    const itemWithoutProduct = quotationItems.find((item) => item.item_type !== "outsourced" && !item.product_id)
+    if (itemWithoutProduct) {
+      return NextResponse.json(
+        { error: `Item "${itemWithoutProduct.product_name}" has no product and cannot be converted to a sales order.` },
+        { status: 400 },
+      )
     }
 
     // Generate SO number
@@ -69,10 +64,9 @@ export async function POST(request: NextRequest) {
 
     const soNumber = soNumberData as string
 
-    // Extract payment details - use the sales rep's edits when provided, otherwise fall
-    // back to what was stored on the quotation.
-    const paymentDetails = (hasEdits ? overridePaymentDetails : quotation.payment_details) || {}
-    const paymentType = (hasEdits ? overridePaymentType : quotation.payment_type) || "cash"
+    // Payment details come from what is stored on the quotation.
+    const paymentDetails = quotation.payment_details || {}
+    const paymentType = quotation.payment_type || "cash"
 
     // Helper: convert empty strings to null for date columns (Postgres rejects "")
     const safeDate = (value: any): string | null => {
@@ -85,13 +79,12 @@ export async function POST(request: NextRequest) {
       .from("sales_orders")
       .insert({
         so_number: soNumber,
-        customer_id: (hasEdits ? overrideCustomerId : quotation.customer_id) || null,
+        customer_id: quotation.customer_id || null,
         status: "pending_accountant",
-        subtotal: hasEdits && overrideSubtotal !== undefined ? overrideSubtotal : quotation.subtotal,
-        total: hasEdits && overrideTotal !== undefined ? overrideTotal : quotation.total,
-        net_total:
-          hasEdits && overrideNetTotal !== undefined ? overrideNetTotal : quotation.net_total || quotation.total,
-        notes: hasEdits ? overrideNotes ?? null : quotation.notes,
+        subtotal: quotation.subtotal,
+        total: quotation.total,
+        net_total: quotation.net_total || quotation.total,
+        notes: quotation.notes,
         order_date: safeDate(quotation.order_date) || new Date().toISOString().split('T')[0],
         parent_quotation_id: quotation.id,
         approval_document_url: approval_document_url || null,
@@ -102,13 +95,13 @@ export async function POST(request: NextRequest) {
         so_type: quotation.so_type || 'EQUIPMENT',
         // Delivery info
         delivery_date: safeDate(quotation.delivery_date),
-        delivery_address: hasEdits ? overrideDeliveryAddress ?? null : quotation.delivery_address,
-        delivery_contact_name: hasEdits ? overrideDeliveryContactName ?? null : quotation.delivery_contact_name,
-        delivery_contact_phone: hasEdits ? overrideDeliveryContactPhone ?? null : quotation.delivery_contact_phone,
+        delivery_address: quotation.delivery_address,
+        delivery_contact_name: quotation.delivery_contact_name,
+        delivery_contact_phone: quotation.delivery_contact_phone,
         // Discount info
-        discount_type: (hasEdits ? overrideDiscountType : quotation.discount_type) || 'none',
-        discount_value: (hasEdits ? overrideDiscountValue : quotation.discount_value) || 0,
-        discount_amount: (hasEdits ? overrideDiscountAmount : quotation.discount_amount) || 0,
+        discount_type: quotation.discount_type || 'none',
+        discount_value: quotation.discount_value || 0,
+        discount_amount: quotation.discount_amount || 0,
         // Payment info
         payment_type: paymentType,
         // payment_terms only allows 'prepaid' or 'installment' - map accordingly
@@ -143,61 +136,62 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to create sales order" }, { status: 500 })
     }
 
-    // Create sales order items - from the sales rep's edited item list when provided
-    // (e.g. some quoted items weren't approved), otherwise straight from the quotation.
-    const sourceItems = hasEdits ? overrideItems : quotation.items
-    if (sourceItems && sourceItems.length > 0) {
-      const soItems = sourceItems.map((item: any) => {
-        const isOutsourced = item.item_type === "outsourced"
-        if (hasEdits) {
-          return {
-            so_id: salesOrder.so_id,
-            product_id: isOutsourced ? null : item.product_id ? Number(item.product_id) : null,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            total: item.quantity * item.unit_price,
-            item_type: isOutsourced ? "outsourced" : "stock",
-            item_category: item.item_category || null,
-            outsourced_name: isOutsourced ? item.product_name : null,
-            outsourced_description: item.supplier_name ? `Supplier: ${item.supplier_name}` : null,
-            outsourced_unit: isOutsourced ? item.outsourced_unit || "unit" : null,
-            supplier_id: isOutsourced && item.supplier_id ? Number(item.supplier_id) : null,
-          }
-        }
-        return {
-          so_id: salesOrder.so_id,
-          product_id: item.product_id || null,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total: item.quantity * item.unit_price,
-          item_type: isOutsourced ? "outsourced" : "stock",
-          outsourced_name: isOutsourced ? item.product_name : null,
-          outsourced_description: item.supplier_name ? `Supplier: ${item.supplier_name}` : null,
-        }
-      })
+    // Race guard: if another request converted the same quotation at the same moment, only
+    // the earliest sales order survives. This request removes only the order it just created.
+    const firstChild = await getConvertedSo(supabase, quotation.id)
+    if (firstChild && firstChild.so_id !== salesOrder.so_id) {
+      await supabase.from("sales_orders").delete().eq("so_id", salesOrder.so_id)
+      return NextResponse.json(
+        { error: `This quotation has already been converted to Sales Order ${firstChild.so_number}.` },
+        { status: 409 },
+      )
+    }
 
-      const { error: itemsError } = await supabase
-        .from("sales_order_items")
-        .insert(soItems)
+    // Create the sales order items from the stored quotation items. If they can't be
+    // created, remove the order header just created (its items cascade) rather than
+    // leaving an order without lines.
+    const itemCategory = quotation.so_type === "MAINTENANCE_PARTS" ? "MAINTENANCE_PARTS" : "EQUIPMENT"
 
-      if (itemsError) {
-        console.error("Create SO items error:", itemsError)
-        // Don't fail the whole operation, just log it
+    const outsourcedSupplierNames = Array.from(
+      new Set(quotationItems.filter((item) => item.item_type === "outsourced" && item.supplier_name).map((item) => item.supplier_name)),
+    )
+    const supplierIdByName = new Map<string, number>()
+    if (outsourcedSupplierNames.length > 0) {
+      const { data: supplierRows } = await supabase
+        .from("suppliers")
+        .select("supplier_id, supplier_name")
+        .in("supplier_name", outsourcedSupplierNames)
+      for (const row of supplierRows || []) supplierIdByName.set(row.supplier_name, row.supplier_id)
+    }
+
+    const soItems = quotationItems.map((item: any) => {
+      const isOutsourced = item.item_type === "outsourced"
+      return {
+        so_id: salesOrder.so_id,
+        product_id: isOutsourced ? null : Number(item.product_id),
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        total: item.quantity * item.unit_price,
+        item_type: isOutsourced ? "outsourced" : "stock",
+        item_category: itemCategory,
+        outsourced_name: isOutsourced ? item.product_name : null,
+        outsourced_description: item.supplier_name ? `Supplier: ${item.supplier_name}` : null,
+        outsourced_unit: isOutsourced ? "unit" : null,
+        supplier_id: isOutsourced && item.supplier_name ? supplierIdByName.get(item.supplier_name) || null : null,
       }
+    })
+
+    const { error: itemsError } = await supabase.from("sales_order_items").insert(soItems)
+
+    if (itemsError) {
+      console.error("Create SO items error:", itemsError)
+      const { error: rollbackError } = await supabase.from("sales_orders").delete().eq("so_id", salesOrder.so_id)
+      if (rollbackError) console.error("Rollback: failed to remove sales order without items:", rollbackError)
+      return NextResponse.json({ error: "Failed to create sales order items" }, { status: 500 })
     }
 
-    // Update the quotation status to approved
-    const { error: updateError } = await supabase
-      .from("sales_quotations")
-      .update({
-        status: "approved",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", quotation_id)
-
-    if (updateError) {
-      console.error("Update quotation status error:", updateError)
-    }
+    // The quotation's own status is intentionally not changed: a quotation counts as
+    // converted once a sales order references it through parent_quotation_id.
 
     return NextResponse.json({
       sales_order: {

@@ -1,4 +1,6 @@
 import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { getConvertedSo, getQuotationLockReason } from "@/lib/sales-quotations/converted"
 import { type NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
@@ -131,9 +133,15 @@ export async function POST(request: NextRequest) {
 // Persist edits made to an existing quotation (e.g. from the "Approve & Convert to SO"
 // screen) without changing its status or converting it. Lets a sales rep save their
 // adjustments — and print an up-to-date copy — before actually approving the quotation.
+//
+// The header and the item list are written without a database transaction, so the order
+// is chosen so that a failure at any step leaves the quotation's previous items intact:
+// new items are inserted first, then the header is updated, and only then are the old
+// items removed. Each later failure undoes the earlier steps (compensation).
 export async function PATCH(request: NextRequest) {
   try {
     const supabase = await createServerClient()
+    const admin = createAdminClient()
     const body = await request.json()
     const {
       quotation_id,
@@ -163,7 +171,93 @@ export async function PATCH(request: NextRequest) {
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "At least one item is required" }, { status: 400 })
     }
+    const quotationId = Number(quotation_id)
 
+    // Load the current quotation: it must exist and must not be locked (converted,
+    // rejected or expired).
+    const { data: current, error: currentError } = await admin
+      .from("sales_quotations")
+      .select("*")
+      .eq("id", quotationId)
+      .single()
+
+    if (currentError || !current) {
+      return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
+    }
+
+    const lockReason = await getQuotationLockReason(admin, current)
+    if (lockReason) {
+      return NextResponse.json({ error: lockReason }, { status: 409 })
+    }
+
+    const { data: existingItems, error: existingItemsError } = await supabase
+      .from("sales_quotation_items")
+      .select("id")
+      .eq("quotation_id", quotationId)
+
+    if (existingItemsError) {
+      console.error("Fetch existing quotation items error:", existingItemsError)
+      return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
+    }
+    const existingItemIds = (existingItems || []).map((item) => item.id)
+
+    // Step 1: insert the new items (the old ones stay in place). `total` is a generated
+    // column and must not be written.
+    const itemsData = items.map((item: any, index: number) => ({
+      quotation_id: quotationId,
+      line_no: index + 1,
+      item_type: item.item_type || "inventory",
+      product_id: item.product_id ? Number(item.product_id) : null,
+      product_name: item.product_name,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      supplier_name: item.supplier_name || null,
+    }))
+
+    const { data: insertedItems, error: insertItemsError } = await supabase
+      .from("sales_quotation_items")
+      .insert(itemsData)
+      .select("id")
+
+    if (insertItemsError || !insertedItems) {
+      console.error("Insert quotation items error:", insertItemsError)
+      return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
+    }
+    const newItemIds = insertedItems.map((item) => item.id)
+
+    // Undo helpers for the compensation paths below.
+    const removeNewItems = async () => {
+      const { error } = await supabase.from("sales_quotation_items").delete().in("id", newItemIds)
+      if (error) console.error("Rollback: failed to remove newly inserted quotation items:", error)
+    }
+    const restoreHeader = async () => {
+      const { error } = await supabase
+        .from("sales_quotations")
+        .update({
+          customer_id: current.customer_id,
+          customer_name: current.customer_name,
+          customer_phone: current.customer_phone,
+          customer_email: current.customer_email,
+          delivery_address: current.delivery_address,
+          delivery_contact_name: current.delivery_contact_name,
+          delivery_contact_phone: current.delivery_contact_phone,
+          notes: current.notes,
+          discount_type: current.discount_type,
+          discount_value: current.discount_value,
+          discount_amount: current.discount_amount,
+          subtotal: current.subtotal,
+          tax: current.tax,
+          total: current.total,
+          net_total: current.net_total,
+          payment_type: current.payment_type,
+          payment_details: current.payment_details,
+          updated_at: current.updated_at,
+        })
+        .eq("id", quotationId)
+      if (error) console.error("Rollback: failed to restore quotation header:", error)
+    }
+
+    // Step 2: update the header.
     const { error: updateError } = await supabase
       .from("sales_quotations")
       .update({
@@ -186,43 +280,30 @@ export async function PATCH(request: NextRequest) {
         payment_details: payment_details || null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", quotation_id)
+      .eq("id", quotationId)
 
     if (updateError) {
       console.error("Update quotation error:", updateError)
+      await removeNewItems()
       return NextResponse.json({ error: "Failed to save quotation changes" }, { status: 500 })
     }
 
-    const { error: deleteItemsError } = await supabase
-      .from("sales_quotation_items")
-      .delete()
-      .eq("quotation_id", quotation_id)
+    // Step 3: remove the previous items (by the ids captured before the insert).
+    if (existingItemIds.length > 0) {
+      const { error: deleteItemsError } = await supabase
+        .from("sales_quotation_items")
+        .delete()
+        .in("id", existingItemIds)
 
-    if (deleteItemsError) {
-      console.error("Delete quotation items error:", deleteItemsError)
-      return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
+      if (deleteItemsError) {
+        console.error("Delete old quotation items error:", deleteItemsError)
+        await removeNewItems()
+        await restoreHeader()
+        return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
+      }
     }
 
-    const itemsData = items.map((item: any, index: number) => ({
-      quotation_id: Number(quotation_id),
-      line_no: index + 1,
-      item_type: item.item_type || "inventory",
-      product_id: item.product_id ? Number(item.product_id) : null,
-      product_name: item.product_name,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      total: item.quantity * item.unit_price,
-      supplier_name: item.supplier_name || null,
-    }))
-
-    const { error: insertItemsError } = await supabase.from("sales_quotation_items").insert(itemsData)
-
-    if (insertItemsError) {
-      console.error("Insert quotation items error:", insertItemsError)
-      return NextResponse.json({ error: "Failed to save quotation items" }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, item_count: newItemIds.length })
   } catch (error) {
     console.error("Sales quotation PATCH error:", error)
     return NextResponse.json({ error: "Failed to save quotation changes" }, { status: 500 })
@@ -248,7 +329,15 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Failed to fetch quotation" }, { status: 500 })
       }
 
-      return NextResponse.json({ quotation })
+      // Additive field: the sales order this quotation was converted into (if any).
+      let converted_so = null
+      try {
+        converted_so = await getConvertedSo(createAdminClient(), quotation.id)
+      } catch (lookupError) {
+        console.error("Converted SO lookup error:", lookupError)
+      }
+
+      return NextResponse.json({ quotation: { ...quotation, converted_so } })
     }
 
     // Get all quotations
@@ -262,7 +351,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch quotations" }, { status: 500 })
     }
 
-    return NextResponse.json({ quotations })
+    // Additive field: the sales order each quotation was converted into (if any), earliest first.
+    const convertedByQuotation = new Map<number, { so_id: number; so_number: string }>()
+    try {
+      const { data: childOrders, error: childError } = await createAdminClient()
+        .from("sales_orders")
+        .select("so_id, so_number, parent_quotation_id")
+        .not("parent_quotation_id", "is", null)
+        .order("so_id", { ascending: true })
+
+      if (childError) throw childError
+      for (const order of childOrders || []) {
+        if (!convertedByQuotation.has(order.parent_quotation_id)) {
+          convertedByQuotation.set(order.parent_quotation_id, { so_id: order.so_id, so_number: order.so_number })
+        }
+      }
+    } catch (lookupError) {
+      console.error("Converted SO lookup error:", lookupError)
+    }
+
+    return NextResponse.json({
+      quotations: (quotations || []).map((q: any) => ({ ...q, converted_so: convertedByQuotation.get(q.id) || null })),
+    })
   } catch (error) {
     console.error("Sales quotation GET error:", error)
     return NextResponse.json({ error: "Failed to fetch sales quotations" }, { status: 500 })
