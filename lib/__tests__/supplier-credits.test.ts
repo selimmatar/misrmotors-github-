@@ -1,9 +1,10 @@
-// Tests for supplier credits raised by the returned-item write-off (Batch 4G, no-schema part): receipt cost + VAT,
+// Tests for supplier credits raised by the returned-item write-off (Batch 4G, no-schema part): receipt cost (no VAT),
 // cap at the received value, refusal before anything is deleted, links/refs, duplicate guard, undo after the claim.
 import test from "node:test"
 import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { removeReturnedItem } from "../returns"
+import { markSupplierCreditsCredited } from "../supplier-credit-status"
 
 const HIST_CREDIT = { credit_id: 1, supplier_id: 3, amount: 4000, credit_type: "return", reference_type: "inventory", reference_id: null, invoice_id: null, status: "active" }
 
@@ -52,13 +53,13 @@ function seed(extra: Record<string, Row[]> = {}) {
 const newCredits = (db: FakeDb) => db.tables.supplier_credits.filter((c) => c.credit_id > 1)
 const holding = (db: FakeDb, id: number) => db.tables.inventory.find((r) => r.inventory_id === id)
 
-test("supplier-credits: credit uses the receipt cost plus 14% VAT (PO with tax), supplier from the PO", async () => {
+test("supplier-credits: credit is the receipt cost with no VAT added (PO with tax), supplier from the PO", async () => {
   const db = seed()
   const res = await removeReturnedItem(db, { inventoryId: 1, productName: "Pump", unitCost: 1, quantity: 9999 })
   assert.equal(res.status, 200, JSON.stringify(res.body))
   const [c] = newCredits(db)
   assert.equal(c.supplier_id, 3)
-  assert.equal(c.amount, 4560) // 2 x 2000 x 1.14 (before: 2 x browser/batch cost, no VAT)
+  assert.equal(c.amount, 4000) // 2 x 2000 receipt cost (before: x 1.14 billing ratio = 4560)
   assert.equal(holding(db, 1), undefined)
 })
 
@@ -87,7 +88,7 @@ test("supplier-credits: outsourced item matched by name and the SO's lines", asy
   const db = seed()
   const res = await removeReturnedItem(db, { inventoryId: 2, productName: "Silicon Gun" })
   assert.equal(res.status, 200, JSON.stringify(res.body))
-  assert.equal(newCredits(db)[0].amount, 4560)
+  assert.equal(newCredits(db)[0].amount, 4000)
 })
 
 test("supplier-credits: capped at the original received line value", async () => {
@@ -95,7 +96,7 @@ test("supplier-credits: capped at the original received line value", async () =>
   const res = await removeReturnedItem(db, { inventoryId: 4, productName: "Pump" }) // 9 held, only 5 were received
   assert.equal(res.status, 200)
   const [c] = newCredits(db)
-  assert.equal(c.amount, round(5 * 2000 * 1.14)) // 11400, not 9 x 2000 x 1.14
+  assert.equal(c.amount, round(5 * 2000)) // 10000, not 9 x 2000
   assert.match(c.notes, /capped/)
 })
 const round = (n: number) => Math.round(n * 100) / 100
@@ -168,4 +169,62 @@ test("supplier-credits: existing credit 1 and AP/payment tables are untouched", 
   await removeReturnedItem(db, { inventoryId: 1, productName: "Pump" })
   const after = JSON.stringify([db.tables.accounts_payable, db.tables.supplier_payments, db.tables.balance_entries, db.tables.supplier_credits.find((c) => c.credit_id === 1)])
   assert.equal(after, before)
+})
+
+// ---- manual "mark as credited" ----
+const creditsDb = () => seed({ supplier_credits: [HIST_CREDIT, { credit_id: 2, supplier_id: 3, amount: 444, status: "active", notes: "Basis: x" }, { credit_id: 3, supplier_id: 3, amount: 100, status: "used", used_at: "2026-10-01" }], supplier_payments: [], balance_entries: [] })
+const credit = (db: FakeDb, id: number) => db.tables.supplier_credits.find((c) => c.credit_id === id)!
+
+test("mark-credited: active credits become used with used_at and a note; other credits and AP/payments are untouched", async () => {
+  const db = creditsDb()
+  const apBefore = JSON.stringify([db.tables.accounts_payable, db.tables.supplier_payments, db.tables.balance_entries, db.tables.inventory])
+  const res = await markSupplierCreditsCredited(db, { creditIds: [1, 2] })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.deepEqual(res.body.updated, [1, 2])
+  for (const id of [1, 2]) {
+    assert.equal(credit(db, id).status, "used")
+    assert.ok(credit(db, id).used_at)
+    assert.match(credit(db, id).notes, /Marked credited manually/)
+  }
+  assert.equal(credit(db, 2).notes, "Basis: x; Marked credited manually") // existing note kept
+  assert.equal(credit(db, 2).amount, 444) // amount unchanged
+  assert.equal(credit(db, 3).used_at, "2026-10-01") // already-used row untouched
+  assert.equal(JSON.stringify([db.tables.accounts_payable, db.tables.supplier_payments, db.tables.balance_entries, db.tables.inventory]), apBefore)
+})
+
+test("mark-credited: an already-used credit is skipped; only used credits -> 409; unknown id -> 404", async () => {
+  const db = creditsDb()
+  const mixed = await markSupplierCreditsCredited(db, { creditIds: [2, 3] })
+  assert.equal(mixed.status, 200)
+  assert.deepEqual([mixed.body.updated, mixed.body.skipped], [[2], [3]])
+  const again = await markSupplierCreditsCredited(db, { creditIds: [2, 3] })
+  assert.equal(again.status, 409)
+  assert.equal(again.body.code, "CREDIT_ALREADY_CREDITED")
+  assert.equal((await markSupplierCreditsCredited(db, { creditIds: [999] })).status, 404)
+})
+
+test("mark-credited: bad input is rejected with 400 and nothing changes", async () => {
+  const db = creditsDb()
+  const before = JSON.stringify(db.tables.supplier_credits)
+  for (const bad of [undefined, {}, { creditIds: [] }, { creditIds: "1" }, { creditIds: [1, "abc"] }, { creditIds: [0] }, { creditIds: [-2] }, { creditIds: [1.5] }, { creditIds: Array.from({ length: 201 }, (_, i) => i + 1) }]) {
+    assert.equal((await markSupplierCreditsCredited(db, bad)).status, 400, JSON.stringify(bad)?.slice(0, 40))
+  }
+  assert.equal(JSON.stringify(db.tables.supplier_credits), before)
+})
+
+test("mark-credited: double click / concurrent requests mark each credit exactly once", async () => {
+  for (let run = 0; run < 20; run++) {
+    const db = creditsDb()
+    const results = await Promise.all(Array.from({ length: 5 }, () => markSupplierCreditsCredited(db, { creditIds: [2] })))
+    assert.equal(results.filter((r) => r.status === 200).length, 1, `run ${run}`)
+    assert.equal(credit(db, 2).notes, "Basis: x; Marked credited manually", `run ${run}`)
+  }
+})
+
+test("mark-credited: a database failure returns 500 and leaves the credit active", async () => {
+  const db = creditsDb()
+  db.failOn["supplier_credits:update"] = "boom"
+  const res = await markSupplierCreditsCredited(db, { creditIds: [2] })
+  assert.equal(res.status, 500)
+  assert.equal(credit(db, 2).status, "active")
 })

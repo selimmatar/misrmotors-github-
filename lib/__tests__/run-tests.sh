@@ -46,7 +46,7 @@ cat > "$OUT/tsconfig.json" <<JSON
 }
 JSON
 "$REPO/node_modules/.bin/tsc" -p "$OUT/tsconfig.json" > "$OUT/tsc.log" 2>&1
-echo "compiled (tsc reported $(grep -c 'error TS' "$OUT/tsc.log") error line(s); new-file errors: $(grep 'error TS' "$OUT/tsc.log" | grep -E 'lib/(returns|return-lines|so-edit|delivery-status|invoicing|print-totals|print-html|missing-items|missing-items-html|so-print-html|goods-receiving|ap-payments|po-status|po-over-order|stock-hold|dp-stock|dp-planned|customer-dp-chip|__tests__|dp-transitions|ap-mark-paid|ar-status|enums|parse-id|html-escape|upload-allowlist)|finalize-cost/route|warehouse-transfers/complete/route' | wc -l))"
+echo "compiled (tsc reported $(grep -c 'error TS' "$OUT/tsc.log") error line(s); new-file errors: $(grep 'error TS' "$OUT/tsc.log" | grep -E 'lib/(returns|return-lines|so-edit|delivery-status|invoicing|print-totals|print-html|missing-items|missing-items-html|so-print-html|goods-receiving|ap-payments|po-status|po-over-order|stock-hold|dp-stock|dp-planned|customer-dp-chip|__tests__|dp-transitions|ap-mark-paid|ar-status|enums|parse-id|html-escape|upload-allowlist|supplier-credit-status)|finalize-cost/route|warehouse-transfers/complete/route' | wc -l))"
 export NODE_PATH="$REPO/node_modules"
 export HARDENING_GOLDEN_DIR="$REPO/lib/__tests__/fixtures/hardening"
 status=0

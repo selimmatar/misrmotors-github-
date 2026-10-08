@@ -839,20 +839,9 @@ async function claimHoldingRowOrFlag(
   return claim.ok ? { ok: true, row: claim.row } : claim
 }
 
-// Supplier-credit tax/billing ratio. The AP invoice of a PO carries purchase_orders.total, so the credit is derived from
-// what AP actually billed, NOT from purchase_orders.tax_amount (finalize-cost overwrites that with the landed tax):
-//   ratio = po.total / sum(purchase_order_items.total)   when total > itemsSum and itemsSum > 0, else 1.0
-//   credit = min(returned qty, received qty) x receipt unit cost x ratio
-// so a credit never exceeds the AP invoice for that line. PO 6 (items 10,000, total 11,400) -> 1.14; POs 1-5 -> 1.0.
-// ASSUMPTION (Part 3, VAT): the whole total-over-items difference is treated as proportional tax on every line; no
-// per-document or configurable VAT rate is decided here.
+// Supplier credit for a returned item = the item's cost: min(returned qty, received qty) x receipt unit cost.
+// No VAT / billing ratio is added on top (the user's rule: the credited amount is the cost of the item).
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
-
-export function poBillingRatio(poTotal: unknown, itemsSum: unknown): number {
-  const total = Number(poTotal) || 0
-  const sum = Number(itemsSum) || 0
-  return sum > 0 && total > sum ? total / sum : 1
-}
 
 type ReceiptCost = {
   unitCost: number
@@ -861,7 +850,6 @@ type ReceiptCost = {
   poNumber: string | null
   grnNumber: string | null
   supplierId: number
-  billingRatio: number
   apInvoiceIds: number[]
   apInvoiceNumbers: string[]
   multiplePos: boolean
@@ -921,9 +909,6 @@ async function findOriginatingReceipt(db: Db, row: any, productName: string, soN
   )
   const receivedQty = sameLine.reduce((s, c) => s + (Number(c.line.quantity_received) || 0), 0)
 
-  const poItems = must(await db.from("purchase_order_items").select("total").eq("po_id", chosen.po.po_id), "purchase order items for credit") as any[]
-  const itemsSum = poItems.reduce((sum, i) => sum + (Number(i.total) || 0), 0)
-
   const ap = must(await db.from("accounts_payable").select("invoice_id, invoice_number").eq("po_id", chosen.po.po_id), "payable for credit") as any[]
   return {
     unitCost,
@@ -932,7 +917,6 @@ async function findOriginatingReceipt(db: Db, row: any, productName: string, soN
     poNumber: chosen.po.po_number || null,
     grnNumber: chosen.receipt.grn_number || null,
     supplierId: chosen.po.supplier_id,
-    billingRatio: poBillingRatio(chosen.po.total, itemsSum),
     apInvoiceIds: ap.map((a) => a.invoice_id),
     apInvoiceNumbers: ap.map((a) => a.invoice_number),
     multiplePos: new Set(candidates.map((c) => c.po.po_id)).size > 1,
@@ -962,8 +946,8 @@ export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowRe
       supplierId = receipt.supplierId
       unitCost = receipt.unitCost
       const creditQty = Math.min(quantity, receipt.receivedQty) // never more than the original received line value
-      amount = round2(creditQty * unitCost * receipt.billingRatio)
-      noteParts.push(`Basis: received cost ${unitCost} x ${creditQty} x AP billing ratio ${Math.round(receipt.billingRatio * 10000) / 10000} (PO total / item total) = ${amount}`)
+      amount = round2(creditQty * unitCost)
+      noteParts.push(`Basis: received cost ${unitCost} x ${creditQty} = ${amount}`)
       if (quantity > receipt.receivedQty) noteParts.push(`Returned qty ${quantity} exceeds received qty ${receipt.receivedQty}: credit capped at the received line value`)
       if (receipt.multiplePos) noteParts.push("Several POs received this item: the latest receipt was used")
     } else {

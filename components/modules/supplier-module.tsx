@@ -28,6 +28,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
   const [orderInvoices, setOrderInvoices] = useState<Record<string, any>>({})
   const [supplierCredits, setSupplierCredits] = useState<Record<string, number>>({})
   const [creditsDetail, setCreditsDetail] = useState<Record<string, any[]>>({})
+  const [markingCredits, setMarkingCredits] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -222,6 +223,36 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
     }
   }
 
+  // Manual "mark as credited": flags the credits as used (status only; AP and payments are untouched).
+  const handleMarkCreditsCredited = async (supplierId: string, creditIds: number[]) => {
+    if (creditIds.length === 0 || markingCredits) return
+    const total = (creditsDetail[supplierId] || []).filter((c: any) => creditIds.includes(c.credit_id)).reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0)
+    if (!confirm(`Mark ${creditIds.length} credit(s) totalling EGP ${total.toLocaleString()} as credited?\n\nThis only records that the supplier has credited you. It does not change any payable or payment.`)) return
+    setMarkingCredits(true)
+    try {
+      const response = await fetch("/api/supplier-credits", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ creditIds }),
+      })
+      const body: any = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        alert("Error: " + (body.message || "Failed to mark credits as credited"))
+        return
+      }
+      const done: number[] = body.updated || []
+      setCreditsDetail((prev) => ({ ...prev, [supplierId]: (prev[supplierId] || []).filter((c: any) => !done.includes(c.credit_id)) }))
+      setSupplierCredits((prev) => {
+        const marked = (creditsDetail[supplierId] || []).filter((c: any) => done.includes(c.credit_id)).reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0)
+        return { ...prev, [supplierId]: Math.max(0, (prev[supplierId] || 0) - marked) }
+      })
+    } catch (error) {
+      alert("Error marking credits as credited: " + String(error))
+    } finally {
+      setMarkingCredits(false)
+    }
+  }
+
   const handleDeleteSupplier = async (supplierId: string, supplierName: string) => {
     const supplierOrders = getSupplierOrders(supplierId)
 
@@ -353,9 +384,19 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           </p>
                           {credit.notes && <p className="text-xs text-green-700/80 dark:text-green-500/80 mt-0.5">{credit.notes}</p>}
                         </div>
-                        <p className="font-semibold text-green-700 dark:text-green-400 ml-4">
-                          EGP {Number(credit.amount).toLocaleString()}
-                        </p>
+                        <div className="ml-4 flex flex-col items-end gap-1">
+                          <p className="font-semibold text-green-700 dark:text-green-400">
+                            EGP {Number(credit.amount).toLocaleString()}
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={markingCredits}
+                            onClick={() => handleMarkCreditsCredited(String(selectedSupplier.id), [credit.credit_id])}
+                          >
+                            Mark credited
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -364,6 +405,20 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                     <span className="text-lg text-green-700 dark:text-green-400">
                       EGP {(supplierCredits[selectedSupplier.id] || 0).toLocaleString()}
                     </span>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      size="sm"
+                      disabled={markingCredits}
+                      onClick={() =>
+                        handleMarkCreditsCredited(
+                          String(selectedSupplier.id),
+                          creditsDetail[selectedSupplier.id].map((c: any) => c.credit_id),
+                        )
+                      }
+                    >
+                      Mark all credited
+                    </Button>
                   </div>
                 </div>
               )}
