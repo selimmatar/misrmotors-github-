@@ -101,3 +101,29 @@ export async function checkPoOverOrder(supabase: any, items: any[] | undefined, 
     lines: over,
   }
 }
+
+/**
+ * Over-order input for PUT: the incoming lines of every sales-order line whose requested total is higher than
+ * what this PO already stores for it (new lines count as stored 0). Lines without a source_so_item_id are not
+ * checked by the guard anyway and are passed through unchanged.
+ */
+export function linesWithIncreasedQuantity(items: any[], storedLines: any[]): any[] {
+  const soItemOf = (l: any) => {
+    const n = Number.parseInt(String(l?.sourceSoItemId ?? l?.source_so_item_id ?? ""), 10)
+    return Number.isFinite(n) ? n : null
+  }
+  const stored = new Map<number, number>()
+  for (const l of storedLines) {
+    const k = soItemOf(l)
+    if (k !== null) stored.set(k, (stored.get(k) || 0) + (Number(l.quantity) || 0))
+  }
+  const requested = new Map<number, number>()
+  for (const l of items) {
+    const k = soItemOf(l)
+    if (k !== null) requested.set(k, (requested.get(k) || 0) + (Number(l.quantity) || 0))
+  }
+  return items.filter((l) => {
+    const k = soItemOf(l)
+    return k === null || (requested.get(k) || 0) > (stored.get(k) || 0)
+  })
+}

@@ -70,6 +70,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { EditApprovedOrderDialog } from "@/components/sales-order/edit-approved-order-dialog"
 import { toSalesOrderPaymentTerms } from "@/lib/payment-type"
+import { isPlannedPermit } from "@/lib/dp-planned"
 
 // Declare SalesOrderModuleProps type
 type SalesOrderModuleProps = {
@@ -1561,7 +1562,9 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
       const filteredDPs = Array.isArray(existingDPs)
         ? existingDPs.filter(
             (dp: any) =>
-              String(dp.sales_order_id) === String(soIdValue) || String(dp.salesOrderId) === String(soIdValue),
+              (String(dp.sales_order_id) === String(soIdValue) || String(dp.salesOrderId) === String(soIdValue)) &&
+              // a REJECTED permit never ships: its quantity can be planned again
+              isPlannedPermit(dp),
           )
         : []
 

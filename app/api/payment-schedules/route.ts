@@ -285,6 +285,66 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * After a schedule payment: add the paid amount to the linked AR invoice. Returns an error message when the invoice
+ * could not be read or written (the caller must then NOT report success), or null. A schedule whose invoice row does
+ * not exist is skipped as before. The amounts logic is unchanged.
+ */
+async function applySchedulePaymentToInvoice(
+  supabase: any,
+  invoiceId: number,
+  amountToPay: number,
+  extraFields: Record<string, any> = {},
+): Promise<string | null> {
+  const { data: arInvoice, error: arReadError } = await withRetry(() =>
+    supabase
+      .from("accounts_receivable")
+      .select("invoice_id, collected_amount, months_paid, installment_months, amount")
+      .eq("invoice_id", invoiceId)
+      .single(),
+  )
+  if (arReadError && arReadError.code !== "PGRST116") {
+    console.error("Payment Schedule - could not read AR invoice", arReadError.message)
+    return `Could not read the invoice: ${arReadError.message}`
+  }
+  if (!arInvoice) return null
+
+  const newCollectedAmount = (arInvoice.collected_amount || 0) + amountToPay
+
+  const { data: paidSchedules, error: paidError } = await withRetry(() =>
+    supabase.from("payment_schedules").select("schedule_id").eq("invoice_id", arInvoice.invoice_id).eq("status", "paid"),
+  )
+  if (paidError) {
+    console.error("Payment Schedule - could not count paid schedules", paidError.message)
+    return `Could not read the paid schedules: ${paidError.message}`
+  }
+
+  const monthsPaid = paidSchedules?.length || 0
+  const isInvoiceFullyPaid = newCollectedAmount >= arInvoice.amount
+
+  const { error: arUpdateError } = await withRetry(() =>
+    supabase
+      .from("accounts_receivable")
+      .update({
+        collected_amount: newCollectedAmount,
+        months_paid: monthsPaid,
+        status: isInvoiceFullyPaid ? "paid" : monthsPaid > 0 ? "partially_paid" : "pending",
+        ...extraFields,
+      })
+      .eq("invoice_id", arInvoice.invoice_id),
+  )
+  if (arUpdateError) {
+    console.error("Payment Schedule - could not update AR invoice", arUpdateError.message)
+    return `Could not update the invoice: ${arUpdateError.message}`
+  }
+
+  console.log("[v0] Payment Schedule - Updated AR invoice", arInvoice.invoice_id, "collected:", newCollectedAmount)
+  return null
+}
+
+const SCHEDULE_PAID_INVOICE_FAILED =
+  "The payment was recorded on the schedule, but the invoice totals could NOT be updated. Do not repeat the payment; contact an administrator."
+
 // PUT - Update payment schedule (mark as paid or activate schedules)
 export async function PUT(request: NextRequest) {
   try {
@@ -382,45 +442,14 @@ export async function PUT(request: NextRequest) {
         const isPayable = scheduleType === "payable" || current.schedule_type === "payable"
 
         if (!isPayable && current.invoice_id) {
-          const { data: arInvoice } = await withRetry(() =>
-            supabase
-              .from("accounts_receivable")
-              .select("invoice_id, collected_amount, months_paid, installment_months, amount")
-              .eq("invoice_id", current.invoice_id)
-              .single(),
-          )
-
-          if (arInvoice) {
-            const newCollectedAmount = (arInvoice.collected_amount || 0) + amountToPay
-
-            const { data: paidSchedules } = await withRetry(() =>
-              supabase
-                .from("payment_schedules")
-                .select("schedule_id")
-                .eq("invoice_id", arInvoice.invoice_id)
-                .eq("status", "paid"),
-            )
-
-            const monthsPaid = paidSchedules?.length || 0
-            const isInvoiceFullyPaid = newCollectedAmount >= arInvoice.amount
-
-            await withRetry(() =>
-              supabase
-                .from("accounts_receivable")
-                .update({
-                  collected_amount: newCollectedAmount,
-                  months_paid: monthsPaid,
-                  status: isInvoiceFullyPaid ? "paid" : monthsPaid > 0 ? "partially_paid" : "pending",
-                  last_payment_at: new Date().toISOString(),
-                })
-                .eq("invoice_id", arInvoice.invoice_id),
-            )
-
-            console.log(
-              "[v0] Payment Schedule - Updated AR invoice",
-              arInvoice.invoice_id,
-              "collected:",
-              newCollectedAmount,
+          const arError = await applySchedulePaymentToInvoice(supabase, current.invoice_id, amountToPay, {
+            last_payment_at: new Date().toISOString(),
+          })
+          if (arError) {
+            await completeIdempotency("payment", idempotencyKey, false, arError)
+            return NextResponse.json(
+              { error: SCHEDULE_PAID_INVOICE_FAILED, detail: arError, schedulePaid: true, invoiceUpdated: false },
+              { status: 500 },
             )
           }
         }
@@ -551,46 +580,11 @@ export async function PUT(request: NextRequest) {
     const isPayable = scheduleType === "payable" || current.schedule_type === "payable"
 
     if (!isPayable && current.invoice_id) {
-      // Update AR invoice totals
-      const { data: arInvoice } = await withRetry(() =>
-        supabase
-          .from("accounts_receivable")
-          .select("invoice_id, collected_amount, months_paid, installment_months, amount")
-          .eq("invoice_id", current.invoice_id)
-          .single(),
-      )
-
-      if (arInvoice) {
-        const newCollectedAmount = (arInvoice.collected_amount || 0) + amountToPay
-
-        // Count paid schedules
-        const { data: paidSchedules } = await withRetry(() =>
-          supabase
-            .from("payment_schedules")
-            .select("schedule_id")
-            .eq("invoice_id", arInvoice.invoice_id)
-            .eq("status", "paid"),
-        )
-
-        const monthsPaid = paidSchedules?.length || 0
-        const isInvoiceFullyPaid = newCollectedAmount >= arInvoice.amount
-
-        await withRetry(() =>
-          supabase
-            .from("accounts_receivable")
-            .update({
-              collected_amount: newCollectedAmount,
-              months_paid: monthsPaid,
-              status: isInvoiceFullyPaid ? "paid" : monthsPaid > 0 ? "partially_paid" : "pending",
-            })
-            .eq("invoice_id", arInvoice.invoice_id),
-        )
-
-        console.log(
-          "[v0] Payment Schedule - Updated AR invoice",
-          arInvoice.invoice_id,
-          "collected:",
-          newCollectedAmount,
+      const arError = await applySchedulePaymentToInvoice(supabase, current.invoice_id, amountToPay)
+      if (arError) {
+        return NextResponse.json(
+          { error: SCHEDULE_PAID_INVOICE_FAILED, detail: arError, schedulePaid: true, invoiceUpdated: false },
+          { status: 500 },
         )
       }
     }

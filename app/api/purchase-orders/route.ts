@@ -1,8 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
-import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES } from "@/lib/po-status"
-import { checkPoOverOrder } from "@/lib/po-over-order"
+import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES, buildApprovalRevert } from "@/lib/po-status"
+import { checkPoOverOrder, linesWithIncreasedQuantity } from "@/lib/po-over-order"
 
 // Shared by POST and PUT so editing a PO's items keeps the SO link and the outsourced data.
 // `existingItems` (PUT only) are the PO's current rows: a line sent without item_type keeps its existing type
@@ -635,8 +635,18 @@ export async function PUT(request: Request) {
     }
 
     // Only the lines of a PO that stays active count; this PO's own current lines are excluded from "already ordered".
+    // Only lines whose quantity INCREASED versus what this PO already stores (or new lines) are checked, so an
+    // unrelated edit of a PO that already carries a legacy over-ordered line is not blocked.
     if (items && targetStatus !== "rejected") {
-      const overOrder = await checkPoOverOrder(supabase, items, poId)
+      const { data: storedLines, error: storedError } = await supabase
+        .from("purchase_order_items")
+        .select("source_so_item_id, quantity")
+        .eq("po_id", poId)
+      if (storedError) {
+        console.error("Purchase Orders PUT: Error reading stored lines for the over-order check", storedError)
+        return NextResponse.json({ error: "Failed to read purchase order items" }, { status: 500 })
+      }
+      const overOrder = await checkPoOverOrder(supabase, linesWithIncreasedQuantity(items, storedLines || []), poId)
       if (!overOrder.ok) {
         return NextResponse.json(
           { error: overOrder.error, code: overOrder.code, lines: overOrder.lines },
@@ -648,6 +658,13 @@ export async function PUT(request: Request) {
     const statusChanged = targetStatus !== previousStatus
     const approving = statusChanged && targetStatus === "approved"
     if (approving && updates.approved_at === undefined) updates.approved_at = new Date().toISOString()
+    // A repeat approve of an already approved PO is a repair/no-op request: a stale client payload must not
+    // overwrite the approved total or payment type (the AP invoice was built from them).
+    if (!statusChanged && targetStatus === "approved") {
+      delete updates.total
+      delete updates.payment_type
+      delete updates.payment_terms
+    }
 
     // Compare-and-swap on the status we validated against, so two concurrent requests cannot both win.
     let order: any = null
@@ -715,7 +732,7 @@ export async function PUT(request: Request) {
           // Put the PO back to pending so the failure is real to the user and the approval can simply be retried.
           const { data: revertedRows, error: revertError } = await supabase
             .from("purchase_orders")
-            .update({ status: previousStatus, approved_at: current.approved_at ?? null })
+            .update(buildApprovalRevert(current, updates))
             .eq("po_id", poId)
             .eq("status", "approved")
             .select("po_id")
