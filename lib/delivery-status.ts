@@ -71,3 +71,25 @@ export async function isSOFullyDelivered(
     return deliveredQty >= orderedQty
   })
 }
+
+export type LineDeliveryState = "delivered" | "partial" | "not_delivered"
+
+/**
+ * Per-line delivery state with the same rule as isSOFullyDelivered: a line is delivered when the quantity that
+ * reached SUBMITTED_SIGNED/APPROVED permits, net of returns, covers its ordered quantity. `confirmedByKey` is that
+ * net quantity per line key (see lineKey); when several lines share a key it is used up in line order.
+ */
+export function lineDeliveryStates(
+  lines: { key: string; quantity: number }[],
+  confirmedByKey: Map<string, number>,
+): { deliveredQuantity: number; state: LineDeliveryState }[] {
+  const left = new Map(confirmedByKey)
+  return lines.map((line) => {
+    const ordered = Number(line.quantity) || 0
+    const available = Math.max(0, left.get(line.key) || 0)
+    const take = Math.min(available, ordered)
+    left.set(line.key, available - take)
+    const state: LineDeliveryState = ordered <= 0 || take >= ordered ? "delivered" : take > 0 ? "partial" : "not_delivered"
+    return { deliveredQuantity: take, state }
+  })
+}

@@ -363,10 +363,27 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                           <div className="mt-3 pt-3 border-t">
                             <p className="text-sm text-muted-foreground mb-2">{t("customer.items")}</p>
                             <div className="space-y-1">
-                              {order.items.map((item) => (
-                                <div key={item.productId} className="text-sm flex justify-between">
+                              {order.items.map((item: any, itemIndex: number) => (
+                                <div key={item.id || `${item.productId}-${itemIndex}`} className="text-sm flex justify-between">
                                   <span>
                                     {item.productName} × {item.quantity}
+                                    {item.deliveryState && (
+                                      <span
+                                        className={`ml-2 px-1.5 py-0.5 rounded text-xs ${
+                                          item.deliveryState === "delivered"
+                                            ? "bg-green-100 text-green-700"
+                                            : item.deliveryState === "partial"
+                                              ? "bg-orange-100 text-orange-700"
+                                              : "bg-yellow-100 text-yellow-700"
+                                        }`}
+                                      >
+                                        {item.deliveryState === "delivered"
+                                          ? "Delivered"
+                                          : item.deliveryState === "partial"
+                                            ? `Partially delivered (${item.confirmedDeliveredQuantity}/${item.quantity})`
+                                            : "Not delivered"}
+                                      </span>
+                                    )}
                                   </span>
                                   <span className="font-semibold">{formatCurrency(item.total)}</span>
                                 </div>

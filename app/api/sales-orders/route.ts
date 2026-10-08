@@ -3,6 +3,7 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "@/lib/return-lines"
+import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
 import { reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
 
 export const dynamic = "force-dynamic"
@@ -43,7 +44,7 @@ export async function GET() {
 
       // Batch 2: per-line delivery / return history, so the order can be edited safely after a return.
       const allPermits: any[] = ordersData.flatMap((o: any) => (o.delivery_permits || []).map((dp: any) => ({ ...dp, so_id: o.so_id })))
-      const historyByOrder = new Map<number, { delivered: Map<string, number>; onPermit: Set<string>; returned: Map<string, number> }>()
+      const historyByOrder = new Map<number, { delivered: Map<string, number>; confirmed: Map<string, number>; onPermit: Set<string>; returned: Map<string, number> }>()
       if (allPermits.length > 0) {
         try {
           const permitIds = allPermits.map((p) => p.permit_id)
@@ -54,15 +55,18 @@ export async function GET() {
           if (dpItemsError) throw dpItemsError
           const returnLines = await loadReturnLines(supabase, permitIds)
           for (const permit of allPermits) {
-            const entry = historyByOrder.get(permit.so_id) || { delivered: new Map(), onPermit: new Set(), returned: new Map() }
+            const entry = historyByOrder.get(permit.so_id) || { delivered: new Map(), confirmed: new Map(), onPermit: new Set(), returned: new Map() }
             historyByOrder.set(permit.so_id, entry)
             for (const item of (dpItems || []).filter((i: any) => i.permit_id === permit.permit_id)) {
               const key = lineKey(item.product_id, item.item_name_snapshot)
               entry.onPermit.add(key)
               if (DELIVERED_PERMIT_STATUSES.includes(permit.status)) entry.delivered.set(key, (entry.delivered.get(key) || 0) + (Number(item.quantity) || 0))
+              // same permit statuses as isSOFullyDelivered; returns are taken off below
+              if (DP_DELIVERED_STATUSES.includes(permit.status)) entry.confirmed.set(key, (entry.confirmed.get(key) || 0) + (Number(item.quantity) || 0))
             }
             for (const [key, qty] of returnedByKey(returnLines, { permitId: permit.permit_id })) {
               entry.returned.set(key, (entry.returned.get(key) || 0) + qty)
+              if (DP_DELIVERED_STATUSES.includes(permit.status)) entry.confirmed.set(key, (entry.confirmed.get(key) || 0) - qty)
             }
           }
         } catch (historyError: any) {
@@ -123,6 +127,10 @@ export async function GET() {
         },
         returnedQuantity: [...(historyByOrder.get(order.so_id)?.returned.values() || [])].reduce((a: number, b: number) => a + b, 0),
         items: (order.sales_order_items || []).map((item: any, index: number, all: any[]) => {
+          const lineStates = lineDeliveryStates(
+            all.map((l: any) => ({ key: lineKey(l.product_id, l.outsourced_name), quantity: Number(l.quantity) || 0 })),
+            historyByOrder.get(order.so_id)?.confirmed || new Map(),
+          )
           // key-level history is shown on the first line of that item
           const history = historyByOrder.get(order.so_id)
           const key = lineKey(item.product_id, item.outsourced_name)
@@ -131,6 +139,8 @@ export async function GET() {
           const returnedQuantity = firstOfKey ? history?.returned.get(key) || 0 : 0
           return {
           deliveredQuantity,
+          confirmedDeliveredQuantity: lineStates[index].deliveredQuantity,
+          deliveryState: lineStates[index].state,
           returnedQuantity,
           minQuantity: firstOfKey ? Math.max(0, deliveredQuantity - returnedQuantity) : 0,
           onDeliveryPermit: !!history?.onPermit.has(key),

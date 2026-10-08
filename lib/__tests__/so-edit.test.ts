@@ -7,7 +7,7 @@ import { FakeDb, type Row } from "./fake-db"
 import { createReturn, processReturn, restockReturnedItem } from "../returns"
 import { createDpInvoices, createSoInvoice, round2 } from "../invoicing"
 import { reopenIfNotFullyDelivered, validateSoEdit } from "../so-edit"
-import { isSOFullyDelivered } from "../delivery-status"
+import { isSOFullyDelivered, lineDeliveryStates } from "../delivery-status"
 
 // SO 1: 10 x Pump A (product 7 @ 10,000), delivered on DP 1 (APPROVED); the customer returns 2.
 function baseDb(extra: Record<string, Row[]> = {}) {
@@ -193,4 +193,21 @@ test("E7. an order that is still fully delivered after the edit is not re-opened
   await returnTwoPumps(db)
   assert.equal(await applyEdit(db, [lineA(8)]), false) // lowered to what is kept: nothing owed
   assert.equal(db.tables.sales_orders[0].status, "delivered")
+})
+
+test("5b. lineDeliveryStates: delivered / partial / not delivered, net of returns, shared keys used in order", () => {
+  const lines = [
+    { key: "p:1", quantity: 10 },
+    { key: "p:2", quantity: 4 },
+    { key: "n:Crane", quantity: 1 },
+    { key: "p:1", quantity: 5 },
+  ]
+  // p:1 has 12 confirmed (after returns), p:2 has 4, the outsourced Crane has none
+  const r = lineDeliveryStates(lines, new Map([["p:1", 12], ["p:2", 4]]))
+  assert.deepEqual(r.map((x) => x.state), ["delivered", "delivered", "not_delivered", "partial"])
+  assert.deepEqual(r.map((x) => x.deliveredQuantity), [10, 4, 0, 2])
+  // a return that brings the net below the order reopens the line
+  assert.equal(lineDeliveryStates([{ key: "p:2", quantity: 4 }], new Map([["p:2", 3]]))[0].state, "partial")
+  // negative net (more returned than delivered) never counts as delivered
+  assert.equal(lineDeliveryStates([{ key: "p:2", quantity: 4 }], new Map([["p:2", -1]]))[0].state, "not_delivered")
 })
