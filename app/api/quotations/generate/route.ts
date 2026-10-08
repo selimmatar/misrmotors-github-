@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS } from "@/lib/company-settings"
+import { escapeHtml } from "@/lib/html-escape"
 
 export const dynamic = "force-dynamic"
 
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>عرض سعر - ${quotationNumber}</title>
+  <title>عرض سعر - ${escapeHtml(quotationNumber)}</title>
   <style>
     @media print { body { margin: 0; } }
     body { font-family: Arial, sans-serif; direction: rtl; margin: 20px; }
@@ -114,11 +115,11 @@ export async function GET(request: NextRequest) {
   <h2 style="text-align: center; margin: 20px 0;">عرض سعر / Sales Quotation</h2>
   <div class="quotation-info">
     <table>
-      <tr><td style="width: 25%;"><strong>رقم العرض:</strong></td><td style="width: 25%;">${quotationNumber}</td>
+      <tr><td style="width: 25%;"><strong>رقم العرض:</strong></td><td style="width: 25%;">${escapeHtml(quotationNumber)}</td>
         <td style="width: 25%;"><strong>التاريخ:</strong></td><td style="width: 25%;">${quotationDate}</td></tr>
-      <tr><td><strong>العميل:</strong></td><td colspan="3">${customer_name}</td></tr>
-      ${customer_email ? `<tr><td><strong>البريد:</strong></td><td colspan="3">${customer_email}</td></tr>` : ""}
-      ${customer_phone ? `<tr><td><strong>الهاتف:</strong></td><td colspan="3">${customer_phone}</td></tr>` : ""}
+      <tr><td><strong>العميل:</strong></td><td colspan="3">${escapeHtml(customer_name)}</td></tr>
+      ${customer_email ? `<tr><td><strong>البريد:</strong></td><td colspan="3">${escapeHtml(customer_email)}</td></tr>` : ""}
+      ${customer_phone ? `<tr><td><strong>الهاتف:</strong></td><td colspan="3">${escapeHtml(customer_phone)}</td></tr>` : ""}
       <tr><td><strong>صالح حتى:</strong></td><td colspan="3">${validUntil}</td></tr>
     </table>
   </div>
@@ -126,8 +127,8 @@ export async function GET(request: NextRequest) {
     <thead><tr><th>م</th><th>اسم الصنف</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
     <tbody>${quotationItems
       .map(
-        (item, i) => `<tr><td>${i + 1}</td><td>${item.product_name}</td><td>${item.quantity.toLocaleString('en-US')}</td>
-      <td>${item.unit_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td><td>${item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>`,
+        (item, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(item.product_name)}</td><td>${escapeHtml(item.quantity.toLocaleString('en-US'))}</td>
+      <td>${escapeHtml(item.unit_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} جنيه</td><td>${item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>`,
       )
       .join("")}</tbody>
   </table>
@@ -138,8 +139,8 @@ export async function GET(request: NextRequest) {
       <tr class="total-row"><td><strong>الإجمالي الكلي:</strong></td><td><strong>${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</strong></td></tr>
     </table>
   </div>
-  ${notes ? `<div style="margin-top: 30px; padding: 10px; border: 1px solid #000;"><strong>ملاحظات:</strong><br>${notes}</div>` : ""}
-  <div class="footer"><p>هذا العرض صالح لمدة ${validity_days} يوم من تاريخ الإصدار</p>
+  ${notes ? `<div style="margin-top: 30px; padding: 10px; border: 1px solid #000;"><strong>ملاحظات:</strong><br>${escapeHtml(notes)}</div>` : ""}
+  <div class="footer"><p>هذا العرض صالح لمدة ${escapeHtml(validity_days)} يوم من تاريخ الإصدار</p>
     <p>نشكركم على ثقتكم في شركة مصر للمحركات</p></div>
 </body>
 </html>`
@@ -147,7 +148,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `inline; filename="quotation-${quotationNumber}.html"`,
+        "Content-Disposition": `inline; filename="quotation-${String(quotationNumber).replace(/[^A-Za-z0-9._-]/g, "_")}.html"`,
       },
     })
   } catch (error: any) {

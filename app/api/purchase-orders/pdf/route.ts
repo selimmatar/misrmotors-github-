@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
+import { escapeHtml } from "@/lib/html-escape"
 
 export const dynamic = "force-dynamic"
 
@@ -44,8 +45,8 @@ export async function GET(request: NextRequest) {
       return new NextResponse(
         `<!DOCTYPE html><html><body style="font-family: Arial; padding: 40px; text-align: center;">
           <h2 style="color: #dc2626;">Purchase Order Not Found</h2>
-          <p>PO ID: ${poId}</p>
-          <p>Error: ${poError?.message || "Not found"}</p>
+          <p>PO ID: ${escapeHtml(poId)}</p>
+          <p>Error: ${escapeHtml(poError?.message || "Not found")}</p>
         </body></html>`,
         { headers: { "Content-Type": "text/html; charset=utf-8" } }
       )
@@ -117,7 +118,7 @@ export async function GET(request: NextRequest) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>أمر شراء - ${po.po_number}</title>
+  <title>أمر شراء - ${escapeHtml(po.po_number)}</title>
   <style>
     @media print { 
       body { margin: 0; } 
@@ -319,7 +320,7 @@ export async function GET(request: NextRequest) {
         <h3>بيانات أمر الشراء / PO Details</h3>
         <div class="info-row">
           <span class="info-label">رقم أمر الشراء:</span>
-          <span class="info-value">${po.po_number}</span>
+          <span class="info-value">${escapeHtml(po.po_number)}</span>
         </div>
         <div class="info-row">
           <span class="info-label">التاريخ:</span>
@@ -332,22 +333,22 @@ export async function GET(request: NextRequest) {
         <div class="info-row">
           <span class="info-label">الحالة:</span>
           <span class="info-value">
-            <span class="status-badge status-${po.status}">${
+            <span class="status-badge status-${escapeHtml(po.status)}">${
               po.status === "pending" ? "معلق" :
               po.status === "approved" ? "معتمد" :
               po.status === "rejected" ? "مرفوض" :
-              po.status === "received" ? "مستلم" : po.status
+              po.status === "received" ? "مستلم" : escapeHtml(po.status)
             }</span>
           </span>
         </div>
         ${po.status !== "pending" ? `
         <div class="info-row">
           <span class="info-label">نوع الدفع:</span>
-          <span class="info-value">${getPaymentTermsDisplay()}</span>
+          <span class="info-value">${escapeHtml(getPaymentTermsDisplay())}</span>
         </div>
         <div class="info-row">
           <span class="info-label">العملة:</span>
-          <span class="info-value">${po.currency || "EGP"}</span>
+          <span class="info-value">${escapeHtml(po.currency || "EGP")}</span>
         </div>
         ` : ""}
       </div>
@@ -356,19 +357,19 @@ export async function GET(request: NextRequest) {
         <h3>بيانات المورد / Supplier Details</h3>
         <div class="info-row">
           <span class="info-label">اسم المورد:</span>
-          <span class="info-value">${supplier.supplier_name || "-"}</span>
+          <span class="info-value">${escapeHtml(supplier.supplier_name || "-")}</span>
         </div>
         <div class="info-row">
           <span class="info-label">الهاتف:</span>
-          <span class="info-value">${supplier.phone || "-"}</span>
+          <span class="info-value">${escapeHtml(supplier.phone || "-")}</span>
         </div>
         <div class="info-row">
           <span class="info-label">البريد الإلكتروني:</span>
-          <span class="info-value">${supplier.email || "-"}</span>
+          <span class="info-value">${escapeHtml(supplier.email || "-")}</span>
         </div>
         <div class="info-row">
           <span class="info-label">العنوان:</span>
-          <span class="info-value">${supplier.address || "-"}${supplier.city ? `, ${supplier.city}` : ""}${supplier.country ? `, ${supplier.country}` : ""}</span>
+          <span class="info-value">${escapeHtml(supplier.address || "-")}${supplier.city ? `, ${escapeHtml(supplier.city)}` : ""}${supplier.country ? `, ${escapeHtml(supplier.country)}` : ""}</span>
         </div>
       </div>
     </div>
@@ -390,9 +391,9 @@ export async function GET(request: NextRequest) {
         ${poItems.map((item, index) => `
           <tr>
             <td>${index + 1}</td>
-            <td style="text-align: right;">${item.products?.product_name || item.item_name_snapshot || item.product_name || "Unknown"}</td>
-            <td>${item.products?.sku || "-"}</td>
-            <td>${item.quantity} ${item.products?.unit || ""}</td>
+            <td style="text-align: right;">${escapeHtml(item.products?.product_name || item.item_name_snapshot || item.product_name || "Unknown")}</td>
+            <td>${escapeHtml(item.products?.sku || "-")}</td>
+            <td>${escapeHtml(item.quantity)} ${escapeHtml(item.products?.unit || "")}</td>
             ${po.status !== "pending" ? `
             <td>${(item.unit_price || 0).toFixed(2)}</td>
             <td>${(item.total_price || item.quantity * item.unit_price || 0).toFixed(2)}</td>
@@ -407,23 +408,23 @@ export async function GET(request: NextRequest) {
       <table class="totals-table">
         <tr>
           <td>المجموع الفرعي / Subtotal:</td>
-          <td style="text-align: left;">${subtotal.toFixed(2)} ${po.currency || "EGP"}</td>
+          <td style="text-align: left;">${subtotal.toFixed(2)} ${escapeHtml(po.currency || "EGP")}</td>
         </tr>
         ${taxAmount > 0 ? `
         <tr>
           <td>الضرائب / Tax:</td>
-          <td style="text-align: left;">${taxAmount.toFixed(2)} ${po.currency || "EGP"}</td>
+          <td style="text-align: left;">${taxAmount.toFixed(2)} ${escapeHtml(po.currency || "EGP")}</td>
         </tr>
         ` : ""}
         ${otherCosts > 0 ? `
         <tr>
           <td>تكاليف أخرى / Other Costs:</td>
-          <td style="text-align: left;">${otherCosts.toFixed(2)} ${po.currency || "EGP"}</td>
+          <td style="text-align: left;">${otherCosts.toFixed(2)} ${escapeHtml(po.currency || "EGP")}</td>
         </tr>
         ` : ""}
         <tr>
           <td>الإجمالي الكلي / Grand Total:</td>
-          <td style="text-align: left;">${total.toFixed(2)} ${po.currency || "EGP"}</td>
+          <td style="text-align: left;">${total.toFixed(2)} ${escapeHtml(po.currency || "EGP")}</td>
         </tr>
       </table>
     </div>
@@ -438,7 +439,7 @@ export async function GET(request: NextRequest) {
     ${po.notes ? `
     <div class="notes-section">
       <h4>ملاحظات / Notes:</h4>
-      <p>${po.notes}</p>
+      <p>${escapeHtml(po.notes)}</p>
     </div>
     ` : ""}
     
@@ -466,7 +467,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `inline; filename="PO-${po.po_number}.html"`,
+        "Content-Disposition": `inline; filename="PO-${String(po.po_number).replace(/[^A-Za-z0-9._-]/g, "_")}.html"`,
       },
     })
   } catch (error: any) {
@@ -474,7 +475,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(
       `<!DOCTYPE html><html><body style="font-family: Arial; padding: 40px; text-align: center;">
         <h2 style="color: #dc2626;">Error Generating PO PDF</h2>
-        <p>${error.message}</p>
+        <p>${escapeHtml(error.message)}</p>
       </body></html>`,
       { headers: { "Content-Type": "text/html; charset=utf-8" } }
     )

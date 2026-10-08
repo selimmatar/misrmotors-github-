@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { escapeHtml } from "@/lib/html-escape"
 
 export const dynamic = "force-dynamic"
 
@@ -77,7 +78,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AP Invoice ${invoice.invoice_number}</title>
+  <title>AP Invoice ${escapeHtml(invoice.invoice_number)}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
@@ -148,17 +149,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
   <!-- Header -->
   <div class="header">
     <div class="company-info">
-      ${companyLogo ? `<img src="${companyLogo}" class="logo" alt="Logo" />` : `<h1>${companyName}</h1>`}
-      ${companyLogo ? `<p style="margin-top:6px;font-weight:600;">${companyName}</p>` : ""}
-      ${companyAddress ? `<p>${companyAddress}</p>` : ""}
-      ${companyPhone ? `<p>${companyPhone}</p>` : ""}
-      ${companyEmail ? `<p>${companyEmail}</p>` : ""}
+      ${companyLogo ? `<img src="${escapeHtml(companyLogo)}" class="logo" alt="Logo" />` : `<h1>${escapeHtml(companyName)}</h1>`}
+      ${companyLogo ? `<p style="margin-top:6px;font-weight:600;">${escapeHtml(companyName)}</p>` : ""}
+      ${companyAddress ? `<p>${escapeHtml(companyAddress)}</p>` : ""}
+      ${companyPhone ? `<p>${escapeHtml(companyPhone)}</p>` : ""}
+      ${companyEmail ? `<p>${escapeHtml(companyEmail)}</p>` : ""}
     </div>
     <div class="invoice-title">
       <h2>PURCHASE INVOICE</h2>
-      <div class="invoice-number">${invoice.invoice_number || "—"}</div>
+      <div class="invoice-number">${escapeHtml(invoice.invoice_number || "—")}</div>
       <span class="badge badge-${invoice.status === "paid" ? "paid" : invoice.status === "overdue" ? "overdue" : invoice.status === "partially_paid" ? "partial" : "pending"}">
-        ${invoice.status?.replace("_", " ") || "Pending"}
+        ${escapeHtml(invoice.status?.replace("_", " ") || "Pending")}
       </span>
     </div>
   </div>
@@ -167,17 +168,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
   <div class="meta-grid">
     <div class="meta-box">
       <h3>From (Supplier)</h3>
-      <p style="font-weight:600;font-size:14px;">${supplier?.supplier_name || "—"}</p>
-      ${supplier?.email ? `<p><span>Email: </span>${supplier.email}</p>` : ""}
-      ${supplier?.phone ? `<p><span>Phone: </span>${supplier.phone}</p>` : ""}
-      ${supplier?.address ? `<p>${supplier.address}${supplier.city ? ", " + supplier.city : ""}${supplier.country ? ", " + supplier.country : ""}</p>` : ""}
+      <p style="font-weight:600;font-size:14px;">${escapeHtml(supplier?.supplier_name || "—")}</p>
+      ${supplier?.email ? `<p><span>Email: </span>${escapeHtml(supplier.email)}</p>` : ""}
+      ${supplier?.phone ? `<p><span>Phone: </span>${escapeHtml(supplier.phone)}</p>` : ""}
+      ${supplier?.address ? `<p>${escapeHtml(supplier.address)}${supplier.city ? ", " + escapeHtml(supplier.city) : ""}${supplier.country ? ", " + escapeHtml(supplier.country) : ""}</p>` : ""}
     </div>
     <div class="meta-box">
       <h3>Billed To</h3>
-      <p style="font-weight:600;font-size:14px;">${companyName}</p>
-      ${companyAddress ? `<p>${companyAddress}</p>` : ""}
-      ${companyPhone ? `<p>${companyPhone}</p>` : ""}
-      ${companyEmail ? `<p>${companyEmail}</p>` : ""}
+      <p style="font-weight:600;font-size:14px;">${escapeHtml(companyName)}</p>
+      ${companyAddress ? `<p>${escapeHtml(companyAddress)}</p>` : ""}
+      ${companyPhone ? `<p>${escapeHtml(companyPhone)}</p>` : ""}
+      ${companyEmail ? `<p>${escapeHtml(companyEmail)}</p>` : ""}
     </div>
   </div>
 
@@ -193,11 +194,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
     </div>
     <div class="detail-cell">
       <div class="label">PO Number</div>
-      <div class="value">${po?.po_number || "—"}</div>
+      <div class="value">${escapeHtml(po?.po_number || "—")}</div>
     </div>
     <div class="detail-cell">
       <div class="label">Payment Type</div>
-      <div class="value">${(invoice.payment_type || po?.payment_type || "—").replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}</div>
+      <div class="value">${escapeHtml((invoice.payment_type || po?.payment_type || "—").replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()))}</div>
     </div>
   </div>
 
@@ -227,9 +228,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
             return `<tr>
               <td>${i + 1}</td>
               <td>
-                <div class="item-name">${itemName}</div>
-                ${sku ? `<div class="item-sub">SKU: ${sku}</div>` : ""}
-                ${item.outsourced_description ? `<div class="item-sub">${item.outsourced_description}</div>` : ""}
+                <div class="item-name">${escapeHtml(itemName)}</div>
+                ${sku ? `<div class="item-sub">SKU: ${escapeHtml(sku)}</div>` : ""}
+                ${item.outsourced_description ? `<div class="item-sub">${escapeHtml(item.outsourced_description)}</div>` : ""}
               </td>
               <td>${item.item_type === "outsourced" ? "Outsourced" : "Product"}</td>
               <td>${qty}</td>
@@ -265,7 +266,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
   <div class="meta-box" style="margin-bottom:24px;">
     <h3>Payment Schedule</h3>
     <p>
-      ${po?.installments || invoice.installment_months || "—"} monthly installments
+      ${escapeHtml(po?.installments || invoice.installment_months || "—")} monthly installments
       ${invoice.monthly_amount ? `of ${formatCurrency(Number(invoice.monthly_amount))} / month` : ""}
       ${invoice.payment_start_date ? `starting ${formatDate(invoice.payment_start_date)}` : ""}
       ${invoice.down_payment_amount && Number(invoice.down_payment_amount) > 0
@@ -276,7 +277,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
 
   <!-- Footer -->
   <div class="footer">
-    <p>Generated on ${new Date().toLocaleString("en-GB")} &bull; ${companyName}</p>
+    <p>Generated on ${new Date().toLocaleString("en-GB")} &bull; ${escapeHtml(companyName)}</p>
   </div>
 
 </div>

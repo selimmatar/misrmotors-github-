@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
+import { escapeHtml } from "@/lib/html-escape"
 
 export const dynamic = "force-dynamic"
 
@@ -112,8 +113,8 @@ export async function GET(request: NextRequest) {
     <h1>⚠️ خطأ</h1>
     <p>لم يتم العثور على إذن التسليم</p>
     <div class="debug">
-      <p>Permit ID: ${permitId}</p>
-      <p>Error: ${permitError?.message || "Not found"}</p>
+      <p>Permit ID: ${escapeHtml(permitId)}</p>
+      <p>Error: ${escapeHtml(permitError?.message || "Not found")}</p>
     </div>
     <br>
     <button onclick="window.close()">إغلاق</button>
@@ -153,7 +154,7 @@ export async function GET(request: NextRequest) {
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>إذن تسليم - ${permit.permit_no}</title>
+  <title>إذن تسليم - ${escapeHtml(permit.permit_no)}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
     
@@ -342,27 +343,27 @@ export async function GET(request: NextRequest) {
   <table class="header-table">
     <tr>
       <td style="width: 25%;"><strong>رقم إذن تسليم (DP):</strong></td>
-      <td style="width: 25%;">${permit.permit_no}</td>
+      <td style="width: 25%;">${escapeHtml(permit.permit_no)}</td>
       <td style="width: 25%;"><strong>التاريخ:</strong></td>
       <td style="width: 25%;">${formatArabicDate(permit.created_at || new Date().toISOString())}</td>
     </tr>
     <tr>
       <td style="width: 25%;"><strong>رقم أمر البيع (SO):</strong></td>
-      <td style="width: 25%;">${permit.sales_orders?.so_number || "-"}</td>
+      <td style="width: 25%;">${escapeHtml(permit.sales_orders?.so_number || "-")}</td>
       <td style="width: 25%;"><strong>رقم طلب العرض (QR):</strong></td>
-      <td style="width: 25%;">${permit.sales_orders?.quotation_request_number || permit.qr_number || "-"}</td>
+      <td style="width: 25%;">${escapeHtml(permit.sales_orders?.quotation_request_number || permit.qr_number || "-")}</td>
     </tr>
     <tr>
       <td colspan="4">
-        <strong>يسلم إلى:</strong> ${permit.recipient_name || permit.sales_orders?.delivery_contact_name || permit.customers?.customer_name || "-"}
+        <strong>يسلم إلى:</strong> ${escapeHtml(permit.recipient_name || permit.sales_orders?.delivery_contact_name || permit.customers?.customer_name || "-")}
       </td>
     </tr>
     <tr>
       <td colspan="2">
-        <strong>العنوان:</strong> ${permit.delivery_address || permit.sales_orders?.delivery_address || permit.customers?.address || "-"}
+        <strong>العنوان:</strong> ${escapeHtml(permit.delivery_address || permit.sales_orders?.delivery_address || permit.customers?.address || "-")}
       </td>
       <td colspan="2">
-        <strong>تليفون:</strong> ${permit.recipient_phone || permit.sales_orders?.delivery_contact_phone || permit.customers?.phone || "-"}
+        <strong>تليفون:</strong> ${escapeHtml(permit.recipient_phone || permit.sales_orders?.delivery_contact_phone || permit.customers?.phone || "-")}
       </td>
     </tr>
   </table>
@@ -384,9 +385,9 @@ export async function GET(request: NextRequest) {
           (item: any, index: number) => `
         <tr>
           <td>${toArabicNumbers(index + 1)}</td>
-          <td>${toArabicNumbers(item.quantity)}</td>
-          <td class="description">${item.item_name_snapshot || "-"}</td>
-          <td>${item.sku_snapshot || "-"}</td>
+          <td>${escapeHtml(toArabicNumbers(item.quantity))}</td>
+          <td class="description">${escapeHtml(item.item_name_snapshot || "-")}</td>
+          <td>${escapeHtml(item.sku_snapshot || "-")}</td>
           <td></td>
         </tr>
       `,

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
@@ -944,19 +945,26 @@ export async function DELETE(request: Request) {
     const supabase = createAdminClient()
 
     const { searchParams } = new URL(request.url)
-    const id = searchParams.get("id")
+    const soId = parsePositiveId(searchParams.get("id"))
 
-    if (id) {
-      await supabase.from("sales_order_items").delete().eq("so_id", id)
-      await supabase.from("quotation_requests").delete().eq("so_id", id)
-      const { error } = await supabase.from("sales_orders").delete().eq("id", id)
-      if (error) throw error
-    } else {
-      await supabase.from("sales_order_items").delete().neq("so_id", "00000000-0000-0000-0000-000000000000")
-      await supabase.from("quotation_requests").delete().neq("so_id", "00000000-0000-0000-0000-000000000000")
-      const { error } = await supabase.from("sales_orders").delete().neq("id", "00000000-0000-0000-0000-000000000000")
-      if (error) throw error
+    if (soId === null) {
+      return NextResponse.json({ error: "A valid numeric id is required" }, { status: 400 })
     }
+
+    const { data: existing, error: lookupError } = await supabase
+      .from("sales_orders")
+      .select("so_id")
+      .eq("so_id", soId)
+      .limit(1)
+    if (lookupError) throw lookupError
+    if (!existing || existing.length === 0) {
+      return NextResponse.json({ error: "Sales order not found" }, { status: 404 })
+    }
+
+    const { error: itemsError } = await supabase.from("sales_order_items").delete().eq("so_id", soId)
+    if (itemsError) throw itemsError
+    const { error } = await supabase.from("sales_orders").delete().eq("so_id", soId)
+    if (error) throw error
 
     return NextResponse.json({ success: true })
   } catch (error) {

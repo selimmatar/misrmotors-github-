@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
@@ -144,13 +145,13 @@ export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
 
-    if (id) {
-      const { error } = await supabase.from("customers").delete().eq("customer_id", Number.parseInt(id))
-      if (error) throw error
-    } else {
-      const { error } = await supabase.from("customers").delete().gt("customer_id", 0)
-      if (error) throw error
+    const numericId = parsePositiveId(id)
+    if (numericId === null) {
+      return NextResponse.json({ error: "A valid numeric id is required" }, { status: 400 })
     }
+
+    const { error } = await supabase.from("customers").delete().eq("customer_id", numericId)
+    if (error) throw error
 
     revalidatePath("/api/customers")
 

@@ -1,0 +1,326 @@
+
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>فاتورة - INV-2026-0001</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    @page { size: A4; margin: 15mm; }
+    
+    body {
+      font-family: 'Noto Naskh+Arabic', 'Arial', sans-serif;
+      font-size: 12pt;
+      line-height: 1.4;
+      color: #000;
+      background: white;
+      direction: rtl;
+    }
+    
+    /* NO modern UI - plain paper form style */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 2px solid #000;
+    }
+    
+    th, td {
+      border: 1px solid #000;
+      padding: 8px;
+      text-align: right;
+    }
+    
+    th {
+      background: #f0f0f0;
+      font-weight: 700;
+    }
+    
+    .header-table {
+      width: 100%;
+      border: 2px solid #000;
+      margin-bottom: 10mm;
+    }
+    
+    .header-table td {
+      border: 1px solid #000;
+      padding: 4px 8px;
+    }
+    
+    .company-header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding: 10px;
+      margin-bottom: 5mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .company-logo {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      margin-bottom: 10px;
+    }
+    
+    .company-name-ar {
+      font-size: 18pt;
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+    
+    .company-name-en {
+      font-size: 14pt;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .company-details {
+      font-size: 10pt;
+      line-height: 1.6;
+    }
+    
+    .tax-info {
+      font-size: 9pt;
+      margin-top: 5px;
+      border-top: 1px solid #ccc;
+      padding-top: 5px;
+    }
+    
+    .doc-title {
+      text-align: center;
+      font-size: 20pt;
+      font-weight: 700;
+      margin: 10mm 0;
+      text-decoration: underline;
+    }
+    
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0;
+      margin-bottom: 10mm;
+    }
+    
+    .info-cell {
+      border: 1px solid #000;
+      padding: 6px 10px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    .info-label {
+      font-weight: 700;
+      min-width: 100px;
+    }
+    
+    /* Items table with جنيه/قرش columns */
+    .items-table {
+      width: 100%;
+      border: 2px solid #000;
+      margin-bottom: 10mm;
+    }
+    
+    .items-table th {
+      background: #e8e8e8;
+      font-weight: 700;
+      text-align: center;
+      padding: 8px 4px;
+    }
+    
+    .items-table td {
+      text-align: right;
+      padding: 6px 4px;
+    }
+    
+    .items-table .center {
+      text-align: center;
+    }
+    
+    /* Currency split columns */
+    .currency-col {
+      text-align: center;
+    }
+    
+    .currency-header {
+      text-align: center;
+    }
+    
+    .subheader {
+      font-size: 10pt;
+      font-weight: 600;
+    }
+    
+    .footer-section {
+      margin-top: 15mm;
+      border-top: 2px solid #000;
+      padding-top: 10mm;
+    }
+    
+    .signatures {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20mm;
+      margin-top: 15mm;
+    }
+    
+    .signature-box {
+      text-align: center;
+    }
+    
+    .signature-label {
+      font-weight: 700;
+      margin-bottom: 20mm;
+      text-decoration: underline;
+    }
+    
+    .signature-line {
+      border-top: 1px solid #000;
+      margin-top: 15mm;
+    }
+    
+    @media print {
+      .no-print { display: none !important; }
+      body { margin: 0; padding: 0; }
+    }
+    
+    .print-button {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      padding: 10px 20px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <button class="print-button no-print" onclick="window.print()">🖨️ طباعة</button>
+  
+  <!-- Company Header -->
+  <div class="company-header">
+    <div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div>
+    <div class="company-name-ar">شركة مصر للمحركات</div>
+    <div class="company-name-en">Misr Motors Co.</div>
+    <div class="company-details">
+      <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
+      <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
+      <div>البريد الإلكتروني: sales@misrmotors.com</div>
+    </div>
+    <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
+  </div>
+  
+  <!-- Document Title -->
+  <div class="doc-title">فاتورة</div>
+  
+  <!-- Invoice Info -->
+  <table class="header-table">
+    <tr>
+      <td style="width: 25%;"><strong>رقم الفاتورة:</strong></td>
+      <td style="width: 25%;">INV-2026-0001</td>
+      <td style="width: 25%;"><strong>التاريخ:</strong></td>
+      <td style="width: 25%;"><DATE></td>
+    </tr>
+    <tr>
+      <td style="width: 25%;"><strong>رقم طلب التسعير:</strong></td>
+      <td colspan="3">QR-77</td>
+    </tr>
+    <tr>
+      <td style="width: 25%;"><strong>أذونات التسليم:</strong></td>
+      <td colspan="3">DP-2026-0001</td>
+    </tr>
+    <tr>
+      <td colspan="4">
+        <strong>المطلوب من السيد:</strong> Customer Co
+      </td>
+    </tr>
+    <tr>
+      <td colspan="4">
+        <strong>القسم ورقم طلب التسعير:</strong> Dept
+      </td>
+    </tr>
+    <tr>
+      <td colspan="4">
+        <strong>اسم المستلم:</strong> Receiver - تليفون: Phone-0111
+      </td>
+    </tr>
+    <tr>
+      <td colspan="4">
+        <strong>العنوان:</strong> AR Street, Alex
+      </td>
+    </tr>
+  </table>
+  
+  <!-- Items Table - EXACT COLUMNS -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th rowspan="2" style="width: 8%;">عدد</th>
+        <th rowspan="2" style="width: 40%;">البيان</th>
+        <th colspan="2" class="currency-header">سعر الوحدة</th>
+        <th colspan="2" class="currency-header">القيمة</th>
+      </tr>
+      <tr>
+        <th class="subheader" style="width: 13%;">جنيه</th>
+        <th class="subheader" style="width: 13%;">قرش</th>
+        <th class="subheader" style="width: 13%;">جنيه</th>
+        <th class="subheader" style="width: 13%;">قرش</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+        <tr>
+          <td class="center">2</td>
+          <td>Pump A</td>
+          <td class="currency-col">500</td>
+          <td class="currency-col">00</td>
+          <td class="currency-col">1,000</td>
+          <td class="currency-col">00</td>
+        </tr>
+      
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4" style="text-align: left;">المجموع الفرعي</td>
+        <td class="currency-col">1,000</td>
+        <td class="currency-col">00</td>
+      </tr>
+      <tr>
+        <td colspan="4" style="text-align: left;">ضريبة القيمة المضافة (14%)</td>
+        <td class="currency-col">140</td>
+        <td class="currency-col">00</td>
+      </tr>
+      <tr>
+        <td colspan="4" style="text-align: left; font-weight: 700;">إجمالي الفاتورة</td>
+        <td class="currency-col" style="font-weight: 700;">1,140</td>
+        <td class="currency-col" style="font-weight: 700;">00</td>
+      </tr>
+    </tfoot>
+  </table>
+  
+  <!-- Footer -->
+  <div class="signatures">
+    <div class="signature-box">
+      <div class="signature-label">الحسابات</div>
+      <div class="signature-line"></div>
+    </div>
+    <div class="signature-box">
+      <div class="signature-label">توقيع المستلم</div>
+      <div class="signature-line"></div>
+    </div>
+    <div class="signature-box">
+      <div class="signature-label">ختم الشركة</div>
+      <div class="signature-line"></div>
+    </div>
+  </div>
+</body>
+</html>
+    
