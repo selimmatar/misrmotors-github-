@@ -1,6 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server"
 import { put } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
+import { checkUpload } from "@/lib/upload-allowlist"
 
 export const dynamic = "force-dynamic"
 
@@ -18,6 +19,9 @@ export async function POST(request: NextRequest) {
     if (!salesQuotationId || !supplierName || !file) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
+
+    const rejection = checkUpload(file)
+    if (rejection) return NextResponse.json({ error: rejection.error }, { status: rejection.status })
 
     // Upload to Vercel Blob
     const blob = await put(`supplier-quotes/${Date.now()}-${file.name}`, file, {

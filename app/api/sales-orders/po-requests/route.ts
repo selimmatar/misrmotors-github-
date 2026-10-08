@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { put } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
+import { checkUpload } from "@/lib/upload-allowlist"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
     if (!soId || !file) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
+
+    const rejection = checkUpload(file)
+    if (rejection) return NextResponse.json({ error: rejection.error }, { status: rejection.status })
 
     // Generate or use manual PO request number
     let poRequestNumber: string

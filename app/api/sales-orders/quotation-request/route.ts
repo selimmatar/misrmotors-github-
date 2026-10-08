@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { put } from "@vercel/blob"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
+import { checkUpload } from "@/lib/upload-allowlist"
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,6 +18,9 @@ export async function POST(request: NextRequest) {
     if (!soId) {
       return NextResponse.json({ error: "Sales Order ID is required" }, { status: 400 })
     }
+
+    const rejection = checkUpload(file)
+    if (rejection) return NextResponse.json({ error: rejection.error }, { status: rejection.status })
 
 
     const blob = await put(`quotation-requests/${soId}/${Date.now()}-${file.name}`, file, {

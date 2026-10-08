@@ -1,5 +1,5 @@
 // Tests that call the REAL route handlers (no mirrored logic): PUT /api/sales-orders, /api/returns,
-// /api/delivery-permits, /api/accounts-receivable/create-from-dps and create-from-so, /api/inventory/restock-returned
+// /api/delivery-permits, /api/accounts-receivable/create-from-dps (the create-from-so route is retired, see decisions.test.ts; its library rules are still checked through createSoInvoice), /api/inventory/restock-returned
 // and remove-returned. Only the database client is replaced (in-memory FakeDb, see route-harness.ts).
 // Run with lib/__tests__/run-tests.sh.
 import "./route-harness"
@@ -11,7 +11,7 @@ import * as soRoute from "../../app/api/sales-orders/route"
 import * as returnsRoute from "../../app/api/returns/route"
 import * as dpRoute from "../../app/api/delivery-permits/route"
 import * as fromDps from "../../app/api/accounts-receivable/create-from-dps/route"
-import * as fromSo from "../../app/api/accounts-receivable/create-from-so/route"
+import { createSoInvoice } from "../invoicing"
 import * as restockRoute from "../../app/api/inventory/restock-returned/route"
 import * as removeRoute from "../../app/api/inventory/remove-returned/route"
 
@@ -170,7 +170,7 @@ test("ROUTE. keeping Pump A at 10 and adding B gives the same current total and 
   assert.equal(edit.status, 200, JSON.stringify(edit.body))
   assert.equal(order(db).total, round2(124000 * 1.14)) // lines, gross
   assert.equal(order(db).net_total, round2(104000 * 1.14)) // current SO: the 2 returned pumps are not counted
-  const invoice = await call(fromSo.POST, "POST", { so_id: 1 })
+  const invoice = await createSoInvoice(db as any, 1)
   assert.equal(invoice.status, 200, JSON.stringify(invoice.body))
   assert.equal(invoice.body.amount, round2(104000 * 1.14))
 })
@@ -178,12 +178,12 @@ test("ROUTE. keeping Pump A at 10 and adding B gives the same current total and 
 test("ROUTE. whole-order invoice after a return on the real endpoint: the returned quantity is not charged", async () => {
   const db = baseDb()
   assert.equal((await postReturn(returnBody(2))).status, 200)
-  const invoice = await call(fromSo.POST, "POST", { so_id: 1 })
+  const invoice = await createSoInvoice(db as any, 1)
   assert.equal(invoice.status, 200, JSON.stringify(invoice.body))
   assert.equal(invoice.body.amount, round2(80000 * 1.14)) // 91,200 instead of 114,000
   assert.equal(order(db).total, 114000) // the order's lines are untouched
   // a second whole-order invoice is still refused
-  assert.equal((await call(fromSo.POST, "POST", { so_id: 1 })).status, 409)
+  assert.equal((await createSoInvoice(db as any, 1)).status, 409)
 })
 
 // ---------------------------------------------------------------------------------------------------------

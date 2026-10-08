@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { put } from "@vercel/blob"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
+import { checkUpload } from "@/lib/upload-allowlist"
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,6 +19,9 @@ export async function POST(request: NextRequest) {
     if (!permitId) {
       return NextResponse.json({ error: "Permit ID is required" }, { status: 400 })
     }
+
+    const rejection = checkUpload(file)
+    if (rejection) return NextResponse.json({ error: rejection.error }, { status: rejection.status })
 
     // Upload to Vercel Blob
     const blob = await put(`delivery-permits/${permitId}/${Date.now()}-${file.name}`, file, {

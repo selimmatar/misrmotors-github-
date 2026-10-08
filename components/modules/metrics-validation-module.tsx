@@ -197,8 +197,8 @@ export default function MetricsValidationModule() {
           <div className="p-4 border rounded-lg">
             <h4 className="font-medium">Total Sales Revenue</h4>
             <code className="text-sm text-muted-foreground">
-              = SUM(COALESCE(net_total, total)) FROM sales_orders WHERE status IN ('accountant_approved', 'shipped',
-              'delivered')
+              = SUM(COALESCE(net_total, total)) FROM sales_orders WHERE status IN ('accountant_approved',
+              'ready_for_delivery', 'shipped', 'delivered')
             </code>
           </div>
           <div className="p-4 border rounded-lg">
