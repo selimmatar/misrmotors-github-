@@ -1200,6 +1200,7 @@ export function WarehouseDeliveryModule() {
 
                     // Build the assignments array from the selections state
                     const builtAssignments = (selectedReturn.items || []).map((item: any, idx: number) => ({
+                      returnItemId: item.id,
                       productId: item.productId || null,
                       productName: item.productName,
                       isOutsourced: item.isOutsourced || !item.productId,

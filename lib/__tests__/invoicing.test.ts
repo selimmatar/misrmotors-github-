@@ -40,6 +40,7 @@ class Query {
   update(p: any) { this.op = "update"; this.payload = p; return this }
   delete() { this.op = "delete"; return this }
   eq(c: string, v: any) { this.filters.push((r) => r[c] === v); return this }
+  neq(c: string, v: any) { this.filters.push((r) => r[c] !== v); return this }
   in(c: string, vs: any[]) { this.filters.push((r) => vs.includes(r[c])); return this }
   like(c: string, pattern: string) {
     const re = new RegExp("^" + pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$")
@@ -62,9 +63,9 @@ class Query {
     await this.db.tick()
     const injected = this.fail()
     if (injected) return injected
-    const rows = this.db.tables[this.table]
     if (this.op === "insert") {
       await this.db.tick()
+      const rows = this.db.tables[this.table] // read after the latency so a concurrent delete is not undone
       const inserted: Row[] = []
       for (const item of Array.isArray(this.payload) ? this.payload : [this.payload]) {
         if (this.table === "invoice_delivery_permits" && rows.some((r) => r.permit_id === item.permit_id))
@@ -83,6 +84,7 @@ class Query {
       return this.wantRows ? this.shape(inserted) : { data: null, error: null }
     }
     await this.db.tick() // latency before the statement; match + apply below are one synchronous step
+    const rows = this.db.tables[this.table]
     const matched = rows.filter((r) => this.filters.every((f) => f(r)))
     if (this.op === "update") {
       matched.forEach((r) => Object.assign(r, this.payload))

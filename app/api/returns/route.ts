@@ -1,6 +1,6 @@
-import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { createReturn, processReturn, rejectReturn } from "@/lib/returns"
 
 export const dynamic = "force-dynamic"
 
@@ -96,322 +96,36 @@ export async function GET(request: Request) {
   }
 }
 
+// Batch 2: creation is validated against the real delivery permit (status, items, cumulative quantity) and is
+// idempotent. See lib/returns.ts. Requests must carry { permitId, idempotencyKey, items[] }.
 export async function POST(request: Request) {
-  // Use admin client to bypass RLS for shipping department
-  
+  let body: any
   try {
-    const body = await request.json()
-    const {
-      permitId,
-      soId,
-      soNumber,
-      customerId,
-      customerName,
-      returnReason,
-      notes,
-      createdBy,
-      courierName,
-      items,
-    } = body
-    
-    // Create the return record - using correct column names from schema
-    const { data: returnData, error: returnError } = await getAdmin()
-      .from("product_returns")
-      .insert({
-        permit_id: permitId || `RET-${Date.now()}`,
-        so_id: soId ? Number(soId) : null,
-        so_number: soNumber || null,
-        customer_id: customerId ? Number(customerId) : null,
-        customer_name: customerName || null,
-        notes: notes || "",
-        initiated_by: createdBy || "shipping",
-        courier_name: courierName || "",
-        status: "pending_warehouse",
-        total_items_returned: items?.filter((i: any) => i.quantityReturned > 0).length || 0,
-      })
-      .select()
-      .single()
-    
-    if (returnError) throw returnError
-    
-    // Create return items - using correct column names from schema
-    if (items && items.length > 0) {
-      const returnItems = items
-        .filter((item: any) => item.quantityReturned > 0)
-        .map((item: any) => ({
-          return_id: returnData.return_id,
-          product_id: item.productId ? Number(item.productId) : null,
-          product_name: item.productName || "Unknown Product",
-          sku: item.sku || "",
-          original_quantity: Number(item.maxQuantity || item.quantityReturned) || 0,
-          returned_quantity: Number(item.quantityReturned) || 0,
-          return_reason: ["damaged", "wrong_item", "customer_refused", "excess_quantity", "quality_issue", "other"].includes(item.reason) ? item.reason : "other",
-          item_condition: item.condition || "good",
-          is_outsourced: item.isOutsourced || !item.productId || false,
-          supplier_name: item.supplierName || null,
-          unit_cost: item.unitCost ? Number(item.unitCost) : null,
-        }))
-      
-      const { error: itemsError } = await getAdmin()
-        .from("return_items")
-        .insert(returnItems)
-      
-      if (itemsError) throw itemsError
-    }
-    
-    return NextResponse.json({ success: true, returnId: returnData.return_id })
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+  }
+  try {
+    const result = await createReturn(getAdmin(), body)
+    return NextResponse.json(result.body, { status: result.status })
   } catch (error: any) {
     console.error("Returns POST error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
 
+// Batch 2: the supported transitions are the warehouse "process" step (pending_warehouse -> received) and the
+// API-controlled reject (pending_warehouse -> rejected, reason required). Both are guarded so they run once.
 export async function PUT(request: Request) {
-  const supabase = await createClient()
-  
+  let input: any
   try {
-    const body = await request.json()
-    const {
-      returnId,
-      status,
-      assignedWarehouseId,
-      assignedWarehouseName,
-      processedBy,
-      restockItems,
-      warehouseAssignments, // New format from warehouse module
-    } = body
-    
-    // Update return status using correct column names from schema
-    const updateData: any = {
-      status,
-      updated_at: new Date().toISOString(),
-    }
-    
-    if (assignedWarehouseId) {
-      updateData.assigned_warehouse_id = Number(assignedWarehouseId)
-      updateData.assigned_by = processedBy || "warehouse_manager"
-      updateData.assigned_at = new Date().toISOString()
-    }
-    
-    // Map "completed" to valid status value "received" 
-    if (status === "completed") {
-      updateData.status = "received"
-    }
-    
-    // Mark as received when completing
-    if (status === "completed" || status === "received" || status === "restocked") {
-      updateData.received_by = processedBy || "warehouse_manager"
-      updateData.received_at = new Date().toISOString()
-    }
-    
-    // Use admin client to bypass RLS for updating returns
-    const { data: returnData, error: returnError } = await getAdmin()
-      .from("product_returns")
-      .update(updateData)
-      .eq("return_id", returnId)
-      .select()
-      .single()
-    
-    if (returnError) {
-      console.error("Returns PUT error:", returnError)
-      throw returnError
-    }
-    
-    // Handle warehouse assignments from warehouse module (new format)
-    // Use admin client to bypass RLS for inventory operations
-    
-    // Fetch the return's SO number for stamping onto inventory rows
-    const { data: returnRecord } = await getAdmin()
-      .from("product_returns")
-      .select("so_number, so_id")
-      .eq("return_id", returnId)
-      .maybeSingle()
-    const soNumber = returnRecord?.so_number || (returnRecord?.so_id ? `SO-${returnRecord.so_id}` : null)
-
-    if ((status === "completed" || status === "received") && warehouseAssignments && warehouseAssignments.length > 0) {
-
-      for (const assignment of warehouseAssignments) {
-        const productId = assignment.productId ? Number(assignment.productId) : null
-        const warehouseId = assignment.warehouseId ? Number(assignment.warehouseId) : null
-        const isOutsourced = !productId || assignment.isOutsourced
-
-        // Skip if no warehouse assigned or condition is not good
-        if (assignment.condition !== "good" || !warehouseId) continue
-
-        if (isOutsourced) {
-          // Each returned outsourced line always gets its own inventory row so
-          // multiple items with the same name don't collapse into one.
-          // We key uniqueness by outsourced_name + so_number + return_id.
-          const unitCost = assignment.unitCost ? Number(assignment.unitCost) : 0
-          const { error: insertErr } = await getAdmin()
-            .from("inventory")
-            .insert({
-              product_id: null,
-              warehouse_id: warehouseId,
-              quantity: assignment.quantityReturned || 0,
-              unit_cost: unitCost,
-              reorder_point: 0,
-              is_outsourced: true,
-              outsourced_name: assignment.productName || "Outsourced Item",
-              outsourced_description: `Returned from ${soNumber || "order"} — ${assignment.reason || "customer return"}`,
-              supplier_name: assignment.supplierName || null,
-              is_returned: true,
-              so_number: soNumber || null,
-            })
-          if (insertErr) console.error("Outsourced insert error:", insertErr)
-        } else {
-          // Regular product — hold returned stock in its own "returned" row, keyed
-          // by is_returned = true. Never merge into the main on-hand row: doing so
-          // would both inflate the on-hand quantity with the return and then hide
-          // the ENTIRE merged quantity from "on hand" once is_returned is set,
-          // making the product disappear from inventory and the Returns tab show
-          // the wrong (much larger) quantity.
-          let unitCost = assignment.unitCost ? Number(assignment.unitCost) : 0
-
-          const { data: existingReturnedInv } = await getAdmin()
-            .from("inventory")
-            .select("*")
-            .eq("product_id", productId)
-            .eq("warehouse_id", warehouseId)
-            .eq("is_returned", true)
-            .maybeSingle()
-
-          // If unitCost not passed from UI, pull from existing returned row or latest batch
-          if (!unitCost) {
-            if (existingReturnedInv?.unit_cost) {
-              unitCost = Number(existingReturnedInv.unit_cost)
-            } else {
-              const { data: lastBatch } = await getAdmin()
-                .from("inventory_batches")
-                .select("unit_cost")
-                .eq("product_id", productId)
-                .order("received_date", { ascending: false })
-                .limit(1)
-                .maybeSingle()
-              unitCost = lastBatch?.unit_cost ? Number(lastBatch.unit_cost) : 0
-            }
-          }
-
-          if (existingReturnedInv) {
-            const newQuantity = (existingReturnedInv.quantity || 0) + (assignment.quantityReturned || 0)
-            await getAdmin()
-              .from("inventory")
-              .update({
-                quantity: newQuantity,
-                unit_cost: unitCost || existingReturnedInv.unit_cost,
-                supplier_name: assignment.supplierName || existingReturnedInv.supplier_name,
-                so_number: soNumber || existingReturnedInv.so_number,
-              })
-              .eq("inventory_id", existingReturnedInv.inventory_id)
-          } else {
-            await getAdmin()
-              .from("inventory")
-              .insert({
-                product_id: productId,
-                warehouse_id: warehouseId,
-                quantity: assignment.quantityReturned || 0,
-                unit_cost: unitCost,
-                reorder_point: 10,
-                is_outsourced: false,
-                supplier_name: assignment.supplierName || null,
-                is_returned: true,
-                so_number: soNumber || null,
-              })
-          }
-
-          // Create a return batch so it appears in inventory history with is_returned = true
-          const { data: lastBatchSeq } = await getAdmin()
-            .from("inventory_batches")
-            .select("batch_sequence")
-            .eq("product_id", productId)
-            .order("batch_sequence", { ascending: false })
-            .limit(1)
-            .maybeSingle()
-
-          await getAdmin()
-            .from("inventory_batches")
-            .insert({
-              product_id: productId,
-              quantity_received: assignment.quantityReturned || 0,
-              quantity_available: assignment.quantityReturned || 0,
-              unit_cost: unitCost,
-              landed_cost_per_unit: unitCost,
-              received_date: new Date().toISOString().split("T")[0],
-              warehouse_id: warehouseId,
-              batch_sequence: (lastBatchSeq?.batch_sequence || 0) + 1,
-              is_returned: true,
-              supplier_name: assignment.supplierName || null,
-            })
-        }
-      } // end for loop
-
-      // Mark all processed items as restocked
-      const processedCount = (warehouseAssignments as any[])
-        .filter((a: any) => a.condition === "good" && a.warehouseId).length
-
-      if (processedCount > 0) {
-        await getAdmin()
-          .from("return_items")
-          .update({ restocked: true })
-          .eq("return_id", returnId)
-          .eq("item_condition", "good")
-      }
-    }
-    if (status === "restocked" && restockItems && restockItems.length > 0) {
-      const warehouseIdNum = assignedWarehouseId ? Number(assignedWarehouseId) : null
-      
-      for (const item of restockItems) {
-        const productId = item.productId ? Number(item.productId) : null
-        
-        if (!productId || !warehouseIdNum) {
-          continue
-        }
-        
-        // Get current inventory for product in assigned warehouse
-        const { data: invData } = await getAdmin()
-          .from("inventory")
-          .select("*")
-          .eq("product_id", productId)
-          .eq("warehouse_id", warehouseIdNum)
-          .maybeSingle()
-        
-        if (invData) {
-          // Update existing inventory - just update quantity
-          const { error: updateErr } = await getAdmin()
-            .from("inventory")
-            .update({ quantity: (invData.quantity || 0) + (item.quantityReturned || 0) })
-            .eq("inventory_id", invData.inventory_id)
-          
-          if (updateErr) {
-            console.error("Restock inventory update error:", updateErr)
-          } else {
-          }
-        } else {
-          // Create new inventory record
-          const { error: insertErr } = await getAdmin()
-            .from("inventory")
-            .insert({
-              product_id: productId,
-              warehouse_id: warehouseIdNum,
-              quantity: item.quantityReturned || 0,
-              reorder_point: 10,
-            })
-          
-          if (insertErr) {
-            console.error("Restock inventory insert error:", insertErr)
-          } else {
-          }
-        }
-        
-        // Mark item as restocked
-        await getAdmin()
-          .from("return_items")
-          .update({ restocked: true })
-          .eq("return_item_id", item.id)
-      }
-    }
-    
-    return NextResponse.json({ success: true, data: returnData })
+    input = await request.json()
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+  }
+  try {
+    const result = input?.status === "rejected" ? await rejectReturn(getAdmin(), input) : await processReturn(getAdmin(), input)
+    return NextResponse.json(result.body, { status: result.status })
   } catch (error: any) {
     console.error("Returns PUT error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })

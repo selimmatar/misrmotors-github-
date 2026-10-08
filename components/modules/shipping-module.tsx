@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import { Button } from "@/components/ui/button"
@@ -18,6 +18,8 @@ import type { DeliveryPermit } from "@/lib/types"
 import { ShippingMaintenanceTab } from "@/components/shipping/maintenance-tab"
 
 interface ReturnItem {
+  /** id of the delivery permit line this return line refers to */
+  permitItemId?: string
   productId: string
   productName: string
   sku: string
@@ -55,6 +57,9 @@ export function ShippingModule() {
   const [returnCourierName, setReturnCourierName] = useState("")
   const [submittingReturn, setSubmittingReturn] = useState(false)
   const [pendingReturns, setPendingReturns] = useState<any[]>([])
+  // One idempotency key per opened return dialog: a double click or retry of the same submit can never create two returns.
+  const returnIdempotencyKey = useRef<string>("")
+  const returnSubmitInFlight = useRef(false)
 
   const fetchPermits = async () => {
     setLoading(true)
@@ -268,10 +273,12 @@ export function ShippingModule() {
       // Check if item is outsourced - either by itemType or if productId is missing/null
       const isOutsourced = item.itemType === "outsourced" || !item.productId || item.productId === ""
       return {
+        permitItemId: item.id,
         productId: item.productId || "",
         productName: item.itemNameSnapshot || item.productName || item.outsourcedName || "Unknown Item",
         sku: item.sku || "",
-        maxQuantity: item.quantity || 0,
+        // what is still returnable: delivered quantity minus what earlier (non-rejected) returns already took
+        maxQuantity: Math.max((Number(item.quantity) || 0) - (Number(item.returnedQuantity) || 0), 0),
         quantityReturned: 0,
         reason: "",
         condition: "good",
@@ -283,6 +290,7 @@ export function ShippingModule() {
     })
     setReturnItems(items)
     setReturnNotes("")
+    returnIdempotencyKey.current = `ret-${crypto.randomUUID()}`
     setShowReturnDialog(true)
   }
   
@@ -312,7 +320,7 @@ export function ShippingModule() {
   }
   
   const handleSubmitReturn = async () => {
-    if (!selectedPermitForReturn) return
+    if (!selectedPermitForReturn || returnSubmitInFlight.current) return
     
     const itemsToReturn = returnItems.filter((item) => item.quantityReturned > 0)
     if (itemsToReturn.length === 0) {
@@ -327,21 +335,21 @@ export function ShippingModule() {
       return
     }
     
+    returnSubmitInFlight.current = true
     setSubmittingReturn(true)
     try {
       const response = await fetch("/api/returns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // The server derives the sales order, customer and item details from the delivery permit itself.
         body: JSON.stringify({
-          permitId: selectedPermitForReturn.permitId,
-          soId: selectedPermitForReturn.soId,
-          soNumber: selectedPermitForReturn.soNumber,
-          customerId: selectedPermitForReturn.customerId,
-          customerName: selectedPermitForReturn.customerName,
+          permitId: Number(selectedPermitForReturn.id),
+          idempotencyKey: returnIdempotencyKey.current,
           createdBy: user?.name || "shipping_team",
           courierName: returnCourierName,
           notes: returnNotes,
           items: itemsToReturn.map((item) => ({
+            permitItemId: item.permitItemId,
             productId: item.productId,
             productName: item.productName,
             sku: item.sku,
@@ -371,6 +379,7 @@ export function ShippingModule() {
     } catch (error) {
       alert("Failed to submit return request")
     } finally {
+      returnSubmitInFlight.current = false
       setSubmittingReturn(false)
     }
   }
@@ -609,18 +618,14 @@ export function ShippingModule() {
                       </div>
                     </div>
 
+                      {/* The customer may refuse an item when the driver arrives, so returns are allowed here too. */}
                       <div className="flex gap-2 mb-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openReturnDialog(permit)}
-                          className="bg-transparent"
-                        >
+                        <Button variant="outline" size="sm" onClick={() => openReturnDialog(permit)} className="bg-transparent">
                           <RotateCcw className="w-4 h-4 mr-2" />
                           Return Items
                         </Button>
                       </div>
-                      
+
                       {uploadingFor === permit.id ? (
                         <div className="space-y-3 border-t pt-4">
                           <div>
@@ -713,7 +718,7 @@ export function ShippingModule() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="flex flex-wrap gap-2">
                     {permit.files && permit.files.length > 0 && (
                       <Button
                         size="sm"
@@ -728,6 +733,11 @@ export function ShippingModule() {
                         {t("shipping.view-signed-permit")}
                       </Button>
                     )}
+                    {/* Returns are accepted for permits that are out for delivery or delivered. */}
+                    <Button size="sm" variant="outline" className="gap-2 bg-transparent" onClick={() => openReturnDialog(permit)}>
+                      <RotateCcw className="w-4 h-4" />
+                      Return Items
+                    </Button>
                   </CardContent>
                 </Card>
               ))}

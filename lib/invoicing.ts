@@ -12,6 +12,23 @@
 // LOWEST invoice_id survives; a higher-id invoice rolls itself back. See createSoInvoice/createDpInvoices.
 
 import { resolveInstallmentCount } from "./payment-type"
+import {
+  DELIVERED_PERMIT_STATUSES,
+  invoiceablePool,
+  lineKey,
+  loadReturnLines,
+  netLineQuantities,
+  returnedByKey,
+  toMs,
+  type ReturnLine,
+} from "./return-lines"
+
+// Batch 2: quantity returned against a delivery permit (valid = non-rejected) reduces what can still be invoiced:
+//   ordered - already invoiced - returned = remaining invoiceable (never below zero)
+// (see invoiceablePool in return-lines.ts for the exact rule, which also copes with a sales order that was edited
+// after a return). Both workflows are return-aware: a delivery-permit invoice bills only the net quantity, and a
+// whole-order invoice leaves out the returned quantity. Returns never touch existing invoices; they only change
+// what may be invoiced from now on.
 
 export const VAT_RATE = 0.14
 // Rounding slack when comparing cumulative invoiced value with the sales order total.
@@ -35,8 +52,8 @@ export const itemRawTotal = (item: { total?: any; quantity?: any; unit_price?: a
   item.total != null ? Number(item.total) : Number(item.quantity || 0) * Number(item.unit_price || 0)
 
 // Same line matching as isSOFullyDelivered in the delivery-permits route: by product, else by name.
-export const lineKey = (productId: number | null | undefined, name: string | null | undefined) =>
-  productId ? `p:${productId}` : `n:${(name || "").trim()}`
+// (Defined in return-lines.ts so returns and invoicing can never disagree on what "the same line" means.)
+export { lineKey }
 
 // ---------------------------------------------------------------------------------------------------------
 // Pure rules (no I/O) - unit tested
@@ -61,11 +78,21 @@ export interface SoInvoicingState {
     payment_terms?: string | null
     installments?: number | null
   }
-  soItems: { product_id: number | null; outsourced_name: string | null; quantity: number }[]
+  soItems: { product_id: number | null; outsourced_name: string | null; quantity: number; unit_price?: number; total?: number | null }[]
   /** every delivery permit of this sales order */
   permits: { permit_id: number; permit_no?: string; status: string; items: DpItem[] }[]
   /** every invoice attributable to this sales order (so_id = SO, or linked to one of its DPs) */
-  invoices: { invoice_id: number; invoice_number?: string; so_id: number | null; amount: number; permit_ids: number[] }[]
+  invoices: {
+    invoice_id: number
+    invoice_number?: string
+    so_id: number | null
+    amount: number
+    permit_ids: number[]
+    /** accounts_receivable.created_at - decides which returns were already known when the invoice was priced */
+    created_at?: string | null
+  }[]
+  /** valid (non-rejected) return lines against this sales order's delivery permits */
+  returns: ReturnLine[]
 }
 
 export type Verdict = { ok: true; newValue?: number } | { ok: false; status: number; error: string }
@@ -95,17 +122,112 @@ function orderedByKey(state: SoInvoicingState) {
   return map
 }
 
+interface KeyPool {
+  ordered: number
+  delivered: number
+  returned: number
+  pool: number
+}
+// Per line key: how much may be billed in total (see invoiceablePool). Delivered = gross quantity on permits whose
+// goods have left (OUT_FOR_DELIVERY / SUBMITTED_SIGNED / APPROVED).
+function poolByKey(state: SoInvoicingState, returned: Map<string, number>) {
+  const ordered = orderedByKey(state)
+  const delivered = new Map<string, number>()
+  for (const permit of state.permits) {
+    if (!DELIVERED_PERMIT_STATUSES.includes(permit.status)) continue
+    for (const item of permit.items) {
+      const key = lineKey(item.product_id, item.item_name_snapshot)
+      delivered.set(key, (delivered.get(key) || 0) + (Number(item.quantity) || 0))
+    }
+  }
+  const out = new Map<string, KeyPool>()
+  for (const [key, orderedQty] of ordered) {
+    const deliveredQty = delivered.get(key) || 0
+    const returnedQty = returned.get(key) || 0
+    out.set(key, { ordered: orderedQty, delivered: deliveredQty, returned: returnedQty, pool: invoiceablePool(orderedQty, deliveredQty, returnedQty) })
+  }
+  return out
+}
+
+/**
+ * Whole-order (Workflow A) invoice amount, leaving out returned quantity: the sales order total scaled by the share
+ * of line value that is still billable (so discount and VAT are applied exactly as on the order). Unchanged when
+ * nothing was returned.
+ */
+export function computeWholeOrderAmount(state: SoInvoicingState): { ok: true; amount: number; excluded: Map<string, number> } | { ok: false; status: number; error: string } {
+  const total = Number(state.so.total) || 0
+  const pools = poolByKey(state, returnedByKey(state.returns || []))
+  const excludedLeft = new Map<string, number>()
+  for (const [key, info] of pools) {
+    const excluded = Math.max(0, info.ordered - info.pool)
+    if (excluded > QTY_EPSILON) excludedLeft.set(key, excluded)
+  }
+  if (excludedLeft.size === 0) return { ok: true, amount: total, excluded: new Map() }
+
+  const excluded = new Map(excludedLeft)
+  let rawAll = 0
+  let rawExcluded = 0
+  for (const line of state.soItems) {
+    const qty = Number(line.quantity) || 0
+    const lineRaw = itemRawTotal({ total: line.total, quantity: line.quantity, unit_price: line.unit_price })
+    rawAll += lineRaw
+    const key = lineKey(line.product_id, line.outsourced_name)
+    const take = Math.min(excludedLeft.get(key) || 0, qty)
+    if (take > 0) {
+      excludedLeft.set(key, (excludedLeft.get(key) || 0) - take)
+      rawExcluded += qty > 0 ? (lineRaw * take) / qty : 0
+    }
+  }
+  if (rawAll <= 0) return { ok: true, amount: total, excluded: new Map() }
+  const amount = round2(total * (1 - rawExcluded / rawAll))
+  if (amount <= 0.005) {
+    return { ok: false, status: 409, error: `Nothing to invoice: every item on sales order ${soLabel(state)} has been returned.` }
+  }
+  return { ok: true, amount, excluded }
+}
+
+// The order total once returned quantity is left out (the whole-order invoice amount); 0 when nothing is left to bill.
+function effectiveOrderTotal(state: SoInvoicingState, returns: ReturnLine[]) {
+  const priced = computeWholeOrderAmount({ ...state, returns })
+  return priced.ok ? priced.amount : 0
+}
+
+// Returns that already existed when an invoice was created were taken off that invoice's quantities; an invoice
+// without a timestamp is counted gross (the conservative choice).
+const invoiceAsOf = (inv: SoInvoicingState["invoices"][number]) => {
+  const ms = toMs(inv.created_at)
+  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms
+}
+
+// Net quantity of each item on a permit: delivered quantity minus the returns against that permit.
+function netPermitQuantities(state: SoInvoicingState, permit: SoInvoicingState["permits"][number], asOfMs?: number) {
+  return netLineQuantities(
+    permit.items.map((it) => ({ key: lineKey(it.product_id, it.item_name_snapshot), quantity: Number(it.quantity) || 0 })),
+    returnedByKey(state.returns || [], { permitId: permit.permit_id, asOfMs }),
+  )
+}
+
+// Value of an item for `netQty` units (pro-rata of its stored line total).
+const itemNetRawTotal = (item: DpItem, netQty: number) => {
+  const qty = Number(item.quantity) || 0
+  return qty > 0 ? (itemRawTotal(item) * netQty) / qty : 0
+}
+
+// Quantity actually billed per line key by the given invoices.
 function invoicedQtyByKey(state: SoInvoicingState, invoices: SoInvoicingState["invoices"]) {
   const map = new Map<string, number>()
   const own = ownPermitIds(state)
   for (const inv of invoices) {
+    const asOf = invoiceAsOf(inv)
     for (const permitId of inv.permit_ids) {
       if (!own.has(permitId)) continue
       const permit = state.permits.find((p) => p.permit_id === permitId)
-      for (const item of permit?.items || []) {
+      if (!permit) continue
+      const net = netPermitQuantities(state, permit, asOf)
+      permit.items.forEach((item, idx) => {
         const key = lineKey(item.product_id, item.item_name_snapshot)
-        map.set(key, (map.get(key) || 0) + (Number(item.quantity) || 0))
-      }
+        map.set(key, (map.get(key) || 0) + net[idx])
+      })
     }
   }
   return map
@@ -146,41 +268,62 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
   const newPermits = state.permits.filter((p) => newPermitIds.includes(p.permit_id))
   const ordered = orderedByKey(state)
   const prior = invoicedQtyByKey(state, state.invoices)
+  const pools = poolByKey(state, returnedByKey(state.returns || []))
 
+  // What the new permits can bill: delivered quantity minus what was returned against them.
   const requested = new Map<string, { qty: number; name: string }>()
+  const netByPermit = new Map<number, number[]>()
   for (const permit of newPermits) {
-    for (const item of permit.items) {
+    const net = netPermitQuantities(state, permit)
+    netByPermit.set(permit.permit_id, net)
+    permit.items.forEach((item, idx) => {
       const key = lineKey(item.product_id, item.item_name_snapshot)
       const entry = requested.get(key) || { qty: 0, name: item.item_name_snapshot || key }
-      entry.qty += Number(item.quantity) || 0
+      entry.qty += net[idx]
       requested.set(key, entry)
-    }
+    })
   }
+  let billableQty = 0
   for (const [key, { qty, name }] of requested) {
-    const orderedQty = ordered.get(key)
-    if (orderedQty === undefined) {
+    // A line that was fully returned has nothing to bill and need not be on the order any more.
+    if (qty <= QTY_EPSILON) continue
+    const info = pools.get(key)
+    if (info === undefined || ordered.get(key) === undefined) {
       return { ok: false, status: 409, error: `"${name}" is not an item on sales order ${soLabel(state)} and cannot be invoiced against it.` }
     }
+    billableQty += qty
     const already = prior.get(key) || 0
-    if (already + qty > orderedQty + QTY_EPSILON) {
+    if (already + qty > info.pool + QTY_EPSILON) {
+      const returnedNote = info.returned > 0 ? ` (${info.returned} returned)` : ""
       return {
         ok: false,
         status: 409,
-        error: `"${name}": ${qty} requested, but only ${Math.max(orderedQty - already, 0)} of ${orderedQty} ordered remain to be invoiced on sales order ${soLabel(state)}.`,
+        error: `"${name}": ${qty} requested, but only ${Math.max(info.pool - already, 0)} of ${info.ordered} ordered remain to be invoiced${returnedNote} on sales order ${soLabel(state)}.`,
       }
+    }
+  }
+  if (billableQty <= QTY_EPSILON) {
+    return {
+      ok: false,
+      status: 409,
+      error: `Nothing to invoice: every item on the selected delivery permit(s) of sales order ${soLabel(state)} has been returned.`,
     }
   }
 
   const priorValue = state.invoices.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
-  const newValue = newPermits.reduce(
-    (sum, p) => sum + netInvoiceValue(p.items.reduce((s, it) => s + itemRawTotal(it), 0), state.so.subtotal, state.so.discount_amount),
-    0,
-  )
-  if (priorValue + newValue > Number(state.so.total) + MONEY_TOLERANCE) {
+  const newValue = newPermits.reduce((sum, p) => {
+    const net = netByPermit.get(p.permit_id) || []
+    const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)
+    return sum + netInvoiceValue(raw, state.so.subtotal, state.so.discount_amount)
+  }, 0)
+  // The order total less the value of what was returned (nothing was credited on existing invoices, so returned
+  // goods that were already billed are not billed again).
+  const billableTotal = effectiveOrderTotal(state, state.returns || [])
+  if (priorValue + newValue > billableTotal + MONEY_TOLERANCE) {
     return {
       ok: false,
       status: 409,
-      error: `Invoicing ${round2(newValue)} would exceed sales order ${soLabel(state)} (total ${round2(Number(state.so.total))}, already invoiced ${round2(priorValue)}).`,
+      error: `Invoicing ${round2(newValue)} would exceed sales order ${soLabel(state)} (billable total ${round2(billableTotal)}, already invoiced ${round2(priorValue)}).`,
     }
   }
   return { ok: true, newValue }
@@ -202,14 +345,19 @@ export function evaluateAfterInsert(state: SoInvoicingState, myInvoiceId: number
   }
   const ordered = orderedByKey(state)
   const totals = invoicedQtyByKey(state, considered)
+  // Only returns that existed when this invoice was created count against it; a return filed afterwards must
+  // never retroactively undo a valid invoice.
+  const returnedBefore = mine ? returnedByKey(state.returns || [], { asOfMs: invoiceAsOf(mine) }) : new Map<string, number>()
+  const pools = poolByKey(state, returnedBefore)
   for (const [key, qty] of totals) {
     const orderedQty = ordered.get(key)
-    if (orderedQty === undefined || qty > orderedQty + QTY_EPSILON) {
+    if (orderedQty === undefined || qty > (pools.get(key)?.pool ?? 0) + QTY_EPSILON) {
       return { ok: false, status: 409, error: `Concurrent invoicing would exceed the ordered quantity on sales order ${soLabel(state)}.` }
     }
   }
   const value = considered.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
-  if (value > Number(state.so.total) + MONEY_TOLERANCE) {
+  const returnsBefore = mine ? (state.returns || []).filter((r) => returnedByKey([r], { asOfMs: invoiceAsOf(mine) }).size > 0) : []
+  if (value > effectiveOrderTotal(state, returnsBefore) + MONEY_TOLERANCE) {
     return { ok: false, status: 409, error: `Concurrent invoicing would exceed the total of sales order ${soLabel(state)}.` }
   }
   return { ok: true }
@@ -237,7 +385,7 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
   if (!so) return null
 
   const soItems = must(
-    await db.from("sales_order_items").select("product_id, outsourced_name, quantity").eq("so_id", soId),
+    await db.from("sales_order_items").select("product_id, outsourced_name, quantity, unit_price, total").eq("so_id", soId),
     "load sales order items",
   ) as any[]
   const permitRows = must(
@@ -259,13 +407,15 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
     ? (must(await db.from("invoice_delivery_permits").select("invoice_id, permit_id").in("permit_id", permitIds), "load invoice links") as any[])
     : []
 
+  const returns = await loadReturnLines(db, permitIds)
+
   const bySo = must(
-    await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount").eq("so_id", soId),
+    await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").eq("so_id", soId),
     "load invoices by sales order",
   ) as any[]
   const linkedIds = [...new Set(ownLinks.map((l) => l.invoice_id))]
   const byLink = linkedIds.length
-    ? (must(await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount").in("invoice_id", linkedIds), "load linked invoices") as any[])
+    ? (must(await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").in("invoice_id", linkedIds), "load linked invoices") as any[])
     : []
   const invoiceRows = new Map<number, any>()
   for (const row of [...bySo, ...byLink]) invoiceRows.set(row.invoice_id, row)
@@ -282,7 +432,13 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
       subtotal: Number(so.subtotal) || 0,
       discount_amount: Number(so.discount_amount) || 0,
     },
-    soItems: soItems.map((i) => ({ product_id: i.product_id, outsourced_name: i.outsourced_name, quantity: Number(i.quantity) || 0 })),
+    soItems: soItems.map((i) => ({
+      product_id: i.product_id,
+      outsourced_name: i.outsourced_name,
+      quantity: Number(i.quantity) || 0,
+      unit_price: i.unit_price != null ? Number(i.unit_price) : undefined,
+      total: i.total != null ? Number(i.total) : null,
+    })),
     permits: permitRows.map((p) => ({
       permit_id: p.permit_id,
       permit_no: p.permit_no,
@@ -295,7 +451,9 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
       so_id: r.so_id,
       amount: Number(r.amount) || 0,
       permit_ids: allLinks.filter((l) => l.invoice_id === r.invoice_id).map((l) => l.permit_id),
+      created_at: r.created_at ?? null,
     })),
+    returns,
   }
 }
 
@@ -353,13 +511,18 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
     const verdict = evaluateSoInvoice(state)
     if (!verdict.ok) return failure(verdict.status, verdict.error, { invoiceNumber: state.invoices[0]?.invoice_number, invoiceId: state.invoices[0]?.invoice_id })
 
+    // Return-aware: quantity returned against the order's delivery permits is not billed (existing invoices are
+    // never touched - there can be none here, evaluateSoInvoice just checked).
+    const priced = computeWholeOrderAmount(state)
+    if (!priced.ok) return failure(priced.status, priced.error)
+
     const paymentType = state.so.payment_type || state.so.payment_terms || "cash"
     const invoice = await insertInvoice(db, {
       customer_id: state.so.customer_id,
       so_id: state.so.so_id,
       invoice_date: new Date().toISOString().split("T")[0],
       due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-      amount: state.so.total, // existing authoritative SO calculation (discount + VAT already applied)
+      amount: priced.amount, // the SO total (discount + VAT already applied), less any returned quantity
       collected_amount: 0,
       payment_terms: paymentType,
       installment_months: resolveInstallmentCount(paymentType, state.so.installments) || 1,

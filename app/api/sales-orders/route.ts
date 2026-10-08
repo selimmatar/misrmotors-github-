@@ -2,6 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
+import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "@/lib/return-lines"
+import { reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
 
 export const dynamic = "force-dynamic"
 
@@ -39,6 +41,35 @@ export async function GET() {
       }
 
 
+      // Batch 2: per-line delivery / return history, so the order can be edited safely after a return.
+      const allPermits: any[] = ordersData.flatMap((o: any) => (o.delivery_permits || []).map((dp: any) => ({ ...dp, so_id: o.so_id })))
+      const historyByOrder = new Map<number, { delivered: Map<string, number>; onPermit: Set<string>; returned: Map<string, number> }>()
+      if (allPermits.length > 0) {
+        try {
+          const permitIds = allPermits.map((p) => p.permit_id)
+          const { data: dpItems, error: dpItemsError } = await supabase
+            .from("delivery_permit_items")
+            .select("permit_id, product_id, item_name_snapshot, quantity")
+            .in("permit_id", permitIds)
+          if (dpItemsError) throw dpItemsError
+          const returnLines = await loadReturnLines(supabase, permitIds)
+          for (const permit of allPermits) {
+            const entry = historyByOrder.get(permit.so_id) || { delivered: new Map(), onPermit: new Set(), returned: new Map() }
+            historyByOrder.set(permit.so_id, entry)
+            for (const item of (dpItems || []).filter((i: any) => i.permit_id === permit.permit_id)) {
+              const key = lineKey(item.product_id, item.item_name_snapshot)
+              entry.onPermit.add(key)
+              if (DELIVERED_PERMIT_STATUSES.includes(permit.status)) entry.delivered.set(key, (entry.delivered.get(key) || 0) + (Number(item.quantity) || 0))
+            }
+            for (const [key, qty] of returnedByKey(returnLines, { permitId: permit.permit_id })) {
+              entry.returned.set(key, (entry.returned.get(key) || 0) + qty)
+            }
+          }
+        } catch (historyError: any) {
+          console.error("Sales Orders GET: could not load delivery/return history (editing stays restricted):", historyError?.message)
+        }
+      }
+
       const ordersWithItems = ordersData.map((order: any) => ({
         id: order.so_id.toString(),
         soId: order.so_id,
@@ -56,7 +87,9 @@ export async function GET() {
         discountType: order.discount_type || "none",
         discountValue: order.discount_value || 0,
         discountAmount: order.discount_amount || 0,
-        total: order.net_total || order.total,
+        // current (return-aware) total; `grossTotal` is the ordered value of the lines
+        total: order.net_total ?? order.total,
+        grossTotal: order.total,
         notes: order.notes,
         invoiceFileUrl: order.invoice_file_url,
         createdAt: order.created_at,
@@ -88,7 +121,19 @@ export async function GET() {
           downPaymentDueDate: order.down_payment_due_date,
           paymentStartDate: order.payment_start_date,
         },
-        items: (order.sales_order_items || []).map((item: any) => ({
+        returnedQuantity: [...(historyByOrder.get(order.so_id)?.returned.values() || [])].reduce((a: number, b: number) => a + b, 0),
+        items: (order.sales_order_items || []).map((item: any, index: number, all: any[]) => {
+          // key-level history is shown on the first line of that item
+          const history = historyByOrder.get(order.so_id)
+          const key = lineKey(item.product_id, item.outsourced_name)
+          const firstOfKey = all.findIndex((other: any) => lineKey(other.product_id, other.outsourced_name) === key) === index
+          const deliveredQuantity = firstOfKey ? history?.delivered.get(key) || 0 : 0
+          const returnedQuantity = firstOfKey ? history?.returned.get(key) || 0 : 0
+          return {
+          deliveredQuantity,
+          returnedQuantity,
+          minQuantity: firstOfKey ? Math.max(0, deliveredQuantity - returnedQuantity) : 0,
+          onDeliveryPermit: !!history?.onPermit.has(key),
           id: item.so_item_id?.toString() || "",
           productId: item.product_id?.toString() || "",
           productName: item.products?.product_name || item.outsourced_name || "",
@@ -105,7 +150,8 @@ export async function GET() {
           supplierId: item.supplier_id?.toString() || "",
           supplierName: item.suppliers?.supplier_name || "",
           fulfilledAt: item.fulfilled_at || null,
-        })),
+          }
+        }),
         deliveryPermits: (order.delivery_permits || []).map((dp: any) => ({
           permitId: dp.permit_id,
           permitNumber: dp.permit_no,
@@ -656,7 +702,14 @@ export async function PUT(request: Request) {
 
     // Ensure so_id is a number for the query
     const numericId = typeof finalId === "string" ? parseInt(finalId, 10) : finalId
-    
+
+    // Batch 2: once delivery permits exist (and especially after a return) the order's history must stay intact.
+    // Checked BEFORE anything is written so a refused edit changes nothing.
+    const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items })
+    if (!editVerdict.ok) {
+      return NextResponse.json({ error: editVerdict.error }, { status: editVerdict.status })
+    }
+
 
     const { data: order, error: orderError } = await supabase
       .from("sales_orders")
@@ -740,6 +793,24 @@ export async function PUT(request: Request) {
         } else {
           await supabase.from("sales_order_items").insert(itemRow)
         }
+      }
+    }
+
+    // A replacement line (or a quantity still owed after a return) re-opens an order that was marked delivered.
+    if (items) {
+      try {
+        await reopenIfNotFullyDelivered(supabase, numericId)
+      } catch (reopenError: any) {
+        console.error("Sales Orders PUT: could not re-open the order after the edit:", reopenError?.message)
+      }
+    }
+
+    // Keep the current total return-aware after an edit that touched the lines or the total.
+    if (items || updates.total !== undefined) {
+      try {
+        await syncSalesOrderNetTotal(supabase, numericId)
+      } catch (syncError: any) {
+        console.error("Sales Orders PUT: could not refresh the net total:", syncError?.message)
       }
     }
 

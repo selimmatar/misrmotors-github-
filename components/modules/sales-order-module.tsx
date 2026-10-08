@@ -887,8 +887,16 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
   // only approved some of the requested items). Once a delivery permit exists, downstream
   // fulfillment has already started against those items, so editing is blocked from here.
   const canEditRole = userRole === "sales-rep" || userRole === "admin"
+  // After a return the order stays editable (Batch 2) so an item can be exchanged without a new sales order. The
+  // server keeps delivered items as history and only accepts safe edits (lib/so-edit.ts).
+  const hasReturns = (order: SalesOrder) => Number((order as any).returnedQuantity || 0) > 0
+  const RETURN_EDITABLE_STATUSES = ["accountant_approved", "ready_for_delivery", "shipped", "delivered"]
+  const showEditButton = (order: SalesOrder) =>
+    canEditRole && (order.status === "accountant_approved" || (hasReturns(order) && RETURN_EDITABLE_STATUSES.includes(order.status)))
   const canEditApprovedOrder = (order: SalesOrder) =>
-    canEditRole && order.status === "accountant_approved" && !(order as any).deliveryPermits?.length
+    canEditRole &&
+    ((order.status === "accountant_approved" && !(order as any).deliveryPermits?.length) ||
+      (hasReturns(order) && RETURN_EDITABLE_STATUSES.includes(order.status)))
 
   const pendingShipmentOrders = salesOrders.filter((order) => order.status === "ready_for_delivery")
   const shippedOrders = salesOrders.filter((order) => order.status === "shipped")
@@ -1898,7 +1906,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                   >
                     <Wrench className="w-4 h-4" /> Maintenance
                   </Button>
-                  {canEditRole && order.status === "accountant_approved" && (
+                  {showEditButton(order) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -1909,7 +1917,9 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                       disabled={!canEditApprovedOrder(order)}
                       title={
                         canEditApprovedOrder(order)
-                          ? "Edit this approved order (items, customer, payment terms)"
+                          ? hasReturns(order)
+                            ? "Edit this order after a return (keep delivered items, add the replacement as a new line)"
+                            : "Edit this approved order (items, customer, payment terms)"
                           : "Cannot edit - a delivery permit has already been created for this order"
                       }
                     >

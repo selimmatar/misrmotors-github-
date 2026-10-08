@@ -2,77 +2,10 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkIdempotency, completeIdempotency, generateDPApprovalIdempotencyKey } from "@/lib/idempotency"
+import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
+import { isSOFullyDelivered } from "@/lib/delivery-status"
 
 export const dynamic = "force-dynamic"
-
-// Statuses that count as "delivered" for a single delivery permit
-const DP_DELIVERED_STATUSES = ["SUBMITTED_SIGNED", "DELIVERED", "APPROVED"]
-
-/**
- * Determines whether every item on a sales order has been fully covered (by quantity)
- * across all of its delivery permits that count as delivered.
- *
- * A sales order can have multiple partial delivery permits (e.g. DP-06 may only ship
- * 4 of 30 line items). Marking the SO as "delivered" just because every DP created SO FAR
- * has reached a delivered status is WRONG when those DPs don't cover the full order — the
- * SO should stay non-delivered (and be reported as "partially delivered") until every line
- * item's ordered quantity has been shipped.
- *
- * `overridePermitId`/`overrideStatus` let the caller check what the outcome WOULD be after
- * the current PUT request's status change is applied, before that change is persisted.
- */
-async function isSOFullyDelivered(
-  supabase: ReturnType<typeof createAdminClient>,
-  salesOrderId: number,
-  overridePermitId?: number,
-  overrideStatus?: string,
-): Promise<boolean> {
-  const { data: soItems } = await supabase
-    .from("sales_order_items")
-    .select("so_item_id, product_id, quantity, outsourced_name")
-    .eq("so_id", salesOrderId)
-
-  if (!soItems || soItems.length === 0) return true
-
-  const { data: permits } = await supabase
-    .from("delivery_permits")
-    .select("permit_id, status")
-    .eq("sales_order_id", salesOrderId)
-
-  const deliveredPermitIds = (permits || [])
-    .map((p: any) => (p.permit_id === overridePermitId ? { ...p, status: overrideStatus || p.status } : p))
-    .filter((p: any) => DP_DELIVERED_STATUSES.includes(p.status))
-    .map((p: any) => p.permit_id)
-
-  if (deliveredPermitIds.length === 0) return false
-
-  const { data: dpItems } = await supabase
-    .from("delivery_permit_items")
-    .select("product_id, item_name_snapshot, quantity")
-    .in("permit_id", deliveredPermitIds)
-
-  const deliveredByProduct = new Map<number, number>()
-  const deliveredByName = new Map<string, number>()
-
-  for (const dpItem of dpItems || []) {
-    const qty = Number(dpItem.quantity) || 0
-    if (dpItem.product_id) {
-      deliveredByProduct.set(dpItem.product_id, (deliveredByProduct.get(dpItem.product_id) || 0) + qty)
-    } else {
-      const name = (dpItem.item_name_snapshot || "").trim()
-      if (name) deliveredByName.set(name, (deliveredByName.get(name) || 0) + qty)
-    }
-  }
-
-  return soItems.every((soItem: any) => {
-    const orderedQty = Number(soItem.quantity) || 0
-    if (orderedQty <= 0) return true
-    const deliveredQty = soItem.product_id
-      ? deliveredByProduct.get(soItem.product_id) || 0
-      : deliveredByName.get((soItem.outsourced_name || "").trim()) || 0
-    return deliveredQty >= orderedQty
-  })
-}
 
 // GET - Fetch all delivery permits or a specific one
 export async function GET(request: NextRequest) {
@@ -256,43 +189,29 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Fetch returned quantities for each permit
-    // product_returns.permit_id links returns to delivery permits
-    // product_returns has no status column — fetch all and filter by restocked items
-    const { data: productReturnsData } = await supabase
-      .from("product_returns")
-      .select("permit_id, return_id")
-    
-    const permitReturnMap: Record<string, number[]> = {} // permit_id -> [return_ids]
-    if (productReturnsData) {
-      productReturnsData.forEach((ret: any) => {
-        const permitId = ret.permit_id
-        if (permitId) {
-          if (!permitReturnMap[permitId]) permitReturnMap[permitId] = []
-          permitReturnMap[permitId].push(ret.return_id)
-        }
-      })
+    // Returned quantities (Batch 2): valid = non-rejected returns whose permit_id is this delivery permit's id.
+    // Historical "RET-<timestamp>" returns carry no permit link and are intentionally not counted.
+    let returnLines: Awaited<ReturnType<typeof loadReturnLines>> = []
+    try {
+      returnLines = await loadReturnLines(supabase, permitIds)
+    } catch (returnsError: any) {
+      console.error("Delivery Permits GET: could not load returns (showing 0 returned):", returnsError?.message)
     }
+    const returnedTotals = returnedTotalsByPermit(returnLines)
 
-    // For each permit, get the sum of returned quantities from its returns
-    const returnsByPermit: Record<string, number> = {}
-    for (const [permitId, returnIds] of Object.entries(permitReturnMap)) {
-      if (returnIds.length > 0) {
-        const { data: returnItems } = await supabase
-          .from("return_items")
-          .select("returned_quantity")
-          .in("return_id", returnIds)
-        
-        const totalReturned = returnItems?.reduce((sum: number, item: any) => sum + (item.returned_quantity || 0), 0) || 0
-        returnsByPermit[permitId] = totalReturned
+    const finalPermits = permitsWithItems.map((permit: any) => {
+      const permitNumericId = Number(permit.id)
+      const keyed = (permit.items || []).map((item: any) => ({
+        key: lineKey(item.productId ? Number(item.productId) : null, item.itemNameSnapshot),
+        quantity: Number(item.quantity) || 0,
+      }))
+      const net = netLineQuantities(keyed, returnedByKey(returnLines, { permitId: permitNumericId }))
+      return {
+        ...permit,
+        returnedQuantity: returnedTotals.get(permitNumericId) || 0,
+        items: (permit.items || []).map((item: any, idx: number) => ({ ...item, returnedQuantity: keyed[idx].quantity - net[idx] })),
       }
-    }
-
-    // Update permit records with returned quantities
-    const finalPermits = permitsWithItems.map((permit: any) => ({
-      ...permit,
-      returnedQuantity: returnsByPermit[permit.id] || returnsByPermit[String(permit.id)] || 0,
-    }))
+    })
 
     return NextResponse.json(finalPermits)
   } catch (error: any) {

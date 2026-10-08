@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
-import { VAT_RATE, computeInvoiceAmount, round2 } from "@/lib/invoicing"
+import { VAT_RATE, computeInvoiceAmount, computeWholeOrderAmount, loadSoInvoicingState, round2 } from "@/lib/invoicing"
+import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 
 export const dynamic = "force-dynamic"
 
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           delivery_contact_name,
           delivery_contact_phone,
           sales_order_items (
+            product_id,
             quantity,
             unit_price,
             total,
@@ -93,6 +95,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           permit_no,
           status,
           delivery_permit_items (
+            product_id,
             quantity,
             unit_price,
             total,
@@ -109,18 +112,59 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Items shown on the invoice: only the linked DP's items for a DP-based
     // invoice, otherwise every item on the sales order (invoice created
     // directly from the SO with no specific DP subset).
-    const items = isDpBasedInvoice
-      ? linkedPermits.flatMap((permit: any) =>
-          (permit.delivery_permit_items || []).map((item: any) => ({
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            total: item.total,
-            item_type: null,
-            outsourced_name: null,
-            products: { product_name: item.item_name_snapshot },
-          })),
-        )
+    // Batch 2: a delivery-permit invoice was priced net of the returns that existed when it was created
+    // (lib/invoicing.ts), so the printed lines must be net of the same returns. Returns filed after the invoice
+    // never change it. With no such returns the lines are exactly what they were before.
+    const invoiceMs = toMs(invoice.created_at)
+    const returnLines = isDpBasedInvoice ? await loadReturnLines(supabase, linkedPermits.map((p: any) => p.permit_id)) : []
+    let items = isDpBasedInvoice
+      ? linkedPermits.flatMap((permit: any) => {
+          const rows: any[] = permit.delivery_permit_items || []
+          const net = netLineQuantities(
+            rows.map((row) => ({ key: lineKey(row.product_id, row.item_name_snapshot), quantity: Number(row.quantity) || 0 })),
+            returnedByKey(returnLines, { permitId: permit.permit_id, asOfMs: Number.isNaN(invoiceMs) ? Number.NEGATIVE_INFINITY : invoiceMs }),
+          )
+          return rows
+            .map((item: any, idx: number) => {
+              const originalQty = Number(item.quantity) || 0
+              const unchanged = net[idx] === originalQty
+              const lineTotal = Number(item.total) || (Number(item.unit_price) || 0) * originalQty
+              return {
+                quantity: unchanged ? item.quantity : net[idx],
+                unit_price: item.unit_price,
+                total: unchanged ? item.total : originalQty > 0 ? (lineTotal * net[idx]) / originalQty : 0,
+                item_type: null,
+                outsourced_name: null,
+                products: { product_name: item.item_name_snapshot },
+              }
+            })
+            .filter((item: any) => Number(item.quantity) > 0)
+        })
       : invoice.sales_orders?.sales_order_items || []
+
+    // Batch 2: a whole-order invoice leaves out the quantity returned before it was created, so its printed lines
+    // must too (the stored amount is already net). With no such returns the lines are exactly the order's lines.
+    if (!isDpBasedInvoice && invoice.so_id) {
+      const state = await loadSoInvoicingState(supabase, invoice.so_id)
+      if (state && state.returns.length > 0) {
+        const asOf = Number.isNaN(invoiceMs) ? Number.NEGATIVE_INFINITY : invoiceMs
+        const priced = computeWholeOrderAmount({ ...state, returns: state.returns.filter((r) => toMs(r.created_at) <= asOf) })
+        if (priced.ok && priced.excluded.size > 0) {
+          const left = new Map(priced.excluded)
+          for (let i = 0; i < items.length; i++) {
+            const item: any = items[i]
+            const key = lineKey(item.product_id, item.outsourced_name)
+            const qty = Number(item.quantity) || 0
+            const take = Math.min(left.get(key) || 0, qty)
+            if (take <= 0) continue
+            left.set(key, (left.get(key) || 0) - take)
+            const lineTotal = Number(item.total) || (Number(item.unit_price) || 0) * qty
+            items[i] = { ...item, quantity: qty - take, total: qty > 0 ? (lineTotal * (qty - take)) / qty : 0 }
+          }
+          items = items.filter((item: any) => Number(item.quantity) > 0)
+        }
+      }
+    }
 
     // Delivery permits listed in the invoice header: only the ones linked to
     // THIS invoice, not every DP ever created for the sales order.

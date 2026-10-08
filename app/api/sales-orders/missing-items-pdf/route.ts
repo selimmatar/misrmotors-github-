@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { loadReturnLines, subtractReturns } from "@/lib/return-lines"
 
 export const dynamic = "force-dynamic"
 
@@ -118,6 +119,9 @@ export async function GET(request: NextRequest) {
         if (name) addedByName.set(name, (addedByName.get(name) || 0) + qty)
       }
     }
+
+    // Goods returned against this order's delivery permits are missing again (valid = non-rejected returns).
+    subtractReturns(addedByProduct, addedByName, await loadReturnLines(supabase, permitIds))
 
     // Purchase orders sourced from this SO's line items (to know if outsourced items are already on order)
     const soItemIds = soItems.map((i) => i.so_item_id)

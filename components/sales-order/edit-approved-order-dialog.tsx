@@ -35,6 +35,12 @@ interface EditItem {
   supplierName: string
   quantity: number
   unitPrice: number
+  /** Batch 2: history of this line (set when the item is on a delivery permit) */
+  onDeliveryPermit?: boolean
+  deliveredQuantity?: number
+  returnedQuantity?: number
+  /** lowest quantity the order may be edited to: what the customer keeps (delivered - returned) */
+  minQuantity?: number
 }
 
 interface EditApprovedOrderDialogProps {
@@ -72,8 +78,15 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       supplierName: item.supplierName || "",
       quantity: item.quantity || 0,
       unitPrice: item.unitPrice || 0,
+      onDeliveryPermit: !!item.onDeliveryPermit,
+      deliveredQuantity: item.deliveredQuantity || 0,
+      returnedQuantity: item.returnedQuantity || 0,
+      minQuantity: item.minQuantity || 0,
     })),
   )
+  // An order that already has delivery permits keeps its history: delivered items stay (a returned item is shown,
+  // not erased) and the replacement is added as a new line.
+  const hasDeliveryHistory = ((order as any).deliveryPermits?.length || 0) > 0
 
   const [discountType, setDiscountType] = useState<DiscountType>((order.discountType as DiscountType) || "none")
   const [discountValue, setDiscountValue] = useState<number>(order.discountValue || 0)
@@ -205,11 +218,17 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       return false
     }
     const invalidItem = items.find((item) => {
-      if (item.itemType === "stock") return !item.productId || item.quantity <= 0 || item.unitPrice < 0
-      return !item.productName.trim() || item.quantity <= 0 || item.unitPrice < 0
+      // a delivered line whose goods were all returned may drop to 0 (it stays on the order as history)
+      const minQty = item.onDeliveryPermit ? item.minQuantity || 0 : 1
+      if (item.itemType === "stock") return !item.productId || item.quantity < minQty || item.unitPrice < 0
+      return !item.productName.trim() || item.quantity < minQty || item.unitPrice < 0
     })
     if (invalidItem) {
-      alert("Please fill in all item details (product, quantity, and price)")
+      alert(
+        invalidItem.onDeliveryPermit && invalidItem.quantity < (invalidItem.minQuantity || 0)
+          ? `"${invalidItem.productName}": the customer keeps ${invalidItem.minQuantity} (delivered ${invalidItem.deliveredQuantity}, returned ${invalidItem.returnedQuantity}), so the quantity cannot be lower.`
+          : "Please fill in all item details (product, quantity, and price)",
+      )
       return false
     }
 
@@ -576,6 +595,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
           <DialogTitle>Edit Sales Order: {order.soNumber}</DialogTitle>
           <DialogDescription>
             This order is already approved. Changes save immediately and the order stays approved.
+            {hasDeliveryHistory &&
+              " Delivery has started: delivered items stay on the order as history. To exchange returned goods, lower that line to what the customer keeps and add the replacement item as a new line."}
           </DialogDescription>
         </DialogHeader>
 
@@ -586,7 +607,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t("field.customer")}</Label>
-                <Select value={customerId} onValueChange={setCustomerId}>
+                <Select value={customerId} onValueChange={setCustomerId} disabled={hasDeliveryHistory}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select customer" className="truncate" />
                   </SelectTrigger>
@@ -646,7 +667,12 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
                       <div className="col-span-1 text-center text-xs text-muted-foreground">
                         {item.itemType === "stock" ? "Stock" : "Outsourced"}
                       </div>
-                      {item.itemType === "stock" ? (
+                      {item.itemType === "stock" && item.onDeliveryPermit ? (
+                        <div className="col-span-4 space-y-1">
+                          <Label className="text-xs">Product</Label>
+                          <div className="text-sm font-medium pt-2">{item.productName}</div>
+                        </div>
+                      ) : item.itemType === "stock" ? (
                         <div className="col-span-4 space-y-1">
                           <Label className="text-xs">Product</Label>
                           <ProductSearchCombobox
@@ -666,6 +692,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
                             <Label className="text-xs">Item Name</Label>
                             <Input
                               value={item.productName}
+                              disabled={item.onDeliveryPermit}
                               onChange={(e) => updateItem(item.key, { productName: e.target.value })}
                             />
                           </div>
@@ -673,6 +700,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
                             <Label className="text-xs">Supplier</Label>
                             <Select
                               value={item.supplierName || ""}
+                              disabled={item.onDeliveryPermit}
                               onValueChange={(value) => {
                                 const supplier = suppliers.find((s) => s.name === value)
                                 updateItem(item.key, { supplierName: value, supplierId: supplier?.id || "" })
@@ -696,7 +724,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
                         <Label className="text-xs">Quantity</Label>
                         <Input
                           type="number"
-                          min="1"
+                          min={item.onDeliveryPermit ? item.minQuantity || 0 : 1}
                           value={item.quantity}
                           onChange={(e) => updateItem(item.key, { quantity: Number(e.target.value) || 0 })}
                         />
@@ -718,10 +746,24 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
                         </div>
                       </div>
                       <div className="col-span-1 flex justify-end">
-                        <Button variant="destructive" size="icon" onClick={() => removeItem(item)}>
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => removeItem(item)}
+                          disabled={item.onDeliveryPermit}
+                          title={item.onDeliveryPermit ? "On a delivery permit - it stays on the order as history" : undefined}
+                        >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
+                      {item.onDeliveryPermit && (
+                        <div className="col-span-12">
+                          <Badge variant="outline" className="gap-1 text-blue-700 border-blue-300 bg-blue-50">
+                            Delivered {item.deliveredQuantity || 0} · Returned {item.returnedQuantity || 0} · Customer keeps{" "}
+                            {item.minQuantity || 0}
+                          </Badge>
+                        </div>
+                      )}
                       {poStatus && (
                         <div className="col-span-12">
                           <Badge variant="outline" className="gap-1 text-amber-700 border-amber-300 bg-amber-50">
