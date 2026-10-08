@@ -126,13 +126,14 @@ function parseRequest(body: any): Parsed {
   if (!poId) return reject(400, "A valid purchase order id (poId) is required")
   if (!Array.isArray(body.lines) || body.lines.length === 0) return reject(400, "At least one receipt line is required")
   if (body.lines.length > MAX_LINES) return reject(400, `Too many receipt lines (maximum ${MAX_LINES})`)
-  let idempotencyKey: string | null = null
-  if (body.idempotencyKey !== undefined && body.idempotencyKey !== null && body.idempotencyKey !== "") {
-    if (typeof body.idempotencyKey !== "string" || !KEY_PATTERN.test(body.idempotencyKey)) {
-      return reject(400, "idempotencyKey must be 8-100 characters (letters, digits, _ . : -)")
-    }
-    idempotencyKey = body.idempotencyKey
+  // Required: without it a double submit would create a second GRN and a second stock increment.
+  if (body.idempotencyKey === undefined || body.idempotencyKey === null || body.idempotencyKey === "") {
+    return reject(400, "idempotencyKey is required (8-100 characters: letters, digits, _ . : -)")
   }
+  if (typeof body.idempotencyKey !== "string" || !KEY_PATTERN.test(body.idempotencyKey)) {
+    return reject(400, "idempotencyKey must be 8-100 characters (letters, digits, _ . : -)")
+  }
+  const idempotencyKey: string = body.idempotencyKey
   const lines: ParsedLine[] = body.lines.map((raw: any, index: number): ParsedLine => {
     const n = index + 1
     if (!raw || typeof raw !== "object") return reject(400, `Line ${n}: invalid line`)

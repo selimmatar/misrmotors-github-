@@ -46,7 +46,8 @@ let k = 0
 const newKey = () => `grn-test-key-${++k}-${Math.random().toString(36).slice(2, 8)}`
 const stock = (qty: unknown, extra: Row = {}) => ({ poItemId: 1, quantityReceived: qty, warehouseId: 1, unitCost: 100, ...extra })
 const outs = (qty: unknown, extra: Row = {}) => ({ poItemId: 2, quantityReceived: qty, ...extra })
-const rec = (poId: number, lines: Row[], extra: Row = {}) => ({ poId, receivedBy: 1, lines, ...extra })
+// every receipt carries a fresh idempotency key by default (the server requires one); tests override it via `extra`
+const rec = (poId: number, lines: Row[], extra: Row = {}) => ({ poId, receivedBy: 1, lines, idempotencyKey: newKey(), ...extra })
 const received = (db: FakeDb, poItemId: number) =>
   db.tables.goods_receipt_lines.filter((l) => l.po_item_id === poItemId).reduce((s, l) => s + l.quantity_received, 0)
 const invQty = (db: FakeDb) => db.tables.inventory.find((i) => i.inventory_id === 100)!.quantity
@@ -104,6 +105,22 @@ test("V6b. malformed requests are 400", async () => {
   assert.equal(badKey.status, 400)
   const badDisc = await post(rec(1, [stock(1, { discrepancyType: "bogus" })]))
   assert.equal(badDisc.status, 400)
+})
+
+test("V6b. a receipt without an idempotency key is refused and writes nothing", async () => {
+  const db = baseDb()
+  const before = { grn: db.tables.goods_receipts.length, lines: db.tables.goods_receipt_lines.length, inv: invQty(db) }
+  for (const key of [undefined, null, ""]) {
+    const res = await post(rec(1, [stock(4)], { idempotencyKey: key }))
+    assert.equal(res.status, 400, `key=${String(key)}`)
+    assert.match(String(res.body.error), /idempotencyKey is required/)
+  }
+  const { idempotencyKey: _omit, ...noKey } = rec(1, [stock(4)])
+  assert.equal((await post(noKey)).status, 400)
+  assert.equal(db.tables.goods_receipts.length, before.grn)
+  assert.equal(db.tables.goods_receipt_lines.length, before.lines)
+  assert.equal(invQty(db), before.inv)
+  assert.equal(poStatus(db, 1), "approved")
 })
 
 test("V7. a PO item that belongs to another PO is refused", async () => {
