@@ -20,12 +20,12 @@ import { Eye, Upload, CheckCircle, Loader2, Wrench } from "lucide-react"
 import { ReportGenerator } from "@/components/report-generator"
 import { MaintenanceInvoiceTab } from "@/components/accounting/maintenance-invoice-tab"
 import { resolveInstallmentCount } from "@/lib/payment-type"
+import { buildMarkAsPaidRequest } from "@/lib/ap-mark-paid"
 
 export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
   const { t, formatNumber, formatCurrency, language } = useI18n()
   const {
     supplierInvoices,
-    updateSupplierInvoice,
     customerInvoices,
     loadData,
     salesOrders,
@@ -125,64 +125,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     const so = salesOrders.find((s) => s.id === inv.soId)
     return so?.paymentTerms === "installment"
   })
-
-  const addBalanceEntry = async (entry: {
-    type: string
-    referenceId: string
-    referenceNumber: string
-    amount: number
-    description: string
-  }) => {
-    try {
-      const response = await fetch("/api/balance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: entry.type,
-          reference_id: entry.referenceId,
-          reference_number: entry.referenceNumber,
-          amount: entry.amount,
-          description: entry.description,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("Failed to add balance entry:", errorText)
-      } else {
-      }
-    } catch (error) {
-      console.error("Error adding balance entry:", error)
-    }
-  }
-
-  const handleMarkSupplierPaid = (id: string) => {
-    const invoice = supplierInvoices.find((i) => i.id === id)
-    if (!invoice) return
-
-    const installmentMonths = getInstallmentMonths(invoice.poId)
-    const currentMonthsPaid = invoice.monthsPaid || 0
-    const newMonthsPaid = currentMonthsPaid + 1
-
-    const updatedInvoice = {
-      ...invoice,
-      monthsPaid: newMonthsPaid,
-      status: (newMonthsPaid >= installmentMonths ? "paid" : invoice.status) as const,
-    }
-    updateSupplierInvoice(updatedInvoice)
-
-    const monthlyAmount = installmentMonths ? invoice.amount / installmentMonths : 0
-    const po = purchaseOrders.find((p) => p.id === invoice.poId)
-    if (po) {
-      addBalanceEntry({
-        type: "ap_payment",
-        referenceId: invoice.id,
-        referenceNumber: invoice.invoiceNumber,
-        amount: -monthlyAmount, // Negative for expense
-        description: `AP installment payment for ${po.poNumber} (${newMonthsPaid}/${installmentMonths})`,
-      })
-    }
-  }
 
   // "Mark payment received" records one installment (invoice amount / the SO's installment count, as
   // before) through the authoritative AR payment endpoint. The server validates the amount, updates the
@@ -807,7 +749,19 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                         </div>
                         <div className="flex gap-2 mt-4">
                           {invoice.status === "pending" && paymentDue && (
-                            <Button size="sm" onClick={() => handleMarkSupplierPaid(invoice.id)}>
+                            // Supplier payments are recorded only by POST /api/accounts-payable/payments, which needs a
+                            // payment method and a receipt. This button has neither, so it is disabled with the reason
+                            // and never writes to the invoice or the ledger itself.
+                            <Button
+                              size="sm"
+                              disabled
+                              title={(() => {
+                                const plan = buildMarkAsPaidRequest({ invoice, installmentMonths })
+                                return plan.ok
+                                  ? "Record this payment from the Accounts Payable screen"
+                                  : plan.reason
+                              })()}
+                            >
                               {t("button.mark_as_paid")}
                             </Button>
                           )}
