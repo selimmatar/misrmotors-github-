@@ -367,6 +367,9 @@ export async function POST(request: NextRequest) {
 }
 
 // PUT - Update permit status
+// Actions that set a status other than APPROVED; refused when the permit is already APPROVED.
+const APPROVED_LOCKED_ACTIONS = ["REJECT", "ALLOCATE_WAREHOUSES", "MARK_READY_FOR_PICKUP", "MARK_PRINTED", "MARK_OUT_FOR_DELIVERY", "MARK_SUBMITTED_SIGNED"]
+
 export async function PUT(request: NextRequest) {
   try {
     const supabase = createAdminClient()
@@ -401,6 +404,15 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Permit not found" }, { status: 404 })
     }
 
+
+    // Approving a permit deducts stock and nothing gives it back, so an APPROVED permit must not be moved to an
+    // earlier status (REJECT included). UPDATE_DETAILS and a repeat APPROVE do not change the status backwards.
+    if (currentPermit.status === "APPROVED" && APPROVED_LOCKED_ACTIONS.includes(action)) {
+      return NextResponse.json(
+        { error: "This delivery permit is already approved and its stock has been deducted, so it cannot be changed back.", code: "DP_ALREADY_APPROVED" },
+        { status: 409 },
+      )
+    }
 
     const updates: any = { updated_at: new Date().toISOString() }
     let newStatus = currentPermit.status

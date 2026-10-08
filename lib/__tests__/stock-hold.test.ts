@@ -9,7 +9,6 @@ import * as dpRoute from "../../app/api/delivery-permits/route"
 import * as soRoute from "../../app/api/sales-orders/route"
 import * as inventoryRoute from "../../app/api/inventory/route"
 import { computeHeldByProduct, loadAvailability, loadHeldByProduct } from "../stock-hold"
-import { lineKey } from "../return-lines"
 
 const so = (so_id: number, status: string): Row => ({ so_id, so_number: `SO-T-${so_id}`, customer_id: 5, status, fulfillment_status: "PENDING", total: 0 })
 const line = (so_item_id: number, so_id: number, product_id: number | null, quantity: number, item_type = "stock"): Row => ({
@@ -44,7 +43,6 @@ const holdInput = (over: Partial<Parameters<typeof computeHeldByProduct>[0]> = {
   lines: [{ so_id: 1, item_type: "stock", product_id: 7, quantity: 10 }] as any[],
   permits: [] as any[],
   permitItems: [] as any[],
-  returns: [] as any[],
   ...over,
 })
 
@@ -89,11 +87,11 @@ test("hold: outsourced lines (no product / item_type outsourced) never hold", ()
   assert.deepEqual([...held], [[7, 2]])
 })
 
-test("hold: goods returned against an approved permit are held again (10 ordered, 4 delivered, 1 returned -> 7)", () => {
+test("hold: goods returned against an approved permit are NOT held again (10 ordered, 4 delivered, 1 returned -> 6)", () => {
+  // The returned unit lives in an is_returned row that is already excluded from on-hand; holding it too would count it twice.
   const permits = [{ permit_id: 1, sales_order_id: 1, status: "APPROVED" }]
   const permitItems = [{ permit_id: 1, product_id: 7, quantity: 4 }]
-  const returns = [{ return_id: 1, permit_id: 1, key: lineKey(7, "x"), quantity: 1, created_at: null }]
-  assert.equal(computeHeldByProduct(holdInput({ permits, permitItems, returns })).get(7), 7)
+  assert.equal(computeHeldByProduct(holdInput({ permits, permitItems })).get(7), 6)
 })
 
 test("hold: several orders add up per product; excludeSoId removes the order being edited", () => {

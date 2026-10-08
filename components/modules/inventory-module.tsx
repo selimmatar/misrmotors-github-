@@ -388,20 +388,36 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         productName: selectedReturnedItem.productName,
       }
       
-      const response = await fetch("/api/inventory/remove-returned", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-      
+      const send = (extra: Record<string, unknown> = {}) =>
+        fetch("/api/inventory/remove-returned", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, ...extra }),
+        })
+
+      let response = await send()
+      let body: any = await response.json().catch(() => ({}))
+      // No supplier / no cost found: nothing was changed. Offer to remove the item WITHOUT a supplier credit.
+      if (!response.ok && (body.code === "CREDIT_SUPPLIER_UNRESOLVED" || body.code === "CREDIT_AMOUNT_ZERO")) {
+        if (confirm(`${body.message || body.error}\n\nRemove without supplier credit?`)) {
+          response = await send({ writeOffWithoutCredit: true })
+          body = await response.json().catch(() => ({}))
+        } else {
+          return
+        }
+      }
+
       if (response.ok) {
-        alert("Returned item removed successfully. Supplier credit has been created.")
+        alert(
+          body.credit
+            ? `Returned item removed successfully. Supplier credit of ${body.credit.amount} was created.`
+            : "Returned item removed. NO supplier credit was created.",
+        )
         setRemoveReturnedItemDialog(false)
         setSelectedReturnedItem(null)
         await refreshInventory()
       } else {
-        const error = await response.json()
-        alert("Error: " + (error.message || "Failed to remove returned item"))
+        alert("Error: " + (body.message || body.error || "Failed to remove returned item"))
       }
     } catch (error) {
       alert("Error removing returned item: " + String(error))

@@ -839,10 +839,20 @@ async function claimHoldingRowOrFlag(
   return claim.ok ? { ok: true, row: claim.row } : claim
 }
 
-// Supplier-credit VAT: AP invoices carry the PO total (items + PO tax, 14%), so a credit raised against a PO that
-// charged tax is the received line cost plus the same 14%. A PO that charged no tax (tax_amount empty/0) gets no VAT.
-const CREDIT_VAT_RATE = 0.14
+// Supplier-credit tax/billing ratio. The AP invoice of a PO carries purchase_orders.total, so the credit is derived from
+// what AP actually billed, NOT from purchase_orders.tax_amount (finalize-cost overwrites that with the landed tax):
+//   ratio = po.total / sum(purchase_order_items.total)   when total > itemsSum and itemsSum > 0, else 1.0
+//   credit = min(returned qty, received qty) x receipt unit cost x ratio
+// so a credit never exceeds the AP invoice for that line. PO 6 (items 10,000, total 11,400) -> 1.14; POs 1-5 -> 1.0.
+// ASSUMPTION (Part 3, VAT): the whole total-over-items difference is treated as proportional tax on every line; no
+// per-document or configurable VAT rate is decided here.
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+export function poBillingRatio(poTotal: unknown, itemsSum: unknown): number {
+  const total = Number(poTotal) || 0
+  const sum = Number(itemsSum) || 0
+  return sum > 0 && total > sum ? total / sum : 1
+}
 
 type ReceiptCost = {
   unitCost: number
@@ -851,7 +861,7 @@ type ReceiptCost = {
   poNumber: string | null
   grnNumber: string | null
   supplierId: number
-  vatRate: number
+  billingRatio: number
   apInvoiceIds: number[]
   apInvoiceNumbers: string[]
   multiplePos: boolean
@@ -885,7 +895,7 @@ async function findOriginatingReceipt(db: Db, row: any, productName: string, soN
   const receipts = must(await db.from("goods_receipts").select("receipt_id, grn_number, po_id").in("receipt_id", [...new Set(lines.map((l) => l.receipt_id))]), "receipts for credit") as any[]
   const receiptById = new Map(receipts.map((r) => [r.receipt_id, r]))
   const pos = must(
-    await db.from("purchase_orders").select("po_id, po_number, supplier_id, tax_amount").in("po_id", [...new Set(receipts.map((r) => r.po_id))]),
+    await db.from("purchase_orders").select("po_id, po_number, supplier_id, total").in("po_id", [...new Set(receipts.map((r) => r.po_id))]),
     "purchase orders for credit",
   ) as any[]
   const poById = new Map(pos.map((p) => [p.po_id, p]))
@@ -911,6 +921,9 @@ async function findOriginatingReceipt(db: Db, row: any, productName: string, soN
   )
   const receivedQty = sameLine.reduce((s, c) => s + (Number(c.line.quantity_received) || 0), 0)
 
+  const poItems = must(await db.from("purchase_order_items").select("total").eq("po_id", chosen.po.po_id), "purchase order items for credit") as any[]
+  const itemsSum = poItems.reduce((sum, i) => sum + (Number(i.total) || 0), 0)
+
   const ap = must(await db.from("accounts_payable").select("invoice_id, invoice_number").eq("po_id", chosen.po.po_id), "payable for credit") as any[]
   return {
     unitCost,
@@ -919,7 +932,7 @@ async function findOriginatingReceipt(db: Db, row: any, productName: string, soN
     poNumber: chosen.po.po_number || null,
     grnNumber: chosen.receipt.grn_number || null,
     supplierId: chosen.po.supplier_id,
-    vatRate: (Number(chosen.po.tax_amount) || 0) > 0 ? CREDIT_VAT_RATE : 0,
+    billingRatio: poBillingRatio(chosen.po.total, itemsSum),
     apInvoiceIds: ap.map((a) => a.invoice_id),
     apInvoiceNumbers: ap.map((a) => a.invoice_number),
     multiplePos: new Set(candidates.map((c) => c.po.po_id)).size > 1,
@@ -949,8 +962,8 @@ export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowRe
       supplierId = receipt.supplierId
       unitCost = receipt.unitCost
       const creditQty = Math.min(quantity, receipt.receivedQty) // never more than the original received line value
-      amount = round2(creditQty * unitCost * (1 + receipt.vatRate))
-      noteParts.push(`Basis: received cost ${unitCost} x ${creditQty}${receipt.vatRate ? ` + ${receipt.vatRate * 100}% VAT` : " (PO without VAT)"} = ${amount}`)
+      amount = round2(creditQty * unitCost * receipt.billingRatio)
+      noteParts.push(`Basis: received cost ${unitCost} x ${creditQty} x AP billing ratio ${Math.round(receipt.billingRatio * 10000) / 10000} (PO total / item total) = ${amount}`)
       if (quantity > receipt.receivedQty) noteParts.push(`Returned qty ${quantity} exceeds received qty ${receipt.receivedQty}: credit capped at the received line value`)
       if (receipt.multiplePos) noteParts.push("Several POs received this item: the latest receipt was used")
     } else {
@@ -959,11 +972,15 @@ export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowRe
       amount = quantity * unitCost
       noteParts.push("No matching goods receipt found: cost taken from the PO item/batch/browser fallback, no VAT, no cap")
     }
-    if (!supplierId) return failure(409, "The supplier of this returned item could not be determined, so no credit can be recorded. Nothing was changed.", { code: "CREDIT_SUPPLIER_UNRESOLVED" })
-    if (!(amount > 0)) return failure(409, "The supplier credit would be 0 (no cost could be found for this item). Nothing was changed.", { code: "CREDIT_AMOUNT_ZERO" })
+    // writeOffWithoutCredit:true is the user's explicit choice to remove the item and record NO supplier credit.
+    const noCredit = input?.writeOffWithoutCredit === true
+    if (!noCredit) {
+      if (!supplierId) return failure(409, "The supplier of this returned item could not be determined, so no credit can be recorded. Nothing was changed.", { code: "CREDIT_SUPPLIER_UNRESOLVED" })
+      if (!(amount > 0)) return failure(409, "The supplier credit would be 0 (no cost could be found for this item). Nothing was changed.", { code: "CREDIT_AMOUNT_ZERO" })
+    }
 
-    const dup = must(
-      await db.from("supplier_credits").select("credit_id").eq("reference_type", "inventory").eq("reference_id", inventoryId).eq("supplier_id", supplierId).eq("status", "active").limit(1),
+    const dup = noCredit ? [] : must(
+      await db.from("supplier_credits").select("credit_id").eq("reference_type", "inventory").eq("reference_id", inventoryId).eq("supplier_id", supplierId!).eq("status", "active").limit(1),
       "check duplicate credit",
     ) as any[]
     if (dup.length > 0) return failure(409, "A supplier credit already exists for this returned item. Nothing was changed.", { code: "CREDIT_DUPLICATE", creditId: dup[0].credit_id })
@@ -985,7 +1002,7 @@ export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowRe
 
     let creditId: number | null = null
     try {
-      const credit = must(
+      const credit = noCredit ? null : must(
         await db
           .from("supplier_credits")
           .insert({
@@ -1004,7 +1021,7 @@ export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowRe
           .single(),
         "create supplier credit",
       )
-      creditId = credit.credit_id
+      creditId = credit ? credit.credit_id : null
       if (row.product_id) await settleReturnedBatches(db, row.product_id, row.warehouse_id, "remove")
     } catch (e) {
       // Undo: put the item back and drop a credit created by this request, so the write-off can be retried cleanly.
@@ -1020,7 +1037,8 @@ export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowRe
       }
       return failure(500, `Failed to remove the returned item: ${errText(e)}. Nothing was changed.`)
     }
-    return { status: 200, body: { message: "Returned item removed successfully", supplierId, creditId, amount, invoiceId: linkedInvoiceId } }
+    if (noCredit) return { status: 200, body: { message: "Returned item removed without a supplier credit", credit: null, supplierId: null, creditId: null, amount: 0, invoiceId: null } }
+    return { status: 200, body: { message: "Returned item removed successfully", credit: { creditId, supplierId, amount, invoiceId: linkedInvoiceId }, supplierId, creditId, amount, invoiceId: linkedInvoiceId } }
   } catch (error: any) {
     console.error("[returns] remove error:", errText(error))
     return failure(500, "Failed to remove the returned item. Nothing was changed.")

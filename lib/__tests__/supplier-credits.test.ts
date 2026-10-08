@@ -18,6 +18,11 @@ function seed(extra: Record<string, Row[]> = {}) {
       { po_id: 10, po_number: "PO-T-10", supplier_id: 3, total: 22800, tax_amount: 2800 },
       { po_id: 20, po_number: "PO-T-20", supplier_id: 3, total: 400, tax_amount: null },
     ],
+    purchase_order_items: [
+      { po_item_id: 100, po_id: 10, total: 10000 },
+      { po_item_id: 101, po_id: 10, total: 10000 },
+      { po_item_id: 200, po_id: 20, total: 400 },
+    ],
     goods_receipts: [
       { receipt_id: 1, grn_number: "GRN-T-1", po_id: 10 },
       { receipt_id: 2, grn_number: "GRN-T-2", po_id: 20 },

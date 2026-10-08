@@ -9,10 +9,14 @@
 //     stock is NEVER clamped to 0;
 //   * an undo (add the quantity back) when a later line, or the permit status update, fails.
 // Permits already APPROVED before this batch are never deducted retroactively (the route skips them).
+import { selectInChunks } from "./stock-hold"
+
 type Db = any // supabase-js client (or a test double)
 
 export const DP_STOCK_OPERATION = "dp_stock_deduct"
 const MAX_CAS_ATTEMPTS = 6
+/** A 'processing' claim older than this is treated as abandoned and may be taken over. */
+export const STALE_CLAIM_MS = 2 * 60 * 1000
 
 export const dpStockKey = (permitId: number) => `dp_stock_deduct_${permitId}`
 
@@ -86,7 +90,7 @@ async function claim(db: Db, permitId: number): Promise<Claim> {
   }
   const { data: previous } = await db
     .from("idempotency_log")
-    .select("status")
+    .select("status, created_at")
     .eq("operation_type", DP_STOCK_OPERATION)
     .eq("idempotency_key", dpStockKey(permitId))
     .limit(1)
@@ -104,6 +108,22 @@ async function claim(db: Db, permitId: number): Promise<Claim> {
       .eq("status", "failed")
       .select("id")
     if (reclaimed && reclaimed.length === 1) return { state: "claimed" }
+  }
+  if (previous?.status === "processing" && previous.created_at) {
+    // A claim stuck in 'processing' (the request died) older than STALE_CLAIM_MS is re-claimable. Compare-and-swap on the
+    // exact stale row (status AND created_at) so only one request can take it over; created_at is refreshed on takeover.
+    const startedAt = new Date(previous.created_at).getTime()
+    if (Number.isFinite(startedAt) && Date.now() - startedAt > STALE_CLAIM_MS) {
+      const { data: taken } = await db
+        .from("idempotency_log")
+        .update({ created_at: new Date().toISOString(), error_message: null, completed_at: null })
+        .eq("operation_type", DP_STOCK_OPERATION)
+        .eq("idempotency_key", dpStockKey(permitId))
+        .eq("status", "processing")
+        .eq("created_at", previous.created_at)
+        .select("id")
+      if (taken && taken.length === 1) return { state: "claimed" }
+    }
   }
   return blocked("This delivery permit is already being approved. Try again in a moment.")
 }
@@ -180,13 +200,11 @@ export async function deductStockForPermit(db: Db, permit: { permit_id: number; 
   const release = async (message: string) => finishClaim(db, permit.permit_id, "failed", message)
   try {
     const productIds = [...new Set(items.map((i) => Number(i.product_id)))]
-    const { data: invRows, error: invError } = await db
-      .from("inventory")
-      .select("inventory_id, product_id, warehouse_id, quantity")
-      .in("product_id", productIds)
-      .eq("is_returned", false)
-    if (invError) throw new Error(`load inventory: ${invError.message}`)
-    const rows = (invRows || []) as any[]
+    const rows = (await selectInChunks(
+      productIds,
+      (chunk) => db.from("inventory").select("inventory_id, product_id, warehouse_id, quantity").in("product_id", chunk).eq("is_returned", false),
+      "load inventory",
+    )) as any[]
 
     // Resolve each line to one inventory row. Lines without a warehouse fall back to the single row with enough stock.
     const needNoWarehouse = new Map<number, number>()
