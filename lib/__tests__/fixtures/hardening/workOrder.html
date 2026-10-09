@@ -39,7 +39,7 @@ tr { break-inside: avoid; page-break-inside: avoid; }
 .pm-table { inline-size: 100%; margin-block: 8px 12px; border-collapse: collapse; }
 .pm-table th, .pm-table td { border: 0; }
 .pm-table th { padding: 6px; font-size: 11px; font-weight: 500; color: #555; text-align: start; background: none; border-block-end: 1.5px solid #000; }
-.pm-table td { padding: 7px 6px; vertical-align: top; border-block-end: 1px solid #ccc; overflow-wrap: anywhere; }
+.pm-table td { padding: 7px 6px; vertical-align: top; border-block-end: 1px solid #ccc; overflow-wrap: break-word; }
 .pm-table td.pm-num, .pm-table td.currency-col { white-space: nowrap; overflow-wrap: normal; }
 .pm-table tfoot td { border-block-end: 0; }
 .pm-num, .pm-table .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
@@ -55,6 +55,7 @@ body .totals-block { margin-inline: auto 0; }
 body .totals-block td { padding: 4px 6px; }
 body .totals-block .label { text-align: start; }
 body .totals-block .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
+body .totals-block td.currency-col { width: 20%; }
 body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] { color: #000 !important; background: none !important; }
 .missing { font-weight: 700; }
 [class*="status"], [class*="badge"] { padding: 0 !important; border: 0 !important; font-weight: 600; }
@@ -65,6 +66,7 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
 @media print { .no-print { display: none !important; } }
 
 .section{margin-bottom:12px}
+.section .pm-fields{border-block-start:0;padding-block-start:0}
 .pm-table td{height:30px}
 .notes-section{min-height:180px;border-block:1px solid #000;margin-top:10px}
 .signature-section{margin-top:40px;display:flex;justify-content:space-between;gap:48px;break-inside:avoid}
@@ -82,25 +84,31 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
 
 <div class="section">
 <div class="pm-section-title">بيانات تقرير الصيانة</div>
+<div class="pm-fields">
 <div class="pm-field"><span class="pm-label">رقم التقرير:</span><span class="pm-value">WO-2026-0001</span></div>
 <div class="pm-field"><span class="pm-label">رقم أمر البيع:</span><span class="pm-value">SO-1001</span></div>
 <div class="pm-field"><span class="pm-label">تاريخ الإنشاء:</span><span class="pm-value"><DATE></span></div>
 <div class="pm-field"><span class="pm-label">الحالة:</span><span class="pm-value">قيد التنفيذ</span></div>
 <div class="pm-field"><span class="pm-label">الفني المسؤول:</span><span class="pm-value">غير متوفر</span></div>
 </div>
+</div>
 
 <div class="section">
 <div class="pm-section-title">بيانات العميل</div>
+<div class="pm-fields">
 <div class="pm-field"><span class="pm-label">اسم العميل:</span><span class="pm-value">Customer Co</span></div>
 <div class="pm-field"><span class="pm-label">العنوان / الموقع:</span><span class="pm-value">WO Street</span></div>
 <div class="pm-field"><span class="pm-label">رقم الهاتف:</span><span class="pm-value">Phone-0600</span></div>
 </div>
+</div>
 
 <div class="section">
 <div class="pm-section-title">وصف العمل</div>
+<div class="pm-fields">
 <div class="pm-field"><span class="pm-label">العنوان:</span><span class="pm-value">Replace pump</span></div>
-<div class="pm-field"><span class="pm-label">الوصف:</span><span class="pm-value">Pump leaking</span></div>
+<div class="pm-field pm-field-wide"><span class="pm-label">الوصف:</span><span class="pm-value">Pump leaking</span></div>
 <div class="pm-field"><span class="pm-label">التصنيف:</span><span class="pm-value">إصلاح</span></div>
+</div>
 </div>
 
 <div class="section">

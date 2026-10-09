@@ -109,3 +109,35 @@ test("PT10 numbers and money in table cells never break mid-figure", () => {
   // overflow-wrap: anywhere keeps long text from overflowing, but it would also split "1,524,944.28" across lines
   assert.match(PRINT_CSS, /\.pm-table td\.pm-num, \.pm-table td\.currency-col \{[^}]*white-space: nowrap;[^}]*overflow-wrap: normal;/)
 })
+
+test("PT11 long words wrap only when they cannot fit, never mid-word by default", () => {
+  // overflow-wrap: anywhere also shrinks a column's minimum width, so the table split "Outsourced" into "Outso/urced"
+  assert.match(PRINT_CSS, /\.pm-table td \{[^}]*overflow-wrap: break-word;/)
+  assert.doesNotMatch(PRINT_CSS, /\.pm-table td \{[^}]*overflow-wrap: anywhere/)
+})
+
+test("PT12 split pound/piastre totals columns line up with the item table's money columns", () => {
+  // The totals box is 60% wide; 20% of it is the 12% each money column takes in the item table
+  assert.match(PRINT_CSS, /body \.totals-block td\.currency-col \{[^}]*width: 20%;/)
+})
+
+test("PT13 sales order money sub-headings sit over their figures", () => {
+  const src = fs.readFileSync(path.join(REPO, "lib/so-print-html.ts"), "utf8")
+  const subs = src.match(/<th class="subheader[^"]*"/g) || []
+  assert.equal(subs.length, 4)
+  for (const s of subs) assert.match(s, /pm-num/)
+  assert.match(src, /<th rowspan="2" class="pm-center"[^>]*>م<\/th>/)
+  assert.match(src, /<th rowspan="2" class="pm-center"[^>]*>الكمية<\/th>/)
+  assert.equal((src.match(/<th colspan="2" class="pm-center">/g) || []).length, 2)
+})
+
+test("PT14 work order fields sit in the shared field grid, not one long column", () => {
+  const src = fs.readFileSync(path.join(REPO, "app/api/maintenance/work-orders/[id]/pdf/route.ts"), "utf8")
+  assert.equal((src.match(/<div class="pm-fields">/g) || []).length, 3)
+})
+
+test("PT15 missing-items unit cost stays on one line", () => {
+  const src = fs.readFileSync(path.join(REPO, "lib/missing-items-html.ts"), "utf8")
+  assert.match(src, /<td class="mi-cost">/)
+  assert.match(src, /\.mi-cost \{[^}]*white-space: nowrap;/)
+})

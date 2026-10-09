@@ -77,6 +77,7 @@ export async function GET(
 <style>
 ${PRINT_CSS}
 .section{margin-bottom:12px}
+.section .pm-fields{border-block-start:0;padding-block-start:0}
 .pm-table td{height:30px}
 .notes-section{min-height:180px;border-block:1px solid #000;margin-top:10px}
 .signature-section{margin-top:40px;display:flex;justify-content:space-between;gap:48px;break-inside:avoid}
@@ -102,25 +103,31 @@ ${docTitle({ titleAr: `\u062A\u0642\u0631\u064A\u0631 \u0635\u064A\u0627\u0646\u
 
 <div class="section">
 <div class="pm-section-title">\u0628\u064A\u0627\u0646\u0627\u062A \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0635\u064A\u0627\u0646\u0629</div>
+<div class="pm-fields">
 <div class="pm-field"><span class="pm-label">\u0631\u0642\u0645 \u0627\u0644\u062A\u0642\u0631\u064A\u0631:</span><span class="pm-value">${escapeHtml(workOrder.work_order_number)}</span></div>
 <div class="pm-field"><span class="pm-label">\u0631\u0642\u0645 \u0623\u0645\u0631 \u0627\u0644\u0628\u064A\u0639:</span><span class="pm-value">${escapeHtml(salesOrder?.so_number || na)}</span></div>
 <div class="pm-field"><span class="pm-label">\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0646\u0634\u0627\u0621:</span><span class="pm-value">${dateStr}</span></div>
 <div class="pm-field"><span class="pm-label">\u0627\u0644\u062D\u0627\u0644\u0629:</span><span class="pm-value">${escapeHtml(statusAr)}</span></div>
 <div class="pm-field"><span class="pm-label">\u0627\u0644\u0641\u0646\u064A \u0627\u0644\u0645\u0633\u0624\u0648\u0644:</span><span class="pm-value">${escapeHtml(assignedEmployeeName || na)}</span></div>
 </div>
+</div>
 
 <div class="section">
 <div class="pm-section-title">\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644</div>
+<div class="pm-fields">
 <div class="pm-field"><span class="pm-label">\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644:</span><span class="pm-value">${escapeHtml(customer?.customer_name || na)}</span></div>
 <div class="pm-field"><span class="pm-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646 / \u0627\u0644\u0645\u0648\u0642\u0639:</span><span class="pm-value">${escapeHtml(customer?.address || workOrder.location || na)}</span></div>
 <div class="pm-field"><span class="pm-label">\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641:</span><span class="pm-value">${escapeHtml(customer?.phone || na)}</span></div>
 </div>
+</div>
 
 <div class="section">
 <div class="pm-section-title">\u0648\u0635\u0641 \u0627\u0644\u0639\u0645\u0644</div>
+<div class="pm-fields">
 <div class="pm-field"><span class="pm-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646:</span><span class="pm-value">${escapeHtml(workOrder.title)}</span></div>
-<div class="pm-field"><span class="pm-label">\u0627\u0644\u0648\u0635\u0641:</span><span class="pm-value">${escapeHtml(workOrder.description)}</span></div>
+<div class="pm-field pm-field-wide"><span class="pm-label">\u0627\u0644\u0648\u0635\u0641:</span><span class="pm-value">${escapeHtml(workOrder.description)}</span></div>
 <div class="pm-field"><span class="pm-label">\u0627\u0644\u062A\u0635\u0646\u064A\u0641:</span><span class="pm-value">${escapeHtml(categoryAr)}</span></div>
+</div>
 </div>
 
 <div class="section">

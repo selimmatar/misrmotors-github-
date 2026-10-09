@@ -120,15 +120,15 @@ export function renderSoPrintHtml(data: SoPrintData): string {
   <table class="pm-table">
     <thead>
       <tr>
-        <th rowspan="2" style="width: 6%;">م</th>
+        <th rowspan="2" class="pm-center" style="width: 6%;">م</th>
         <th rowspan="2" style="width: 38%;">البيان</th>
-        <th rowspan="2" style="width: 8%;">الكمية</th>
-        <th colspan="2">سعر الوحدة</th>
-        <th colspan="2">القيمة</th>
+        <th rowspan="2" class="pm-center" style="width: 8%;">الكمية</th>
+        <th colspan="2" class="pm-center">سعر الوحدة</th>
+        <th colspan="2" class="pm-center">القيمة</th>
       </tr>
       <tr>
-        <th class="subheader" style="width: 12%;">جنيه</th><th class="subheader" style="width: 12%;">قرش</th>
-        <th class="subheader" style="width: 12%;">جنيه</th><th class="subheader" style="width: 12%;">قرش</th>
+        <th class="subheader pm-num" style="width: 12%;">جنيه</th><th class="subheader pm-num" style="width: 12%;">قرش</th>
+        <th class="subheader pm-num" style="width: 12%;">جنيه</th><th class="subheader pm-num" style="width: 12%;">قرش</th>
       </tr>
     </thead>
     <tbody>${rows}

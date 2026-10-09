@@ -32,7 +32,7 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
           <td>${escapeHtml(r.name)}${r.sku !== "-" ? `<div class="sku">SKU: ${escapeHtml(r.sku)}</div>` : ""}</td>
           <td><span class="type-tag ${r.isOutsourced ? "type-outsourced" : "type-stock"}">${r.isOutsourced ? "Outsourced" : "Stock"}</span></td>
           <td>${escapeHtml(r.supplierName)}</td>
-          ${hideCost ? "" : `<td>${r.unitCost === null ? "n/a" : money(r.unitCost)}${r.costSource === "po_price" ? '<div class="sku">PO Price</div>' : ""}</td>`}
+          ${hideCost ? "" : `<td class="mi-cost">${r.unitCost === null ? "n/a" : money(r.unitCost)}${r.costSource === "po_price" ? '<div class="sku">PO Price</div>' : ""}</td>`}
           <td class="n">${r.ordered}</td>
           <td class="n">${r.outForDelivery}</td>
           <td class="n">${r.delivered}</td>
@@ -57,6 +57,7 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
     @page { size: A4 landscape; margin: 12mm; }
     .container { max-width: 1200px; margin: 0 auto; }
     .mi-sub { font-size: 12px; color: #555; }
+    .mi-cost { white-space: nowrap; }
     .mi-generated { margin-block-start: 2px; font-size: 11px; color: #555; }
     .pm-fields .pm-label { display: inline; }
     .pm-table { font-size: 11px; }
