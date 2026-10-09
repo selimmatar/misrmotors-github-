@@ -69,16 +69,21 @@ export interface SoPrintTotals extends PrintTotals {
   currentNetTotal: number
   /** false when the stored total does not equal what the lines compute to: then only the stored figures are shown */
   breakdownConsistent: boolean
+  /** the stored gross total split back into before-VAT + 14% VAT (it always includes VAT); printed when the lines disagree */
+  storedPreVat: number
+  storedVat: number
 }
 
 /**
  * Totals for a printed sales order. The stored `total` (gross) and `net_total` (current, return-aware; Batch 2) are
  * authoritative and are printed as they are. The subtotal / discount / VAT breakdown is derived from the lines and is
- * shown only when it reproduces the stored gross total to the cent.
+ * shown only when it reproduces the stored gross total to the cent; otherwise the stored total (which always includes
+ * 14% VAT) is split back into before-VAT + VAT, so the VAT line is always printed and still adds up to the stored total.
  */
 export function computeSoPrintTotals(input: PrintTotalsInput & { storedTotal: number; storedNetTotal?: number | null }): SoPrintTotals {
   const base = computeTotals(input)
   const originalTotal = round2(input.storedTotal)
+  const storedPreVat = round2(originalTotal / (1 + (input.vatRate ?? VAT_RATE)))
   const net = input.storedNetTotal === null || input.storedNetTotal === undefined ? originalTotal : round2(input.storedNetTotal)
   return {
     ...base,
@@ -86,5 +91,7 @@ export function computeSoPrintTotals(input: PrintTotalsInput & { storedTotal: nu
     currentNetTotal: net,
     returnsAdjustment: round2(net - originalTotal),
     breakdownConsistent: Math.abs(base.total - originalTotal) <= 0.01,
+    storedPreVat,
+    storedVat: round2(originalTotal - storedPreVat),
   }
 }

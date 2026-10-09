@@ -76,13 +76,28 @@ test("T8. SO totals after a return: Batch 2 net total (80,000 of 100,000 -> 91,2
   assert.match(html, /صافي الإجمالي الحالي/)
 })
 
-test("T9. SO totals: a null net_total falls back to the stored total; an inconsistent breakdown is not printed", () => {
+test("T9. SO totals: a null net_total falls back to the stored total; an inconsistent breakdown still shows VAT, taken from the stored total", () => {
   const t = computeSoPrintTotals({ subtotal: 100, storedTotal: 999, storedNetTotal: null })
   assert.equal(t.currentNetTotal, 999)
   assert.equal(t.breakdownConsistent, false)
+  // the stored total includes 14% VAT: 999 = 876.32 + 122.68
+  assert.equal(t.storedPreVat, 876.32)
+  assert.equal(t.storedVat, 122.68)
   const html = renderSoTotalsBlock(t)
-  assert.doesNotMatch(html, /ضريبة القيمة المضافة/) // only the stored figure is shown
-  assert.match(html, /999/)
+  assert.match(html, /الإجمالي قبل الضريبة<\/td><td class="currency-col">876\.32</)
+  assert.match(html, /ضريبة القيمة المضافة \(14%\)<\/td><td class="currency-col">122\.68</)
+  assert.match(html, />999</)
+  assert.doesNotMatch(html, /المجموع الفرعي/) // the line-derived figures are not printed when they disagree
+})
+
+test("T22. SO totals: VAT shows after a return too, and pre-VAT + VAT always equals the printed total", () => {
+  for (const total of [114000, 31008, 45714, 0.07, 2418232.83]) {
+    const t = computeSoPrintTotals({ subtotal: 1, storedTotal: total, storedNetTotal: null })
+    assert.equal(Math.round((t.storedPreVat + t.storedVat) * 100), Math.round(total * 100), String(total))
+  }
+  const html = renderSoTotalsBlock(computeSoPrintTotals({ subtotal: 5, storedTotal: 114000, storedNetTotal: 91200 }))
+  assert.match(html, /ضريبة القيمة المضافة \(14%\)/)
+  assert.match(html, /صافي الإجمالي الحالي/)
 })
 
 test("T10. splitMoney / moneyCells are exact on cents", () => {

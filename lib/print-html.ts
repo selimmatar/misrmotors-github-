@@ -91,6 +91,9 @@ export function renderSoTotalsBlock(t: SoPrintTotals): string {
     }
     rows.push({ label: t.discount > 0 ? "المجموع بعد الخصم" : "المجموع الفرعي", amount: t.netSubtotal })
     rows.push({ label: "ضريبة القيمة المضافة (14%)", amount: t.vat })
+  } else {
+    rows.push({ label: "الإجمالي قبل الضريبة", amount: t.storedPreVat })
+    rows.push({ label: "ضريبة القيمة المضافة (14%)", amount: t.storedVat })
   }
   const returned = Math.abs(t.returnsAdjustment) > 0.005
   rows.push({ label: returned ? "الإجمالي الأصلي" : "الإجمالي", amount: t.originalTotal, style: "font-weight: 700;" })
