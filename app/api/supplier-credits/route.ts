@@ -1,5 +1,18 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { markSupplierCreditsCredited } from "@/lib/supplier-credit-status"
+
+// Marks active supplier credits as credited (status used + used_at). Status flag only: AP, payments and balances are untouched.
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json().catch(() => ({}))
+    const result = await markSupplierCreditsCredited(createAdminClient(), body)
+    return NextResponse.json(result.body, { status: result.status })
+  } catch (error) {
+    console.error("Unexpected error marking supplier credits:", error)
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+  }
+}
 
 export async function GET() {
   try {

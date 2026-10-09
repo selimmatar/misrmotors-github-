@@ -1,7 +1,7 @@
 // Independent-review fixes after Batches 4D-4G:
 //  1 reject/backward moves of an APPROVED delivery permit -> 409 DP_ALREADY_APPROVED
 //  2 stock hold ignores returns
-//  3 supplier-credit VAT from the AP billing ratio (po.total / item total)
+//  3 supplier credit = item cost (no VAT / billing ratio) (po.total / item total)
 //  4 write-off without credit (explicit flag)
 //  5 PUT purchase-orders keeps item_type, .in() chunking, stale 'processing' stock claim
 import "./route-harness"
@@ -12,7 +12,7 @@ import { call, useDb } from "./route-harness"
 import * as dpRoute from "../../app/api/delivery-permits/route"
 import * as poRoute from "../../app/api/purchase-orders/route"
 import { computeHeldByProduct, loadAvailability, loadHeldByProduct, IN_CHUNK_SIZE } from "../stock-hold"
-import { removeReturnedItem, poBillingRatio } from "../returns"
+import { removeReturnedItem } from "../returns"
 
 const dpPut = (permitId: number, action: string, extra: Row = {}) => call(dpRoute.PUT, "PUT", { permitId: String(permitId), action, ...extra })
 const permit = (permit_id: number, status: string): Row => ({ permit_id, permit_no: `DP-T-${permit_id}`, sales_order_id: 1, customer_id: 5, status })
@@ -98,7 +98,7 @@ test("2. hold ignores returns: 10 ordered, 4 delivered (APPROVED), 1 returned ->
 })
 
 // ---------------------------------------------------------------------------------------------------------
-// 3. credit VAT from the AP billing ratio
+// 3. credit = item cost (no VAT / billing ratio)
 // ---------------------------------------------------------------------------------------------------------
 function creditDb(po: Row, itemTotals: number[], extra: Record<string, Row[]> = {}) {
   return new FakeDb({
@@ -115,28 +115,21 @@ function creditDb(po: Row, itemTotals: number[], extra: Record<string, Row[]> = 
 }
 const credits = (db: FakeDb) => db.tables.supplier_credits
 
-test("3. poBillingRatio: total over items -> total/items; otherwise 1", () => {
-  assert.equal(poBillingRatio(11400, 10000), 1.14)
-  assert.equal(poBillingRatio(10000, 10000), 1)
-  assert.equal(poBillingRatio(9000, 10000), 1)
-  assert.equal(poBillingRatio(500, 0), 1)
-  assert.equal(poBillingRatio(null, 10000), 1)
-})
-
-test("3. credit = qty x receipt cost x (po.total / items): 2 x 2000 x 1.14 = 4560 (PO 6 shape: total 11400, items 10000)", async () => {
+test("3. credit = qty x receipt cost, no VAT: 2 x 2000 = 4000 even when the PO total carries VAT (total 11400, items 10000)", async () => {
   const db = creditDb({ total: 11400, tax_amount: 1400 }, [10000])
   const res = await removeReturnedItem(db, { inventoryId: 1, productName: "Pump" })
   assert.equal(res.status, 200, JSON.stringify(res.body))
-  assert.equal(credits(db)[0].amount, 4560)
+  assert.equal(credits(db)[0].amount, 4000)
+  assert.match(credits(db)[0].notes, /received cost 2000 x 2 = 4000/)
 })
 
-test("3. finalized-tax PO: tax_amount was overwritten with the landed tax (777) but AP billed 11400 -> credit still 4560 (old rule: 4560 only by luck of tax_amount > 0)", async () => {
+test("3. finalized-tax PO (tax_amount overwritten with landed tax 777): credit is still the item cost, 4000", async () => {
   const db = creditDb({ total: 11400, tax_amount: 777, cost_finalized: true }, [10000])
   assert.equal((await removeReturnedItem(db, { inventoryId: 1, productName: "Pump" })).status, 200)
-  assert.equal(credits(db)[0].amount, 4560)
+  assert.equal(credits(db)[0].amount, 4000)
 })
 
-test("3. PO whose total equals its items (POs 1-5) gets no VAT even when tax_amount is set: 2 x 2000 = 4000 (old rule: 4560, more than AP billed)", async () => {
+test("3. PO whose total equals its items gets the same item-cost credit: 2 x 2000 = 4000", async () => {
   const db = creditDb({ total: 10000, tax_amount: 1400 }, [10000])
   assert.equal((await removeReturnedItem(db, { inventoryId: 1, productName: "Pump" })).status, 200)
   assert.equal(credits(db)[0].amount, 4000)
