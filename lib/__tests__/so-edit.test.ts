@@ -78,11 +78,19 @@ test("E2. edits that would destroy history are refused: below what is kept, remo
   assert.match((customer as any).error, /customer .* cannot be changed/)
 })
 
-test("E2. a fully returned line may drop to 0 but stays on the order", async () => {
+test("E2. a fully returned line may drop to 0 or be deleted (the customer keeps none of it)", async () => {
   const db = baseDb()
   await returnTwoPumps(db, 10)
   assert.deepEqual(await validateSoEdit(db, 1, { items: [lineA(0), lineB(10)] }), { ok: true })
-  assert.equal((await validateSoEdit(db, 1, { items: [lineB(10)] })).ok, false) // but cannot disappear
+  assert.deepEqual(await validateSoEdit(db, 1, { items: [lineB(10)] }), { ok: true }) // deleted
+})
+
+test("E2. a partly returned line cannot be deleted: the message says how many the customer keeps", async () => {
+  const db = baseDb()
+  await returnTwoPumps(db) // delivered 10, returned 2 -> keeps 8
+  const removed = await validateSoEdit(db, 1, { items: [lineB(2)] })
+  assert.equal(removed.ok, false)
+  assert.match((removed as any).error, /cannot be removed while the customer keeps 8/)
 })
 
 test("E2. an order with no delivery permit yet keeps the ordinary free editing", async () => {

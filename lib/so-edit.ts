@@ -3,8 +3,11 @@
 // A returned item must stay on the order as history and a replacement is added next to it, so an edit may:
 //   * add lines freely (the replacement / exchange item),
 //   * change quantities, but never below what the customer keeps (delivered - returned) for that item,
+//   * delete a line of an item the customer keeps none of (everything delivered was returned); the delivery
+//     permit and return records stay untouched as history,
 // and may NOT:
-//   * delete a line, or turn it into a different item, once that item is on a delivery permit,
+//   * delete a line the customer still keeps some of, or turn a line into a different item, once that item is on
+//     a delivery permit,
 //   * change the customer once delivery permits exist.
 // Nothing here writes; the PUT route calls validateSoEdit BEFORE it changes anything.
 import { isSOFullyDelivered } from "./delivery-status"
@@ -60,6 +63,7 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
     if (permit && DELIVERED_PERMIT_STATUSES.includes(permit.status)) delivered.set(key, (delivered.get(key) || 0) + (Number(item.quantity) || 0))
   }
   const label = (key: string) => key.slice(2) || "this item"
+  const kept = (key: string) => Math.max(0, (delivered.get(key) || 0) - (returns.get(key) || 0))
 
   const incomingById = new Map<number, any>()
   for (const item of input.items) {
@@ -72,7 +76,8 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
     if (!onPermit.has(key)) continue
     const incoming = incomingById.get(row.so_item_id)
     if (!incoming) {
-      return { ok: false, status: 409, error: `"${label(key)}" is on a delivery permit of ${soLabel} and cannot be removed. Keep the line (a returned item stays as history) and add the replacement as a new line.` }
+      if (kept(key) <= EPS) continue // fully returned: the line may go, its permit and return stay as history
+      return { ok: false, status: 409, error: `"${label(key)}" is on a delivery permit of ${soLabel} and cannot be removed while the customer keeps ${kept(key)} of it. Lower the line to ${kept(key)} instead, and add any replacement as a new line.` }
     }
     if (incomingKey(incoming) !== key) {
       return { ok: false, status: 409, error: `"${label(key)}" is on a delivery permit of ${soLabel}; its line cannot be turned into a different item. Add the replacement as a new line.` }
@@ -85,7 +90,7 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
     orderedAfter.set(key, (orderedAfter.get(key) || 0) + (Number(item?.quantity) || 0))
   }
   for (const key of onPermit) {
-    const keep = Math.max(0, (delivered.get(key) || 0) - (returns.get(key) || 0))
+    const keep = kept(key)
     const after = orderedAfter.get(key) || 0
     if (after + EPS < keep) {
       return {

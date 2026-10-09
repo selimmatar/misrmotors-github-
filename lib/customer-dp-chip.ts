@@ -12,3 +12,28 @@ export function permitChip(status: string | null | undefined, permitReturnedQuan
   if (returned > 0) return { label: `Delivered (${returned} returned)`, tone: "orange" }
   return { label: "Delivered", tone: "green" }
 }
+
+/**
+ * Customers tab: the per-item delivery chip. Returns are taken off the confirmed delivered quantity, so a returned
+ * item would otherwise read "Not delivered"; when what was delivered and then returned accounts for the line, the
+ * chip shows only what the customer still has (or nothing, next to the "Returned (N)" badge, when all of it came back).
+ */
+export function itemDeliveryChip(item: {
+  quantity: number
+  deliveryState?: string | null
+  confirmedDeliveredQuantity?: number
+  returnedQuantity?: number
+}): PermitChip | null {
+  const quantity = Number(item.quantity) || 0
+  const kept = Number(item.confirmedDeliveredQuantity) || 0
+  const returned = Number(item.returnedQuantity) || 0
+  if (returned > 0 && kept + returned >= quantity) {
+    if (quantity > 0 && kept >= quantity) return { label: "Delivered", tone: "green" }
+    if (kept > 0) return { label: `Delivered ${kept}/${quantity}`, tone: "orange" }
+    return null
+  }
+  if (!item.deliveryState) return null
+  if (item.deliveryState === "delivered") return { label: "Delivered", tone: "green" }
+  if (item.deliveryState === "partial") return { label: `Partially delivered (${kept}/${quantity})`, tone: "orange" }
+  return { label: "Not delivered", tone: "yellow" }
+}

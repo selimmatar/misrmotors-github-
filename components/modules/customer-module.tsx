@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAppContext } from "@/lib/app-context"
-import { permitChip } from "@/lib/customer-dp-chip"
+import { itemDeliveryChip, permitChip } from "@/lib/customer-dp-chip"
 import { useI18n } from "@/lib/i18n-context"
 import { COUNTRIES, getCitiesForCountry } from "@/lib/countries-data"
 import { ReportGenerator } from "@/components/report-generator"
@@ -376,23 +376,17 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                                         Returned ({item.returnedQuantity})
                                       </span>
                                     )}
-                                    {item.deliveryState && (
-                                      <span
-                                        className={`ml-2 px-1.5 py-0.5 rounded text-xs ${
-                                          item.deliveryState === "delivered"
-                                            ? "bg-green-100 text-green-700"
-                                            : item.deliveryState === "partial"
-                                              ? "bg-orange-100 text-orange-700"
-                                              : "bg-yellow-100 text-yellow-700"
-                                        }`}
-                                      >
-                                        {item.deliveryState === "delivered"
-                                          ? "Delivered"
-                                          : item.deliveryState === "partial"
-                                            ? `Partially delivered (${item.confirmedDeliveredQuantity}/${item.quantity})`
-                                            : "Not delivered"}
-                                      </span>
-                                    )}
+                                    {(() => {
+                                      const chip = itemDeliveryChip(item)
+                                      if (!chip) return null
+                                      const tone =
+                                        chip.tone === "green"
+                                          ? "bg-green-100 text-green-700"
+                                          : chip.tone === "orange"
+                                            ? "bg-orange-100 text-orange-700"
+                                            : "bg-yellow-100 text-yellow-700"
+                                      return <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${tone}`}>{chip.label}</span>
+                                    })()}
                                   </span>
                                   <span className="font-semibold">{formatCurrency(item.total)}</span>
                                 </div>

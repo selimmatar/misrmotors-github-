@@ -9,7 +9,7 @@ import * as poRoute from "../../app/api/purchase-orders/route"
 import * as scheduleRoute from "../../app/api/payment-schedules/route"
 import { buildApprovalRevert } from "../po-status"
 import { linesWithIncreasedQuantity } from "../po-over-order"
-import { permitChip } from "../customer-dp-chip"
+import { itemDeliveryChip, permitChip } from "../customer-dp-chip"
 import { isPlannedPermit } from "../dp-planned"
 import { isSOFullyDelivered } from "../delivery-status"
 
@@ -143,6 +143,22 @@ test("LO7b. Customers tab chip: only the permit that has returns is flagged (the
   assert.equal(chips[0].tone, "orange")
   assert.deepEqual(chips[1], { label: "Delivered", tone: "green" })
   assert.deepEqual(permitChip("APPROVED", undefined as any), { label: "Delivered", tone: "green" })
+})
+
+test("LO7c. Customers tab item chip: a returned item is not shown as Not delivered", () => {
+  // ordered 1, delivered 1, returned 1: only the Returned badge, no delivery chip
+  assert.equal(itemDeliveryChip({ quantity: 1, deliveryState: "not_delivered", confirmedDeliveredQuantity: 0, returnedQuantity: 1 }), null)
+  // ordered 3, delivered 3, returned 1: the customer has 2 of 3
+  assert.deepEqual(itemDeliveryChip({ quantity: 3, deliveryState: "partial", confirmedDeliveredQuantity: 2, returnedQuantity: 1 }), { label: "Delivered 2/3", tone: "orange" })
+  // ordered 3, delivered 2, returned 1: 1 is still owed, so it stays partially delivered
+  assert.equal(itemDeliveryChip({ quantity: 3, deliveryState: "partial", confirmedDeliveredQuantity: 1, returnedQuantity: 1 })?.label, "Partially delivered (1/3)")
+  // a returned line lowered to what is kept reads as delivered; one lowered to 0 shows no chip
+  assert.deepEqual(itemDeliveryChip({ quantity: 2, deliveryState: "delivered", confirmedDeliveredQuantity: 2, returnedQuantity: 1 }), { label: "Delivered", tone: "green" })
+  assert.equal(itemDeliveryChip({ quantity: 0, deliveryState: "delivered", confirmedDeliveredQuantity: 0, returnedQuantity: 1 }), null)
+  // no returns: unchanged
+  assert.equal(itemDeliveryChip({ quantity: 1, deliveryState: "not_delivered" })?.label, "Not delivered")
+  assert.equal(itemDeliveryChip({ quantity: 1, deliveryState: "delivered", confirmedDeliveredQuantity: 1 })?.label, "Delivered")
+  assert.equal(itemDeliveryChip({ quantity: 1 }), null)
 })
 
 // ---- item 4 -------------------------------------------------------------------------------------------------

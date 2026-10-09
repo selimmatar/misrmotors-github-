@@ -19,6 +19,7 @@ import { AlertTriangle, Package, Printer, Trash2, UserPlus } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
 import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 import { useAppContext } from "@/lib/app-context"
+import { lineKey } from "@/lib/return-lines"
 import { useI18n } from "@/lib/i18n-context"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
@@ -169,6 +170,19 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       },
     ])
   }
+
+  // What the customer keeps of each item (delivered - returned), summed over its lines: the API reports it on the
+  // first line of the item only. A line on a delivery permit can be deleted only when this is 0.
+  const keptByItem = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const item of items) {
+      if (!item.onDeliveryPermit) continue
+      const key = lineKey(Number(item.productId) || null, item.productName)
+      map.set(key, (map.get(key) || 0) + (item.minQuantity || 0))
+    }
+    return map
+  }, [items])
+  const keptOf = (item: EditItem) => keptByItem.get(lineKey(Number(item.productId) || null, item.productName)) || 0
 
   const updateItem = (key: string, patch: Partial<EditItem>) => {
     setItems((prev) => prev.map((item) => (item.key === key ? { ...item, ...patch } : item)))
@@ -565,7 +579,7 @@ ${renderTotalsBlock(printTotals)}
           <DialogDescription>
             This order is already approved. Changes save immediately and the order stays approved.
             {hasDeliveryHistory &&
-              " Delivery has started: delivered items stay on the order as history. To exchange returned goods, lower that line to what the customer keeps and add the replacement item as a new line."}
+              " Delivery has started: delivered items stay on the order as history. A returned line can be lowered to what the customer keeps, or deleted when the customer keeps none of it; add any replacement as a new line."}
           </DialogDescription>
         </DialogHeader>
 
@@ -719,8 +733,14 @@ ${renderTotalsBlock(printTotals)}
                           variant="destructive"
                           size="icon"
                           onClick={() => removeItem(item)}
-                          disabled={item.onDeliveryPermit}
-                          title={item.onDeliveryPermit ? "On a delivery permit - it stays on the order as history" : undefined}
+                          disabled={item.onDeliveryPermit && keptOf(item) > 0}
+                          title={
+                            item.onDeliveryPermit
+                              ? keptOf(item) > 0
+                                ? `The customer keeps ${keptOf(item)}: lower the quantity instead of deleting`
+                                : "Everything delivered was returned: the line can be deleted (delivery and return records stay)"
+                              : undefined
+                          }
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

@@ -211,6 +211,18 @@ test("ROUTE. PUT refuses invalid edits server-side and writes nothing", async ()
   assert.equal((await putSo(editPayload([lineA(8), lineB(2)]))).status, 200)
 })
 
+test("ROUTE. a fully returned line can be deleted: permit and return stay, the order total follows the remaining lines", async () => {
+  const db = baseDb()
+  assert.equal((await postReturn(returnBody(10))).status, 200)
+  const history = () => JSON.stringify({ permits: db.tables.delivery_permits, permitItems: db.tables.delivery_permit_items, returns: db.tables.product_returns, returnItems: db.tables.return_items })
+  const before = history()
+  const res = await putSo(editPayload([lineB(2)]))
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.deepEqual(db.tables.sales_order_items.map((i) => i.product_id), [8])
+  assert.equal(history(), before)
+  assert.equal(db.tables.sales_orders[0].net_total, round2(24000 * 1.14))
+})
+
 test("ROUTE. a PUT with no delivery permits keeps the ordinary free editing; an unknown order is 404", async () => {
   const db = baseDb({ delivery_permits: [], delivery_permit_items: [] })
   const res = await putSo(editPayload([lineB(3)], { customerId: "6" }))
