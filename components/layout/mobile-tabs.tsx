@@ -40,11 +40,13 @@ interface MobileTabsProps {
 // bottom sheet; Menu opens the full drawer.
 export function MobileTabs({ items, activeModule, onNavigate, onOpenMenu }: MobileTabsProps) {
   const { t } = useI18n()
-  const [openGroup, setOpenGroup] = useState<GroupId | null>(null)
+  // The group outlives the open flag so the sheet keeps its title and items during the close animation.
+  const [sheetGroup, setSheetGroup] = useState<GroupId | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const tabs = buildMobileTabs(items)
   const homeActive = tabs.some((tab) => tab.kind === "home" && tab.moduleId === activeModule)
   const activeGroup = groupFor(activeModule)
-  const sheetTab = tabs.find((tab) => tab.kind === "group" && tab.group === openGroup)
+  const sheetTab = tabs.find((tab) => tab.kind === "group" && tab.group === sheetGroup)
   const sheetItems = sheetTab?.kind === "group" ? sheetTab.items : []
 
   const tabClass = (active: boolean) =>
@@ -85,7 +87,11 @@ export function MobileTabs({ items, activeModule, onNavigate, onOpenMenu }: Mobi
                   type="button"
                   aria-current={active ? "page" : undefined}
                   className={tabClass(active)}
-                  onClick={() => (tab.items.length === 1 ? onNavigate(tab.items[0].id) : setOpenGroup(tab.group))}
+                  onClick={() => {
+                    if (tab.items.length === 1) return onNavigate(tab.items[0].id)
+                    setSheetGroup(tab.group)
+                    setSheetOpen(true)
+                  }}
                 >
                   <Icon className="size-5" />
                   <span className="max-w-full truncate px-1">{t(`group.${tab.group}`)}</span>
@@ -102,11 +108,11 @@ export function MobileTabs({ items, activeModule, onNavigate, onOpenMenu }: Mobi
         </div>
       </nav>
 
-      <Sheet open={openGroup !== null} onOpenChange={(open) => !open && setOpenGroup(null)}>
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" className="bg-card rounded-t-xl pb-[env(safe-area-inset-bottom)]">
           {/* The sheet's close button is pinned physically right; clear it on whichever side it lands. */}
           <SheetHeader className="pe-10 rtl:pe-4 rtl:ps-10">
-            <SheetTitle>{openGroup ? t(`group.${openGroup}`) : ""}</SheetTitle>
+            <SheetTitle>{sheetGroup ? t(`group.${sheetGroup}`) : ""}</SheetTitle>
           </SheetHeader>
           <div className="flex flex-col gap-1 px-2 pb-4">
             {sheetItems.map((item) => {
@@ -123,7 +129,7 @@ export function MobileTabs({ items, activeModule, onNavigate, onOpenMenu }: Mobi
                   )}
                   onClick={() => {
                     onNavigate(item.id)
-                    setOpenGroup(null)
+                    setSheetOpen(false)
                   }}
                 >
                   <Icon className="size-4 shrink-0" />

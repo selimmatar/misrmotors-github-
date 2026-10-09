@@ -57,3 +57,14 @@ test("login cards are neutral: no gradient, no scale, no solid role colours", ()
   const src = read("components/auth/login-page.tsx")
   assert.doesNotMatch(src, /bg-gradient|hover:scale-|text-white|bg-\w+-500/)
 })
+
+test("login role names stay readable on hover", () => {
+  // The outline variant adds hover:text-accent-foreground (white); the card keeps its own text colour.
+  assert.ok(read("components/auth/login-page.tsx").includes("hover:text-foreground"))
+})
+
+test("group sheet keeps its title and items while it closes", () => {
+  const src = read("components/layout/mobile-tabs.tsx")
+  assert.match(src, /<Sheet open=\{sheetOpen\}/)
+  assert.doesNotMatch(src, /setSheetGroup\(null\)/)
+})

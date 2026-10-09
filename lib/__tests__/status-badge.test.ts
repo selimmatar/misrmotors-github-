@@ -25,5 +25,19 @@ test("other listed statuses", () => {
 
 test("odd inputs", () => {
   assert.equal(statusTone("DELIVERED"), "done")
-  for (const v of [null, undefined, "", "partially_paid", "something_else"]) assert.equal(statusTone(v as any), "neutral")
+  for (const v of [null, undefined, "", "something_else"]) assert.equal(statusTone(v as any), "neutral")
+})
+
+test("other record statuses get a tone, not draft grey", () => {
+  for (const s of ["rejected", "voided", "discrepancy"]) assert.equal(statusTone(s), "danger", s)
+  assert.equal(statusTone("received_with_issues"), "waiting")
+  assert.equal(statusTone("partially_paid"), "approved")
+  assert.equal(statusTone("OUT_FOR_DELIVERY"), "ready")
+  // Every other workflow status the DB allows (lib/enums.ts CHECK lists).
+  const MORE: Record<string, StatusTone> = {
+    expired: "danger", sent: "waiting", submitted_signed: "waiting", accepted: "approved",
+    partial: "approved", partially_received: "approved", ready_for_shipment: "ready", printed: "ready",
+    ready_for_pickup: "ready", complete: "done",
+  }
+  for (const [s, tone] of Object.entries(MORE)) assert.equal(statusTone(s), tone, s)
 })

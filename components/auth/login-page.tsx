@@ -101,7 +101,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <Button
                   key={roleData.role}
                   variant="outline"
-                  className="h-auto p-5 flex flex-col items-center gap-3 whitespace-normal bg-card text-foreground hover:border-primary hover:bg-card"
+                  className="h-auto p-5 flex flex-col items-center gap-3 whitespace-normal bg-card text-foreground hover:border-primary hover:bg-card hover:text-foreground"
                   onClick={() => handleRoleSelection(roleData.role, roleData.name)}
                 >
                   <span className={`flex size-12 items-center justify-center rounded-full ${TONE_ICON[roleData.tone]}`}>
