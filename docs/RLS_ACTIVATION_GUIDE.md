@@ -12,13 +12,13 @@ Your ERP uses **SERVICE ROLE KEY** for all database operations, which means:
 ## Activation Steps
 
 ### 1. Run the RLS Activation Script
-Execute `scripts/055_activate_rls_production.sql` in your Supabase SQL Editor:
+Execute `scripts/archive/055_activate_rls_production.sql` in your Supabase SQL Editor:
 
 \`\`\`bash
 # From Supabase Dashboard:
 1. Go to SQL Editor
 2. Click "New Query"
-3. Copy and paste the contents of scripts/055_activate_rls_production.sql
+3. Copy and paste the contents of scripts/archive/055_activate_rls_production.sql
 4. Click "Run"
 \`\`\`
 

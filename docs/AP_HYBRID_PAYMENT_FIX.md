@@ -27,7 +27,7 @@
 
 ## Fix Applied
 
-### 1. Database Migration (`scripts/058_add_payment_type_to_ap.sql`)
+### 1. Database Migration (`scripts/archive/058_add_payment_type_to_ap.sql`)
 
 **Added**:
 - `payment_type` column to `accounts_payable`

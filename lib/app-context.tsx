@@ -74,7 +74,6 @@ interface AppContextType {
   setPrepaidBalance: (balance: number) => void
   loadData: () => Promise<void>
   isLoading: boolean
-  resetAllData: () => Promise<void>
   lostSales: LostSale[]
   setLostSales: (lostSales: LostSale[]) => void
   balanceEntries: BalanceEntry[]
@@ -111,7 +110,7 @@ const swrFetcher = async (url: string) => {
 
   if (!response.ok) {
     const text = await response.text()
-    console.error(`[v0] Fetch error ${response.status} for ${url}:`, text)
+    console.error(`Fetch error ${response.status} for ${url}:`, text)
 
     if (text.includes("Too Many") || text.includes("rate limit") || text.includes("429")) {
       throw new Error("Rate limited")
@@ -932,29 +931,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const resetAllData = async () => {
-    try {
-      await fetch("/api/reset", { method: "POST" })
-      // Clear all SWR caches and reload
-      await Promise.all([
-        mutateCustomers(),
-        mutateSuppliers(),
-        mutateProducts(),
-        mutateCouriers(),
-        mutateInventory(),
-        mutatePurchaseOrders(),
-        mutateSalesOrders(),
-        mutateSupplierInvoices(),
-        mutateCustomerInvoices(),
-        mutateBalanceEntries(),
-        mutateLostSales(),
-        mutateUsers(),
-      ])
-    } catch (error) {
-      console.error("Error resetting data:", error)
-    }
-  }
-
   return (
     <AppContext.Provider
       value={{
@@ -1004,7 +980,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setPrepaidBalance,
         loadData,
         isLoading,
-        resetAllData,
         lostSales,
         setLostSales,
         balanceEntries,

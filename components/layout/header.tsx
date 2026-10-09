@@ -1,6 +1,5 @@
 "use client"
 import type { User } from "@/lib/types"
-import { useAppContext } from "@/lib/app-context"
 import { LanguageToggle } from "./language-toggle"
 import { useI18n } from "@/lib/i18n-context"
 import { Button } from "@/components/ui/button"
@@ -13,12 +12,7 @@ interface HeaderProps {
 }
 
 export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
-  const { resetAllData } = useAppContext()
   const { t } = useI18n()
-
-  const handleReset = () => {
-    resetAllData()
-  }
 
   return (
     <header className="bg-card border-b border-border px-4 md:px-6 py-3 md:py-4 flex items-center justify-between gap-3">

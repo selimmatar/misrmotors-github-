@@ -298,7 +298,7 @@ export async function POST(request: Request) {
           const availableQty = availability.get(Number(item.productId))?.available || 0
           if (item.quantity > availableQty) {
             console.error(
-              `[v0] Sales Orders POST: Insufficient inventory for product ${item.productId}. Requested: ${item.quantity}, Available: ${availableQty}`,
+              `Sales Orders POST: Insufficient inventory for product ${item.productId}. Requested: ${item.quantity}, Available: ${availableQty}`,
             )
             return Response.json(
               {
@@ -479,28 +479,6 @@ export async function POST(request: Request) {
         throw requestsError
       }
 
-    }
-
-    if (typeof window === "undefined") {
-      const { WebhookService } = await import("@/lib/webhook-service")
-      const webhookService = WebhookService.getInstance()
-      await webhookService.trigger("sales_order.created", {
-        orderId: order.so_id,
-        orderNumber: order.so_number,
-        customerId: order.customer_id,
-        customerName: order.customers?.customer_name || "",
-        customerPhone: order.customers?.phone || "",
-        customerEmail: order.customers?.email || "",
-        quotationRequestNumber: order.quotation_request_number,
-        departmentName: order.department_name,
-        receiverName: order.receiver_name,
-        orderDate: order.order_date,
-        deliveryDate: order.delivery_date,
-        status: order.status,
-        paymentType: order.payment_type,
-        items: items,
-        quotationRequests: quotationRequests,
-      })
     }
 
     return NextResponse.json({ ...order, items, quotationRequests })
@@ -858,29 +836,6 @@ export async function PUT(request: Request) {
         } else {
         }
       }
-    }
-
-    // Trigger webhook for accountant_approved status
-    try {
-      const { WebhookService } = await import("@/lib/webhook-service")
-      const webhookService = WebhookService.getInstance()
-
-      const { data: customer } = await supabase
-        .from("customers")
-        .select("customer_name, email")
-        .eq("customer_id", order.customer_id)
-        .single()
-
-      await webhookService.trigger("sales_order.approved", {
-        orderId: order.so_id,
-        orderNumber: order.so_number,
-        status: order.status,
-        total: order.total,
-        customerName: customer?.customer_name || "Unknown",
-        customerEmail: customer?.email || "",
-      })
-    } catch (webhookError) {
-      console.error("Sales Orders PUT: Webhook trigger failed", webhookError)
     }
 
     // Return success response

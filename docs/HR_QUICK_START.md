@@ -7,7 +7,7 @@
 Execute the HR management schema:
 \`\`\`bash
 # In v0, run this script via the execute script button
-scripts/078_create_hr_management_system.sql
+scripts/archive/078_create_hr_management_system.sql
 \`\`\`
 
 **Expected Output:**

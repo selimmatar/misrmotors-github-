@@ -290,7 +290,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       } as any)
       return true
     } catch (error: any) {
-      console.error("[v0] Failed to save order edits:", error)
+      console.error("Failed to save order edits:", error)
       alert(`Failed to save changes: ${error.message || "Unknown error"}`)
       return false
     } finally {

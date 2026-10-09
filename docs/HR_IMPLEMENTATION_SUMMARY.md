@@ -8,7 +8,7 @@ Successfully implemented a comprehensive, isolated HR Management module with ful
 
 ## Delivered Components
 
-### 1. Database Schema (`scripts/078_create_hr_management_system.sql`)
+### 1. Database Schema (`scripts/archive/078_create_hr_management_system.sql`)
 
 #### Tables Created:
 
@@ -340,7 +340,7 @@ Potential features for future iterations:
 ## Files Modified/Created
 
 ### Database:
-- ✅ `scripts/078_create_hr_management_system.sql` (416 lines)
+- ✅ `scripts/archive/078_create_hr_management_system.sql` (416 lines)
 
 ### Documentation:
 - ✅ `docs/HR_MANAGEMENT_SYSTEM.md` (602 lines)

@@ -4,10 +4,10 @@
 
 ### Database
 - [x] All migration scripts created (048-051)
-- [ ] Run migration: `scripts/048_production_readiness_indexes.sql`
-- [ ] Run migration: `scripts/049_production_readiness_rls.sql` (review policies first)
-- [ ] Run migration: `scripts/050_add_bank_details_to_po.sql`
-- [ ] Run migration: `scripts/051_add_overdue_status_function.sql`
+- [ ] Run migration: `scripts/archive/048_production_readiness_indexes.sql`
+- [ ] Run migration: `scripts/archive/049_production_readiness_rls.sql` (review policies first)
+- [ ] Run migration: `scripts/archive/050_add_bank_details_to_po.sql`
+- [ ] Run migration: `scripts/archive/051_add_overdue_status_function.sql`
 - [ ] Verify all foreign key constraints
 - [ ] Test backup/restore procedure
 

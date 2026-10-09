@@ -3,7 +3,6 @@
 //   "@/..." imports      -> the compiled output tree (same files the app uses)
 //   lib/supabase/admin   -> returns the current FakeDb
 //   next/server          -> a minimal NextResponse (Response.json)
-//   lib/webhook-service  -> no-op trigger
 // Import this module BEFORE importing any route.
 import path from "node:path"
 import Module from "node:module"
@@ -16,7 +15,6 @@ export function useDb(db: FakeDb) {
 
 const OUT_ROOT = path.resolve(__dirname, "..", "..") // <out>/lib/__tests__ -> <out>
 const ADMIN_FILE = path.join(OUT_ROOT, "lib", "supabase", "admin.js")
-const WEBHOOK_FILE = path.join(OUT_ROOT, "lib", "webhook-service.js")
 
 // `new NextResponse(html, init)` is used by the HTML print routes; `NextResponse.json` by the API routes.
 class StubNextResponse extends Response {
@@ -38,20 +36,6 @@ const adminStub = {
     return current
   },
 }
-/** Webhook events the routes fired (cleared by the tests that look at it). */
-export const webhookCalls: { event: string; payload: any }[] = []
-export const webhookControl = { fail: false }
-const webhookStub = {
-  WebhookService: {
-    getInstance: () => ({
-      trigger: async (event: string, payload: any) => {
-        if (webhookControl.fail) throw new Error("webhook down")
-        webhookCalls.push({ event, payload })
-      },
-    }),
-  },
-}
-
 // Additive stubs used by the hardening tests: next/cache (revalidatePath), @vercel/blob (put) and lib/supabase/server
 // (the work-order print route takes its admin client from there).
 export const blobCalls: { name: string; contentType?: string; size: number }[] = []
@@ -86,7 +70,6 @@ M._load = function (request: string, parent: any, isMain: boolean) {
     }
     if (resolved === ADMIN_FILE) return adminStub
     if (resolved === SERVER_FILE) return serverStub
-    if (resolved === WEBHOOK_FILE) return webhookStub
     return originalLoad.call(this, resolved ?? mapped, parent, isMain)
   }
   return originalLoad.call(this, request, parent, isMain)

@@ -138,13 +138,6 @@ export async function POST(request: Request) {
       updatedCount++
     }
 
-    console.log(
-      "[v0] Inventory Audit: Completed. Items audited:",
-      auditRecords.length,
-      "Inventory updated:",
-      updatedCount,
-    )
-
     return NextResponse.json({
       success: true,
       message: `${auditRecords.length} audit records saved, ${updatedCount} inventory items updated`,

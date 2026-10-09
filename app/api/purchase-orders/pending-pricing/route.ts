@@ -51,11 +51,6 @@ export async function GET() {
 
       const lastPriceUpdate = item.products.price_updated_at
       if (lastPriceUpdate && po.cost_finalized_at && new Date(lastPriceUpdate) > new Date(po.cost_finalized_at)) {
-        console.log(
-          "[v0] Pending Pricing: Skipping",
-          item.products.product_name,
-          "- price already updated after cost finalization",
-        )
         continue
       }
 

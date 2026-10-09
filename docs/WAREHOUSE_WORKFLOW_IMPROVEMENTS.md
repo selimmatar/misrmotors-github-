@@ -347,8 +347,8 @@ These were discussed but not yet implemented:
 
 ## Files Modified
 
-1. ✅ `scripts/075_create_goods_receipt_tables.sql` - New tables
-2. ✅ `scripts/076_create_grn_number_function.sql` - GRN sequence
+1. ✅ `scripts/archive/075_create_goods_receipt_tables.sql` - New tables
+2. ✅ `scripts/archive/076_create_grn_number_function.sql` - GRN sequence
 3. ✅ `app/api/goods-receipts/route.ts` - New API endpoint
 4. ✅ `components/modules/inventory-audit-module.tsx` - Warehouse filter
 5. ✅ `components/modules/goods-receipt-module.tsx` - View PO PDF button

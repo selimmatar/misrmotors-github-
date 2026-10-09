@@ -105,9 +105,6 @@ export async function POST(request: NextRequest) {
       if (checkError) {
         console.error("Payment Schedules - Error checking existing schedules:", checkError.message)
       } else if (existing && existing.length > 0) {
-        console.log(
-          `[v0] Payment Schedules - Schedules already exist for ${entityType}=${entityId}, skipping creation (idempotent)`,
-        )
         return NextResponse.json(
           {
             message: "Payment schedules already exist",
@@ -255,24 +252,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const caller = request.headers.get("x-caller-context") || "unknown"
-    console.log(
-      `[v0] Payment Schedules - Creating ${schedules.length} schedules for ${entityType}=${entityId} (caller: ${caller})`,
-    )
-
     const { data, error } = await withRetry(() => supabase.from("payment_schedules").insert(schedules).select())
 
     if (error) {
       console.error("Payment Schedules POST error:", error.message)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-
-    console.log(
-      "[v0] Payment Schedules - Created",
-      schedules.length,
-      "schedules for",
-      invoiceId ? `invoice ${invoiceId}` : soId ? `SO ${soId}` : `PO ${poId}`,
-    )
 
     return NextResponse.json({
       message: "Payment schedules created successfully",
@@ -338,7 +323,6 @@ async function applySchedulePaymentToInvoice(
     return `Could not update the invoice: ${arUpdateError.message}`
   }
 
-  console.log("[v0] Payment Schedule - Updated AR invoice", arInvoice.invoice_id, "collected:", newCollectedAmount)
   return null
 }
 
