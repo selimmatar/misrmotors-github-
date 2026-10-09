@@ -4,7 +4,10 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useAppContext } from "@/lib/app-context"
+import { useI18n } from "@/lib/i18n-context"
+import { formatDate } from "@/lib/format"
+import { PageHeader } from "@/components/erp/page-header"
+import { StatusBadge } from "@/components/erp/status-badge"
 import { AlertCircle, CheckCircle, Eye, Download } from "lucide-react"
 
 interface GoodsReceipt {
@@ -30,7 +33,7 @@ interface GoodsReceipt {
 }
 
 export function GoodsReceiptTrackingModule() {
-  const { t } = useAppContext()
+  const { t, language } = useI18n()
   const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedReceipt, setSelectedReceipt] = useState<GoodsReceipt | null>(null)
@@ -57,21 +60,6 @@ export function GoodsReceiptTrackingModule() {
     (r) => filterStatus === "all" || r.status === filterStatus
   )
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "complete":
-        return "bg-green-100 text-green-800"
-      case "partial":
-        return "bg-yellow-100 text-yellow-800"
-      case "discrepancy":
-        return "bg-red-100 text-red-800"
-      case "pending":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
-
   const getDiscrepancyIcon = (type: string | null) => {
     if (!type) return null
     return <AlertCircle className="w-4 h-4 text-red-500" />
@@ -82,13 +70,12 @@ export function GoodsReceiptTrackingModule() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-2">Goods Receipt Tracking</h2>
-        <p className="text-muted-foreground">
-          View all received POs, discrepancies, and adjusted quantities
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        group={t("group.inventory")}
+        title={t("module.goods-receipt-tracking")}
+        subtitle="View all received POs, discrepancies, and adjusted quantities"
+      />
 
       {/* Filters */}
       <div className="flex gap-2">
@@ -131,9 +118,7 @@ export function GoodsReceiptTrackingModule() {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="font-semibold text-lg">{receipt.grnNumber}</h3>
-                    <Badge className={getStatusColor(receipt.status)}>
-                      {receipt.status.toUpperCase()}
-                    </Badge>
+                    <StatusBadge status={receipt.status} />
                     {receipt.lines.some((l) => l.discrepancyType) && (
                       <div className="flex items-center gap-1 text-red-600">
                         <AlertCircle className="w-4 h-4" />
@@ -150,7 +135,7 @@ export function GoodsReceiptTrackingModule() {
                     <div>
                       <span className="text-muted-foreground">Receipt Date</span>
                       <p className="font-medium">
-                        {new Date(receipt.receiptDate).toLocaleDateString()}
+                        {formatDate(receipt.receiptDate, language)}
                       </p>
                     </div>
                     <div>
@@ -181,7 +166,7 @@ export function GoodsReceiptTrackingModule() {
                     setSelectedReceipt(selectedReceipt?.id === receipt.id ? null : receipt)
                   }
                 >
-                  <Eye className="w-4 h-4 mr-1" />
+                  <Eye className="w-4 h-4 me-1" />
                   Details
                 </Button>
               </div>
