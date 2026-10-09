@@ -81,6 +81,7 @@ const STATUS_TONE: Record<string, StatusTone> = {
   low: "neutral",
   busy: "waiting",
   available: "done",
+  submitted: "waiting",
   // --- end PR 1c tones ---
 }
 
