@@ -40,6 +40,10 @@ import {
   TrendingDown,
 } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { formatDate } from "@/lib/format"
+import { PageHeader } from "@/components/erp/page-header"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { Money } from "@/components/erp/money"
 import type { UserRole } from "@/lib/types"
 
 interface HRManagementModuleProps {
@@ -94,7 +98,7 @@ interface Compensation {
 }
 
 export function HRManagementModule({ userRole }: HRManagementModuleProps) {
-  const { t, formatNumber, formatDate } = useI18n()
+  const { t, language } = useI18n()
   const [activeTab, setActiveTab] = useState("employees")
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -169,26 +173,6 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
     }
   }
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
-      case "active":
-        return "default"
-      case "on_leave":
-        return "secondary"
-      case "suspended":
-        return "destructive"
-      case "terminated":
-      case "resigned":
-        return "outline"
-      default:
-        return "secondary"
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    return status.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
-  }
-
   const filteredEmployees = employees.filter((emp) => {
     const matchesSearch =
       emp.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -252,45 +236,36 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-6 h-6" />
-                Human Resources Management
-              </CardTitle>
-              <CardDescription>
-                Manage employees, compensation, documents, and organizational structure
-              </CardDescription>
-            </div>
-            <Dialog open={showAddEmployeeDialog} onOpenChange={setShowAddEmployeeDialog}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <UserPlus className="w-4 h-4" />
-                  Add Employee
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Add New Employee</DialogTitle>
-                  <DialogDescription>Create a new employee record in the system</DialogDescription>
-                </DialogHeader>
-                <AddEmployeeForm
-                  departments={departments}
-                  positions={positions}
-                  onSuccess={() => {
-                    setShowAddEmployeeDialog(false)
-                    fetchEmployees()
-                  }}
-                  onCancel={() => setShowAddEmployeeDialog(false)}
-                />
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-      </Card>
+      <PageHeader
+        group={t("group.admin")}
+        title={t("module.hr-management")}
+        subtitle="Manage employees, compensation, documents, and organizational structure"
+        actions={
+      <Dialog open={showAddEmployeeDialog} onOpenChange={setShowAddEmployeeDialog}>
+        <DialogTrigger asChild>
+          <Button className="gap-2">
+            <UserPlus className="w-4 h-4" />
+            Add Employee
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add New Employee</DialogTitle>
+            <DialogDescription>Create a new employee record in the system</DialogDescription>
+          </DialogHeader>
+          <AddEmployeeForm
+            departments={departments}
+            positions={positions}
+            onSuccess={() => {
+              setShowAddEmployeeDialog(false)
+              fetchEmployees()
+            }}
+            onCancel={() => setShowAddEmployeeDialog(false)}
+          />
+        </DialogContent>
+      </Dialog>
+        }
+      />
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -317,13 +292,13 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                 <div className="space-y-2">
                   <Label htmlFor="search">Search</Label>
                   <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Search className="absolute start-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="search"
                       placeholder="Name, email, or employee number..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9"
+                      className="ps-9"
                     />
                   </div>
                 </div>
@@ -393,9 +368,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                                 <h3 className="text-lg font-semibold">{employee.full_name}</h3>
                                 <p className="text-sm text-muted-foreground">{employee.employee_number}</p>
                               </div>
-                              <Badge variant={getStatusBadgeVariant(employee.employment_status)}>
-                                {getStatusLabel(employee.employment_status)}
-                              </Badge>
+                              <StatusBadge status={employee.employment_status} />
                             </div>
 
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -425,7 +398,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
 
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                               <Calendar className="w-4 h-4" />
-                              <span>Hired: {formatDate(employee.hire_date)}</span>
+                              <span>Hired: {formatDate(employee.hire_date, language)}</span>
                             </div>
                           </div>
 
@@ -616,7 +589,7 @@ interface SalaryPayment {
 
 // Employee Details View Component
 function EmployeeDetailsView({ employee, compensation }: { employee: Employee; compensation: Compensation[] }) {
-  const { formatNumber, formatDate } = useI18n()
+  const { language } = useI18n()
   const activeCompensation = compensation.find((c) => c.is_active)
   const [salaryPayments, setSalaryPayments] = useState<SalaryPayment[]>([])
   const [loadingPayments, setLoadingPayments] = useState(true)
@@ -667,7 +640,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
           </div>
           <div>
             <Label className="text-muted-foreground">Hire Date</Label>
-            <p className="font-medium">{formatDate(employee.hire_date)}</p>
+            <p className="font-medium">{formatDate(employee.hire_date, language)}</p>
           </div>
           <div>
             <Label className="text-muted-foreground">Department</Label>
@@ -693,17 +666,17 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Current Compensation</CardTitle>
-              <CardDescription>Effective from {formatDate(activeCompensation.effective_date)}</CardDescription>
+              <CardDescription>Effective from {formatDate(activeCompensation.effective_date, language)}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Base Salary</Label>
-                  <p className="text-lg font-semibold">{formatNumber(activeCompensation.base_salary)} EGP</p>
+                  <p className="text-lg font-semibold"><Money value={activeCompensation.base_salary} /> EGP</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Gross Salary</Label>
-                  <p className="text-lg font-semibold text-primary">{formatNumber(activeCompensation.gross_salary)} EGP</p>
+                  <p className="text-lg font-semibold text-primary"><Money value={activeCompensation.gross_salary} /> EGP</p>
                 </div>
               </div>
 
@@ -712,19 +685,19 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Housing:</span>
-                    <span className="font-medium">{formatNumber(activeCompensation.housing_allowance)} EGP</span>
+                    <span className="font-medium"><Money value={activeCompensation.housing_allowance} /> EGP</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Transportation:</span>
-                    <span className="font-medium">{formatNumber(activeCompensation.transportation_allowance)} EGP</span>
+                    <span className="font-medium"><Money value={activeCompensation.transportation_allowance} /> EGP</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Meal:</span>
-                    <span className="font-medium">{formatNumber(activeCompensation.meal_allowance)} EGP</span>
+                    <span className="font-medium"><Money value={activeCompensation.meal_allowance} /> EGP</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Other:</span>
-                    <span className="font-medium">{formatNumber(activeCompensation.other_allowances)} EGP</span>
+                    <span className="font-medium"><Money value={activeCompensation.other_allowances} /> EGP</span>
                   </div>
                 </div>
               </div>
@@ -734,15 +707,15 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Social Insurance:</span>
-                    <span className="font-medium">{formatNumber(activeCompensation.social_insurance)} EGP</span>
+                    <span className="font-medium"><Money value={activeCompensation.social_insurance} /> EGP</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Income Tax:</span>
-                    <span className="font-medium">{formatNumber(activeCompensation.income_tax)} EGP</span>
+                    <span className="font-medium"><Money value={activeCompensation.income_tax} /> EGP</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Other:</span>
-                    <span className="font-medium">{formatNumber(activeCompensation.other_deductions)} EGP</span>
+                    <span className="font-medium"><Money value={activeCompensation.other_deductions} /> EGP</span>
                   </div>
                 </div>
               </div>
@@ -750,7 +723,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
               <div className="pt-4 border-t">
                 <div className="flex justify-between items-center">
                   <Label className="text-lg">Net Salary</Label>
-                  <p className="text-2xl font-bold text-primary">{formatNumber(activeCompensation.net_salary)} EGP</p>
+                  <p className="text-2xl font-bold text-primary"><Money value={activeCompensation.net_salary} /> EGP</p>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">Paid {activeCompensation.payment_frequency}</p>
               </div>
@@ -773,12 +746,12 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                 {compensation.slice(1).map((comp) => (
                   <div key={comp.compensation_id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div>
-                      <p className="font-medium">{formatNumber(comp.gross_salary)} EGP (Gross)</p>
+                      <p className="font-medium"><Money value={comp.gross_salary} /> EGP (Gross)</p>
                       <p className="text-sm text-muted-foreground">
-                        {formatDate(comp.effective_date)} {comp.is_active ? "(Current)" : ""}
+                        {formatDate(comp.effective_date, language)} {comp.is_active ? "(Current)" : ""}
                       </p>
                     </div>
-                    <Badge variant="outline">{formatNumber(comp.net_salary)} EGP Net</Badge>
+                    <Badge variant="outline"><Money value={comp.net_salary} /> EGP Net</Badge>
                   </div>
                 ))}
               </div>
@@ -859,7 +832,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <p className="font-semibold">
-                          {formatDate(payment.pay_period_start)} - {formatDate(payment.pay_period_end)}
+                          {formatDate(payment.pay_period_start, language)} - {formatDate(payment.pay_period_end, language)}
                         </p>
                         <Badge variant={
                           payment.payment_status === "paid" ? "default" :
@@ -870,12 +843,12 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Payment Date: {formatDate(payment.payment_date)}
+                        Payment Date: {formatDate(payment.payment_date, language)}
                         {payment.payment_method && ` | ${payment.payment_method.replace("_", " ")}`}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xl font-bold text-primary">{formatNumber(payment.net_amount)} EGP</p>
+                    <div className="text-end">
+                      <p className="text-xl font-bold text-primary"><Money value={payment.net_amount} /> EGP</p>
                       <p className="text-sm text-muted-foreground">Net Amount</p>
                     </div>
                   </div>
@@ -883,19 +856,19 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                   <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
                       <p className="text-muted-foreground">Base Salary</p>
-                      <p className="font-medium">{formatNumber(payment.base_salary)} EGP</p>
+                      <p className="font-medium"><Money value={payment.base_salary} /> EGP</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Allowances</p>
-                      <p className="font-medium">{formatNumber(payment.total_allowances)} EGP</p>
+                      <p className="font-medium"><Money value={payment.total_allowances} /> EGP</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Deductions</p>
-                      <p className="font-medium text-destructive">-{formatNumber(payment.total_deductions)} EGP</p>
+                      <p className="font-medium text-destructive">-<Money value={payment.total_deductions} /> EGP</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Gross Amount</p>
-                      <p className="font-medium">{formatNumber(payment.gross_amount)} EGP</p>
+                      <p className="font-medium"><Money value={payment.gross_amount} /> EGP</p>
                     </div>
                   </div>
 
@@ -906,7 +879,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                         {payment.bonus_amount > 0 && (
                           <div>
                             <p className="text-muted-foreground">Bonus</p>
-                            <p className="font-medium text-green-600">+{formatNumber(payment.bonus_amount)} EGP</p>
+                            <p className="font-medium text-green-600">+<Money value={payment.bonus_amount} /> EGP</p>
                             {payment.bonus_description && (
                               <p className="text-xs text-muted-foreground">{payment.bonus_description}</p>
                             )}
@@ -915,14 +888,14 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                         {payment.overtime_amount > 0 && (
                           <div>
                             <p className="text-muted-foreground">Overtime ({payment.overtime_hours}h)</p>
-                            <p className="font-medium text-green-600">+{formatNumber(payment.overtime_amount)} EGP</p>
+                            <p className="font-medium text-green-600">+<Money value={payment.overtime_amount} /> EGP</p>
                           </div>
                         )}
                         {payment.adjustments !== 0 && (
                           <div>
                             <p className="text-muted-foreground">Adjustments</p>
                             <p className={`font-medium ${payment.adjustments > 0 ? "text-green-600" : "text-destructive"}`}>
-                              {payment.adjustments > 0 ? "+" : ""}{formatNumber(payment.adjustments)} EGP
+                              {payment.adjustments > 0 ? "+" : ""}<Money value={payment.adjustments} /> EGP
                             </p>
                             {payment.adjustment_notes && (
                               <p className="text-xs text-muted-foreground">{payment.adjustment_notes}</p>
@@ -1462,11 +1435,11 @@ function AddSalaryPaymentForm({
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Gross Amount:</span>
-            <span className="font-semibold">{calculateGross().toLocaleString()} EGP</span>
+            <span className="font-semibold"><Money value={calculateGross()} /> EGP</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Net Amount:</span>
-            <span className="font-bold text-primary">{calculateNet().toLocaleString()} EGP</span>
+            <span className="font-bold text-primary"><Money value={calculateNet()} /> EGP</span>
           </div>
         </div>
       </div>
@@ -1485,7 +1458,7 @@ function AddSalaryPaymentForm({
 
 // Employee Documents Tab Component
 function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
-  const { formatDate } = useI18n()
+  const { language } = useI18n()
   const [documents, setDocuments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -1693,7 +1666,7 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
                   <p className="font-medium">{doc.document_name}</p>
                   <p className="text-sm text-muted-foreground">
                     {doc.document_type.replace("_", " ")} | {doc.file_size_kb} KB
-                    {doc.document_date && ` | ${formatDate(doc.document_date)}`}
+                    {doc.document_date && ` | ${formatDate(doc.document_date, language)}`}
                   </p>
                 </div>
               </div>

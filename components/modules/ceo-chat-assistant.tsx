@@ -20,6 +20,8 @@ import {
   Clock,
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { useI18n } from "@/lib/i18n-context"
+import { PageHeader } from "@/components/erp/page-header"
 
 interface Message {
   id: string
@@ -28,6 +30,7 @@ interface Message {
 }
 
 export function CEOChatAssistant() {
+  const { t } = useI18n()
   const [mounted, setMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
@@ -208,6 +211,8 @@ export function CEOChatAssistant() {
   }
 
   return (
+    <>
+      <PageHeader group={t("group.overview")} title={t("module.ceo-chat")} className="mb-6" />
     <div className="flex flex-col h-[calc(100vh-12rem)] max-h-[800px] bg-gradient-to-b from-background to-muted/20 rounded-2xl border shadow-sm overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 px-6 py-4 border-b bg-background/80 backdrop-blur-sm">
@@ -216,7 +221,6 @@ export function CEOChatAssistant() {
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h2 className="font-semibold text-lg">AI Business Advisor</h2>
             <p className="text-xs text-muted-foreground">Powered by Gemini with live data access</p>
           </div>
         </div>
@@ -231,8 +235,8 @@ export function CEOChatAssistant() {
               <AlertTitle className="text-amber-800 dark:text-amber-400 text-sm">API Key Required</AlertTitle>
               <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs">
                 Add GEMINI_API_KEY in the Vars section to enable AI features.
-                <Button variant="ghost" size="sm" className="ml-2 h-6 text-xs" onClick={handleRetry}>
-                  <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                <Button variant="ghost" size="sm" className="ms-2 h-6 text-xs" onClick={handleRetry}>
+                  <RefreshCw className="h-3 w-3 me-1" /> Retry
                 </Button>
               </AlertDescription>
             </Alert>
@@ -243,8 +247,8 @@ export function CEOChatAssistant() {
               <AlertTitle className="text-blue-800 dark:text-blue-400 text-sm">Service Unavailable</AlertTitle>
               <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
                 {chatError}
-                <Button variant="ghost" size="sm" className="ml-2 h-6 text-xs" onClick={handleRetry}>
-                  <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                <Button variant="ghost" size="sm" className="ms-2 h-6 text-xs" onClick={handleRetry}>
+                  <RefreshCw className="h-3 w-3 me-1" /> Retry
                 </Button>
               </AlertDescription>
             </Alert>
@@ -255,7 +259,7 @@ export function CEOChatAssistant() {
               <AlertDescription className="text-xs flex items-center justify-between">
                 <span>{chatError}</span>
                 <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={handleRetry}>
-                  <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                  <RefreshCw className="h-3 w-3 me-1" /> Retry
                 </Button>
               </AlertDescription>
             </Alert>
@@ -294,7 +298,7 @@ export function CEOChatAssistant() {
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+                className={`flex gap-3 ${message.role === "user" ? "[flex-direction:row-reverse]" : ""}`}
               >
                 {/* Avatar */}
                 <div
@@ -313,8 +317,8 @@ export function CEOChatAssistant() {
                 <div
                   className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
                     message.role === "user"
-                      ? "bg-primary text-primary-foreground rounded-tr-sm"
-                      : "bg-muted rounded-tl-sm"
+                      ? "bg-primary text-primary-foreground rounded-se-sm"
+                      : "bg-muted rounded-ss-sm"
                   }`}
                 >
                   {message.content ? (
@@ -368,5 +372,6 @@ export function CEOChatAssistant() {
         </form>
       </div>
     </div>
+    </>
   )
 }
