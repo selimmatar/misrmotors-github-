@@ -1,7 +1,7 @@
 "use client"
 
 import { useI18n } from "@/lib/i18n-context"
-import { formatEnum } from "@/lib/format"
+import { statusLabel } from "@/lib/format"
 import { statusTone, type StatusTone } from "@/lib/status-tone"
 import { cn } from "@/lib/utils"
 
@@ -15,7 +15,7 @@ const TONE_CLASS: Record<StatusTone, string> = {
   danger: "bg-tone-danger-bg text-tone-danger",
 }
 
-export function StatusBadge({ status, className }: { status: string | null | undefined; className?: string }) {
+export function StatusBadge({ status, label, className }: { status: string | null | undefined; label?: string; className?: string }) {
   const { t } = useI18n()
   const tone = statusTone(status)
   return (
@@ -27,7 +27,7 @@ export function StatusBadge({ status, className }: { status: string | null | und
         className,
       )}
     >
-      {formatEnum(status, t)}
+      {label ?? statusLabel(status, t)}
     </span>
   )
 }
