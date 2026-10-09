@@ -1,12 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useIsMobile } from "@/components/ui/use-mobile"
+import { ErpTable, NumCell, NumHead } from "@/components/erp/data-table"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { PageHeader } from "@/components/erp/page-header"
+import { ListCard, ResponsiveList } from "@/components/erp/responsive-list"
+import { StatusBadge } from "@/components/erp/status-badge"
 import { useI18n } from "@/lib/i18n-context"
 import {
   TrendingUp,
@@ -16,7 +22,6 @@ import {
   CheckCircle,
   AlertTriangle,
   Package,
-  Calculator,
   ArrowRight,
   Truck,
 } from "lucide-react"
@@ -58,6 +63,7 @@ interface SuggestionSummary {
 
 export function ReorderSuggestionsModule() {
   const { t, formatNumber, language } = useI18n()
+  const isMobile = useIsMobile()
   const [suggestions, setSuggestions] = useState<ReorderSuggestion[]>([])
   const [summary, setSummary] = useState<SuggestionSummary | null>(null)
   const [loading, setLoading] = useState(false)
@@ -175,22 +181,14 @@ export function ReorderSuggestionsModule() {
     }
   }
 
-  const getUrgencyBadge = (urgency: string) => {
+  const getUrgencyLabel = (urgency: string) => {
     switch (urgency) {
       case "low_stock":
-        return <Badge variant="destructive">{t("inventory.low-stock")}</Badge>
+        return t("inventory.low-stock")
       case "near_reorder":
-        return (
-          <Badge variant="secondary" className="bg-amber-100 text-amber-800">
-            {t("reorder.near-reorder")}
-          </Badge>
-        )
+        return t("reorder.near-reorder")
       default:
-        return (
-          <Badge variant="outline" className="text-green-600 border-green-600">
-            {t("reorder.healthy")}
-          </Badge>
-        )
+        return t("reorder.healthy")
     }
   }
 
@@ -207,66 +205,79 @@ export function ReorderSuggestionsModule() {
 
   const filteredSuggestions = getFilteredSuggestions()
 
+  const renderUrgencyBadge = (item: ReorderSuggestion) => (
+    <StatusBadge status={item.urgency} label={getUrgencyLabel(item.urgency)} />
+  )
+
+  // The select-all checkbox: in the table head on desktop, above the card list on phones (one branch mounts).
+  const selectAllCheckbox = (
+    <Checkbox
+      checked={filteredSuggestions.length > 0 && filteredSuggestions.every((s) => selectedItems.has(s.productId))}
+      onCheckedChange={handleSelectAll}
+    />
+  )
+
+  const renderRowCheckbox = (item: ReorderSuggestion) => (
+    <Checkbox
+      checked={selectedItems.has(item.productId)}
+      onCheckedChange={(checked) => handleSelectItem(item.productId, checked as boolean)}
+    />
+  )
+
+  const renderCustomInput = (item: ReorderSuggestion) => (
+    <Input
+      type="number"
+      className="w-20 h-8 text-end"
+      value={customValues[item.productId] || item.suggestedReorderPoint}
+      onChange={(e) => handleCustomValueChange(item.productId, e.target.value)}
+      min={1}
+    />
+  )
+
+  // Every checkbox and input of a row, for the phone card.
+  const renderRowActions = (item: ReorderSuggestion) => (
+    <>
+      {renderRowCheckbox(item)}
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        {t("reorder.new-value")}
+        {renderCustomInput(item)}
+      </label>
+    </>
+  )
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-              <Calculator className="h-6 w-6" />
-              {t("reorder.title")}
-            </h2>
-            <p className="text-muted-foreground">{t("reorder.description")}</p>
-          </div>
-          <Button onClick={fetchSuggestions} disabled={loading} variant="outline">
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            {t("reorder.recalculate")}
-          </Button>
-        </div>
+        <PageHeader
+          group={t("group.inventory")}
+          title={t("reorder.title")}
+          subtitle={t("reorder.description")}
+          actions={
+            <Button onClick={fetchSuggestions} disabled={loading} variant="outline">
+              <RefreshCw className={`h-4 w-4 me-2 ${loading ? "animate-spin" : ""}`} />
+              {t("reorder.recalculate")}
+            </Button>
+          }
+        />
 
         {/* Summary Cards */}
         {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>{t("reorder.total-products")}</CardDescription>
-                <CardTitle className="text-2xl">{formatNumber(summary.totalProducts)}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>{t("reorder.needs-update")}</CardDescription>
-                <CardTitle className="text-2xl text-amber-600">{formatNumber(summary.needsUpdate)}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>{t("inventory.low-stock")}</CardDescription>
-                <CardTitle className="text-2xl text-red-600">{formatNumber(summary.lowStock)}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>{t("reorder.avg-daily-demand")}</CardDescription>
-                <CardTitle className="text-2xl">{formatNumber(summary.averageDailyDemand)}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>{t("reorder.avg-lead-time")}</CardDescription>
-                <CardTitle className="text-2xl">
-                  {formatNumber(summary.averageLeadTime || 14)} {t("time.days")}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          </div>
+          <KpiGrid>
+            <KpiTile label={t("reorder.total-products")} value={formatNumber(summary.totalProducts)} />
+            <KpiTile label={t("reorder.needs-update")} value={formatNumber(summary.needsUpdate)} />
+            <KpiTile label={t("inventory.low-stock")} value={formatNumber(summary.lowStock)} />
+            <KpiTile label={t("reorder.avg-daily-demand")} value={formatNumber(summary.averageDailyDemand)} />
+            <KpiTile
+              label={t("reorder.avg-lead-time")}
+              value={`${formatNumber(summary.averageLeadTime || 14)} ${t("time.days")}`}
+            />
+          </KpiGrid>
         )}
 
         {/* Filters and Actions */}
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex max-sm:flex-col justify-between max-sm:items-start items-center gap-4">
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant={filterUrgency === "all" ? "default" : "outline"}
@@ -280,7 +291,7 @@ export function ReorderSuggestionsModule() {
                   size="sm"
                   onClick={() => setFilterUrgency("low_stock")}
                 >
-                  <AlertTriangle className="h-4 w-4 mr-1" />
+                  <AlertTriangle className="h-4 w-4 me-1" />
                   {t("inventory.low-stock")}
                 </Button>
                 <Button
@@ -295,10 +306,10 @@ export function ReorderSuggestionsModule() {
                   size="sm"
                   onClick={() => setFilterUrgency("healthy")}
                 >
-                  <CheckCircle className="h-4 w-4 mr-1" />
+                  <CheckCircle className="h-4 w-4 me-1" />
                   {t("reorder.healthy")}
                 </Button>
-                <label className="flex items-center gap-2 ml-4">
+                <label className="flex items-center gap-2 ms-4">
                   <Checkbox
                     checked={showOnlyNeedsUpdate}
                     onCheckedChange={(checked) => setShowOnlyNeedsUpdate(checked as boolean)}
@@ -308,9 +319,9 @@ export function ReorderSuggestionsModule() {
               </div>
               <Button onClick={handleApplySelected} disabled={selectedItems.size === 0 || applying}>
                 {applying ? (
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  <RefreshCw className="h-4 w-4 me-2 animate-spin" />
                 ) : (
-                  <CheckCircle className="h-4 w-4 mr-2" />
+                  <CheckCircle className="h-4 w-4 me-2" />
                 )}
                 {t("reorder.apply-selected")} ({formatNumber(selectedItems.size)})
               </Button>
@@ -320,113 +331,125 @@ export function ReorderSuggestionsModule() {
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-                <span className="ml-2 text-muted-foreground">{t("reorder.analyzing")}</span>
+                <span className="ms-2 text-muted-foreground">{t("reorder.analyzing")}</span>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[50px]">
-                        <Checkbox
-                          checked={
-                            filteredSuggestions.length > 0 &&
-                            filteredSuggestions.every((s) => selectedItems.has(s.productId))
-                          }
-                          onCheckedChange={handleSelectAll}
-                        />
-                      </TableHead>
-                      <TableHead>{t("field.product")}</TableHead>
-                      <TableHead>{t("field.supplier")}</TableHead>
-                      <TableHead className="text-center">{t("field.status")}</TableHead>
-                      <TableHead className="text-center">{t("reorder.trend")}</TableHead>
-                      <TableHead className="text-right">{t("reorder.current-qty")}</TableHead>
-                      <TableHead className="text-right">{t("reorder.current-rop")}</TableHead>
-                      <TableHead className="text-right">{t("reorder.suggested-rop")}</TableHead>
-                      <TableHead className="text-right">{t("reorder.new-value")}</TableHead>
-                      <TableHead className="text-right">{t("reorder.daily-demand")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredSuggestions.map((item) => (
-                      <TableRow key={item.productId} className={item.needsUpdate ? "bg-amber-50/50" : ""}>
-                        <TableCell>
-                          <Checkbox
-                            checked={selectedItems.has(item.productId)}
-                            onCheckedChange={(checked) => handleSelectItem(item.productId, checked as boolean)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Package className="h-4 w-4 text-muted-foreground" />
-                            <div>
-                              <div className="font-medium">{item.productName}</div>
-                              <div className="text-xs text-muted-foreground">{item.sku}</div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Truck className="h-4 w-4 text-muted-foreground" />
-                            <div>
-                              <div className="text-sm">{item.supplierName}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {formatNumber(item.leadTimeDays)} {t("reorder.days-lead-time")}
+              <div className="space-y-3">
+                {isMobile && filteredSuggestions.length > 0 && (
+                  <label className="flex items-center gap-2 text-sm">
+                    {selectAllCheckbox}
+                    <span>Select all</span>
+                  </label>
+                )}
+                <ResponsiveList
+                  rows={filteredSuggestions}
+                  empty={<div className="py-8 text-center text-muted-foreground">{t("reorder.no-items")}</div>}
+                  table={
+                    <ErpTable>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[50px]">{selectAllCheckbox}</TableHead>
+                          <TableHead>{t("field.product")}</TableHead>
+                          <TableHead>{t("field.supplier")}</TableHead>
+                          <TableHead className="text-center">{t("field.status")}</TableHead>
+                          <TableHead className="text-center">{t("reorder.trend")}</TableHead>
+                          <NumHead>{t("reorder.current-qty")}</NumHead>
+                          <NumHead>{t("reorder.current-rop")}</NumHead>
+                          <NumHead>{t("reorder.suggested-rop")}</NumHead>
+                          <NumHead>{t("reorder.new-value")}</NumHead>
+                          <NumHead>{t("reorder.daily-demand")}</NumHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredSuggestions.map((item) => (
+                          <TableRow key={item.productId} className={item.needsUpdate ? "bg-amber-50/50" : ""}>
+                            <TableCell>{renderRowCheckbox(item)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Package className="h-4 w-4 text-muted-foreground" />
+                                <div>
+                                  <div className="font-medium">{item.productName}</div>
+                                  <div className="text-xs text-muted-foreground">{item.sku}</div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">{getUrgencyBadge(item.urgency)}</TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-1">
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Truck className="h-4 w-4 text-muted-foreground" />
+                                <div>
+                                  <div className="text-sm">{item.supplierName}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {formatNumber(item.leadTimeDays)} {t("reorder.days-lead-time")}
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">{renderUrgencyBadge(item)}</TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                {getTrendIcon(item.demandTrend)}
+                                <span className="text-xs">{getTrendLabel(item.demandTrend)}</span>
+                              </div>
+                            </TableCell>
+                            <NumCell>
+                              <span
+                                className={
+                                  item.currentQuantity <= item.currentReorderPoint ? "text-red-600 font-semibold" : ""
+                                }
+                              >
+                                {formatNumber(item.currentQuantity)}
+                              </span>
+                            </NumCell>
+                            <NumCell>{formatNumber(item.currentReorderPoint)}</NumCell>
+                            <NumCell>
+                              <div className="flex items-center justify-end gap-2">
+                                <span className="font-semibold">{formatNumber(item.suggestedReorderPoint)}</span>
+                                {item.difference !== 0 && (
+                                  <Badge variant={item.difference > 0 ? "default" : "secondary"} className="text-xs">
+                                    {item.difference > 0 ? "+" : ""}
+                                    {formatNumber(item.percentChange)}%
+                                  </Badge>
+                                )}
+                              </div>
+                            </NumCell>
+                            <NumCell>{renderCustomInput(item)}</NumCell>
+                            <NumCell>
+                              {formatNumber(item.dailyDemand)} / {t("reorder.day")}
+                            </NumCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </ErpTable>
+                  }
+                  card={(item) => (
+                    <ListCard
+                      id={item.productName}
+                      party={item.supplierName}
+                      status={renderUrgencyBadge(item)}
+                      note={
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
                             {getTrendIcon(item.demandTrend)}
-                            <span className="text-xs">{getTrendLabel(item.demandTrend)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <span
-                            className={
-                              item.currentQuantity <= item.currentReorderPoint ? "text-red-600 font-semibold" : ""
-                            }
-                          >
-                            {formatNumber(item.currentQuantity)}
+                            {getTrendLabel(item.demandTrend)}
                           </span>
-                        </TableCell>
-                        <TableCell className="text-right">{formatNumber(item.currentReorderPoint)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <span className="font-semibold">{formatNumber(item.suggestedReorderPoint)}</span>
-                            {item.difference !== 0 && (
-                              <Badge variant={item.difference > 0 ? "default" : "secondary"} className="text-xs">
-                                {item.difference > 0 ? "+" : ""}
-                                {formatNumber(item.percentChange)}%
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            type="number"
-                            className="w-20 h-8 text-right"
-                            value={customValues[item.productId] || item.suggestedReorderPoint}
-                            onChange={(e) => handleCustomValueChange(item.productId, e.target.value)}
-                            min={1}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatNumber(item.dailyDemand)} / {t("reorder.day")}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredSuggestions.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
-                          {t("reorder.no-items")}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                          <span>
+                            {t("reorder.current-qty")}: {formatNumber(item.currentQuantity)}
+                          </span>
+                          <span>
+                            {t("reorder.current-rop")}: {formatNumber(item.currentReorderPoint)}
+                          </span>
+                          <span>
+                            {t("reorder.suggested-rop")}: {formatNumber(item.suggestedReorderPoint)}
+                          </span>
+                          <span>
+                            {t("reorder.daily-demand")}: {formatNumber(item.dailyDemand)} / {t("reorder.day")}
+                          </span>
+                        </div>
+                      }
+                      actions={renderRowActions(item)}
+                    />
+                  )}
+                />
               </div>
             )}
           </CardContent>
