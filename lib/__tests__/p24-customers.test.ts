@@ -3,7 +3,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { areaFindings, allowed, CHECKS, type Check } from "./a11y-scan"
 
-const TODO: string | false = "Task 3"
+const TODO: string | false = false
 const ALLOW: Partial<Record<Check, Record<string, number>>> = {}
 const F = areaFindings("customers")
 for (const c of CHECKS) test(`customers: ${c}`, { todo: TODO }, () => assert.deepEqual(allowed(F[c], ALLOW[c] ?? {}), [], c))

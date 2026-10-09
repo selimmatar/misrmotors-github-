@@ -184,8 +184,8 @@ export function LostSalesModule() {
   }
 
   const renderRowActions = (sale: any) => (
-    <Button variant="ghost" size="sm" onClick={() => handleDelete(sale.lost_sale_id)}>
-      <Trash2 className="w-4 h-4 text-red-500" />
+    <Button variant="ghost" size="sm" aria-label={`${t("action.delete")} ${sale.product_name || sale.customer_name || ""}`.trim()} onClick={() => handleDelete(sale.lost_sale_id)}>
+      <Trash2 className="w-4 h-4 text-red-700" />
     </Button>
   )
 
