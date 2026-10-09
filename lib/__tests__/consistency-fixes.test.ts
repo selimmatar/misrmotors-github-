@@ -148,7 +148,9 @@ test("suppliers tab sums every AP invoice per order and measures paid status on 
   const fs = require("node:fs") as typeof import("node:fs")
   const src = fs.readFileSync(require("node:path").join(process.env.REPO_ROOT || "", "components/modules/supplier-module.tsx"), "utf8")
   assert.match(src, /\(invoiceMap\[inv\.poId\] \|\|= \[\]\)\.push\(inv\)/)
-  assert.match(src, /const totalAmount = Math\.max\(Number\(order\.total\) \|\| 0, invoiced\)/)
+  // the ORDER total is the target: historical duplicate AP rows (each for the full total) must not double it
+  assert.match(src, /const totalAmount = Number\(order\.total\) \|\| invoiced/)
+  assert.doesNotMatch(src, /Math\.max\(Number\(order\.total\) \|\| 0, invoiced\)/)
   assert.match(src, /\} else if \(paidC < totalC\) \{\s*status = "partially_paid"/)
   assert.doesNotMatch(src, /monthsPaid > 0 && monthsPaid < totalMonths/)
 })
