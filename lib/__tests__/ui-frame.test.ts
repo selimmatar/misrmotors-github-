@@ -3,6 +3,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
+import { RTL_BAD } from "./module-guard"
 
 const REPO = process.env.REPO_ROOT || path.resolve(__dirname, "..", "..", "..", "..")
 const read = (f: string) => fs.readFileSync(path.join(REPO, f), "utf8")
@@ -20,11 +21,9 @@ const FRAME_FILES: string[] = [
   "components/auth/login-page.tsx",
 ]
 
-const BAD = /(?<![\w-])(?:(?:ml|mr|pl|pr|left|right)-[\w[]|text-(?:left|right)\b|(?:border|rounded)-[lr]\b|flex-row\b)/
-// catches border-r and border-r-2; ignores border-red-500, side="left", aria-* and ms-/me-/start-/end-
 test("RTL: logical classes only", () => {
   for (const f of FRAME_FILES) for (const [n, line] of read(f).split("\n").entries())
-    assert.doesNotMatch(line, BAD, `${f}:${n + 1}`)
+    assert.doesNotMatch(line, RTL_BAD, `${f}:${n + 1}`)
 })
 
 test("approval and table keys exist in EN and AR", () => {
