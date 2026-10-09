@@ -2,7 +2,7 @@
   "task": "t3",
   "modules": {
     "components/modules/inventory-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/categories",
@@ -37,10 +37,20 @@
         "iso": 0,
         "t": 86,
         "onClick": 22
-      }
+      },
+      "must": [
+        {
+          "re": "<ResponsiveList",
+          "min": 4
+        },
+        {
+          "re": "<KpiTile",
+          "min": 4
+        }
+      ]
     },
     "components/modules/inventory-audit-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/inventory/audit",
@@ -56,7 +66,16 @@
         "iso": 0,
         "t": 21,
         "onClick": 1
-      }
+      },
+      "must": [
+        {
+          "re": "<ResponsiveList"
+        },
+        {
+          "re": "<KpiTile",
+          "min": 3
+        }
+      ]
     }
   }
 }

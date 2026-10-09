@@ -3,10 +3,16 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
+import { ErpTable, NumHead, NumCell, IdCell } from "@/components/erp/data-table"
+import { TableBody, TableCell, TableHeader, TableRow, TableHead } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ClipboardCheck, Save, Loader2, AlertTriangle, CheckCircle, Warehouse } from "lucide-react"
+import { Save, Loader2, AlertTriangle, CheckCircle, Warehouse } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
 import { useAppContext } from "@/lib/app-context"
 import type { UserRole } from "@/lib/types"
@@ -104,23 +110,11 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
     if (diff === null) return "-"
 
     if (diff > 0) {
-      return (
-        <Badge variant="default" className="bg-green-500">
-          +{formatNumber(diff)} ({t("inventory-audit.over")})
-        </Badge>
-      )
+      return <StatusBadge status="over" label={`+${formatNumber(diff)} (${t("inventory-audit.over")})`} />
     } else if (diff < 0) {
-      return (
-        <Badge variant="destructive">
-          {formatNumber(diff)} ({t("inventory-audit.short")})
-        </Badge>
-      )
+      return <StatusBadge status="short" label={`${formatNumber(diff)} (${t("inventory-audit.short")})`} />
     }
-    return (
-      <Badge variant="secondary">
-        {formatNumber(0)} ({t("inventory-audit.match")})
-      </Badge>
-    )
+    return <StatusBadge status="match" label={`${formatNumber(0)} (${t("inventory-audit.match")})`} />
   }
 
   const handleSaveAdjustments = async () => {
@@ -175,6 +169,34 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
     (item) => item.physicalCount !== null && item.physicalCount !== item.quantity,
   ).length
 
+  // The physical-count and notes inputs: one element each, used by the table cells and the phone card.
+  const countInput = (item: InventoryAuditItem) => (
+    <Input
+      type="number"
+      min="0"
+      className="w-24"
+      placeholder={t("inventory-audit.enter-count")}
+      value={item.physicalCount === null ? "" : item.physicalCount}
+      onChange={(e) => handlePhysicalCountChange(item.product_id, e.target.value)}
+      dir="ltr"
+    />
+  )
+  const notesInput = (item: InventoryAuditItem) => (
+    <Input
+      type="text"
+      className="w-48"
+      placeholder={t("inventory-audit.enter-notes")}
+      value={item.notes}
+      onChange={(e) => handleNotesChange(item.product_id, e.target.value)}
+    />
+  )
+  const renderRowActions = (item: InventoryAuditItem) => (
+    <>
+      {countInput(item)}
+      {notesInput(item)}
+    </>
+  )
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -185,54 +207,23 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <ClipboardCheck className="w-8 h-8" />
-            {t("inventory-audit.title")}
-          </h1>
-          <p className="text-muted-foreground mt-1">{t("inventory-audit.description")}</p>
-        </div>
-        <Button onClick={handleSaveAdjustments} disabled={saving || countedItems === 0}>
-          {saving ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Save className="w-4 h-4 me-2" />}
-          {t("inventory-audit.save-adjustments")}
-        </Button>
-      </div>
+      <PageHeader
+        group={t("group.inventory")}
+        title={t("inventory-audit.title")}
+        subtitle={t("inventory-audit.description")}
+        actions={
+          <Button onClick={handleSaveAdjustments} disabled={saving || countedItems === 0}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Save className="w-4 h-4 me-2" />}
+            {t("inventory-audit.save-adjustments")}
+          </Button>
+        }
+      />
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("inventory-audit.total-products")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(inventoryItems.length)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("inventory-audit.items-counted")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{formatNumber(countedItems)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {t("inventory-audit.discrepancies")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{formatNumber(discrepancyItems)}</div>
-          </CardContent>
-        </Card>
-      </div>
+      <KpiGrid>
+        <KpiTile label={t("inventory-audit.total-products")} value={formatNumber(inventoryItems.length)} />
+        <KpiTile label={t("inventory-audit.items-counted")} value={formatNumber(countedItems)} />
+        <KpiTile label={t("inventory-audit.discrepancies")} value={formatNumber(discrepancyItems)} />
+      </KpiGrid>
 
       {/* Messages */}
       {error && (
@@ -251,7 +242,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
       {/* Audit Table */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle>{t("inventory-audit.audit-table")}</CardTitle>
               <CardDescription>{t("inventory-audit.audit-table-description")}</CardDescription>
@@ -275,57 +266,51 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-start p-3 font-medium">{t("product.name")}</th>
-                  <th className="text-start p-3 font-medium">{t("product.sku")}</th>
-                  <th className="text-start p-3 font-medium">Warehouse</th>
-                  <th className="text-start p-3 font-medium">{t("inventory-audit.system-quantity")}</th>
-                  <th className="text-start p-3 font-medium">{t("inventory-audit.physical-count")}</th>
-                  <th className="text-start p-3 font-medium">{t("inventory-audit.difference")}</th>
-                  <th className="text-start p-3 font-medium">{t("inventory-audit.notes")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems.map((item) => (
-                  <tr key={`${item.product_id}-${item.warehouse_id}`} className="border-b hover:bg-muted/50">
-                    <td className="p-3 font-medium">{item.productName}</td>
-                    <td className="p-3 text-muted-foreground">{item.sku}</td>
-                    <td className="p-3">
-                      <Badge variant="outline" className="gap-1">
-                        <Warehouse className="w-3 h-3" />
-                        {item.warehouse_name || "Default"}
-                      </Badge>
-                    </td>
-                    <td className="p-3">{formatNumber(item.quantity)}</td>
-                    <td className="p-3">
-                      <Input
-                        type="number"
-                        min="0"
-                        className="w-24"
-                        placeholder={t("inventory-audit.enter-count")}
-                        value={item.physicalCount === null ? "" : item.physicalCount}
-                        onChange={(e) => handlePhysicalCountChange(item.product_id, e.target.value)}
-                        dir="ltr"
-                      />
-                    </td>
-                    <td className="p-3">{getDifferenceDisplay(item.quantity, item.physicalCount)}</td>
-                    <td className="p-3">
-                      <Input
-                        type="text"
-                        className="w-48"
-                        placeholder={t("inventory-audit.enter-notes")}
-                        value={item.notes}
-                        onChange={(e) => handleNotesChange(item.product_id, e.target.value)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveList
+            rows={filteredItems}
+            table={
+              <ErpTable>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("product.name")}</TableHead>
+                    <TableHead>{t("product.sku")}</TableHead>
+                    <TableHead>Warehouse</TableHead>
+                    <NumHead>{t("inventory-audit.system-quantity")}</NumHead>
+                    <TableHead>{t("inventory-audit.physical-count")}</TableHead>
+                    <TableHead>{t("inventory-audit.difference")}</TableHead>
+                    <TableHead>{t("inventory-audit.notes")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredItems.map((item) => (
+                    <TableRow key={`${item.product_id}-${item.warehouse_id}`}>
+                      <IdCell>{item.productName}</IdCell>
+                      <TableCell className="text-muted-foreground">{item.sku}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="gap-1">
+                          <Warehouse className="w-3 h-3" />
+                          {item.warehouse_name || "Default"}
+                        </Badge>
+                      </TableCell>
+                      <NumCell>{formatNumber(item.quantity)}</NumCell>
+                      <TableCell>{countInput(item)}</TableCell>
+                      <TableCell>{getDifferenceDisplay(item.quantity, item.physicalCount)}</TableCell>
+                      <TableCell>{notesInput(item)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </ErpTable>
+            }
+            card={(item) => (
+              <ListCard
+                id={item.productName}
+                party={`${item.sku} · ${item.warehouse_name || "Default"}`}
+                status={getDifferenceDisplay(item.quantity, item.physicalCount)}
+                note={`${t("inventory-audit.system-quantity")}: ${formatNumber(item.quantity)}`}
+                actions={renderRowActions(item)}
+              />
+            )}
+          />
         </CardContent>
       </Card>
     </div>
