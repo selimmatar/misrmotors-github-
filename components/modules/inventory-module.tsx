@@ -196,9 +196,6 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
       // Only show sold if DP status is SUBMITTED_SIGNED or APPROVED
       if (dpStatus === "SUBMITTED_SIGNED" || dpStatus === "APPROVED") {
-        console.log(
-          `[v0] Inventory Sold - DP ${dp.permitNo || dp.permit_no}: status = ${dpStatus}, DP ID = ${dp.id}, Sold Date = ${dp.submittedSignedAt || dp.approvedAt || dp.createdAt}`,
-        )
 
         const so = salesOrders.find(
           (s) =>

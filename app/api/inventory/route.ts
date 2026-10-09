@@ -192,14 +192,6 @@ export async function PUT(request: Request) {
       }
 
       const newQuantity = existing.quantity + body.quantity_increment
-      console.log(
-        "[v0] Inventory PUT: Incrementing quantity from",
-        existing.quantity,
-        "by",
-        body.quantity_increment,
-        "to",
-        newQuantity,
-      )
 
       const updates: any = {
         quantity: newQuantity,

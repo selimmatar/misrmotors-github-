@@ -755,22 +755,6 @@ export async function PUT(request: Request) {
           { status: 500 },
         )
       }
-
-      // Notify only on the first successful approval; a notification failure must not fail a committed approval.
-      if (approving && typeof window === "undefined") {
-        try {
-          const { WebhookService } = await import("@/lib/webhook-service")
-          const webhookService = WebhookService.getInstance()
-          await webhookService.trigger("purchase_order.approved", {
-            orderId: order.po_id,
-            orderNumber: order.po_number,
-            status: order.status,
-            total: order.total,
-          })
-        } catch (webhookError) {
-          console.error("Purchase Orders PUT: purchase_order.approved webhook failed", webhookError)
-        }
-      }
     }
 
     return NextResponse.json({ ...order, id: order.po_id.toString(), items })

@@ -89,7 +89,7 @@
 
 ### For Production Activation
 
-1. Run `scripts/049_production_readiness_rls.sql` (uncomment policies)
+1. Run `scripts/archive/049_production_readiness_rls.sql` (uncomment policies)
 2. Link auth.users to public.users
 3. Update client to use anon key
 4. Test each role's access permissions
@@ -133,8 +133,8 @@
 
 ### Pre-Deployment Checklist
 
-- [ ] Run `scripts/048_production_readiness_indexes.sql`
-- [ ] Run `scripts/049_production_readiness_rls.sql` (review first)
+- [ ] Run `scripts/archive/048_production_readiness_indexes.sql`
+- [ ] Run `scripts/archive/049_production_readiness_rls.sql` (review first)
 - [ ] Verify System Health page shows all green
 - [ ] Test complete SO workflow (create → deliver → invoice → payment)
 - [ ] Test complete PO workflow (create → approve → receive → pay)

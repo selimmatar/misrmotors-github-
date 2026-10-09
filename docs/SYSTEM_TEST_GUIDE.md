@@ -5,8 +5,8 @@ This guide will help you test the entire system with fictional data to ensure ev
 ## Prerequisites
 
 1. Run the SQL scripts in order:
-   - `scripts/09-new-schema-with-integer-ids.sql` (create tables)
-   - `scripts/10-seed-test-data.sql` (load test data)
+   - `scripts/archive/09-new-schema-with-integer-ids.sql` (create tables)
+   - `scripts/archive/10-seed-test-data.sql` (load test data)
 
 2. Log in with test users:
    - **CEO**: ceo@misrmotors.com / ceo123

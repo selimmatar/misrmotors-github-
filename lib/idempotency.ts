@@ -62,7 +62,7 @@ export async function checkIdempotency(
         return { success: false, error: "Operation is already being processed" }
       }
       // If processing for more than 1 minute, assume it failed and allow retry
-      console.warn(`[v0] Idempotency: Stale processing lock detected for ${idempotencyKey}, allowing retry`)
+      console.warn(`Idempotency: Stale processing lock detected for ${idempotencyKey}, allowing retry`)
     }
 
     // Create or update the idempotency record to lock it

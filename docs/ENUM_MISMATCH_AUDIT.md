@@ -14,19 +14,19 @@ After comprehensive analysis, all enum/status values are correctly matched betwe
 \`\`\`sql
 CHECK (status IN ('pending', 'partially_paid', 'paid', 'overdue'))
 \`\`\`
-- Sources: `scripts/03-create-purchase-tables.sql:48`, `scripts/09-new-schema-with-integer-ids.sql:244`
+- Sources: `scripts/archive/03-create-purchase-tables.sql:48`, `scripts/archive/09-new-schema-with-integer-ids.sql:244`
 
 ### 2. accounts_receivable.status
 \`\`\`sql
 CHECK (status IN ('pending', 'partially_paid', 'paid', 'overdue'))
 \`\`\`
-- Sources: `scripts/04-create-sales-tables.sql:58`, `scripts/09-new-schema-with-integer-ids.sql:184`
+- Sources: `scripts/archive/04-create-sales-tables.sql:58`, `scripts/archive/09-new-schema-with-integer-ids.sql:184`
 
 ### 3. payment_schedules.status
 \`\`\`sql
 CHECK (status IN ('pending', 'paid', 'overdue', 'partial'))
 \`\`\`
-- Source: `scripts/041_create_payment_schedules_table.sql:10`
+- Source: `scripts/archive/041_create_payment_schedules_table.sql:10`
 - **CRITICAL:** `'partial'` is ONLY valid here, NOT for invoice tables!
 
 ### 4. purchase_orders.status

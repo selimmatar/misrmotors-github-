@@ -32,7 +32,7 @@ The following files contain `console.log("[v0]")` debug statements that should b
 - [ ] `components/delivery-permit/delivery-permit-card.tsx` - 2 statements
 
 ### Test/Utility Files (Can Keep for Development)
-- `lib/test-connection.ts` - 13 statements (OK to keep)
+- `lib/test-connection.ts` - removed 2026-10 (unused)
 
 ## Command to Find All Debug Logs
 \`\`\`bash

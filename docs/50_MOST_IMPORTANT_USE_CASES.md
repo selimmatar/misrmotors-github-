@@ -412,7 +412,7 @@ This document outlines the 50 most critical use cases for the Misr Motors ERP sy
 5. **Reporting Capability:** Flexible report generation with filtering options
 6. **Category Management:** Clear separation of Pumps vs Auto Equipment for business analysis
 7. **User Access Control:** Appropriate permissions based on role
-8. **System Integration:** n8n webhook integration for automation and external system connectivity
+8. **System Integration:** n8n webhook integration for automation and external system connectivity (retired 2026-10)
 
 ---
 
@@ -444,6 +444,6 @@ This document outlines the 50 most critical use cases for the Misr Motors ERP sy
 
 ## Next Steps
 
-For detailed n8n integration workflows and webhook setup, refer to `N8N_INTEGRATION_GUIDE.md`.
+n8n integration was retired in 2026-10; the integration guides were removed.
 
 For system architecture and technical diagrams, refer to `system-diagrams.md`.

@@ -237,7 +237,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         setDrafts(result?.drafts ?? [])
       })
       .catch((error) => {
-        console.error("[v0] Failed to load quotation drafts:", error)
+        console.error("Failed to load quotation drafts:", error)
       })
       .finally(() => {
         if (isMounted) setIsDraftsLoaded(true)
@@ -270,7 +270,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         ...prev.filter((d) => d.id !== savedId),
       ])
     } catch (error) {
-      console.error("[v0] Failed to save quotation draft:", error)
+      console.error("Failed to save quotation draft:", error)
     } finally {
       setIsSavingDraft(false)
     }
@@ -360,7 +360,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
     try {
       await fetch(`/api/quotation-drafts?id=${encodeURIComponent(id)}`, { method: "DELETE" })
     } catch (error) {
-      console.error("[v0] Failed to delete quotation draft:", error)
+      console.error("Failed to delete quotation draft:", error)
     }
   }
 
@@ -796,7 +796,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
         setActiveDraftId(null)
         fetch(`/api/quotation-drafts?id=${encodeURIComponent(draftIdToClear)}`, { method: "DELETE" }).catch(
           (error) => {
-            console.error("[v0] Failed to clear quotation draft:", error)
+            console.error("Failed to clear quotation draft:", error)
           },
         )
       }

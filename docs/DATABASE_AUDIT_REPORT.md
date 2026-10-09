@@ -79,25 +79,25 @@
 The following scripts create tables but are **migration/rebuild scripts** (not actual duplicates):
 
 ### Migration Scripts (Integer IDs)
-- `scripts/09-new-schema-with-integer-ids.sql` - **Full schema rebuild**
+- `scripts/archive/09-new-schema-with-integer-ids.sql` - **Full schema rebuild**
   - Creates: users, customers, suppliers, products, inventory, etc.
   - **Status:** This is a **complete schema migration** - all tables here are the CURRENT production tables
   - **Action:** Keep this file as historical reference
 
 ### Old String ID Scripts (Superseded)
-- `scripts/001_create_tables.sql` - Original schema with string IDs
-- `scripts/02-create-core-tables.sql` - Old core tables
-- `scripts/03-create-purchase-tables.sql` - Old purchase tables  
-- `scripts/04-create-sales-tables.sql` - Old sales tables
-- `scripts/05-create-tracking-tables.sql` - Old tracking tables
+- `scripts/archive/001_create_tables.sql` - Original schema with string IDs
+- `scripts/archive/02-create-core-tables.sql` - Old core tables
+- `scripts/archive/03-create-purchase-tables.sql` - Old purchase tables  
+- `scripts/archive/04-create-sales-tables.sql` - Old sales tables
+- `scripts/archive/05-create-tracking-tables.sql` - Old tracking tables
   - **Status:** These were **replaced** by script 09
   - **Action:** Keep for migration history only
 
 ### Table Recreations (Schema Changes)
-- `scripts/004-simplify-lost-sales-table.sql` - Recreates `lost_sales`
-- `scripts/020_fix_balance_table_schema.sql` - Recreates `balance_entries`
-- `scripts/032_create_delivery_permits.sql` - V1 of delivery permits
-- `scripts/034_create_delivery_permits_v2.sql` - V2 of delivery permits (current)
+- `scripts/archive/004-simplify-lost-sales-table.sql` - Recreates `lost_sales`
+- `scripts/archive/020_fix_balance_table_schema.sql` - Recreates `balance_entries`
+- `scripts/archive/032_create_delivery_permits.sql` - V1 of delivery permits
+- `scripts/archive/034_create_delivery_permits_v2.sql` - V2 of delivery permits (current)
   - **Status:** These are **schema updates** - only the LATEST version exists in DB
   - **Action:** Keep for history
 

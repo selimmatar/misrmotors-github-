@@ -21,7 +21,7 @@ Implemented comprehensive caching strategy to reduce Supabase API calls by 70-90
 
 ### 2. Server-Side Caching (Next.js 15)
 
-**File**: `lib/cache-config.ts` (new)
+**File**: `lib/cache-config.ts` (removed 2026-10, never imported)
 
 **Cache Strategy by Data Type**:
 
@@ -99,7 +99,7 @@ Add these checks:
 
 1. **Materialized Views** (not implemented yet):
    - Create `dashboard_summary` table
-   - Refresh every 1-5 minutes via cron/n8n
+   - Refresh every 1-5 minutes via cron (n8n retired 2026-10)
    - Query pre-computed summaries instead of raw data
 
 2. **Request Coalescing**:

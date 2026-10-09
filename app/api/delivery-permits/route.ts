@@ -75,9 +75,6 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       if (error.code === "PGRST205" || error.message?.includes("Could not find the table")) {
-        console.log(
-          "[v0] Delivery Permits table not found - returning empty array. Run migration script 032_create_delivery_permits.sql",
-        )
         return NextResponse.json([])
       }
       console.error("Delivery Permits GET error:", error.message)
@@ -385,9 +382,6 @@ export async function POST(request: NextRequest) {
           if (invData) {
             // Note: pending_outbound column doesn't exist in inventory table
             // The quantity field tracks the actual stock
-            console.log(
-              `[v0] DP created for product ${item.productId}: quantity ${item.quantity} (inventory tracking needs pending_outbound column)`,
-            )
           }
         }
       }

@@ -137,7 +137,7 @@ if (downPaymentAmount === 0 && remainingAmount === 0) {
 - Non-destructive: only regenerates if schedule has issues
 
 #### 5. Created Corruption Detection Script
-**File:** `scripts/074_detect_corrupted_ap_schedules.sql`
+**File:** `scripts/archive/074_detect_corrupted_ap_schedules.sql`
 
 **Purpose:**
 - Reports (does not modify) potentially corrupted schedules
@@ -150,7 +150,7 @@ if (downPaymentAmount === 0 && remainingAmount === 0) {
 **Usage:**
 \`\`\`bash
 # Run detection script
-psql $DATABASE_URL -f scripts/074_detect_corrupted_ap_schedules.sql
+psql $DATABASE_URL -f scripts/archive/074_detect_corrupted_ap_schedules.sql
 \`\`\`
 
 ---
@@ -202,7 +202,7 @@ psql $DATABASE_URL -f scripts/074_detect_corrupted_ap_schedules.sql
 4. Verify all fields populated correctly
 
 ### Test Case 5: Detect Corruption (Optional)
-1. Run detection script: `scripts/074_detect_corrupted_ap_schedules.sql`
+1. Run detection script: `scripts/archive/074_detect_corrupted_ap_schedules.sql`
 2. Review output for any issues
 3. Fix flagged schedules using "Recalculate" button
 
@@ -268,7 +268,7 @@ All new console logs use `[v0]` prefix for easy filtering:
    - Enhanced receipt viewing (works for partial payments)
    - Added "Recalculate Schedule" button
 
-3. **scripts/074_detect_corrupted_ap_schedules.sql** (NEW)
+3. **scripts/archive/074_detect_corrupted_ap_schedules.sql** (NEW)
    - Detection script for corrupted schedules
    - Non-destructive reporting only
 
@@ -309,7 +309,7 @@ All new console logs use `[v0]` prefix for easy filtering:
 
 4. **Run Detection Script:**
    \`\`\`sql
-   scripts/074_detect_corrupted_ap_schedules.sql
+   scripts/archive/074_detect_corrupted_ap_schedules.sql
    \`\`\`
 
 5. **Use Recalculate Button:**
