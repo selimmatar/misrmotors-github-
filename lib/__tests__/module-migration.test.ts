@@ -12,7 +12,12 @@ const read = (f: string) => fs.readFileSync(path.join(REPO, f), "utf8")
 const FIXTURE = path.join(REPO, "lib/__tests__/fixtures/ui-1b/protected.json")
 
 // Each module task appends its paths.
-const MIGRATED: string[] = ["components/modules/sales-order-module.tsx"]
+const MIGRATED: string[] = [
+  "components/modules/sales-order-module.tsx",
+  "components/modules/sales-quotations-hub-module.tsx",
+  "components/modules/sales-quotation-module.tsx",
+  "components/modules/approve-sales-quotations-module.tsx",
+]
 // Allowed leftover BANNED matches per file; each entry needs a ledgered ruling.
 const ALLOW: Record<string, Partial<Record<keyof typeof BANNED, number>>> = {}
 // Files that render inside another screen and carry no page header of their own.
@@ -57,4 +62,11 @@ test("migrated modules use the shared blocks", () => {
 test("sales order shows approval steps in its details dialog and can be embedded", () => {
   const s = read("components/modules/sales-order-module.tsx")
   assert.match(s, /<ApprovalSteps status=\{selectedOrder\.status\}/); assert.match(s, /embedded\?: boolean/)
+})
+
+test("hub owns the page header and embeds its three tabs", () => {
+  const hub = read("components/modules/sales-quotations-hub-module.tsx")
+  for (const m of ["SalesOrderModule", "SalesQuotationModule", "ApproveSalesQuotationsModule"]) assert.match(hub, new RegExp(`<${m}[^>]*\\bembedded\\b`), m)
+  assert.match(hub, /title=\{t\("module\.sales-orders"\)\}/)
+  for (const f of ["sales-quotation", "approve-sales-quotations"]) assert.match(read(`components/modules/${f}-module.tsx`), /embedded\?: boolean/, f)
 })
