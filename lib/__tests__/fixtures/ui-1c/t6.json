@@ -2,7 +2,7 @@
   "task": "t6",
   "modules": {
     "components/modules/operations-management-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/operations/employees"
@@ -13,10 +13,19 @@
         "iso": 0,
         "t": 0,
         "onClick": 2
-      }
+      },
+      "must": [
+        {
+          "re": "<ResponsiveList"
+        },
+        {
+          "re": "<KpiTile",
+          "min": 4
+        }
+      ]
     },
     "components/modules/maintenance-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/hr/employees",
@@ -48,7 +57,18 @@
         "iso": 0,
         "t": 0,
         "onClick": 7
-      }
+      },
+      "must": [
+        {
+          "re": "<ResponsiveList",
+          "min": 2
+        },
+        {
+          "re": "\\bp-6\\b",
+          "min": 0,
+          "max": 0
+        }
+      ]
     }
   }
 }
