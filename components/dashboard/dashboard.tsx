@@ -88,7 +88,9 @@ type ModuleType =
   | "operations-management" // Added operations-management module type
 
 export function Dashboard({ user, onLogout }: DashboardProps) {
-  const [activeModule, setActiveModule] = useState<ModuleType>(user.role === "shipment" ? "shipment" : "dashboard")
+  const [activeModule, setActiveModule] = useState<ModuleType>(
+    user.role === "shipment" ? "shipment" : user.role === "admin" ? "user-management" : "dashboard",
+  )
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   useEffect(() => {
@@ -209,7 +211,12 @@ case "po-requests":
         onMobileClose={() => setMobileSidebarOpen(false)}
       />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Header user={user} onLogout={onLogout} onMenuClick={() => setMobileSidebarOpen(true)} />
+        <Header
+          user={user}
+          onLogout={onLogout}
+          onMenuClick={() => setMobileSidebarOpen(true)}
+          activeModule={activeModule}
+        />
         <main className="flex-1 overflow-auto p-4 md:p-6">{renderModule()}</main>
       </div>
     </div>

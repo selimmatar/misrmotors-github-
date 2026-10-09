@@ -15,6 +15,7 @@ const ERP_DIR = path.join(REPO, "components/erp")
 const FRAME_FILES: string[] = [
   ...(fs.existsSync(ERP_DIR) ? fs.readdirSync(ERP_DIR).filter((f) => f.endsWith(".tsx")).map((f) => `components/erp/${f}`) : []),
   "components/layout/sidebar.tsx",
+  "components/layout/header.tsx",
 ]
 
 const BAD = /(?<![\w-])(?:(?:ml|mr|pl|pr|left|right)-[\w[]|text-(?:left|right)\b|(?:border|rounded)-[lr]\b|flex-row\b)/
@@ -32,3 +33,7 @@ test("approval and table keys exist in EN and AR", () => {
 })
 
 test("components/erp exists", () => { assert.equal(FRAME_FILES.length >= 6, true) })
+
+test("Welcome is gone from the top bar", () => {
+  assert.ok(!read("components/layout/header.tsx").includes('t("welcome")'))
+})
