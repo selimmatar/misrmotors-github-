@@ -2,7 +2,7 @@
   "task": "t9",
   "modules": {
     "components/modules/financial-dashboard.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/reschedule-requests",
@@ -16,8 +16,32 @@
         "ids": [],
         "fetch": 3,
         "iso": 3,
-        "t": 118,
+        "t": 111,
         "onClick": 8
+      },
+      "must": [
+        {
+          "re": "showInventoryDetails",
+          "min": 3
+        },
+        {
+          "re": "showPendingOrdersDialog",
+          "min": 2
+        },
+        {
+          "re": "<KpiTile",
+          "min": 4
+        },
+        {
+          "re": "user\\.role === \"warehouse-rep\" \\? showInventoryDetails",
+          "min": 1
+        }
+      ],
+      "allow": {
+        "formatCurrency": 6,
+        "i18nFormat": 1,
+        "toFixed2": 3,
+        "toLocaleString": 1
       }
     }
   }
