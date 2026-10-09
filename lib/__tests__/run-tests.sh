@@ -50,7 +50,16 @@ cat > "$OUT/tsconfig.json" <<JSON
     "$REPO/lib/__tests__/ui-frame.test.ts",
     "$REPO/lib/__tests__/erp-blocks.test.ts",
     "$REPO/lib/__tests__/module-migration.test.ts",
-    "$REPO/lib/__tests__/module-migration-1c.test.ts"
+    "$REPO/lib/__tests__/module-migration-1c.test.ts",
+    "$REPO/lib/__tests__/a11y-scan.test.ts",
+    "$REPO/lib/__tests__/p24-frame.test.ts",
+    "$REPO/lib/__tests__/p24-sales.test.ts",
+    "$REPO/lib/__tests__/p24-customers.test.ts",
+    "$REPO/lib/__tests__/p24-finance.test.ts",
+    "$REPO/lib/__tests__/p24-purchasing.test.ts",
+    "$REPO/lib/__tests__/p24-inventory.test.ts",
+    "$REPO/lib/__tests__/p24-overview.test.ts",
+    "$REPO/lib/__tests__/p24-keys.test.ts"
   ]
 }
 JSON
@@ -61,7 +70,7 @@ export REPO_ROOT="$REPO"
 export HARDENING_GOLDEN_DIR="$REPO/lib/__tests__/fixtures/hardening"
 status=0
 for run in $(seq 1 "$REPEAT"); do
-  for suite in payment-type invoicing returns invoicing-returns so-edit routes print-totals missing-items print-routes goods-receiving accounts-payable-payments po-status po-over-order costing transfers legacy-paths supplier-credits stock-hold review-fixes leftovers workflow-fixes consistency-fixes hardening decisions removals format status-badge approval-steps sidebar-groups ui-frame erp-blocks module-migration module-migration-1c; do
+  for suite in payment-type invoicing returns invoicing-returns so-edit routes print-totals missing-items print-routes goods-receiving accounts-payable-payments po-status po-over-order costing transfers legacy-paths supplier-credits stock-hold review-fixes leftovers workflow-fixes consistency-fixes hardening decisions removals format status-badge approval-steps sidebar-groups ui-frame erp-blocks module-migration module-migration-1c a11y-scan p24-frame p24-sales p24-customers p24-finance p24-purchasing p24-inventory p24-overview p24-keys; do
     result="$(node --test "$OUT/out/lib/__tests__/$suite.test.js" 2>&1)"
     line="$(echo "$result" | grep -E '^# (tests|pass|fail)' | tr '\n' ' ')"
     echo "run $run  $suite: $line"
