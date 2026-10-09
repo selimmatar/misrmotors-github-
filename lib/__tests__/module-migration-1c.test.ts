@@ -210,3 +210,7 @@ test("1c header rulings", () => {
   // Ruling 11: the HR status badge uses StatusBadge's default status.* label.
   assert.ok(!/label=\{getStatusLabel\(/.test(read("components/modules/hr-management-module.tsx")), "hr label")
 })
+
+test("warehouse delivery: a signed permit awaiting approval is labelled as signed, not Completed", () => {
+  assert.match(read("components/modules/warehouse-delivery-module.tsx"), /case "SUBMITTED_SIGNED":\s*return t\("permit\.status\.submitted-signed"\)/)
+})
