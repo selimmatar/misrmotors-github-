@@ -69,7 +69,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
                   type="button"
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex h-9 w-full items-center gap-3 rounded-md px-3 text-sm text-start text-sidebar-foreground transition-colors",
+                    "flex h-9 max-md:min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm text-start text-sidebar-foreground transition-colors",
                     active ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "hover:bg-muted",
                   )}
                   onClick={() => {
@@ -80,7 +80,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
                   <IconComponent className="size-4 shrink-0" />
                   <span className="min-w-0 flex-1 truncate">{t(module.label)}</span>
                   {count > 0 && (
-                    <span className="ms-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white">
+                    <span className="ms-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-700 px-1 text-xs font-bold text-white">
                       {count > 99 ? "99+" : count}
                     </span>
                   )}
@@ -112,9 +112,9 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={onMobileClose} />
-          <div className="absolute inset-y-0 start-0 w-72 max-w-[85vw] bg-sidebar border-e border-sidebar-border flex flex-col">
+          <div className="absolute inset-y-0 start-0 w-72 max-w-[85vw] bg-sidebar border-e border-sidebar-border flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
             <div className="absolute top-3 end-3">
-              <Button variant="ghost" size="icon" onClick={onMobileClose} aria-label="Close menu">
+              <Button variant="ghost" size="icon" onClick={onMobileClose} aria-label={t("a11y.close-menu")}>
                 <X className="w-5 h-5" />
               </Button>
             </div>

@@ -171,6 +171,8 @@
   }
   body {
     @apply bg-background text-foreground text-sm;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   /* Add RTL support for Arabic */
