@@ -17,6 +17,7 @@ const MIGRATED: string[] = [
   "components/modules/sales-quotations-hub-module.tsx",
   "components/modules/sales-quotation-module.tsx",
   "components/modules/approve-sales-quotations-module.tsx",
+  "components/modules/accounts-receivable-module.tsx",
 ]
 // Allowed leftover BANNED matches per file; each entry needs a ledgered ruling.
 const ALLOW: Record<string, Partial<Record<keyof typeof BANNED, number>>> = {}
@@ -69,4 +70,9 @@ test("hub owns the page header and embeds its three tabs", () => {
   for (const m of ["SalesOrderModule", "SalesQuotationModule", "ApproveSalesQuotationsModule"]) assert.match(hub, new RegExp(`<${m}[^>]*\\bembedded\\b`), m)
   assert.match(hub, /title=\{t\("module\.sales-orders"\)\}/)
   for (const f of ["sales-quotation", "approve-sales-quotations"]) assert.match(read(`components/modules/${f}-module.tsx`), /embedded\?: boolean/, f)
+})
+
+test("AR keeps its whole-row click on the phone card", () => {
+  const s = read("components/modules/accounts-receivable-module.tsx")
+  assert.match(s, /<ListCard[\s\S]{0,400}?onClick=/); assert.match(s, /renderRowActions\(/)
 })

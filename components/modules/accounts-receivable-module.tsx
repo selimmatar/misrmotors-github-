@@ -23,6 +23,14 @@ import { isSinglePayment } from "@/lib/payment-type"
 import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, ChevronDown, Upload, Search } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { Money } from "@/components/erp/money"
+import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { formatDate, formatMoney } from "@/lib/format"
 
 interface PaymentScheduleEntry {
   id: string
@@ -44,7 +52,7 @@ interface AccountsReceivableModuleProps {
 }
 
 export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleProps) {
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const { customerInvoices, customers, salesOrders, loadData } = useAppContext()
   // One idempotency key per payment attempt (re-used if the same attempt is retried), and a guard against
   // a second submit while one is in flight.
@@ -1014,27 +1022,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     }
   }
 
-  const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return "-"
-    try {
-      return new Date(dateString).toLocaleDateString(language === "ar" ? "ar-EG" : "en-US")
-    } catch (e) {
-      console.error("Error formatting date:", dateString, e)
-      return dateString
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: "bg-yellow-100 text-yellow-800",
-      partially_paid: "bg-blue-100 text-blue-800",
-      paid: "bg-green-100 text-green-800",
-      overdue: "bg-red-100 text-red-800",
-      partial: "bg-blue-100 text-blue-800",
-    }
-    return colors[status] || "bg-gray-100 text-gray-800"
-  }
-
   const getScheduleStatusIcon = (status: string) => {
     switch (status) {
       case "paid":
@@ -1059,109 +1046,158 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     return paymentSchedules.reduce((sum, s) => sum + (s.paidAmount || 0), 0)
   }
 
+  // The row's actions, shared by the table's actions cell and the phone card.
+  const renderRowActions = (invoice: CustomerInvoice) => {
+    const status = getInvoiceStatus(invoice)
+    return (
+      <>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={(e) => {
+            e.stopPropagation()
+            handleViewSchedule(invoice)
+          }}
+        >
+          <Calendar className="w-4 h-4" />
+        </Button>
+        {status !== "paid" && (userRole === "accountant" || userRole === "ceo") && (
+          <Button
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              setSelectedInvoiceForPayment(invoice)
+              setPaymentReceiptFile(null)
+              setPaymentDialogOpen(true)
+            }}
+          >
+            <DollarSign className="w-4 h-4" />
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={(e) => {
+            e.stopPropagation()
+            handleDownloadInvoicePDF(invoice)
+          }}
+        >
+          <FileText className="w-4 h-4 me-2" />
+          {t("action.print-invoice") || "Print Invoice"}
+        </Button>
+        {invoice.vatInvoiceUrl ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation()
+              window.open(invoice.vatInvoiceUrl, "_blank")
+            }}
+            title="View VAT Invoice"
+            className="bg-purple-50 hover:bg-purple-100"
+          >
+            <Eye className="w-4 h-4 me-1" />
+            VAT
+          </Button>
+        ) : (
+          (userRole === "accountant" || userRole === "ceo") && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation()
+                document.getElementById(`vat-invoice-upload-${invoice.id}`)?.click()
+              }}
+              title="Upload VAT Invoice"
+              className="bg-purple-50 hover:bg-purple-100"
+            >
+              <Upload className="w-4 h-4 me-1" />
+              VAT
+              <input
+                id={`vat-invoice-upload-${invoice.id}`}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                className="hidden"
+                onChange={(e) => handleVATInvoiceUpload(e, invoice)}
+              />
+            </Button>
+          )
+        )}
+      </>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{t("ar.title")}</h1>
-          <p className="text-muted-foreground mt-2">{t("ar.description")}</p>
-        </div>
-
-        {/* Show +Add button only for CEO and Accountant */}
-        {(userRole === "ceo" || userRole === "accountant") && (
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="lg"
-                  className="shadow-lg hover:shadow-xl transition-all"
-                >
-                  <Plus className="w-5 h-5 mr-2" />
-                  {t("ar.create-invoice")}
-                  <ChevronDown className="w-4 h-4 ml-2" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem
-                  onClick={() => alert(INVOICE_FROM_DP_ONLY_MESSAGE)}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  From Sales Order
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    fetchAvailableDPs()
-                    setDpSelectDialogOpen(true)
-                  }}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  From Delivery Items
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
-      </div>
+      <PageHeader
+        group={t("group.finance")}
+        title={t("ar.title")}
+        subtitle={t("ar.description")}
+        actions={
+          /* Show +Add button only for CEO and Accountant */
+          (userRole === "ceo" || userRole === "accountant") && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="lg"
+                    className="shadow-lg hover:shadow-xl transition-all"
+                  >
+                    <Plus className="w-5 h-5 me-2" />
+                    {t("ar.create-invoice")}
+                    <ChevronDown className="w-4 h-4 ms-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={() => alert(INVOICE_FROM_DP_ONLY_MESSAGE)}
+                  >
+                    <FileText className="w-4 h-4 me-2" />
+                    From Sales Order
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      fetchAvailableDPs()
+                      setDpSelectDialogOpen(true)
+                    }}
+                  >
+                    <FileText className="w-4 h-4 me-2" />
+                    From Delivery Items
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )
+        }
+      />
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card
-          className="cursor-pointer hover:shadow-lg hover:border-primary transition-all"
+      <KpiGrid>
+        <KpiTile
+          label={`${t("ar.total-receivable")} (EGP)`}
+          value={<Money value={totalReceivable} />}
+          sub={`${allInvoices.length} ${t("ar.invoices")}`}
           onClick={() => handleWidgetClick("receivable")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">{t("ar.total-receivable")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalReceivable)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {allInvoices.length} {t("ar.invoices")}
-            </p>
-          </CardContent>
-        </Card>
-        <Card
-          className="cursor-pointer hover:shadow-lg hover:border-primary transition-all"
+        />
+        <KpiTile
+          label={`${t("ar.collected")} (EGP)`}
+          value={<Money value={totalCollected} />}
+          sub={`${allInvoices.filter((i) => (i.collectedAmount || 0) > 0).length} ${t("ar.invoices")}`}
           onClick={() => handleWidgetClick("collected")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">{t("ar.collected")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(totalCollected)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {allInvoices.filter((i) => (i.collectedAmount || 0) > 0).length} {t("ar.invoices")}
-            </p>
-          </CardContent>
-        </Card>
-        <Card
-          className="cursor-pointer hover:shadow-lg hover:border-primary transition-all"
+        />
+        <KpiTile
+          label={`${t("ar.outstanding")} (EGP)`}
+          value={<Money value={totalOutstanding} />}
+          sub={`${allInvoices.filter((i) => (i.amount || 0) - (i.collectedAmount || 0) > 0).length} ${t("ar.invoices")}`}
           onClick={() => handleWidgetClick("outstanding")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">{t("ar.outstanding")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{formatCurrency(totalOutstanding)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {allInvoices.filter((i) => (i.amount || 0) - (i.collectedAmount || 0) > 0).length} {t("ar.invoices")}
-            </p>
-          </CardContent>
-        </Card>
-        <Card
-          className="cursor-pointer hover:shadow-lg hover:border-primary transition-all"
+        />
+        <KpiTile
+          label={`${t("ar.overdue")} (EGP)`}
+          value={<Money value={overdueAmount} />}
+          sub={`${overdueInvoices.length} ${t("ar.invoices")}`}
           onClick={() => handleWidgetClick("overdue")}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">{t("ar.overdue")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(overdueAmount)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {overdueInvoices.length} {t("ar.invoices")}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        />
+      </KpiGrid>
 
       {/* Filter Buttons */}
       <div className="flex gap-2 flex-wrap">
@@ -1191,48 +1227,66 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           <CardTitle>{t("ar.invoice-list")}</CardTitle>
           <CardDescription>{t("ar.invoice-description")}</CardDescription>
           <div className="relative mt-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Search by invoice number, customer, or SO number..."
               value={invoiceSearchQuery}
               onChange={(e) => setInvoiceSearchQuery(e.target.value)}
-              className="pl-9"
+              className="ps-9"
               aria-label="Search invoices"
             />
           </div>
         </CardHeader>
         <CardContent>
-          {allInvoices.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>{t("ar.no-invoices")}</p>
-            </div>
-          ) : getDisplayedInvoices().length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No invoices match your search</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-start p-2">{t("ar.invoice-number")}</th>
-                    <th className="text-start p-2">{t("ar.customer")}</th>
-                    <th className="text-start p-2">{t("ar.so-number")}</th>
-                    <th className="text-start p-2">{t("payment.type")}</th>
-                    <th className="text-start p-2">{t("ar.invoice-date")}</th>
-                    <th className="text-start p-2">{t("ar.due-date")}</th>
-                    <th className="text-start p-2">{t("ar.total-amount")}</th>
-                    <th className="text-start p-2">{t("ar.paid-amount")}</th>
-                    <th className="text-start p-2">{t("ar.balance")}</th>
-                    <th className="text-start p-2">{t("ar.progress")}</th>
-                    <th className="text-start p-2">{t("field.status")}</th>
-                    <th className="text-start p-2">{t("field.actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
+          <ResponsiveList
+            rows={getDisplayedInvoices()}
+            empty={
+              allInvoices.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>{t("ar.no-invoices")}</p>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No invoices match your search</p>
+                </div>
+              )
+            }
+            card={(invoice) => {
+              const status = getInvoiceStatus(invoice)
+              return (
+                <ListCard
+                  key={invoice.id}
+                  onClick={() => handleViewSchedule(invoice)}
+                  id={invoice.invoiceNumber}
+                  amount={formatMoney(invoice.amount || 0, language)}
+                  party={getCustomerName(invoice.customerId)}
+                  status={<StatusBadge status={status} label={t(`status.${status}`)} />}
+                  actions={renderRowActions(invoice)}
+                />
+              )
+            }}
+            table={
+              <ErpTable>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("ar.invoice-number")}</TableHead>
+                    <TableHead>{t("ar.customer")}</TableHead>
+                    <TableHead>{t("ar.so-number")}</TableHead>
+                    <TableHead>{t("payment.type")}</TableHead>
+                    <TableHead>{t("ar.invoice-date")}</TableHead>
+                    <TableHead>{t("ar.due-date")}</TableHead>
+                    <NumHead>{t("ar.total-amount")} (EGP)</NumHead>
+                    <NumHead>{t("ar.paid-amount")} (EGP)</NumHead>
+                    <NumHead>{t("ar.balance")} (EGP)</NumHead>
+                    <TableHead>{t("ar.progress")}</TableHead>
+                    <TableHead>{t("field.status")}</TableHead>
+                    <ActionsHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {getDisplayedInvoices().map((invoice) => {
                     const installmentMonths = getInstallmentMonths(invoice)
                     const monthsPaid = invoice.monthsPaid || 0
@@ -1242,118 +1296,41 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                     const paymentType = getSOPaymentType(invoice.soId, invoice)
 
                     return (
-                      <tr
+                      <TableRow
                         key={invoice.id}
-                        className={`border-b hover:bg-muted/50 cursor-pointer ${status === "overdue" ? "bg-red-50" : ""}`}
+                        className={`cursor-pointer ${status === "overdue" ? "bg-red-50" : ""}`}
                         onClick={() => handleViewSchedule(invoice)}
                       >
-                        <td className="p-2 font-medium">{invoice.invoiceNumber}</td>
-                        <td className="p-2">{getCustomerName(invoice.customerId)}</td>
-                        <td className="p-2">{getSONumber(invoice.soId, invoice)}</td>
-                        <td className="p-2">
+                        <IdCell>{invoice.invoiceNumber}</IdCell>
+                        <TableCell>{getCustomerName(invoice.customerId)}</TableCell>
+                        <TableCell>{getSONumber(invoice.soId, invoice)}</TableCell>
+                        <TableCell>
                           <span className="px-2 py-1 rounded-full text-xs bg-primary/10 text-primary capitalize">
                             {paymentType}
                           </span>
-                        </td>
-                        <td className="p-2">{formatDate(invoice.date)}</td>
-                        <td className="p-2">{formatDate(invoice.dueDate)}</td>
-                        <td className="p-2">{formatCurrency(invoice.amount || 0)}</td>
-                        <td className="p-2 text-green-600">{formatCurrency(invoice.collectedAmount || 0)}</td>
-                        <td className="p-2 text-amber-600">{formatCurrency(balance)}</td>
-                        <td className="p-2">
+                        </TableCell>
+                        <TableCell>{formatDate(invoice.date, language)}</TableCell>
+                        <TableCell>{formatDate(invoice.dueDate, language)}</TableCell>
+                        <NumCell>{formatMoney(invoice.amount || 0, language)}</NumCell>
+                        <NumCell className="text-green-600">{formatMoney(invoice.collectedAmount || 0, language)}</NumCell>
+                        <NumCell className="text-amber-600">{formatMoney(balance, language)}</NumCell>
+                        <TableCell>
                           <div className="flex items-center gap-2">
                             <Progress value={progress} className="w-16 h-2" />
                             <span className="text-xs">{Math.round(progress)}%</span>
                           </div>
-                        </td>
-                        <td className="p-2">
-                          <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(status)}`}>
-                            {t(`status.${status}`)}
-                          </span>
-                        </td>
-                        <td className="p-2">
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleViewSchedule(invoice)
-                              }}
-                            >
-                              <Calendar className="w-4 h-4" />
-                            </Button>
-                            {status !== "paid" && (userRole === "accountant" || userRole === "ceo") && (
-                              <Button
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedInvoiceForPayment(invoice)
-                                  setPaymentReceiptFile(null)
-                                  setPaymentDialogOpen(true)
-                                }}
-                              >
-                                <DollarSign className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDownloadInvoicePDF(invoice)
-                              }}
-                            >
-                              <FileText className="w-4 h-4 mr-2" />
-                              {t("action.print-invoice") || "Print Invoice"}
-                            </Button>
-                            {invoice.vatInvoiceUrl ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  window.open(invoice.vatInvoiceUrl, "_blank")
-                                }}
-                                title="View VAT Invoice"
-                                className="bg-purple-50 hover:bg-purple-100"
-                              >
-                                <Eye className="w-4 h-4 mr-1" />
-                                VAT
-                              </Button>
-                            ) : (
-                              (userRole === "accountant" || userRole === "ceo") && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    document.getElementById(`vat-invoice-upload-${invoice.id}`)?.click()
-                                  }}
-                                  title="Upload VAT Invoice"
-                                  className="bg-purple-50 hover:bg-purple-100"
-                                >
-                                  <Upload className="w-4 h-4 mr-1" />
-                                  VAT
-                                  <input
-                                    id={`vat-invoice-upload-${invoice.id}`}
-                                    type="file"
-                                    accept=".pdf,.jpg,.jpeg,.png"
-                                    className="hidden"
-                                    onChange={(e) => handleVATInvoiceUpload(e, invoice)}
-                                  />
-                                </Button>
-                              )
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={status} label={t(`status.${status}`)} />
+                        </TableCell>
+                        <ActionsCell>{renderRowActions(invoice)}</ActionsCell>
+                      </TableRow>
                     )
                   })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                </TableBody>
+              </ErpTable>
+            }
+          />
         </CardContent>
       </Card>
 
@@ -1376,16 +1353,16 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t("ar.total-amount")}</p>
-                  <p className="font-medium">{formatCurrency(selectedInvoiceForSchedule.amount || 0)}</p>
+                  <p className="font-medium"><Money value={selectedInvoiceForSchedule.amount || 0} /> EGP</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t("ar.paid-amount")}</p>
-                  <p className="font-medium text-green-600">{formatCurrency(getTotalSchedulePaid())}</p>
+                  <p className="font-medium text-green-600"><Money value={getTotalSchedulePaid()} /> EGP</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t("ar.balance")}</p>
                   <p className="font-medium text-amber-600">
-                    {formatCurrency((selectedInvoiceForSchedule.amount || 0) - getTotalSchedulePaid())}
+                    <Money value={(selectedInvoiceForSchedule.amount || 0) - getTotalSchedulePaid()} /> EGP
                   </p>
                 </div>
               </div>
@@ -1393,11 +1370,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>
-                    {t("field.paid")}: {formatCurrency(getTotalSchedulePaid())}
+                    {t("field.paid")}: <Money value={getTotalSchedulePaid()} /> EGP
                   </span>
                   <span>
                     {t("field.balance")}:{" "}
-                    {formatCurrency((selectedInvoiceForSchedule.amount || 0) - getTotalSchedulePaid())}
+                    <Money value={(selectedInvoiceForSchedule.amount || 0) - getTotalSchedulePaid()} /> EGP
                   </span>
                 </div>
                 <Progress value={getScheduleProgress()} className="h-3" />
@@ -1435,8 +1412,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                       <tr className="border-b bg-muted/30">
                         <th className="text-start p-3">{t("ar.installment")}</th>
                         <th className="text-start p-3">{t("ar.due-date")}</th>
-                        <th className="text-start p-3">{t("ar.amount")}</th>
-                        <th className="text-start p-3">{t("ar.paid-amount")}</th>
+                        <th className="text-start p-3">{t("ar.amount")} (EGP)</th>
+                        <th className="text-start p-3">{t("ar.paid-amount")} (EGP)</th>
                         <th className="text-start p-3">{t("ar.payment-date")}</th>
                         <th className="text-start p-3">{t("field.status")}</th>
                         <th className="text-start p-3">{t("field.actions")}</th>
@@ -1463,14 +1440,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                                 </span>
                               </div>
                             </td>
-                            <td className="p-3">{formatDate(schedule.dueDate)}</td>
-                            <td className="p-3 font-medium">{formatCurrency(schedule.amount)}</td>
-                            <td className="p-3 text-green-600">{formatCurrency(schedule.paidAmount)}</td>
-                            <td className="p-3">{schedule.paymentDate ? formatDate(schedule.paymentDate) : "-"}</td>
+                            <td className="p-3">{formatDate(schedule.dueDate, language)}</td>
+                            <td className="p-3 font-medium"><Money value={schedule.amount} /></td>
+                            <td className="p-3 text-green-600"><Money value={schedule.paidAmount} /></td>
+                            <td className="p-3">{schedule.paymentDate ? formatDate(schedule.paymentDate, language) : "—"}</td>
                             <td className="p-3">
-                              <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(effectiveStatus)}`}>
-                                {t(`status.${effectiveStatus}`)}
-                              </span>
+                              <StatusBadge status={effectiveStatus} label={t(`status.${effectiveStatus}`)} />
                             </td>
                             <td className="p-3">
                               {schedule.status !== "paid" && (userRole === "accountant" || userRole === "ceo") && (
@@ -1482,7 +1457,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                                     setSchedulePaymentDialogOpen(true)
                                   }}
                                 >
-                                  <DollarSign className="w-4 h-4 mr-1" />
+                                  <DollarSign className="w-4 h-4 me-1" />
                                   {t("ar.record-payment")}
                                 </Button>
                               )}
@@ -1490,7 +1465,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="ml-2 bg-transparent"
+                                  className="ms-2 bg-transparent"
                                   onClick={() => window.open(schedule.receiptUrl!, "_blank")}
                                 >
                                   <Eye className="w-4 h-4" />
@@ -1528,11 +1503,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("ar.due-date")}:</span>
-                  <span className="font-medium">{formatDate(selectedScheduleForPayment.dueDate)}</span>
+                  <span className="font-medium">{formatDate(selectedScheduleForPayment.dueDate, language)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("ar.amount")}:</span>
-                  <span className="font-bold text-lg">{formatCurrency(selectedScheduleForPayment.amount)}</span>
+                  <span className="font-bold text-lg"><Money value={selectedScheduleForPayment.amount} /> EGP</span>
                 </div>
               </div>
 
@@ -1572,9 +1547,9 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   <th className="text-start p-2">{t("ar.invoice-number")}</th>
                   <th className="text-start p-2">{t("ar.customer")}</th>
                   <th className="text-start p-2">{t("ar.due-date")}</th>
-                  <th className="text-start p-2">{t("ar.total-amount")}</th>
-                  <th className="text-start p-2">{t("ar.paid-amount")}</th>
-                  <th className="text-start p-2">{t("ar.balance")}</th>
+                  <th className="text-start p-2">{t("ar.total-amount")} (EGP)</th>
+                  <th className="text-start p-2">{t("ar.paid-amount")} (EGP)</th>
+                  <th className="text-start p-2">{t("ar.balance")} (EGP)</th>
                   <th className="text-start p-2">{t("field.status")}</th>
                   <th className="text-start p-2">{t("field.actions")}</th>
                 </tr>
@@ -1602,14 +1577,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                       >
                         <td className="p-2 font-medium">{invoice.invoiceNumber}</td>
                         <td className="p-2">{getCustomerName(invoice.customerId)}</td>
-                        <td className="p-2">{formatDate(invoice.dueDate)}</td>
-                        <td className="p-2">{formatCurrency(invoice.amount || 0)}</td>
-                        <td className="p-2 text-green-600">{formatCurrency(invoice.collectedAmount || 0)}</td>
-                        <td className="p-2 text-amber-600">{formatCurrency(balance)}</td>
+                        <td className="p-2">{formatDate(invoice.dueDate, language)}</td>
+                        <td className="p-2"><Money value={invoice.amount || 0} /></td>
+                        <td className="p-2 text-green-600"><Money value={invoice.collectedAmount || 0} /></td>
+                        <td className="p-2 text-amber-600"><Money value={balance} /></td>
                         <td className="p-2">
-                          <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(status)}`}>
-                            {t(`status.${status}`)}
-                          </span>
+                          <StatusBadge status={status} label={t(`status.${status}`)} />
                         </td>
                         <td className="p-2">
                           <Button
@@ -1650,17 +1623,18 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   <strong>{t("ar.customer")}:</strong> {getCustomerName(selectedInvoiceForPayment.customerId)}
                 </p>
                 <p>
-                  <strong>{t("ar.total-amount")}:</strong> {formatCurrency(selectedInvoiceForPayment.amount || 0)}
+                  <strong>{t("ar.total-amount")}:</strong> <Money value={selectedInvoiceForPayment.amount || 0} /> EGP
                 </p>
                 <p>
                   <strong>{t("ar.paid-amount")}:</strong>{" "}
-                  {formatCurrency(selectedInvoiceForPayment.collectedAmount || 0)}
+                  <Money value={selectedInvoiceForPayment.collectedAmount || 0} /> EGP
                 </p>
                 <p>
                   <strong>{t("ar.monthly-payment")}:</strong>{" "}
-                  {formatCurrency(
-                    (selectedInvoiceForPayment.amount || 0) / getInstallmentMonths(selectedInvoiceForPayment),
-                  )}
+                  <Money
+                    value={(selectedInvoiceForPayment.amount || 0) / getInstallmentMonths(selectedInvoiceForPayment)}
+                  />{" "}
+                  EGP
                 </p>
                 <p>
                   <strong>{t("ar.progress")}:</strong> {selectedInvoiceForPayment.monthsPaid || 0}/
@@ -1742,29 +1716,29 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                               <FileText className="w-5 h-5 text-primary" />
                               <p className="font-bold text-lg">{so.so_number || so.soNumber || `SO-${so.so_id}`}</p>
                             </div>
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm ml-8">
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm ms-8">
                               <div>
                                 <span className="text-muted-foreground">{t("field.customer")}:</span>
-                                <span className="ml-2 font-medium">{so.customerName || "Unknown"}</span>
+                                <span className="ms-2 font-medium">{so.customerName || "Unknown"}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">{t("field.payment")}:</span>
-                                <span className="ml-2 font-medium capitalize">{so.paymentType || "Cash"}</span>
+                                <span className="ms-2 font-medium capitalize">{so.paymentType || "Cash"}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">{t("field.date")}:</span>
-                                <span className="ml-2 font-medium">
-                                  {so.orderDate ? formatDate(so.orderDate) : so.createdAt ? formatDate(so.createdAt) : "-"}
+                                <span className="ms-2 font-medium">
+                                  {so.orderDate ? formatDate(so.orderDate, language) : so.createdAt ? formatDate(so.createdAt, language) : "—"}
                                 </span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">{t("field.status")}:</span>
-                                <span className="ml-2 font-medium capitalize">{so.status?.replace(/_/g, " ")}</span>
+                                <span className="ms-2 font-medium capitalize">{so.status?.replace(/_/g, " ")}</span>
                               </div>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-2xl font-bold text-primary">{formatCurrency(so.total || so.total_amount || 0)}</p>
+                          <div className="text-end">
+                            <p className="text-2xl font-bold text-primary"><Money value={so.total || so.total_amount || 0} /> EGP</p>
                             <p className="text-xs text-muted-foreground mt-1">{t("field.total")}</p>
                           </div>
                         </div>
@@ -1811,7 +1785,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
-                            <p className="font-bold text-lg text-primary">{formatCurrency(selectedSODetails?.total || 0)}</p>
+                            <p className="font-bold text-lg text-primary"><Money value={selectedSODetails?.total || 0} /> EGP</p>
                           </div>
                         </div>
                       </CardContent>
@@ -1865,7 +1839,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                                   <p className="text-sm text-muted-foreground">
                                     {t("payment.cheque-due-date") || "Cheque Due Date"}
                                   </p>
-                                  <p className="font-semibold">{formatDate(chequeDueDate)}</p>
+                                  <p className="font-semibold">{formatDate(chequeDueDate, language)}</p>
                                 </div>
                               )}
                               {chequeAmount != null && chequeAmount > 0 && (
@@ -1873,7 +1847,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                                   <p className="text-sm text-muted-foreground">
                                     {t("payment.cheque-amount") || "Cheque Amount"}
                                   </p>
-                                  <p className="font-semibold">{formatCurrency(chequeAmount)}</p>
+                                  <p className="font-semibold"><Money value={chequeAmount} /> EGP</p>
                                 </div>
                               )}
                               {chequeNotes && (
@@ -1916,7 +1890,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                                   <div>
                                     <p className="font-medium">{dp.permitNo || `DP-${dp.id}`}</p>
                                     <p className="text-xs text-muted-foreground">
-                                      {dp.printedAt ? formatDate(dp.printedAt) : dp.createdAt ? formatDate(dp.createdAt) : "N/A"}
+                                      {dp.printedAt ? formatDate(dp.printedAt, language) : dp.createdAt ? formatDate(dp.createdAt, language) : "N/A"}
                                     </p>
                                   </div>
                                 </div>
@@ -1946,7 +1920,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">{t("field.amount")}:</span>
-                            <span className="font-bold text-lg">{formatCurrency(selectedSODetails?.total || 0)}</span>
+                            <span className="font-bold text-lg"><Money value={selectedSODetails?.total || 0} /> EGP</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">{t("field.delivery-permits")}:</span>
@@ -1981,7 +1955,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   size="lg"
                   className="min-w-[150px]"
                 >
-                  <FileText className="w-4 h-4 mr-2" />
+                  <FileText className="w-4 h-4 me-2" />
                   {t("ar.create-invoice")}
                 </Button>
               </>
@@ -2039,7 +2013,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                       <p className="text-sm text-muted-foreground">Customer: {customerName}</p>
                       <p className="text-sm text-muted-foreground">SO: {soNumber}</p>
                       <p className="text-sm text-muted-foreground">
-                        Date: {deliveryDate ? formatDate(deliveryDate) : "N/A"}
+                        Date: {deliveryDate ? formatDate(deliveryDate, language) : "N/A"}
                       </p>
                       <p className="text-xs text-muted-foreground">Payment: {paymentType}</p>
                       {/* Show returned items warning if any */}
@@ -2054,7 +2028,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         </div>
                       )}
                     </div>
-                    <div className="text-right flex items-center gap-2">
+                    <div className="text-end flex items-center gap-2">
                       <Checkbox
                         checked={selectedDPs.includes(permitId)}
                         onCheckedChange={() => {}} // Handled by parent div
