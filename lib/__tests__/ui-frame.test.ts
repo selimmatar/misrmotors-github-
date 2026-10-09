@@ -1,0 +1,33 @@
+// Frame and building blocks (spec §3–§4): logical (RTL-safe) classes only, approval keys in EN and AR.
+import test from "node:test"
+import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
+
+const REPO = process.env.REPO_ROOT || path.resolve(__dirname, "..", "..", "..", "..")
+const read = (f: string) => fs.readFileSync(path.join(REPO, f), "utf8")
+const I18N = read("lib/i18n-context.tsx")
+const AR_AT = I18N.indexOf("\n  ar: {")
+const EN = I18N.slice(0, AR_AT)
+const AR = I18N.slice(AR_AT)
+
+const ERP_DIR = path.join(REPO, "components/erp")
+const FRAME_FILES: string[] = [
+  ...(fs.existsSync(ERP_DIR) ? fs.readdirSync(ERP_DIR).filter((f) => f.endsWith(".tsx")).map((f) => `components/erp/${f}`) : []),
+]
+
+const BAD = /(?<![\w-])(?:(?:ml|mr|pl|pr|left|right)-[\w[]|text-(?:left|right)\b|(?:border|rounded)-[lr]\b|flex-row\b)/
+// catches border-r and border-r-2; ignores border-red-500, side="left", aria-* and ms-/me-/start-/end-
+test("RTL: logical classes only", () => {
+  for (const f of FRAME_FILES) for (const [n, line] of read(f).split("\n").entries())
+    assert.doesNotMatch(line, BAD, `${f}:${n + 1}`)
+})
+
+test("approval and table keys exist in EN and AR", () => {
+  assert.equal(AR_AT > 0, true)
+  for (const k of ["approval.title", "approval.step", "approval.of", "approval.complete", "approval.not-started",
+    "approval.accountant", "approval.warehouse", "approval.shipping", "approval.delivered", "field.actions"]) {
+    assert.ok(EN.includes(`"${k}":`), `EN ${k}`); assert.ok(AR.includes(`"${k}":`), `AR ${k}`) }
+})
+
+test("components/erp exists", () => { assert.equal(FRAME_FILES.length >= 6, true) })
