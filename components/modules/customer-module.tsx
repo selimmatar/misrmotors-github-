@@ -220,7 +220,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => setSelectedCustomer(null)} className="gap-2">
             <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
-            {t("action.back")} {t("customer.title")}
+            {t("action.back")} {t("module.customers")}
           </Button>
         </div>
 
@@ -384,8 +384,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
     <div className="space-y-6">
       <PageHeader
         group={t("group.sales")}
-        title={t("customer.title")}
-        subtitle={t("customer.description")}
+        title={t("module.customers")}
         actions={
           <>
             <div className="relative w-full md:w-64">

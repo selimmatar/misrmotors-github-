@@ -107,3 +107,14 @@ test("approve orders uses the module title; permits keep their own labels", () =
   const d = read("components/modules/delivery-permits-module.tsx")
   assert.doesNotMatch(d, /<PermitStatusBadge/); assert.match(d, /label=\{t\(`permit\.status\./)
 })
+
+test("missing title keys fall back to the module title; missing subtitles are dropped", () => {
+  const c = read("components/modules/customer-module.tsx")
+  assert.match(c, /title=\{t\("module\.customers"\)\}/); assert.doesNotMatch(c, /t\("customer\.(title|description)"\)/)
+  const b = read("components/modules/balance-module.tsx")
+  assert.match(b, /title=\{t\("module\.balance"\)\}/); assert.doesNotMatch(b, /t\("balance\.(title|description)"\)/)
+})
+
+test("permit status badge survives a missing status", () => {
+  assert.match(read("components/modules/delivery-permits-module.tsx"), /\(permit\.status \|\| "DRAFT"\)/)
+})

@@ -106,8 +106,8 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
 
   const renderStatus = (permit: DeliveryPermit) => (
     <StatusBadge
-      status={permit.status}
-      label={t(`permit.status.${permit.status.toLowerCase().replace(/_/g, "-")}`)}
+      status={permit.status || "DRAFT"}
+      label={t(`permit.status.${(permit.status || "DRAFT").toLowerCase().replace(/_/g, "-")}`)}
     />
   )
 

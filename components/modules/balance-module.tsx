@@ -64,7 +64,7 @@ export function BalanceModule() {
 
   return (
     <div className="space-y-6">
-      <PageHeader group={t("group.finance")} title={t("balance.title")} subtitle={t("balance.description")} />
+      <PageHeader group={t("group.finance")} title={t("module.balance")} />
 
       {/* Summary Cards */}
       <KpiGrid className="lg:grid-cols-3">
