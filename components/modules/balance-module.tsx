@@ -57,9 +57,9 @@ export function BalanceModule() {
 
   const getTypeColor = (type: string) => {
     if (type === "sales_order" || type === "ar_payment") {
-      return "text-green-600"
+      return "text-green-700"
     }
-    return "text-red-600"
+    return "text-red-700"
   }
 
   return (
@@ -86,7 +86,7 @@ export function BalanceModule() {
       </KpiGrid>
 
       <Tabs defaultValue="all" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="h-auto flex-wrap w-full justify-start">
           <TabsTrigger value="all">{t("balance.all-transactions")}</TabsTrigger>
           <TabsTrigger value="income">{t("balance.income")}</TabsTrigger>
           <TabsTrigger value="expenses">{t("balance.expenses")}</TabsTrigger>
@@ -119,7 +119,7 @@ export function BalanceModule() {
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.amount")} (EGP)</p>
                           <p
-                            className={`font-semibold text-lg ${entry.amount > 0 ? "text-green-600" : "text-red-600"}`}
+                            className={`font-semibold text-lg ${entry.amount > 0 ? "text-green-700" : "text-red-700"}`}
                           >
                             <bdi>
                               {entry.amount > 0 ? "+" : ""}
@@ -160,7 +160,7 @@ export function BalanceModule() {
                       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.type")}</p>
-                          <p className="font-semibold text-green-600">{getTypeLabel(entry.type)}</p>
+                          <p className="font-semibold text-green-700">{getTypeLabel(entry.type)}</p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.reference")}</p>
@@ -168,7 +168,7 @@ export function BalanceModule() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.amount")} (EGP)</p>
-                          <p className="font-semibold text-lg text-green-600">
+                          <p className="font-semibold text-lg text-green-700">
                             <bdi>
                               +<Money value={entry.amount} />
                             </bdi>
@@ -207,7 +207,7 @@ export function BalanceModule() {
                       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.type")}</p>
-                          <p className="font-semibold text-red-600">{getTypeLabel(entry.type)}</p>
+                          <p className="font-semibold text-red-700">{getTypeLabel(entry.type)}</p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.reference")}</p>
@@ -215,7 +215,7 @@ export function BalanceModule() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.amount")} (EGP)</p>
-                          <p className="font-semibold text-lg text-red-600">
+                          <p className="font-semibold text-lg text-red-700">
                             <bdi>
                               -<Money value={Math.abs(entry.amount)} />
                             </bdi>
