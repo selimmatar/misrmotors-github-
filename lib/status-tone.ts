@@ -36,6 +36,14 @@ const STATUS_TONE: Record<string, StatusTone> = {
   expired: "danger",
   voided: "danger",
   discrepancy: "danger",
+  "due-soon": "waiting",
+  pending_warehouse: "waiting",
+  partially_delivered: "approved",
+  not_delivered: "neutral",
+  fully_paid: "done",
+  not_paid: "danger",
+  unpaid: "danger",
+  no_invoice: "neutral",
 }
 
 export function statusTone(status: string | null | undefined): StatusTone {

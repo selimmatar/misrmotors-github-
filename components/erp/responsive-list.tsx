@@ -32,12 +32,18 @@ export interface ListCardProps {
   party?: ReactNode
   status?: ReactNode
   actions?: ReactNode
+  // Whole-card click. Anything inside `actions` keeps its own click and does not trigger this.
+  onClick?: () => void
   className?: string
 }
 
-export function ListCard({ id, amount, party, status, actions, className }: ListCardProps) {
+export function ListCard({ id, amount, party, status, actions, onClick, className }: ListCardProps) {
   return (
-    <div className={cn("flex flex-col gap-2 rounded-xl border bg-card p-3", className)}>
+    <div
+      data-slot="list-card"
+      onClick={onClick}
+      className={cn("flex flex-col gap-2 rounded-xl border bg-card p-3", onClick && "cursor-pointer hover:border-primary", className)}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 break-words font-semibold text-link">{id}</div>
         {amount != null && (
@@ -52,7 +58,11 @@ export function ListCard({ id, amount, party, status, actions, className }: List
           {status != null && <div className="shrink-0">{status}</div>}
         </div>
       )}
-      {actions != null && <div className="flex flex-wrap gap-2">{actions}</div>}
+      {actions != null && (
+        <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+          {actions}
+        </div>
+      )}
     </div>
   )
 }
