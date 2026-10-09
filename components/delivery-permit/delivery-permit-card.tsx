@@ -185,7 +185,7 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
               </div>
             )}
             {permit.approvedAt && (
-              <div className="flex items-center gap-2 text-green-600">
+              <div className="flex items-center gap-2 text-green-700">
                 <CheckCircle className="h-4 w-4" />
                 {t("permit.status.approved")}: {formatDate(permit.approvedAt)}
               </div>
@@ -267,7 +267,7 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
           {permit.status === "REJECTED" && permit.rejectionReason && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-md">
               <p className="text-sm font-medium text-red-700">{t("permit.rejection-reason")}:</p>
-              <p className="text-sm text-red-600 mt-1">{permit.rejectionReason}</p>
+              <p className="text-sm text-red-700 mt-1">{permit.rejectionReason}</p>
             </div>
           )}
         </div>

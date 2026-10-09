@@ -152,7 +152,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
       {/* Search and Tabs */}
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -166,7 +166,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
+            <TabsList className="mb-4 h-auto flex-wrap w-full justify-start">
               <TabsTrigger value="all">
                 {t("all")} ({statusCounts.all})
               </TabsTrigger>
@@ -316,7 +316,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                             <TableCell className="text-end">
                               {item.quantity}
                               {Number((item as any).returnedQuantity) > 0 && (
-                                <span className="block text-xs text-red-600">
+                                <span className="block text-xs text-red-700">
                                   Returned {(item as any).returnedQuantity} · net {Number(item.quantity) - Number((item as any).returnedQuantity)}
                                 </span>
                               )}
@@ -333,11 +333,11 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
 
               {/* Signed Document Preview */}
               <div className="border rounded-lg p-4 bg-muted/30">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <p className="font-medium">{t("permit.signed-document")}</p>
                   {(permitToReview.signedDocumentUrl ||
                     permitToReview.files?.some((f) => f.fileType === "SIGNED_PERMIT")) && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button
                         variant="outline"
                         size="sm"
