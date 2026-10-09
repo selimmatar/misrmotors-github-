@@ -3,10 +3,15 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { RefreshCw, CheckCircle, XCircle, AlertTriangle, Code } from "lucide-react"
+import { TableBody, TableCell, TableHeader, TableHead, TableRow } from "@/components/ui/table"
+import { RefreshCw, CheckCircle, AlertTriangle, Code } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { formatDateTime, formatMoney } from "@/lib/format"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 
 interface ValidationResult {
   kpi: string
@@ -24,7 +29,7 @@ interface MetricsData {
 }
 
 export default function MetricsValidationModule() {
-  const { t, formatNumber, formatCurrency } = useI18n()
+  const { t, language } = useI18n()
   const [data, setData] = useState<MetricsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedQuery, setExpandedQuery] = useState<string | null>(null)
@@ -46,35 +51,29 @@ export default function MetricsValidationModule() {
     fetchValidation()
   }, [])
 
-  const getStatusBadge = (match: boolean) => {
-    if (match) {
-      return (
-        <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
-          <CheckCircle className="h-3 w-3 mr-1" />
-          Valid
-        </Badge>
-      )
-    }
-    return (
-      <Badge className="bg-red-500/10 text-red-500 border-red-500/20">
-        <XCircle className="h-3 w-3 mr-1" />
-        Mismatch
-      </Badge>
-    )
-  }
+  const renderRowActions = (result: ValidationResult) => (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setExpandedQuery(expandedQuery === result.kpi ? null : result.kpi)}
+    >
+      <Code className="h-4 w-4" />
+    </Button>
+  )
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Metrics Validation</h1>
-          <p className="text-muted-foreground">Developer tool to verify dashboard metrics match database totals</p>
-        </div>
-        <Button onClick={fetchValidation} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Revalidate
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        group={t("group.admin")}
+        title={t("module.metrics-validation")}
+        subtitle="Developer tool to verify dashboard metrics match database totals"
+        actions={
+          <Button onClick={fetchValidation} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 me-2 ${loading ? "animate-spin" : ""}`} />
+            Revalidate
+          </Button>
+        }
+      />
 
       {/* Summary Card */}
       <Card>
@@ -93,24 +92,15 @@ export default function MetricsValidationModule() {
             )}
           </CardTitle>
           <CardDescription>
-            Last validated: {data?.validatedAt ? new Date(data.validatedAt).toLocaleString() : "Never"}
+            Last validated: {data?.validatedAt ? formatDateTime(data.validatedAt, language) : "Never"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="p-4 bg-muted/50 rounded-lg text-center">
-              <p className="text-2xl font-bold">{data?.results?.length || 0}</p>
-              <p className="text-sm text-muted-foreground">Total KPIs</p>
-            </div>
-            <div className="p-4 bg-emerald-500/10 rounded-lg text-center">
-              <p className="text-2xl font-bold text-emerald-500">{data?.results?.filter((r) => r.match).length || 0}</p>
-              <p className="text-sm text-muted-foreground">Valid</p>
-            </div>
-            <div className="p-4 bg-red-500/10 rounded-lg text-center">
-              <p className="text-2xl font-bold text-red-500">{data?.results?.filter((r) => !r.match).length || 0}</p>
-              <p className="text-sm text-muted-foreground">Mismatches</p>
-            </div>
-          </div>
+          <KpiGrid>
+            <KpiTile label="Total KPIs" value={data?.results?.length || 0} />
+            <KpiTile label="Valid" value={data?.results?.filter((r) => r.match).length || 0} />
+            <KpiTile label="Mismatches" value={data?.results?.filter((r) => !r.match).length || 0} />
+          </KpiGrid>
         </CardContent>
       </Card>
 
@@ -128,44 +118,53 @@ export default function MetricsValidationModule() {
               <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>KPI Name</TableHead>
-                  <TableHead className="text-right">Expected (Raw)</TableHead>
-                  <TableHead className="text-right">Actual (Metrics)</TableHead>
-                  <TableHead className="text-right">Difference</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Query</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.results?.map((result, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{result.kpi}</TableCell>
-                    <TableCell className="text-right font-mono">{formatCurrency(result.expected)}</TableCell>
-                    <TableCell className="text-right font-mono">{formatCurrency(result.actual)}</TableCell>
-                    <TableCell
-                      className={`text-right font-mono ${
-                        Math.abs(result.expected - result.actual) > 0.01 ? "text-red-500" : "text-emerald-500"
-                      }`}
-                    >
-                      {formatCurrency(Math.abs(result.expected - result.actual))}
-                    </TableCell>
-                    <TableCell>{getStatusBadge(result.match)}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setExpandedQuery(expandedQuery === result.kpi ? null : result.kpi)}
-                      >
-                        <Code className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <ResponsiveList
+              rows={data?.results ?? []}
+              table={
+                <ErpTable>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>KPI Name</TableHead>
+                      <NumHead>Expected (Raw)</NumHead>
+                      <NumHead>Actual (Metrics)</NumHead>
+                      <NumHead>Difference</NumHead>
+                      <TableHead>Status</TableHead>
+                      <ActionsHead>Query</ActionsHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data?.results?.map((result, index) => (
+                      <TableRow key={index}>
+                        <IdCell>{result.kpi}</IdCell>
+                        <NumCell className="font-mono">{formatMoney(result.expected, language)}</NumCell>
+                        <NumCell className="font-mono">{formatMoney(result.actual, language)}</NumCell>
+                        <NumCell
+                          className={`font-mono ${
+                            Math.abs(result.expected - result.actual) > 0.01 ? "text-red-500" : "text-emerald-500"
+                          }`}
+                        >
+                          {formatMoney(Math.abs(result.expected - result.actual), language)}
+                        </NumCell>
+                        <TableCell>
+                          <StatusBadge status={result.match ? "valid" : "mismatch"} />
+                        </TableCell>
+                        <ActionsCell>{renderRowActions(result)}</ActionsCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </ErpTable>
+              }
+              card={(result) => (
+                <ListCard
+                  id={result.kpi}
+                  amount={formatMoney(result.actual, language)}
+                  party={`Expected ${formatMoney(result.expected, language)}`}
+                  status={<StatusBadge status={result.match ? "valid" : "mismatch"} />}
+                  note={`Difference ${formatMoney(Math.abs(result.expected - result.actual), language)}`}
+                  actions={renderRowActions(result)}
+                />
+              )}
+            />
           )}
         </CardContent>
       </Card>
