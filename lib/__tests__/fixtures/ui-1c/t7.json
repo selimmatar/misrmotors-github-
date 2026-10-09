@@ -2,7 +2,7 @@
   "task": "t7",
   "modules": {
     "components/modules/user-management-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [],
         "handlers": [],
@@ -18,7 +18,7 @@
       }
     },
     "components/modules/hr-management-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/hr/compensation",
@@ -60,10 +60,17 @@
         "iso": 5,
         "t": 0,
         "onClick": 7
-      }
+      },
+      "must": [
+        {
+          "re": "getStatusBadgeVariant",
+          "min": 0,
+          "max": 0
+        }
+      ]
     },
     "components/modules/metrics-validation-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/metrics/validate"
@@ -74,10 +81,24 @@
         "iso": 0,
         "t": 0,
         "onClick": 2
-      }
+      },
+      "must": [
+        {
+          "re": "<ResponsiveList"
+        },
+        {
+          "re": "<KpiTile",
+          "min": 3
+        },
+        {
+          "re": "\\bp-6\\b",
+          "min": 0,
+          "max": 0
+        }
+      ]
     },
     "components/modules/system-health-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/system-health"
@@ -88,7 +109,13 @@
         "iso": 0,
         "t": 3,
         "onClick": 2
-      }
+      },
+      "must": [
+        {
+          "re": "<KpiTile",
+          "min": 4
+        }
+      ]
     }
   }
 }
