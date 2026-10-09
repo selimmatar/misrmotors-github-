@@ -2,36 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import {
-  LayoutDashboard,
-  ShoppingCart,
-  Building2,
-  Warehouse,
-  CreditCard,
-  Users,
-  TrendingUp,
-  DollarSign,
-  Package,
-  UsersIcon,
-  Wallet,
-  Sparkles,
-  TrendingUpIcon,
-  Settings,
-  BarChart3,
-  Calculator,
-  PackageX,
-  ClipboardCheck,
-  CheckSquare,
-  Activity,
-  FileText,
-  Truck,
-  UserCog,
-  ArrowLeftRight,
-  Wrench,
-  X,
-} from "lucide-react"
+import { X } from "lucide-react"
 import type { UserRole } from "@/lib/types"
 import { useI18n } from "@/lib/i18n-context"
+import { ROLE_MODULES, ROLE_DISPLAY_NAMES } from "@/components/layout/nav-config"
 
 interface SidebarProps {
   activeModule: string
@@ -64,107 +38,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
     return () => clearInterval(interval)
   }, [fetchPendingCounts])
 
-  const roleModules: Record<UserRole, Array<{ id: string; label: string; icon: any }>> = {
-    admin: [
-      { id: "user-management", label: "module.user-management", icon: UsersIcon },
-      { id: "hr-management", label: "module.hr-management", icon: UserCog },
-      { id: "metrics-validation", label: "module.metrics-validation", icon: CheckSquare },
-      { id: "system-health", label: "module.system-health", icon: Activity },
-    ],
-    ceo: [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "analytics", label: "module.analytics", icon: BarChart3 },
-      { id: "ceo-chat", label: "module.ceo-chat", icon: Sparkles },
-      { id: "hr-management", label: "module.hr-management", icon: UserCog },
-      { id: "suppliers", label: "module.suppliers", icon: Building2 },
-      { id: "products", label: "module.products", icon: Package },
-      { id: "po-requests", label: "module.po-requests", icon: FileText },
-      { id: "purchase-orders", label: "module.purchase-orders", icon: ShoppingCart },
-      { id: "pricing-review", label: "module.pricing-review", icon: TrendingUpIcon },
-      { id: "costing-settings", label: "module.costing-settings", icon: Settings },
-      { id: "inventory", label: "module.inventory", icon: Warehouse },
-      { id: "inventory-audit", label: "module.inventory-audit", icon: ClipboardCheck },
-      { id: "goods-receipt-tracking", label: "module.goods-receipt-tracking", icon: ClipboardCheck },
-      { id: "reorder-suggestions", label: "module.reorder-suggestions", icon: Calculator },
-      { id: "lost-sales", label: "module.lost-sales", icon: PackageX },
-      { id: "accounts-payable", label: "module.accounts-payable", icon: CreditCard },
-      { id: "customers", label: "module.customers", icon: Users },
-      { id: "sales-orders", label: "module.sales-orders", icon: TrendingUp },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
-      { id: "balance", label: "module.balance", icon: Wallet },
-      { id: "metrics-validation", label: "module.metrics-validation", icon: CheckSquare },
-      { id: "system-health", label: "module.system-health", icon: Activity },
-    ],
-    accountant: [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "analytics", label: "module.analytics", icon: BarChart3 },
-      { id: "approve-sales-orders", label: "module.approve-sales-orders", icon: CheckSquare },
-      { id: "sales-quotations", label: "module.sales-quotations", icon: FileText },
-      { id: "payment-schedule", label: "module.payment-schedule", icon: DollarSign },
-      { id: "purchase-orders", label: "module.purchase-orders", icon: ShoppingCart },
-      { id: "pricing-review", label: "module.pricing-review", icon: TrendingUpIcon },
-      { id: "costing-settings", label: "module.costing-settings", icon: Settings },
-      { id: "accounts-payable", label: "module.accounts-payable", icon: CreditCard },
-      { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
-      { id: "maintenance-invoices", label: "Maintenance", icon: Wrench },
-      { id: "customers", label: "module.customers", icon: Users },
-      { id: "suppliers", label: "module.suppliers", icon: Building2 },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "balance", label: "module.balance", icon: Wallet },
-    ],
-    "sales-rep": [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "analytics", label: "module.analytics", icon: BarChart3 },
-      { id: "customers", label: "module.customers", icon: Users },
-      { id: "sales-orders", label: "module.sales-orders", icon: TrendingUp },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "inventory", label: "module.inventory", icon: Warehouse },
-      { id: "lost-sales", label: "module.lost-sales", icon: PackageX },
-      { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
-      { id: "operations-management", label: "module.operations-management", icon: Wrench },
-    ],
-    "warehouse-rep": [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "inventory", label: "module.inventory", icon: Warehouse },
-      { id: "inventory-audit", label: "module.inventory-audit", icon: ClipboardCheck },
-      { id: "warehouse-transfers", label: "module.warehouse-transfers", icon: ArrowLeftRight },
-      { id: "warehouse-delivery", label: "module.warehouse-delivery", icon: Package },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "goods-receipt", label: "module.goods-receipt", icon: Package },
-      { id: "goods-receipt-tracking", label: "module.goods-receipt-tracking", icon: ClipboardCheck },
-    ],
-    "po-rep": [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "analytics", label: "module.analytics", icon: BarChart3 },
-      { id: "suppliers", label: "module.suppliers", icon: Building2 },
-      { id: "products", label: "module.products", icon: Package },
-      { id: "po-requests", label: "module.po-requests", icon: FileText },
-      { id: "purchase-orders", label: "module.purchase-orders", icon: ShoppingCart },
-      { id: "goods-receipt-tracking", label: "module.goods-receipt-tracking", icon: ClipboardCheck },
-      { id: "inventory", label: "module.inventory", icon: Warehouse },
-      { id: "reorder-suggestions", label: "module.reorder-suggestions", icon: Calculator },
-      { id: "lost-sales", label: "module.lost-sales", icon: PackageX },
-    ],
-    shipment: [
-      { id: "shipment", label: "module.shipping", icon: Truck },
-      { id: "courier-management", label: "module.courier-management", icon: UserCog },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "operations-management", label: "module.operations-management", icon: Users },
-    ],
-  }
-
-  const modules = roleModules[userRole] || []
-
-  const roleDisplayNames: Record<UserRole, string> = {
-    admin: "role.administrator",
-    ceo: "role.ceo",
-    accountant: "role.accountant",
-    "sales-rep": "role.sales-rep",
-    "warehouse-rep": "role.warehouse-rep",
-    "po-rep": "role.po-rep",
-    shipment: "role.shipment",
-  }
+  const modules = ROLE_MODULES[userRole] || []
 
   const sidebarContent = (
     <>
@@ -173,7 +47,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
           <img src="/images/image.png" alt="Misr Motors Logo" className="h-12 w-auto" />
           <h1 className="text-xl font-bold text-sidebar-foreground">{t("misr-motors")}</h1>
         </div>
-        <p className="text-sm text-sidebar-foreground/60">{t(roleDisplayNames[userRole])}</p>
+        <p className="text-sm text-sidebar-foreground/60">{t(ROLE_DISPLAY_NAMES[userRole])}</p>
       </div>
 
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
