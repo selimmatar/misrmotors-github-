@@ -1,26 +1,13 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { keyToReadable } from "@/lib/i18n-fallback"
 
 type Language = "en" | "ar"
 type TranslationKey = string
 
 // Track missing keys for developer diagnostics
 const missingKeys = new Set<string>()
-
-function keyToReadable(key: string): string {
-  // Remove prefix like "field.", "status.", "module.", etc.
-  const parts = key.split(".")
-  const lastPart = parts[parts.length - 1]
-
-  // Convert kebab-case and snake_case to Title Case
-  return lastPart
-    .replace(/[-_]/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ")
-}
 
 // Complete translations dictionary with ALL keys used in the app
 const translations: Record<Language, Record<string, string>> = {
@@ -100,7 +87,7 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Modules
     "module.dashboard": "Dashboard",
-    "module.sales-orders": "Sales Quotations",
+    "module.sales-orders": "Sales Orders",
 "module.po-requests": "PO Requests",
   "module.purchase-orders": "Purchase Orders",
   "module.inventory": "Inventory",
@@ -130,12 +117,39 @@ const translations: Record<Language, Record<string, string>> = {
     "module.ceo-chat": "CEO Assistant",
     "module.system-health": "System Health",
     "module.delivery-permits": "Delivery Permits",
-    "module.sales-quotations": "Create Quotations",
+    "module.sales-quotations": "Quotations",
     "module.approve-sales-quotations": "Approve Quotations",
     "module.warehouse-delivery": "Outbound Delivery",
     "module.warehouse-transfers": "Warehouse Transfers",
     "module.hr-management": "HR Management",
     "module.operations-management": "Operations Management",
+    "module.maintenance-invoices": "Maintenance Invoices",
+    "module.approve-sales-orders": "Approve Sales Orders",
+    "module.payment-schedule": "Payment Schedule",
+    "module.ai-assistant": "AI Assistant",
+    "module.upcoming-orders": "Upcoming Orders",
+    "module.previous-orders": "Previous Orders",
+    "module.accountant": "Accountant",
+    // Navigation frame (sidebar groups, phone tabs, user chip)
+    "group.overview": "Overview",
+    "group.sales": "Sales",
+    "group.purchasing": "Purchasing",
+    "group.inventory": "Inventory",
+    "group.finance": "Finance",
+    "group.operations": "Operations",
+    "group.admin": "Admin",
+    "nav.home": "Home",
+    "nav.menu": "Menu",
+    "nav.account": "Account",
+    "approval.title": "Approval",
+    "approval.step": "step",
+    "approval.of": "of",
+    "approval.complete": "complete",
+    "approval.not-started": "not started",
+    "approval.accountant": "Accountant",
+    "approval.warehouse": "Warehouse",
+    "approval.shipping": "Shipping",
+    "approval.delivered": "Delivered",
 
     // System Health
     "system-health.title": "System Health",
@@ -918,7 +932,7 @@ const translations: Record<Language, Record<string, string>> = {
     "module.ceo-chat": "مساعد الرئيس التنفيذي",
     "module.system-health": "صحة النظام",
     "module.delivery-permits": "السماحات للشحن",
-    "module.sales-quotations": "إنشاء عروض الأسعار",
+    "module.sales-quotations": "عروض الأسعار",
     "module.approve-sales-quotations": "الموافقة على عروض الأسعار",
     "module.warehouse-delivery": "الشحن الخارجي",
     "module.hr-management": "إدارة الموارد البشرية",
@@ -1123,6 +1137,35 @@ const translations: Record<Language, Record<string, string>> = {
 
     "module.courier-management": "إدارة شركات التوصيل",
     "module.operations-management": "إدارة العمليات",
+    "module.maintenance-invoices": "فواتير الصيانة",
+    "module.approve-sales-orders": "اعتماد أوامر البيع",
+    "module.payment-schedule": "جدول المدفوعات",
+    "module.goods-receipt-tracking": "تتبع استلام البضائع",
+    "module.warehouse-transfers": "التحويلات بين المخازن",
+    "module.ai-assistant": "المساعد الذكي",
+    "module.upcoming-orders": "الطلبات القادمة",
+    "module.previous-orders": "الطلبات السابقة",
+    "module.accountant": "المحاسب",
+    // Navigation frame (sidebar groups, phone tabs, user chip)
+    "group.overview": "نظرة عامة",
+    "group.sales": "المبيعات",
+    "group.purchasing": "المشتريات",
+    "group.inventory": "المخزون",
+    "group.finance": "المالية",
+    "group.operations": "العمليات",
+    "group.admin": "الإدارة",
+    "nav.home": "الرئيسية",
+    "nav.menu": "القائمة",
+    "nav.account": "الحساب",
+    "approval.title": "الموافقة",
+    "approval.step": "الخطوة",
+    "approval.of": "من",
+    "approval.complete": "مكتملة",
+    "approval.not-started": "لم تبدأ",
+    "approval.accountant": "المحاسب",
+    "approval.warehouse": "المخزن",
+    "approval.shipping": "الشحن",
+    "approval.delivered": "تم التسليم",
     "courier.management": "إدارة شركات التوصي��",
     "courier.management-description": "إضافة وإدارة شركات التوصيل",
     "courier.add": "إضافة شركة توصيل",

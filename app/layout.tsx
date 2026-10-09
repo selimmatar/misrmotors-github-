@@ -1,11 +1,16 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+import { Manrope, Almarai } from "next/font/google"
 import "./globals.css"
 import { I18nProvider } from "@/lib/i18n-context"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope", display: "swap" })
+const almarai = Almarai({
+  subsets: ["arabic"],
+  weight: ["400", "700", "800"],
+  variable: "--font-almarai",
+  display: "swap",
+})
 
 export const metadata: Metadata = {
   title: "Misr Motors",
@@ -29,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`font-sans antialiased`}>
+      <body className={`${manrope.variable} ${almarai.variable} font-sans antialiased`}>
         <I18nProvider>{children}</I18nProvider>
       </body>
     </html>

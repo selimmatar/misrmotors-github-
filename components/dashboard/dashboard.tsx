@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
+import { MobileTabs } from "@/components/layout/mobile-tabs"
+import { ROLE_MODULES } from "@/components/layout/nav-config"
 import { PurchaseOrderModule } from "@/components/modules/purchase-order-module"
 import { PORequestModule } from "@/components/modules/po-request-module"
 import { SupplierModule } from "@/components/modules/supplier-module"
@@ -88,7 +90,9 @@ type ModuleType =
   | "operations-management" // Added operations-management module type
 
 export function Dashboard({ user, onLogout }: DashboardProps) {
-  const [activeModule, setActiveModule] = useState<ModuleType>(user.role === "shipment" ? "shipment" : "dashboard")
+  const [activeModule, setActiveModule] = useState<ModuleType>(
+    user.role === "shipment" ? "shipment" : user.role === "admin" ? "user-management" : "dashboard",
+  )
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   useEffect(() => {
@@ -209,9 +213,22 @@ case "po-requests":
         onMobileClose={() => setMobileSidebarOpen(false)}
       />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Header user={user} onLogout={onLogout} onMenuClick={() => setMobileSidebarOpen(true)} />
-        <main className="flex-1 overflow-auto p-4 md:p-6">{renderModule()}</main>
+        <Header
+          user={user}
+          onLogout={onLogout}
+          onMenuClick={() => setMobileSidebarOpen(true)}
+          activeModule={activeModule}
+        />
+        <main className="flex-1 overflow-auto p-4 md:p-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6">
+          {renderModule()}
+        </main>
       </div>
+      <MobileTabs
+        items={ROLE_MODULES[user.role] ?? []}
+        activeModule={activeModule}
+        onNavigate={(id) => setActiveModule(id as ModuleType)}
+        onOpenMenu={() => setMobileSidebarOpen(true)}
+      />
     </div>
   )
 }

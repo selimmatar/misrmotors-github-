@@ -2,36 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import {
-  LayoutDashboard,
-  ShoppingCart,
-  Building2,
-  Warehouse,
-  CreditCard,
-  Users,
-  TrendingUp,
-  DollarSign,
-  Package,
-  UsersIcon,
-  Wallet,
-  Sparkles,
-  TrendingUpIcon,
-  Settings,
-  BarChart3,
-  Calculator,
-  PackageX,
-  ClipboardCheck,
-  CheckSquare,
-  Activity,
-  FileText,
-  Truck,
-  UserCog,
-  ArrowLeftRight,
-  Wrench,
-  X,
-} from "lucide-react"
+import { X } from "lucide-react"
 import type { UserRole } from "@/lib/types"
 import { useI18n } from "@/lib/i18n-context"
+import { ROLE_MODULES, ROLE_DISPLAY_NAMES } from "@/components/layout/nav-config"
+import { groupItems } from "@/lib/nav-groups"
+import { cn } from "@/lib/utils"
 
 interface SidebarProps {
   activeModule: string
@@ -64,142 +40,55 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
     return () => clearInterval(interval)
   }, [fetchPendingCounts])
 
-  const roleModules: Record<UserRole, Array<{ id: string; label: string; icon: any }>> = {
-    admin: [
-      { id: "user-management", label: "module.user-management", icon: UsersIcon },
-      { id: "hr-management", label: "module.hr-management", icon: UserCog },
-      { id: "metrics-validation", label: "module.metrics-validation", icon: CheckSquare },
-      { id: "system-health", label: "module.system-health", icon: Activity },
-    ],
-    ceo: [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "analytics", label: "module.analytics", icon: BarChart3 },
-      { id: "ceo-chat", label: "module.ceo-chat", icon: Sparkles },
-      { id: "hr-management", label: "module.hr-management", icon: UserCog },
-      { id: "suppliers", label: "module.suppliers", icon: Building2 },
-      { id: "products", label: "module.products", icon: Package },
-      { id: "po-requests", label: "module.po-requests", icon: FileText },
-      { id: "purchase-orders", label: "module.purchase-orders", icon: ShoppingCart },
-      { id: "pricing-review", label: "module.pricing-review", icon: TrendingUpIcon },
-      { id: "costing-settings", label: "module.costing-settings", icon: Settings },
-      { id: "inventory", label: "module.inventory", icon: Warehouse },
-      { id: "inventory-audit", label: "module.inventory-audit", icon: ClipboardCheck },
-      { id: "goods-receipt-tracking", label: "module.goods-receipt-tracking", icon: ClipboardCheck },
-      { id: "reorder-suggestions", label: "module.reorder-suggestions", icon: Calculator },
-      { id: "lost-sales", label: "module.lost-sales", icon: PackageX },
-      { id: "accounts-payable", label: "module.accounts-payable", icon: CreditCard },
-      { id: "customers", label: "module.customers", icon: Users },
-      { id: "sales-orders", label: "module.sales-orders", icon: TrendingUp },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
-      { id: "balance", label: "module.balance", icon: Wallet },
-      { id: "metrics-validation", label: "module.metrics-validation", icon: CheckSquare },
-      { id: "system-health", label: "module.system-health", icon: Activity },
-    ],
-    accountant: [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "analytics", label: "module.analytics", icon: BarChart3 },
-      { id: "approve-sales-orders", label: "module.approve-sales-orders", icon: CheckSquare },
-      { id: "sales-quotations", label: "module.sales-quotations", icon: FileText },
-      { id: "payment-schedule", label: "module.payment-schedule", icon: DollarSign },
-      { id: "purchase-orders", label: "module.purchase-orders", icon: ShoppingCart },
-      { id: "pricing-review", label: "module.pricing-review", icon: TrendingUpIcon },
-      { id: "costing-settings", label: "module.costing-settings", icon: Settings },
-      { id: "accounts-payable", label: "module.accounts-payable", icon: CreditCard },
-      { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
-      { id: "maintenance-invoices", label: "Maintenance", icon: Wrench },
-      { id: "customers", label: "module.customers", icon: Users },
-      { id: "suppliers", label: "module.suppliers", icon: Building2 },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "balance", label: "module.balance", icon: Wallet },
-    ],
-    "sales-rep": [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "analytics", label: "module.analytics", icon: BarChart3 },
-      { id: "customers", label: "module.customers", icon: Users },
-      { id: "sales-orders", label: "module.sales-orders", icon: TrendingUp },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "inventory", label: "module.inventory", icon: Warehouse },
-      { id: "lost-sales", label: "module.lost-sales", icon: PackageX },
-      { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
-      { id: "operations-management", label: "module.operations-management", icon: Wrench },
-    ],
-    "warehouse-rep": [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "inventory", label: "module.inventory", icon: Warehouse },
-      { id: "inventory-audit", label: "module.inventory-audit", icon: ClipboardCheck },
-      { id: "warehouse-transfers", label: "module.warehouse-transfers", icon: ArrowLeftRight },
-      { id: "warehouse-delivery", label: "module.warehouse-delivery", icon: Package },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "goods-receipt", label: "module.goods-receipt", icon: Package },
-      { id: "goods-receipt-tracking", label: "module.goods-receipt-tracking", icon: ClipboardCheck },
-    ],
-    "po-rep": [
-      { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
-      { id: "analytics", label: "module.analytics", icon: BarChart3 },
-      { id: "suppliers", label: "module.suppliers", icon: Building2 },
-      { id: "products", label: "module.products", icon: Package },
-      { id: "po-requests", label: "module.po-requests", icon: FileText },
-      { id: "purchase-orders", label: "module.purchase-orders", icon: ShoppingCart },
-      { id: "goods-receipt-tracking", label: "module.goods-receipt-tracking", icon: ClipboardCheck },
-      { id: "inventory", label: "module.inventory", icon: Warehouse },
-      { id: "reorder-suggestions", label: "module.reorder-suggestions", icon: Calculator },
-      { id: "lost-sales", label: "module.lost-sales", icon: PackageX },
-    ],
-    shipment: [
-      { id: "shipment", label: "module.shipping", icon: Truck },
-      { id: "courier-management", label: "module.courier-management", icon: UserCog },
-      { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-      { id: "operations-management", label: "module.operations-management", icon: Users },
-    ],
-  }
-
-  const modules = roleModules[userRole] || []
-
-  const roleDisplayNames: Record<UserRole, string> = {
-    admin: "role.administrator",
-    ceo: "role.ceo",
-    accountant: "role.accountant",
-    "sales-rep": "role.sales-rep",
-    "warehouse-rep": "role.warehouse-rep",
-    "po-rep": "role.po-rep",
-    shipment: "role.shipment",
-  }
+  const modules = ROLE_MODULES[userRole] || []
+  const groups = groupItems(modules)
 
   const sidebarContent = (
     <>
-      <div className="p-6 border-b border-sidebar-border">
-        <div className="flex items-center gap-3 mb-2">
-          <img src="/images/image.png" alt="Misr Motors Logo" className="h-12 w-auto" />
-          <h1 className="text-xl font-bold text-sidebar-foreground">{t("misr-motors")}</h1>
+      <div className="flex flex-col gap-1 border-b border-sidebar-border p-4">
+        <div className="flex items-center gap-3">
+          <img src="/images/image.png" alt="Misr Motors Logo" className="h-10 w-auto" />
+          <h1 className="text-lg font-extrabold text-sidebar-foreground">{t("misr-motors")}</h1>
         </div>
-        <p className="text-sm text-sidebar-foreground/60">{t(roleDisplayNames[userRole])}</p>
+        <p className="text-xs text-muted-foreground">{t(ROLE_DISPLAY_NAMES[userRole])}</p>
       </div>
 
-      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-        {modules.map((module) => {
-          const IconComponent = module.icon
-          const count = pendingCounts[module.id] || 0
-          return (
-            <Button
-              key={module.id}
-              variant={activeModule === module.id ? "default" : "ghost"}
-              className="w-full justify-start gap-3 relative"
-              onClick={() => {
-                onModuleChange(module.id)
-                onMobileClose?.()
-              }}
-            >
-              <IconComponent className="w-4 h-4" />
-              <span className="flex-1 text-left">{t(module.label)}</span>
-              {count > 0 && (
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold px-1">
-                  {count > 99 ? "99+" : count}
-                </span>
-              )}
-            </Button>
-          )
-        })}
+      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
+        {groups.map(({ group, items }) => (
+          <div key={group} className="flex flex-col gap-0.5">
+            <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t(`group.${group}`)}
+            </p>
+            {items.map((module) => {
+              const IconComponent = module.icon
+              const count = pendingCounts[module.id] || 0
+              const active = activeModule === module.id
+              return (
+                <button
+                  key={module.id}
+                  type="button"
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex h-9 w-full items-center gap-3 rounded-md px-3 text-sm text-start text-sidebar-foreground transition-colors",
+                    active ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "hover:bg-muted",
+                  )}
+                  onClick={() => {
+                    onModuleChange(module.id)
+                    onMobileClose?.()
+                  }}
+                >
+                  <IconComponent className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{t(module.label)}</span>
+                  {count > 0 && (
+                    <span className="ms-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white">
+                      {count > 99 ? "99+" : count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        ))}
       </nav>
 
       {onLogout && (
@@ -215,7 +104,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
   return (
     <>
       {/* Desktop sidebar */}
-      <div className="hidden md:flex w-64 bg-sidebar border-r border-sidebar-border flex-col shrink-0">
+      <div className="hidden md:flex w-64 bg-sidebar border-e border-sidebar-border flex-col shrink-0">
         {sidebarContent}
       </div>
 
@@ -223,8 +112,8 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={onMobileClose} />
-          <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-sidebar border-r border-sidebar-border flex flex-col">
-            <div className="absolute top-3 right-3">
+          <div className="absolute inset-y-0 start-0 w-72 max-w-[85vw] bg-sidebar border-e border-sidebar-border flex flex-col">
+            <div className="absolute top-3 end-3">
               <Button variant="ghost" size="icon" onClick={onMobileClose} aria-label="Close menu">
                 <X className="w-5 h-5" />
               </Button>
