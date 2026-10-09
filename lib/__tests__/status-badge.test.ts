@@ -41,3 +41,9 @@ test("other record statuses get a tone, not draft grey", () => {
   }
   for (const [s, tone] of Object.entries(MORE)) assert.equal(statusTone(s), tone, s)
 })
+
+test("1b tones", () => {
+  const T: Record<string, string> = { "due-soon": "waiting", pending_warehouse: "waiting", partially_delivered: "approved",
+    not_delivered: "neutral", fully_paid: "done", not_paid: "danger", unpaid: "danger", no_invoice: "neutral" }
+  for (const [s, tone] of Object.entries(T)) { assert.equal(statusTone(s), tone, s); assert.equal(statusTone(s.toUpperCase()), tone, s) }
+})

@@ -1,7 +1,7 @@
 // Shared display formatting (dates, money, enum labels, initials) used by the PR 1a building blocks.
 import test from "node:test"
 import assert from "node:assert/strict"
-import { formatDate, formatMoney, formatEnum, initials } from "../format"
+import { formatDate, formatDateTime, formatMoney, formatEnum, initials, statusLabel } from "../format"
 import { keyToReadable } from "../i18n-fallback"
 
 test("dates: en and ar", () => {
@@ -48,4 +48,21 @@ test("initials", () => {
   assert.equal(initials("CEO / Owner"), "CO")
   assert.equal(initials("أحمد سالم"), "أس")
   assert.equal(initials(""), "?")
+})
+
+test("statusLabel: enum key, then status key, then sentence case", () => {
+  const d: Record<string, string> = { "enum.pending": "Waiting", "status.unpaid": "غير مدفوع" }
+  const t = (k: string) => d[k] ?? keyToReadable(k)
+  assert.equal(statusLabel("pending", t), "Waiting")
+  assert.equal(statusLabel("UNPAID", t), "غير مدفوع")
+  assert.equal(statusLabel("partially_delivered", t), "Partially delivered")
+  assert.equal(statusLabel("due-soon", t), "Due soon")
+  for (const v of [null, undefined, ""]) assert.equal(statusLabel(v as any, t), "—")
+})
+
+test("date-time: en and ar, 24-hour, local time", () => {
+  assert.equal(formatDateTime(new Date(2026, 9, 8, 14, 5), "en"), "08 Oct 2026, 14:05")
+  assert.equal(formatDateTime(new Date(2026, 9, 8, 14, 5), "ar"), "٠٨ أكتوبر ٢٠٢٦، ١٤:٠٥")
+  assert.equal(formatDateTime("2026-10-08T14:05:00", "en"), "08 Oct 2026, 14:05")
+  for (const v of [null, undefined, "", "not a date"]) assert.equal(formatDateTime(v as any, "en"), "—")
 })
