@@ -123,7 +123,8 @@ export async function GET(request: NextRequest) {
   <style>
     ${PRINT_CSS}
     .container { max-width: 800px; margin: 0 auto; }
-    .print-btn { position: fixed; top: 15px; inset-inline-start: 15px; padding: 12px 24px; background: #fff; color: #000; border: 1px solid #000; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .print-btn { position: fixed; top: 15px; left: 15px; padding: 12px 24px; background: #1a56db; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .print-btn:hover { background: #1e40af; }
     @media screen { body { padding: 20px; } }
     @media print { .print-btn { display: none !important; } }
     .pm-info { margin-block: 10px; }

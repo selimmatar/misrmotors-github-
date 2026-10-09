@@ -40,6 +40,7 @@ tr { break-inside: avoid; page-break-inside: avoid; }
 .pm-table th, .pm-table td { border: 0; }
 .pm-table th { padding: 6px; font-size: 11px; font-weight: 500; color: #555; text-align: start; background: none; border-block-end: 1.5px solid #000; }
 .pm-table td { padding: 7px 6px; vertical-align: top; border-block-end: 1px solid #ccc; overflow-wrap: anywhere; }
+.pm-table td.pm-num, .pm-table td.currency-col { white-space: nowrap; overflow-wrap: normal; }
 .pm-table tfoot td { border-block-end: 0; }
 .pm-num, .pm-table .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
 .pm-center, .center { text-align: center; }

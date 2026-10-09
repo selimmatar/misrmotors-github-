@@ -104,3 +104,8 @@ test("PT9 the module stands alone", () => {
   assert.doesNotMatch(src, /^import /m)
   assert.doesNotMatch(src, ARABIC)
 })
+
+test("PT10 numbers and money in table cells never break mid-figure", () => {
+  // overflow-wrap: anywhere keeps long text from overflowing, but it would also split "1,524,944.28" across lines
+  assert.match(PRINT_CSS, /\.pm-table td\.pm-num, \.pm-table td\.currency-col \{[^}]*white-space: nowrap;[^}]*overflow-wrap: normal;/)
+})

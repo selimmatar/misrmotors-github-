@@ -86,7 +86,8 @@ export async function GET(request: NextRequest) {
   <style>
     ${PRINT_CSS}
     .container { max-width: 800px; margin: 0 auto; }
-    .print-button { position: fixed; top: 20px; inset-inline-start: 20px; padding: 12px 24px; background: #fff; color: #000; border: 1px solid #000; cursor: pointer; font-size: 16px; font-weight: 600; z-index: 1000; }
+    .print-button { position: fixed; top: 20px; left: 20px; padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 1000; }
+    .print-button:hover { background: #1d4ed8; }
     @media screen { body { padding: 20px; } }
     @media print { .print-button { display: none !important; } }
     .pm-note h4 { margin-block-end: 4px; font-size: 13px; font-weight: 700; }
