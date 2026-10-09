@@ -5,18 +5,18 @@
 
 :root {
   /* Professional blue/slate theme inspired by enterprise dashboards */
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.15 0.01 240);
+  --background: oklch(0.947 0.009 247.9);
+  --foreground: oklch(0.284 0.029 250.9);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.01 240);
+  --card-foreground: oklch(0.284 0.029 250.9);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.01 240);
-  --primary: oklch(0.45 0.15 250);
+  --popover-foreground: oklch(0.284 0.029 250.9);
+  --primary: oklch(0.552 0.155 252.6);
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.96 0.005 240);
   --secondary-foreground: oklch(0.25 0.01 240);
   --muted: oklch(0.96 0.005 240);
-  --muted-foreground: oklch(0.5 0.01 240);
+  --muted-foreground: oklch(0.522 0.029 250.2);
   --accent: oklch(0.55 0.2 220);
   --accent-foreground: oklch(0.99 0 0);
   --destructive: oklch(0.55 0.22 25);
@@ -25,23 +25,40 @@
   --success-foreground: oklch(0.99 0 0);
   --warning: oklch(0.7 0.15 85);
   --warning-foreground: oklch(0.15 0.01 85);
-  --border: oklch(0.9 0.005 240);
-  --input: oklch(0.9 0.005 240);
-  --ring: oklch(0.45 0.15 250);
+  --border: oklch(0.891 0.015 251.2);
+  --input: oklch(0.891 0.015 251.2);
+  --ring: oklch(0.552 0.155 252.6);
   --chart-1: oklch(0.55 0.2 250);
   --chart-2: oklch(0.6 0.18 180);
   --chart-3: oklch(0.65 0.15 140);
   --chart-4: oklch(0.7 0.18 85);
   --chart-5: oklch(0.6 0.2 25);
-  --radius: 0.5rem;
-  --sidebar: oklch(0.98 0.005 240);
+  --radius: 0.875rem;
+  --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.25 0.01 240);
   --sidebar-primary: oklch(0.45 0.15 250);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.94 0.005 240);
-  --sidebar-accent-foreground: oklch(0.25 0.01 240);
+  --sidebar-accent: oklch(0.929 0.023 252.2);
+  --sidebar-accent-foreground: oklch(0.467 0.130 254.1);
   --sidebar-border: oklch(0.9 0.005 240);
   --sidebar-ring: oklch(0.45 0.15 250);
+  /* Look R additions */
+  --link: oklch(0.467 0.130 254.1);
+  --strong: oklch(0.345 0.037 249.0);
+  --strong-foreground: oklch(1 0 0);
+  /* Status tones (text / background) */
+  --tone-neutral: oklch(0.450 0 0);
+  --tone-neutral-bg: oklch(0.941 0.007 247.9);
+  --tone-waiting: oklch(0.471 0.099 76.3);
+  --tone-waiting-bg: oklch(0.956 0.061 92.1);
+  --tone-approved: oklch(0.467 0.130 254.1);
+  --tone-approved-bg: oklch(0.929 0.023 252.2);
+  --tone-ready: oklch(0.445 0.146 296.9);
+  --tone-ready-bg: oklch(0.930 0.025 303.5);
+  --tone-done: oklch(0.471 0.123 140.8);
+  --tone-done-bg: oklch(0.935 0.038 139.2);
+  --tone-danger: oklch(0.472 0.157 29.5);
+  --tone-danger-bg: oklch(0.934 0.027 26.2);
 }
 
 .dark {
@@ -113,10 +130,10 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: var(--radius);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -125,6 +142,27 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-link: var(--link);
+  --color-strong: var(--strong);
+  --color-strong-foreground: var(--strong-foreground);
+  --color-tone-neutral: var(--tone-neutral);
+  --color-tone-neutral-bg: var(--tone-neutral-bg);
+  --color-tone-waiting: var(--tone-waiting);
+  --color-tone-waiting-bg: var(--tone-waiting-bg);
+  --color-tone-approved: var(--tone-approved);
+  --color-tone-approved-bg: var(--tone-approved-bg);
+  --color-tone-ready: var(--tone-ready);
+  --color-tone-ready-bg: var(--tone-ready-bg);
+  --color-tone-done: var(--tone-done);
+  --color-tone-done-bg: var(--tone-done-bg);
+  --color-tone-danger: var(--tone-danger);
+  --color-tone-danger-bg: var(--tone-danger-bg);
+  --font-sans: var(--font-manrope), var(--font-almarai), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Arabic: Almarai first. Unlayered so it beats the body's font-sans utility. */
+[dir="rtl"] body {
+  font-family: var(--font-almarai), var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {
@@ -132,7 +170,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground text-sm;
   }
 
   /* Add RTL support for Arabic */
