@@ -8,11 +8,17 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, Wrench, FileText, DollarSign, Search, CheckCircle, Clock, AlertCircle, Users } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useI18n } from "@/lib/i18n-context"
+import { formatDate, formatMoney } from "@/lib/format"
+import { PageHeader } from "@/components/erp/page-header"
+import { Money } from "@/components/erp/money"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 
 type WorkOrder = {
   work_order_id: number
@@ -47,6 +53,7 @@ type MaintenanceReport = {
 }
 
 export function MaintenanceModule() {
+  const { language } = useI18n()
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [reports, setReports] = useState<MaintenanceReport[]>([])
   const [employees, setEmployees] = useState<any[]>([])
@@ -258,32 +265,6 @@ export function MaintenanceModule() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, any> = {
-      pending: "secondary",
-      "in-progress": "default",
-      completed: "default",
-      cancelled: "destructive",
-    }
-    const colors: Record<string, string> = {
-      pending: "bg-yellow-100 text-yellow-800",
-      "in-progress": "bg-blue-100 text-blue-800",
-      completed: "bg-green-100 text-green-800",
-      cancelled: "bg-red-100 text-red-800",
-    }
-    return <Badge className={colors[status] || ""}>{status}</Badge>
-  }
-
-  const getPriorityBadge = (priority: string) => {
-    const colors: Record<string, string> = {
-      low: "bg-gray-100 text-gray-800",
-      medium: "bg-yellow-100 text-yellow-800",
-      high: "bg-orange-100 text-orange-800",
-      urgent: "bg-red-100 text-red-800",
-    }
-    return <Badge className={colors[priority] || ""}>{priority}</Badge>
-  }
-
   const filteredWorkOrders = workOrders.filter((wo) => {
     const matchesSearch = wo.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          wo.work_order_number.toLowerCase().includes(searchTerm.toLowerCase())
@@ -291,18 +272,45 @@ export function MaintenanceModule() {
     return matchesSearch && matchesStatus
   })
 
+  const renderWorkOrderActions = (wo: WorkOrder) =>
+    wo.status !== "completed" ? (
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          setSelectedWorkOrder(wo)
+          setShowReportDialog(true)
+        }}
+      >
+        Complete
+      </Button>
+    ) : null
+
+  const renderReportActions = (report: MaintenanceReport) =>
+    report.status === "submitted" ? (
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => handleConvertToAR(report)}
+        className="gap-2"
+      >
+        <DollarSign className="w-4 h-4" />
+        Convert to AR
+      </Button>
+    ) : null
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Maintenance Management</h1>
-          <p className="text-muted-foreground">Manage work orders, reports, and maintenance tasks</p>
-        </div>
-        <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
-          <Plus className="w-4 h-4" />
-          New Work Order
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Maintenance Management"
+        subtitle="Manage work orders, reports, and maintenance tasks"
+        actions={
+          <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            New Work Order
+          </Button>
+        }
+      />
 
       <Tabs defaultValue="work-orders" className="space-y-4">
         <TabsList>
@@ -326,12 +334,12 @@ export function MaintenanceModule() {
                 </div>
                 <div className="flex gap-2">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       placeholder="Search work orders..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9 w-64"
+                      className="ps-9 w-64"
                     />
                   </div>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -350,47 +358,57 @@ export function MaintenanceModule() {
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>WO Number</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Assigned To</TableHead>
-                    <TableHead>Scheduled</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredWorkOrders.map((wo) => (
-                    <TableRow key={wo.work_order_id}>
-                      <TableCell className="font-mono">{wo.work_order_number}</TableCell>
-                      <TableCell className="font-medium">{wo.title}</TableCell>
-                      <TableCell>{wo.customer_name || "-"}</TableCell>
-                      <TableCell>{getPriorityBadge(wo.priority)}</TableCell>
-                      <TableCell>{getStatusBadge(wo.status)}</TableCell>
-                      <TableCell>{wo.assigned_employee_name || "Unassigned"}</TableCell>
-                      <TableCell>{wo.scheduled_date ? new Date(wo.scheduled_date).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell>
-                        {wo.status !== "completed" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedWorkOrder(wo)
-                              setShowReportDialog(true)
-                            }}
-                          >
-                            Complete
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <ResponsiveList
+                rows={filteredWorkOrders}
+                table={
+                  <ErpTable>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>WO Number</TableHead>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Priority</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Assigned To</TableHead>
+                        <TableHead>Scheduled</TableHead>
+                        <ActionsHead>Actions</ActionsHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredWorkOrders.map((wo) => (
+                        <TableRow key={wo.work_order_id}>
+                          <IdCell>{wo.work_order_number}</IdCell>
+                          <TableCell className="font-medium">{wo.title}</TableCell>
+                          <TableCell>{wo.customer_name || "-"}</TableCell>
+                          <TableCell><StatusBadge status={wo.priority} /></TableCell>
+                          <TableCell><StatusBadge status={wo.status} /></TableCell>
+                          <TableCell>{wo.assigned_employee_name || "Unassigned"}</TableCell>
+                          <TableCell>{wo.scheduled_date ? formatDate(wo.scheduled_date, language) : "-"}</TableCell>
+                          <ActionsCell>{renderWorkOrderActions(wo)}</ActionsCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </ErpTable>
+                }
+                card={(wo) => (
+                  <ListCard
+                    id={wo.work_order_number}
+                    party={wo.customer_name || "-"}
+                    status={<StatusBadge status={wo.status} />}
+                    note={
+                      <div className="space-y-1">
+                        <div className="font-medium">{wo.title}</div>
+                        <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                          <StatusBadge status={wo.priority} />
+                          <span>{wo.assigned_employee_name || "Unassigned"}</span>
+                          <span>{wo.scheduled_date ? formatDate(wo.scheduled_date, language) : "-"}</span>
+                        </div>
+                      </div>
+                    }
+                    actions={renderWorkOrderActions(wo)}
+                  />
+                )}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -402,44 +420,47 @@ export function MaintenanceModule() {
               <CardDescription>View and manage completed maintenance reports</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>WO Number</TableHead>
-                    <TableHead>Work Performed</TableHead>
-                    <TableHead>Labor Hours</TableHead>
-                    <TableHead>Total Cost</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reports.map((report) => (
-                    <TableRow key={report.report_id}>
-                      <TableCell className="font-mono">{report.work_order_number}</TableCell>
-                      <TableCell className="max-w-xs truncate">{report.work_performed}</TableCell>
-                      <TableCell>{report.labor_hours}h</TableCell>
-                      <TableCell>${report.total_cost.toFixed(2)}</TableCell>
-                      <TableCell>{getStatusBadge(report.status)}</TableCell>
-                      <TableCell>{new Date(report.created_at).toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        {report.status === "submitted" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleConvertToAR(report)}
-                            className="gap-2"
-                          >
-                            <DollarSign className="w-4 h-4" />
-                            Convert to AR
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <ResponsiveList
+                rows={reports}
+                table={
+                  <ErpTable>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>WO Number</TableHead>
+                        <TableHead>Work Performed</TableHead>
+                        <NumHead>Labor Hours</NumHead>
+                        <NumHead>Total Cost (EGP)</NumHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Date</TableHead>
+                        <ActionsHead>Actions</ActionsHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reports.map((report) => (
+                        <TableRow key={report.report_id}>
+                          <IdCell>{report.work_order_number}</IdCell>
+                          <TableCell className="max-w-xs truncate">{report.work_performed}</TableCell>
+                          <NumCell>{report.labor_hours}h</NumCell>
+                          <NumCell>{formatMoney(report.total_cost, language)}</NumCell>
+                          <TableCell><StatusBadge status={report.status} /></TableCell>
+                          <TableCell>{formatDate(report.created_at, language)}</TableCell>
+                          <ActionsCell>{renderReportActions(report)}</ActionsCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </ErpTable>
+                }
+                card={(report) => (
+                  <ListCard
+                    id={report.work_order_number}
+                    amount={`${formatMoney(report.total_cost, language)} EGP`}
+                    party={report.work_performed}
+                    status={<StatusBadge status={report.status} />}
+                    note={`${report.labor_hours}h · ${formatDate(report.created_at, language)}`}
+                    actions={renderReportActions(report)}
+                  />
+                )}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -637,7 +658,7 @@ export function MaintenanceModule() {
               <div className="flex justify-between items-center">
                 <span className="font-medium">Total Cost:</span>
                 <span className="text-lg font-bold">
-                  ${((parseFloat(reportFormData.materials_cost || "0") + parseFloat(reportFormData.labor_cost || "0"))).toFixed(2)}
+                  <Money value={parseFloat(reportFormData.materials_cost || "0") + parseFloat(reportFormData.labor_cost || "0")} /> EGP
                 </span>
               </div>
             </div>
