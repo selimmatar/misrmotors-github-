@@ -19,6 +19,11 @@ const MIGRATED: string[] = [
   "components/modules/approve-sales-quotations-module.tsx",
   "components/modules/accounts-receivable-module.tsx",
   "components/modules/accounts-payable-module.tsx",
+  "components/modules/payment-schedule-module.tsx",
+  "components/modules/balance-module.tsx",
+  "components/modules/maintenance-invoices-module.tsx",
+  "components/modules/accountant-module.tsx",
+  "components/accounting/maintenance-invoice-tab.tsx",
 ]
 // Allowed leftover BANNED matches per file; each entry needs a ledgered ruling.
 const ALLOW: Record<string, Partial<Record<keyof typeof BANNED, number>>> = {}
@@ -84,4 +89,10 @@ test("AP: three clickable tiles, total balance is not", () => {
   assert.equal(tiles.length, 4); assert.equal(tiles.filter((c) => /\bonClick=/.test(c)).length, 3)
   assert.doesNotMatch(tiles[3], /\bonClick=/)
   assert.match(s, /title=\{t\("ap\.title"\)\}/)
+})
+
+test("maintenance screen has one heading; accountant embed unchanged", () => {
+  assert.match(read("components/modules/maintenance-invoices-module.tsx"), /<MaintenanceInvoiceTab showHeading=\{false\}/)
+  assert.match(read("components/accounting/maintenance-invoice-tab.tsx"), /showHeading = true/)
+  assert.match(read("components/modules/accountant-module.tsx"), /<MaintenanceInvoiceTab\s*\/>/)
 })

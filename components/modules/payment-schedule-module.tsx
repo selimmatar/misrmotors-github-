@@ -9,6 +9,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useAppContext } from "@/lib/app-context"
+import { useI18n } from "@/lib/i18n-context"
+import { PageHeader } from "@/components/erp/page-header"
+import { Money } from "@/components/erp/money"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { ErpTable, NumHead, NumCell } from "@/components/erp/data-table"
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { formatDate, formatMoney } from "@/lib/format"
 import { Calendar, ChevronDown, ChevronUp } from "lucide-react"
 import { InstallmentFields } from "@/components/payment/installment-fields"
 import useSWR from "swr"
@@ -37,6 +44,7 @@ interface GroupedSchedule {
 const fetcher = (url: string) => fetch(url).then(r => r.ok ? r.json() : [])
 
 export function PaymentScheduleModule() {
+  const { t, language } = useI18n()
   const { salesOrders, customers } = useAppContext()
   
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false)
@@ -94,13 +102,6 @@ export function PaymentScheduleModule() {
     }
   }, [installmentOrders.length, customers])
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-EG", {
-      style: "currency",
-      currency: "EGP",
-    }).format(amount)
-  }
-  
   const toggleExpanded = (soId: string) => {
     setExpandedOrders(prev => {
       const next = new Set(prev)
@@ -169,10 +170,11 @@ export function PaymentScheduleModule() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Payment Schedules</h1>
-        <p className="text-muted-foreground">Manage installment payment plans and reschedule requests</p>
-      </div>
+      <PageHeader
+        group={t("group.finance")}
+        title={t("module.payment-schedule")}
+        subtitle="Manage installment payment plans and reschedule requests"
+      />
 
       <Card>
         <CardHeader>
@@ -208,20 +210,20 @@ export function PaymentScheduleModule() {
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div>
-                        <p className="text-muted-foreground">Total Amount</p>
-                        <p className="font-semibold">{formatCurrency(totalAmount)}</p>
+                        <p className="text-muted-foreground">Total Amount (EGP)</p>
+                        <p className="font-semibold"><Money value={totalAmount} /></p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Installments</p>
                         <p className="font-semibold">{order.schedules.length} payments</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Paid</p>
-                        <p className="font-semibold text-green-600">{formatCurrency(paidAmount)}</p>
+                        <p className="text-muted-foreground">Paid (EGP)</p>
+                        <p className="font-semibold text-green-600"><Money value={paidAmount} /></p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Remaining</p>
-                        <p className="font-semibold text-orange-600">{formatCurrency(remaining)}</p>
+                        <p className="text-muted-foreground">Remaining (EGP)</p>
+                        <p className="font-semibold text-orange-600"><Money value={remaining} /></p>
                       </div>
                     </div>
                     
@@ -232,42 +234,40 @@ export function PaymentScheduleModule() {
                       className="w-full"
                       onClick={() => toggleExpanded(order.soId)}
                     >
-                      {isExpanded ? <ChevronUp className="w-4 h-4 mr-2" /> : <ChevronDown className="w-4 h-4 mr-2" />}
+                      {isExpanded ? <ChevronUp className="w-4 h-4 me-2" /> : <ChevronDown className="w-4 h-4 me-2" />}
                       {isExpanded ? "Hide Schedule Details" : "View Schedule Details"}
                     </Button>
                     
                     {isExpanded && (
                       <div className="border-t pt-3 mt-2 overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-muted-foreground">
-                              <th className="text-left py-1">#</th>
-                              <th className="text-left py-1">Due Date</th>
-                              <th className="text-right py-1">Amount</th>
-                              <th className="text-right py-1">Paid</th>
-                              <th className="text-right py-1">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
+                        <ErpTable className="text-sm">
+                          <TableHeader>
+                            <TableRow className="text-muted-foreground">
+                              <TableHead>#</TableHead>
+                              <TableHead>Due Date</TableHead>
+                              <NumHead>Amount (EGP)</NumHead>
+                              <NumHead>Paid (EGP)</NumHead>
+                              <TableHead className="text-end!">Status</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
                             {order.schedules.map((schedule) => (
-                              <tr key={schedule.id} className="border-t">
-                                <td className="py-2">
+                              <TableRow key={schedule.id}>
+                                <TableCell>
                                   {schedule.isDownPayment ? "DP" : schedule.installmentNumber}
-                                </td>
-                                <td className="py-2">
-                                  {new Date(schedule.dueDate).toLocaleDateString()}
-                                </td>
-                                <td className="py-2 text-right">{formatCurrency(schedule.amount)}</td>
-                                <td className="py-2 text-right">{formatCurrency(schedule.paidAmount || 0)}</td>
-                                <td className="py-2 text-right">
-                                  <Badge variant={schedule.status === "paid" ? "default" : "outline"} className="text-xs">
-                                    {schedule.status}
-                                  </Badge>
-                                </td>
-                              </tr>
+                                </TableCell>
+                                <TableCell>
+                                  {formatDate(schedule.dueDate, language)}
+                                </TableCell>
+                                <NumCell>{formatMoney(schedule.amount, language)}</NumCell>
+                                <NumCell>{formatMoney(schedule.paidAmount || 0, language)}</NumCell>
+                                <TableCell className="text-end">
+                                  <StatusBadge status={schedule.status} />
+                                </TableCell>
+                              </TableRow>
                             ))}
-                          </tbody>
-                        </table>
+                          </TableBody>
+                        </ErpTable>
                       </div>
                     )}
 
@@ -278,7 +278,7 @@ export function PaymentScheduleModule() {
                       onClick={() => openRescheduleDialog(order)}
                       disabled={paidCount === order.schedules.length}
                     >
-                      <Calendar className="w-4 h-4 mr-2" />
+                      <Calendar className="w-4 h-4 me-2" />
                       Reschedule Payment Plan
                     </Button>
                   </div>
@@ -306,8 +306,8 @@ export function PaymentScheduleModule() {
                 <h4 className="font-semibold mb-2">Current Plan</h4>
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
-                    <p className="text-muted-foreground">Total Amount</p>
-                    <p className="font-semibold">{formatCurrency(selectedOrder.schedules.reduce((sum, s) => sum + s.amount, 0))}</p>
+                    <p className="text-muted-foreground">Total Amount (EGP)</p>
+                    <p className="font-semibold"><Money value={selectedOrder.schedules.reduce((sum, s) => sum + s.amount, 0)} /></p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Installments</p>
@@ -315,7 +315,7 @@ export function PaymentScheduleModule() {
                   </div>
                   <div>
                     <p className="text-muted-foreground">First Due Date</p>
-                    <p className="font-semibold">{new Date(selectedOrder.schedules[0]?.dueDate).toLocaleDateString()}</p>
+                    <p className="font-semibold">{formatDate(selectedOrder.schedules[0]?.dueDate, language)}</p>
                   </div>
                 </div>
               </div>
@@ -355,9 +355,9 @@ export function PaymentScheduleModule() {
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <p className="text-muted-foreground">New Monthly Payment</p>
+                      <p className="text-muted-foreground">New Monthly Payment (EGP)</p>
                       <p className="font-semibold text-lg text-blue-600">
-                        {formatCurrency(rescheduleData.requestedAmount / rescheduleData.requestedMonths)}
+                        <Money value={rescheduleData.requestedAmount / rescheduleData.requestedMonths} />
                       </p>
                     </div>
                     <div>

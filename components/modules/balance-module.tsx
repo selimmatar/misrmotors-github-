@@ -5,10 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n-context"
 import type { BalanceEntry } from "@/lib/types"
-import { TrendingUp, TrendingDown, DollarSign } from "lucide-react"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { Money } from "@/components/erp/money"
+import { formatDateTime } from "@/lib/format"
 
 export function BalanceModule() {
-  const { t, formatNumber, formatCurrency, formatDate, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const [balanceEntries, setBalanceEntries] = useState<BalanceEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -59,68 +62,28 @@ export function BalanceModule() {
     return "text-red-600"
   }
 
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(language === "ar" ? "ar-EG" : "en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{t("balance.title")}</h1>
-          <p className="text-muted-foreground mt-2">{t("balance.description")}</p>
-        </div>
-      </div>
+      <PageHeader group={t("group.finance")} title={t("balance.title")} subtitle={t("balance.description")} />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t("balance.current-balance")}</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${currentBalance >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {formatCurrency(currentBalance)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {currentBalance >= 0 ? t("balance.positive") : t("balance.negative")}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t("balance.total-income")}</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(totalIncome)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {formatNumber(incomeEntries.length)} {t("field.transactions")}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t("balance.total-expenses")}</CardTitle>
-            <TrendingDown className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(totalExpenses)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {formatNumber(expenseEntries.length)} {t("field.transactions")}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <KpiGrid className="lg:grid-cols-3">
+        <KpiTile
+          label={`${t("balance.current-balance")} (EGP)`}
+          value={<Money value={currentBalance} />}
+          sub={currentBalance >= 0 ? t("balance.positive") : t("balance.negative")}
+        />
+        <KpiTile
+          label={`${t("balance.total-income")} (EGP)`}
+          value={<Money value={totalIncome} />}
+          sub={`${formatNumber(incomeEntries.length)} ${t("field.transactions")}`}
+        />
+        <KpiTile
+          label={`${t("balance.total-expenses")} (EGP)`}
+          value={<Money value={totalExpenses} />}
+          sub={`${formatNumber(expenseEntries.length)} ${t("field.transactions")}`}
+        />
+      </KpiGrid>
 
       <Tabs defaultValue="all" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3">
@@ -154,12 +117,14 @@ export function BalanceModule() {
                           <p className="font-semibold">{entry.referenceNumber}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("balance.amount")}</p>
+                          <p className="text-sm text-muted-foreground">{t("balance.amount")} (EGP)</p>
                           <p
                             className={`font-semibold text-lg ${entry.amount > 0 ? "text-green-600" : "text-red-600"}`}
                           >
-                            {entry.amount > 0 ? "+" : ""}
-                            {formatCurrency(Math.abs(entry.amount))}
+                            <bdi>
+                              {entry.amount > 0 ? "+" : ""}
+                              <Money value={Math.abs(entry.amount)} />
+                            </bdi>
                           </p>
                         </div>
                         <div>
@@ -168,7 +133,7 @@ export function BalanceModule() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.date")}</p>
-                          <p className="font-semibold text-sm">{formatDateTime(entry.createdAt)}</p>
+                          <p className="font-semibold text-sm">{formatDateTime(entry.createdAt, language)}</p>
                         </div>
                       </div>
                     </div>
@@ -202,8 +167,12 @@ export function BalanceModule() {
                           <p className="font-semibold">{entry.referenceNumber}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("balance.amount")}</p>
-                          <p className="font-semibold text-lg text-green-600">+{formatCurrency(entry.amount)}</p>
+                          <p className="text-sm text-muted-foreground">{t("balance.amount")} (EGP)</p>
+                          <p className="font-semibold text-lg text-green-600">
+                            <bdi>
+                              +<Money value={entry.amount} />
+                            </bdi>
+                          </p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.description")}</p>
@@ -211,7 +180,7 @@ export function BalanceModule() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.date")}</p>
-                          <p className="font-semibold text-sm">{formatDateTime(entry.createdAt)}</p>
+                          <p className="font-semibold text-sm">{formatDateTime(entry.createdAt, language)}</p>
                         </div>
                       </div>
                     </div>
@@ -245,9 +214,11 @@ export function BalanceModule() {
                           <p className="font-semibold">{entry.referenceNumber}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("balance.amount")}</p>
+                          <p className="text-sm text-muted-foreground">{t("balance.amount")} (EGP)</p>
                           <p className="font-semibold text-lg text-red-600">
-                            -{formatCurrency(Math.abs(entry.amount))}
+                            <bdi>
+                              -<Money value={Math.abs(entry.amount)} />
+                            </bdi>
                           </p>
                         </div>
                         <div>
@@ -256,7 +227,7 @@ export function BalanceModule() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("balance.date")}</p>
-                          <p className="font-semibold text-sm">{formatDateTime(entry.createdAt)}</p>
+                          <p className="font-semibold text-sm">{formatDateTime(entry.createdAt, language)}</p>
                         </div>
                       </div>
                     </div>
