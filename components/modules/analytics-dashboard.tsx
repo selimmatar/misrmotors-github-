@@ -410,8 +410,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
     <div className="space-y-6">
       <PageHeader
         group={t("group.overview")}
-        title={t("analytics.title")}
-        subtitle={t("analytics.sales-overview")}
+        title={t("module.analytics")}
         actions={
           <Button onClick={loadAllAnalytics} variant="outline">
             <Activity className="h-4 w-4 me-2" />

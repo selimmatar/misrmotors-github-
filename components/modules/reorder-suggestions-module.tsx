@@ -250,8 +250,7 @@ export function ReorderSuggestionsModule() {
       <div className="space-y-6">
         <PageHeader
           group={t("group.inventory")}
-          title={t("reorder.title")}
-          subtitle={t("reorder.description")}
+          title={t("module.reorder-suggestions")}
           actions={
             <Button onClick={fetchSuggestions} disabled={loading} variant="outline">
               <RefreshCw className={`h-4 w-4 me-2 ${loading ? "animate-spin" : ""}`} />

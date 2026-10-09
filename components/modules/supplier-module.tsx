@@ -511,8 +511,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
     <div className="space-y-6">
       <PageHeader
         group={t("group.purchasing")}
-        title={t("supplier.title")}
-        subtitle={t("supplier.description")}
+        title={t("module.suppliers")}
         actions={
           <>
             <ReportGenerator type="suppliers" userRole={userRole || "po-rep"} />

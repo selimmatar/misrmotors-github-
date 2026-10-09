@@ -395,7 +395,7 @@ export function GoodsReceiptModule() {
     <div className="space-y-6">
       <PageHeader
         group={t("group.inventory")}
-        title={t("gr.title")}
+        title={t("module.goods-receipt")}
         subtitle={`${formatNumber(approvedPOs.length)} ${t("gr.awaiting-receipt")}`}
       />
 

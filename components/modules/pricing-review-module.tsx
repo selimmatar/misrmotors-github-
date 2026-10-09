@@ -142,8 +142,7 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
     <div className="space-y-6">
       <PageHeader
         group={t("group.purchasing")}
-        title={t("pricing.title")}
-        subtitle={t("pricing.description").replace("{count}", formatNumber(products.length))}
+        title={t("module.pricing-review")}
         actions={
           <Button onClick={handleSavePricing} disabled={saving} size="lg">
             <DollarSign className="w-4 h-4 me-2" />

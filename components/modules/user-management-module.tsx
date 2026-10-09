@@ -105,8 +105,7 @@ export function UserManagementModule() {
     <div className="space-y-6">
       <PageHeader
         group={t("group.admin")}
-        title={t("user.title")}
-        subtitle={t("user.description")}
+        title={t("module.user-management")}
         actions={
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
           <DialogTrigger asChild>

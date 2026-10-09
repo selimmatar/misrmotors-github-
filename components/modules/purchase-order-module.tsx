@@ -1184,7 +1184,6 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       <PageHeader
         group={t("group.purchasing")}
         title={t("po.title")}
-        subtitle={t("po.description")}
         actions={
           <>
             <Button variant="outline" onClick={() => setShowReportGenerator(true)}>
