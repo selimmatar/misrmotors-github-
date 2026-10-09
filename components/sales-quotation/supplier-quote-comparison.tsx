@@ -175,7 +175,7 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
                 <ul className="space-y-1">
                   {uploads.map((u) => (
                     <li key={u.id} className="flex items-center gap-2 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <CheckCircle2 className="h-4 w-4 text-green-700" />
                       {u.supplier_name_raw} - {u.file_name}
                     </li>
                   ))}

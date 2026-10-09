@@ -902,7 +902,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                           variant="ghost"
                           size="icon"
                           onClick={() => deleteDraft(draft.id)}
-                          aria-label="Delete draft"
+                          aria-label={t("action.delete")}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -937,7 +937,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                     ))}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" size="icon" onClick={() => setShowCustomerForm(!showCustomerForm)}>
+                <Button variant="outline" size="icon" aria-label={t("a11y.sales.new-customer")} onClick={() => setShowCustomerForm(!showCustomerForm)}>
                   <UserPlus className="h-4 w-4" />
                 </Button>
               </div>
@@ -1088,9 +1088,9 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       {/* Quotation Items Card */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Quotation Items</CardTitle>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -1240,7 +1240,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                     )}
                   </div>
                   <div className="col-span-1">
-                    <Button variant="destructive" size="icon" onClick={() => removeItem(item.id)}>
+                    <Button variant="destructive" size="icon" aria-label={t("action.remove-item")} onClick={() => removeItem(item.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -1391,7 +1391,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                 </div>
               )}
             </div>
-            <div className="space-y-2 min-w-[300px]">
+            <div className="space-y-2 w-full md:w-auto md:min-w-[300px]">
               <div className="flex justify-between py-2 border-b">
                 <span className="font-medium">Subtotal:</span>
                 <span><Money value={subtotal} /> EGP</span>

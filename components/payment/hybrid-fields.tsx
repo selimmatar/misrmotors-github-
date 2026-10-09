@@ -351,6 +351,7 @@ export function HybridFields({
                     type="button"
                     variant="outline"
                     size="icon"
+                    aria-label={t("a11y.sales.decrease-months")}
                     onClick={() => handleMonthsChange(Math.max(1, remainingInstallmentMonths - 1))}
                     disabled={remainingInstallmentMonths <= 1}
                   >
@@ -369,6 +370,7 @@ export function HybridFields({
                     type="button"
                     variant="outline"
                     size="icon"
+                    aria-label={t("a11y.sales.increase-months")}
                     onClick={() => handleMonthsChange(Math.min(60, remainingInstallmentMonths + 1))}
                     disabled={remainingInstallmentMonths >= 60}
                   >
@@ -409,11 +411,11 @@ export function HybridFields({
             <div className="grid grid-cols-3 gap-3 p-3 bg-white rounded-lg border">
               <div>
                 <p className="text-xs text-muted-foreground">{t("payment.down-payment")}</p>
-                <p className="font-semibold text-green-600">{formatCurrency(effectiveDownPaymentAmount)}</p>
+                <p className="font-semibold text-green-700">{formatCurrency(effectiveDownPaymentAmount)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("payment.remaining-amount")}</p>
-                <p className="font-semibold text-orange-600">{formatCurrency(effectiveRemainingAmount)}</p>
+                <p className="font-semibold text-orange-700">{formatCurrency(effectiveRemainingAmount)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{t("payment.monthly-amount")}</p>

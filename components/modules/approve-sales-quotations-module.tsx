@@ -287,7 +287,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="ps-9"
-              aria-label="Search pending quotations"
+              aria-label={t("a11y.sales.search-pending-quotations")}
             />
           </div>
         </CardHeader>

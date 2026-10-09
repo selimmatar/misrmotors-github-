@@ -14,6 +14,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useI18n } from "@/lib/i18n-context"
 import { Loader2, Package, Printer, Trash2, UserPlus, Upload } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
 import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
@@ -90,6 +91,7 @@ const formatCurrency = (amount: number) => `${(amount || 0).toFixed(2)} EGP`
 
 export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onApproved, onSaved }: ApproveConvertQuotationDialogProps) {
   const { customers, products, suppliers, inventory } = useAppContext()
+  const { t } = useI18n()
 
   const [customerId, setCustomerId] = useState(quotation.customer_id ? String(quotation.customer_id) : "")
   const [deliveryAddress, setDeliveryAddress] = useState(quotation.delivery_address || "")
@@ -829,7 +831,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                         </div>
                       </div>
                       <div className="col-span-1 flex justify-end">
-                        <Button variant="destructive" size="icon" onClick={() => removeItem(item.key)}>
+                        <Button variant="destructive" size="icon" aria-label={t("action.remove-item")} onClick={() => removeItem(item.key)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -934,20 +936,11 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
             Save &amp; Print QT
           </Button>
           {hasUnsavedChanges && (
-            <span className="self-center text-sm text-amber-600 mr-auto">Save changes before approving</span>
+            <span className="self-center text-sm text-amber-700 me-auto">Save changes before approving</span>
           )}
           <Button onClick={handleApproveAndConvert} disabled={saving || printing || !approvalDocument || hasUnsavedChanges}>
-            {saving ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                {uploadingDocument ? "Uploading..." : "Approving..."}
-              </>
-            ) : (
-              <>
-                <Upload className="w-4 h-4 mr-2" />
-                Approve &amp; Convert to SO
-              </>
-            )}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Upload className="w-4 h-4 me-2" />}
+            {saving ? (uploadingDocument ? "Uploading..." : "Approving...") : "Approve & Convert to SO"}
           </Button>
         </DialogFooter>
       </DialogContent>
