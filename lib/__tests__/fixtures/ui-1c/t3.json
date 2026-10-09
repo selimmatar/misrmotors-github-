@@ -1,0 +1,62 @@
+{
+  "task": "t3",
+  "modules": {
+    "components/modules/inventory-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/categories",
+          "\"/api/categories",
+          "\"/api/delivery-permits",
+          "\"/api/inventory/remove-returned",
+          "\"/api/inventory/restock-returned",
+          "\"/api/product-images",
+          "\"/api/warehouses",
+          "`/api/product-images?productId=${item.productId}",
+          "`/api/product-images?productId=${selectedProductForPhoto.productId}"
+        ],
+        "handlers": [
+          "handleAnalyzeInventory",
+          "handleConfirmRemoveReturnedItem",
+          "handleConfirmRestockReturnedItem",
+          "handleCreateCategory",
+          "handleCreateWarehouse",
+          "handlePhotoUpload",
+          "handleRemoveReturnedItem",
+          "handleRestockReturnedItem",
+          "handleViewPhotos",
+          "handleViewSODetails"
+        ],
+        "ids": [
+          "id=\"category-name\"",
+          "id=\"warehouse-address\"",
+          "id=\"warehouse-location\"",
+          "id=\"warehouse-name\""
+        ],
+        "fetch": 9,
+        "iso": 0,
+        "t": 86,
+        "onClick": 22
+      }
+    },
+    "components/modules/inventory-audit-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/inventory/audit",
+          "\"/api/inventory/audit"
+        ],
+        "handlers": [
+          "handleNotesChange",
+          "handlePhysicalCountChange",
+          "handleSaveAdjustments"
+        ],
+        "ids": [],
+        "fetch": 2,
+        "iso": 0,
+        "t": 21,
+        "onClick": 1
+      }
+    }
+  }
+}

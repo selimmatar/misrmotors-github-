@@ -1,0 +1,87 @@
+{
+  "task": "t4",
+  "modules": {
+    "components/modules/goods-receipt-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/product-images",
+          "'/api/goods-receipts",
+          "`/api/goods-receipts?po_id=${encodeURIComponent(String(po.id))}"
+        ],
+        "handlers": [
+          "handleAcceptWithPhotos",
+          "handlePhotoSelect",
+          "handleRejectReceipt"
+        ],
+        "ids": [
+          "id=\"rejection-reason\"",
+          "id={`issue-${line.productId}`}",
+          "id={`notes-${line.productId}`}",
+          "id={`outsourced-qty-${globalIndex}`}",
+          "id={`photo-notes-${line.productId}`}",
+          "id={`qty-${line.productId}`}"
+        ],
+        "fetch": 3,
+        "iso": 1,
+        "t": 38,
+        "onClick": 11
+      }
+    },
+    "components/modules/goods-receipt-tracking-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/goods-receipts"
+        ],
+        "handlers": [],
+        "ids": [],
+        "fetch": 1,
+        "iso": 0,
+        "t": 0,
+        "onClick": 5
+      }
+    },
+    "components/modules/reorder-suggestions-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/inventory/reorder-suggestions",
+          "\"/api/inventory/reorder-suggestions"
+        ],
+        "handlers": [
+          "handleApplySelected",
+          "handleCustomValueChange",
+          "handleSelectAll",
+          "handleSelectItem"
+        ],
+        "ids": [],
+        "fetch": 2,
+        "iso": 0,
+        "t": 48,
+        "onClick": 6
+      }
+    },
+    "components/modules/warehouse-transfers-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/warehouse-transfers",
+          "\"/api/warehouse-transfers",
+          "\"/api/warehouse-transfers/complete"
+        ],
+        "handlers": [
+          "handleAddItem",
+          "handleCompleteTransfer",
+          "handleCreateTransfer",
+          "handleRemoveItem"
+        ],
+        "ids": [],
+        "fetch": 3,
+        "iso": 0,
+        "t": 0,
+        "onClick": 8
+      }
+    }
+  }
+}

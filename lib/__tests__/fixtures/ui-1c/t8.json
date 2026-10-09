@@ -1,0 +1,62 @@
+{
+  "task": "t8",
+  "modules": {
+    "components/modules/analytics-dashboard.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/ai/action-recommendations",
+          "\"/api/analytics/financial",
+          "\"/api/analytics/inventory",
+          "\"/api/analytics/kpis",
+          "\"/api/analytics/predictions",
+          "\"/api/analytics/sales",
+          "\"/api/analytics/suppliers"
+        ],
+        "handlers": [],
+        "ids": [
+          "name=\"Total Value (EGP)\""
+        ],
+        "fetch": 7,
+        "iso": 1,
+        "t": 19,
+        "onClick": 12
+      }
+    },
+    "components/modules/ceo-chat-assistant.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/ai/ceo-chat"
+        ],
+        "handlers": [
+          "handleFormSubmit",
+          "handleRetry",
+          "handleSuggestedQuestion"
+        ],
+        "ids": [],
+        "fetch": 1,
+        "iso": 0,
+        "t": 0,
+        "onClick": 4
+      }
+    },
+    "components/modules/ai-assistant-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/ai/ceo-assistant",
+          "\"/api/ai/po-assistant"
+        ],
+        "handlers": [
+          "handleSubmit"
+        ],
+        "ids": [],
+        "fetch": 1,
+        "iso": 1,
+        "t": 0,
+        "onClick": 0
+      }
+    }
+  }
+}

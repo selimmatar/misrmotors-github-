@@ -1,0 +1,121 @@
+{
+  "task": "t2",
+  "modules": {
+    "components/modules/supplier-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/accounts-payable",
+          "\"/api/supplier-credits",
+          "\"/api/supplier-credits",
+          "\"/api/supplier-payments"
+        ],
+        "handlers": [
+          "handleDeleteSupplier",
+          "handleMarkCreditsCredited",
+          "handleSubmit"
+        ],
+        "ids": [],
+        "fetch": 4,
+        "iso": 0,
+        "t": 55,
+        "onClick": 9
+      }
+    },
+    "components/modules/product-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "`/api/product-images?imageId=${imageId}",
+          "`/api/product-images?productId=${productId}"
+        ],
+        "handlers": [
+          "handleAddProduct",
+          "handleDeleteImage",
+          "handleDeleteProduct"
+        ],
+        "ids": [],
+        "fetch": 2,
+        "iso": 1,
+        "t": 41,
+        "onClick": 9
+      }
+    },
+    "components/modules/po-request-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/categories",
+          "\"/api/categories",
+          "\"/api/po-requests",
+          "\"/api/po-requests",
+          "\"/api/suppliers"
+        ],
+        "handlers": [
+          "handleAddItem",
+          "handleCreateCategory",
+          "handleCreateRequest",
+          "handleItemChange",
+          "handlePrint",
+          "handleRemoveItem"
+        ],
+        "ids": [
+          "id=\"category-name\""
+        ],
+        "fetch": 5,
+        "iso": 0,
+        "t": 0,
+        "onClick": 12
+      },
+      "must": [
+        {
+          "re": "/api/po-requests/pdf\\?requestId=",
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "components/modules/pricing-review-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/products/update-pricing",
+          "\"/api/purchase-orders/pending-pricing"
+        ],
+        "handlers": [
+          "handleMarkupChange",
+          "handlePriceChange",
+          "handleSavePricing"
+        ],
+        "ids": [
+          "id={`markup-${product.productId}`}",
+          "id={`price-${product.productId}`}"
+        ],
+        "fetch": 2,
+        "iso": 0,
+        "t": 22,
+        "onClick": 1
+      }
+    },
+    "components/modules/inventory-costing-settings.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/settings",
+          "\"/api/settings?key=inventory_costing_method"
+        ],
+        "handlers": [
+          "handleSave"
+        ],
+        "ids": [
+          "id=\"fifo\"",
+          "id=\"lifo\""
+        ],
+        "fetch": 2,
+        "iso": 0,
+        "t": 0,
+        "onClick": 1
+      }
+    }
+  }
+}

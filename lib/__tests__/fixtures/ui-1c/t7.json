@@ -1,0 +1,94 @@
+{
+  "task": "t7",
+  "modules": {
+    "components/modules/user-management-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [],
+        "handlers": [],
+        "ids": [
+          "id=\"email\"",
+          "id=\"name\"",
+          "id=\"password\""
+        ],
+        "fetch": 0,
+        "iso": 0,
+        "t": 32,
+        "onClick": 3
+      }
+    },
+    "components/modules/hr-management-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/hr/compensation",
+          "\"/api/hr/departments",
+          "\"/api/hr/departments",
+          "\"/api/hr/documents",
+          "\"/api/hr/employees",
+          "\"/api/hr/employees",
+          "\"/api/hr/positions",
+          "\"/api/hr/positions",
+          "\"/api/hr/salary-payments",
+          "`/api/hr/compensation?employee_id=${employee_id}",
+          "`/api/hr/documents/upload?filename=${encodeURIComponent(file.name)}",
+          "`/api/hr/documents?employee_id=${employee.employee_id}",
+          "`/api/hr/salary-payments?employee_id=${employee.employee_id}"
+        ],
+        "handlers": [
+          "handleFileUpload",
+          "handleSubmit"
+        ],
+        "ids": [
+          "id=\"dept_code\"",
+          "id=\"dept_desc\"",
+          "id=\"dept_name\"",
+          "id=\"emp_email\"",
+          "id=\"emp_hire\"",
+          "id=\"emp_name\"",
+          "id=\"emp_national_id\"",
+          "id=\"emp_phone\"",
+          "id=\"grade\"",
+          "id=\"pos_code\"",
+          "id=\"pos_desc\"",
+          "id=\"pos_title\"",
+          "id=\"sal_max\"",
+          "id=\"sal_min\"",
+          "id=\"search\""
+        ],
+        "fetch": 13,
+        "iso": 5,
+        "t": 0,
+        "onClick": 7
+      }
+    },
+    "components/modules/metrics-validation-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/metrics/validate"
+        ],
+        "handlers": [],
+        "ids": [],
+        "fetch": 1,
+        "iso": 0,
+        "t": 0,
+        "onClick": 2
+      }
+    },
+    "components/modules/system-health-module.tsx": {
+      "migrated": false,
+      "surface": {
+        "api": [
+          "\"/api/system-health"
+        ],
+        "handlers": [],
+        "ids": [],
+        "fetch": 1,
+        "iso": 0,
+        "t": 3,
+        "onClick": 2
+      }
+    }
+  }
+}
