@@ -55,7 +55,7 @@ body .totals-block { margin-inline: auto 0; }
 body .totals-block td { padding: 4px 6px; }
 body .totals-block .label { text-align: start; }
 body .totals-block .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
-body .totals-block td.currency-col { width: 20%; }
+body .totals-block td.currency-col { width: 40%; }
 body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] { color: #000 !important; background: none !important; }
 .missing { font-weight: 700; }
 [class*="status"], [class*="badge"] { padding: 0 !important; border: 0 !important; font-weight: 600; }
@@ -73,9 +73,11 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
 .signature-box{flex:1;text-align:center}
 .signature-line{border-top:1px solid #000;margin-top:48px;padding-top:6px;font-weight:600}
 @media print{.print-note{display:none}}
+.print-button{position:fixed;top:10px;left:10px;padding:8px 14px;cursor:pointer}
 </style>
 </head>
 <body>
+<button class="print-button no-print" onclick="window.print()">طباعة</button>
 <header class="pm-header"><div class="pm-brand"><div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div><div class="pm-names"><div class="pm-name-ar">شركة مصر للمحركات</div><div class="pm-name-en">Misr Motors Co.</div></div></div><div class="pm-company"><div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
 <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
 <div>البريد الإلكتروني: sales@misrmotors.com</div><div class="pm-tax">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div></div></header>

@@ -2,7 +2,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { computeTotals, computeSoPrintTotals, round2 } from "../print-totals"
-import { escapeHtml, moneyCells, renderSoTotalsBlock, renderTotalsBlock, splitMoney } from "../print-html"
+import { escapeHtml, formatMoney, moneyCell, moneyCells, renderSoTotalsBlock, renderTotalsBlock, splitMoney } from "../print-html"
 
 test("T1. the spec example: 100,000 - 10% = 90,000; VAT 12,600; total 102,600", () => {
   const t = computeTotals({ subtotal: 100000, discountType: "percentage", discountValue: 10 })
@@ -110,4 +110,20 @@ test("T12. the totals block is a table AFTER the items, never a <tfoot>, and pri
   assert.match(html, />90,000</) // net subtotal
   assert.match(html, />12,600</) // VAT
   assert.match(html, />102,600</) // total
+})
+
+test("T20. one money column: whole pounds print without .00, fractions keep two decimals, nothing is lost", () => {
+  assert.equal(formatMoney(5750), "5,750")
+  assert.equal(formatMoney(2943.333), "2,943.33")
+  assert.equal(formatMoney(0.5), "0.50")
+  assert.equal(formatMoney(-1000), "-1,000")
+  assert.equal(formatMoney(1038725.19), "1,038,725.19")
+  assert.equal(moneyCell(5750), '<td class="currency-col">5,750</td>')
+})
+
+test("T21. the totals block has one money cell per row (no piastre column)", () => {
+  const html = renderTotalsBlock(computeTotals({ subtotal: 100000, discountType: "percentage", discountValue: 10 }))
+  for (const row of html.match(/<tr>[\s\S]*?<\/tr>/g) || []) assert.equal((row.match(/<td/g) || []).length, 2)
+  const so = renderSoTotalsBlock(computeSoPrintTotals({ subtotal: 100, discountType: null, discountValue: 0, storedTotal: 114, storedNetTotal: 100 } as any))
+  for (const row of so.match(/<tr>[\s\S]*?<\/tr>/g) || []) assert.equal((row.match(/<td/g) || []).length, 2)
 })

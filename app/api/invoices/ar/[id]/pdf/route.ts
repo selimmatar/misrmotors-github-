@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
+import { moneyCell } from "@/lib/print-html"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 import { VAT_RATE, computeInvoiceAmount, computeWholeOrderAmount, loadSoInvoicingState, round2 } from "@/lib/invoicing"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
@@ -313,16 +314,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   <table class="items-table pm-table">
     <thead>
       <tr>
-        <th rowspan="2" style="width: 8%;">عدد</th>
-        <th rowspan="2" style="width: 40%;">البيان</th>
-        <th colspan="2" class="currency-header pm-center">سعر الوحدة</th>
-        <th colspan="2" class="currency-header pm-center">القيمة</th>
-      </tr>
-      <tr>
-        <th class="subheader pm-num" style="width: 13%;">جنيه</th>
-        <th class="subheader pm-num" style="width: 13%;">قرش</th>
-        <th class="subheader pm-num" style="width: 13%;">جنيه</th>
-        <th class="subheader pm-num" style="width: 13%;">قرش</th>
+        <th class="pm-center" style="width: 8%;">عدد</th>
+        <th style="width: 40%;">البيان</th>
+        <th class="pm-num" style="width: 26%;">سعر الوحدة (جنيه)</th>
+        <th class="pm-num" style="width: 26%;">القيمة (جنيه)</th>
       </tr>
     </thead>
     <tbody>
@@ -331,10 +326,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           const unitPrice = Number(item.unit_price) || 0
           const quantity = Number(item.quantity) || 0
           const itemTotal = Number(item.total) || (unitPrice * quantity)
-          const unitGineh = Math.floor(unitPrice)
-          const unitQirsh = Math.round((unitPrice - unitGineh) * 100)
-          const totalGineh = Math.floor(itemTotal)
-          const totalQirsh = Math.round((itemTotal - totalGineh) * 100)
           
           // Get item name - use outsourced_name for outsourced items, product_name for stock items
           const itemName = item.item_type === 'outsourced' 
@@ -345,10 +336,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         <tr>
           <td class="center pm-center">${quantity}</td>
           <td>${escapeHtml(itemName)}</td>
-          <td class="currency-col pm-num">${unitGineh.toLocaleString('en-US')}</td>
-          <td class="currency-col pm-num">${unitQirsh.toString().padStart(2, '0')}</td>
-          <td class="currency-col pm-num">${totalGineh.toLocaleString('en-US')}</td>
-          <td class="currency-col pm-num">${totalQirsh.toString().padStart(2, '0')}</td>
+          ${moneyCell(unitPrice)}
+          ${moneyCell(itemTotal)}
         </tr>
       `
         })
@@ -356,19 +345,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     </tbody>
     <tfoot>
       <tr>
-        <td colspan="4" class="pm-num">المجموع الفرعي</td>
-        <td class="currency-col pm-num">${Math.floor(subtotalBeforeVat).toLocaleString('en-US')}</td>
-        <td class="currency-col pm-num">${Math.round((subtotalBeforeVat - Math.floor(subtotalBeforeVat)) * 100).toString().padStart(2, '0')}</td>
+        <td colspan="3" class="pm-num">المجموع الفرعي</td>
+        ${moneyCell(subtotalBeforeVat)}
       </tr>
       <tr>
-        <td colspan="4" class="pm-num">ضريبة القيمة المضافة (14%)</td>
-        <td class="currency-col pm-num">${Math.floor(vatAmount).toLocaleString('en-US')}</td>
-        <td class="currency-col pm-num">${Math.round((vatAmount - Math.floor(vatAmount)) * 100).toString().padStart(2, '0')}</td>
+        <td colspan="3" class="pm-num">ضريبة القيمة المضافة (14%)</td>
+        ${moneyCell(vatAmount)}
       </tr>
       <tr class="pm-total-final">
-        <td colspan="4" class="pm-num">إجمالي الفاتورة</td>
-        <td class="currency-col pm-num">${Math.floor(totalWithVat).toLocaleString('en-US')}</td>
-        <td class="currency-col pm-num">${Math.round((totalWithVat - Math.floor(totalWithVat)) * 100).toString().padStart(2, '0')}</td>
+        <td colspan="3" class="pm-num">إجمالي الفاتورة</td>
+        ${moneyCell(totalWithVat)}
       </tr>
     </tfoot>
   </table>

@@ -55,7 +55,7 @@ body .totals-block { margin-inline: auto 0; }
 body .totals-block td { padding: 4px 6px; }
 body .totals-block .label { text-align: start; }
 body .totals-block .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
-body .totals-block td.currency-col { width: 20%; }
+body .totals-block td.currency-col { width: 40%; }
 body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] { color: #000 !important; background: none !important; }
 .missing { font-weight: 700; }
 [class*="status"], [class*="badge"] { padding: 0 !important; border: 0 !important; font-weight: 600; }

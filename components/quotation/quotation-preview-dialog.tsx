@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { useI18n } from "@/lib/i18n-context"
 import { Printer } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
-import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
+import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 
 interface QuotationItem {
@@ -120,19 +120,13 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
     const itemsHtml = items.map((item, idx) => {
       const unitPrice = item.unit_price || 0
       const itemTotal = item.total || item.quantity * item.unit_price
-      const unitGineh = Math.floor(unitPrice)
-      const unitQirsh = Math.round((unitPrice - unitGineh) * 100)
-      const totalGineh = Math.floor(itemTotal)
-      const totalQirsh = Math.round((itemTotal - totalGineh) * 100)
       return `
         <tr>
           <td class="center">${idx + 1}</td>
           <td>${escapeHtml(item.product_name)}</td>
           <td class="center">${item.quantity}</td>
-          <td class="currency-col">${unitGineh.toLocaleString("en-US")}</td>
-          <td class="currency-col">${unitQirsh.toString().padStart(2, "0")}</td>
-          <td class="currency-col">${totalGineh.toLocaleString("en-US")}</td>
-          <td class="currency-col">${totalQirsh.toString().padStart(2, "0")}</td>
+          ${moneyCell(unitPrice)}
+          ${moneyCell(itemTotal)}
         </tr>`
     }).join("")
 
@@ -281,17 +275,11 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
   <table class="pm-table items-table">
     <thead>
       <tr>
-        <th rowspan="2" class="pm-center" style="width: 6%;">م</th>
-        <th rowspan="2" style="width: 36%;">البيان</th>
-        <th rowspan="2" class="pm-center" style="width: 8%;">الكمية</th>
-        <th colspan="2" class="pm-center">سعر الوحدة</th>
-        <th colspan="2" class="pm-center">القيمة</th>
-      </tr>
-      <tr>
-        <th class="subheader pm-num" style="width: 12.5%;">جنيه</th>
-        <th class="subheader pm-num" style="width: 12.5%;">قرش</th>
-        <th class="subheader pm-num" style="width: 12.5%;">جنيه</th>
-        <th class="subheader pm-num" style="width: 12.5%;">قرش</th>
+        <th class="pm-center" style="width: 6%;">م</th>
+        <th style="width: 36%;">البيان</th>
+        <th class="pm-center" style="width: 8%;">الكمية</th>
+        <th class="pm-num" style="width: 25%;">سعر الوحدة (جنيه)</th>
+        <th class="pm-num" style="width: 25%;">القيمة (جنيه)</th>
       </tr>
     </thead>
     <tbody>

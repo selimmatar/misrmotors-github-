@@ -13,16 +13,17 @@ const date = (s: string | null | undefined) => {
 /** `hideCost` removes the Unit Cost column and the total value that depends on it. Nothing else changes. */
 export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideCost: boolean; generatedAt: string }): string {
   const { so, rows } = report
-  const missing = rows.filter((r) => r.missing > 0)
+  // every line still to deliver: truly missing, or covered by stock in our warehouse (Missing 0, counted under Received)
+  const missing = rows.filter((r) => r.missing > 0 || r.inStock > 0)
   const hideCost = opts.hideCost
   // value of what is still missing, from the items that HAVE a cost; items without one are counted, never priced
-  const costed = missing.filter((r) => r.unitCost !== null)
+  const costed = missing.filter((r) => r.missing > 0 && r.unitCost !== null)
   const totalValue = costed.reduce((s, r) => s + r.missing * (r.unitCost as number), 0)
-  const uncosted = missing.length - costed.length
+  const uncosted = missing.filter((r) => r.missing > 0).length - costed.length
   const atPoPrice = costed.filter((r) => r.costSource === "po_price").length
 
   const badge = (status: string) =>
-    status.startsWith("Ordered") ? "badge-ordered" : status.startsWith("Partially") ? "badge-partial" : status.startsWith("Rejected") ? "badge-rejected" : status.startsWith("Stock") ? "badge-stock" : "badge-needs-po"
+    status.startsWith("Ordered") ? "badge-ordered" : status.startsWith("Partially") ? "badge-partial" : status.startsWith("Rejected") ? "badge-rejected" : status.startsWith("Stock") || status.startsWith("On Hold") || status.startsWith("In Stock") || status.startsWith("In stock") ? "badge-stock" : "badge-needs-po"
 
   const body = missing
     .map(
@@ -30,7 +31,7 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
         <tr>
           <td>${i + 1}</td>
           <td>${escapeHtml(r.name)}${r.sku !== "-" ? `<div class="sku">SKU: ${escapeHtml(r.sku)}</div>` : ""}</td>
-          <td><span class="type-tag ${r.isOutsourced ? "type-outsourced" : "type-stock"}">${r.isOutsourced ? "Outsourced" : "Stock"}</span></td>
+          <td><span class="type-tag ${r.isOutsourced ? "type-outsourced" : "type-stock"}">${r.isOutsourced ? "Outsourced" : r.onHold ? "On Hold" : "Stock"}</span></td>
           <td>${escapeHtml(r.supplierName)}</td>
           ${hideCost ? "" : `<td class="mi-cost">${r.unitCost === null ? "n/a" : money(r.unitCost)}${r.costSource === "po_price" ? '<div class="sku">PO Price</div>' : ""}</td>`}
           <td class="n">${r.ordered}</td>
@@ -95,7 +96,7 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
       missing.length === 0
         ? `<div class="empty-state">✅ No missing items — every line item on this order has been delivered.</div>`
         : `
-    <div class="legend">Ordered = sales order quantity · Out for Delivery = on permits currently out for delivery · Delivered = on delivered / approved permits · Returned = accepted returns · Net = Delivered − Returned · Missing = Ordered − Net − Out for Delivery · PO Ordered = active purchase orders · Received = goods receipts</div>
+    <div class="legend">Ordered = sales order quantity · Out for Delivery = on permits currently out for delivery · Delivered = on delivered / approved permits · Returned = accepted returns · Net = Delivered − Returned · Missing = Ordered − Net − Out for Delivery · PO Ordered = active purchase orders · Received = goods receipts, or stock already in our warehouse</div>
     <table class="pm-table">
       <thead>
         <tr>

@@ -57,7 +57,7 @@ body .totals-block { margin-inline: auto 0; }
 body .totals-block td { padding: 4px 6px; }
 body .totals-block .label { text-align: start; }
 body .totals-block .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
-body .totals-block td.currency-col { width: 20%; }
+body .totals-block td.currency-col { width: 40%; }
 body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] { color: #000 !important; background: none !important; }
 .missing { font-weight: 700; }
 [class*="status"], [class*="badge"] { padding: 0 !important; border: 0 !important; font-weight: 600; }
@@ -130,16 +130,10 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
   <table class="items-table pm-table">
     <thead>
       <tr>
-        <th rowspan="2" style="width: 8%;">عدد</th>
-        <th rowspan="2" style="width: 40%;">البيان</th>
-        <th colspan="2" class="currency-header pm-center">سعر الوحدة</th>
-        <th colspan="2" class="currency-header pm-center">القيمة</th>
-      </tr>
-      <tr>
-        <th class="subheader pm-num" style="width: 13%;">جنيه</th>
-        <th class="subheader pm-num" style="width: 13%;">قرش</th>
-        <th class="subheader pm-num" style="width: 13%;">جنيه</th>
-        <th class="subheader pm-num" style="width: 13%;">قرش</th>
+        <th class="pm-center" style="width: 8%;">عدد</th>
+        <th style="width: 40%;">البيان</th>
+        <th class="pm-num" style="width: 26%;">سعر الوحدة (جنيه)</th>
+        <th class="pm-num" style="width: 26%;">القيمة (جنيه)</th>
       </tr>
     </thead>
     <tbody>
@@ -147,28 +141,23 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
         <tr>
           <td class="center pm-center">2</td>
           <td>Pump A</td>
-          <td class="currency-col pm-num">500</td>
-          <td class="currency-col pm-num">00</td>
-          <td class="currency-col pm-num">1,000</td>
-          <td class="currency-col pm-num">00</td>
+          <td class="currency-col">500</td>
+          <td class="currency-col">1,000</td>
         </tr>
       
     </tbody>
     <tfoot>
       <tr>
-        <td colspan="4" class="pm-num">المجموع الفرعي</td>
-        <td class="currency-col pm-num">1,000</td>
-        <td class="currency-col pm-num">00</td>
+        <td colspan="3" class="pm-num">المجموع الفرعي</td>
+        <td class="currency-col">1,000</td>
       </tr>
       <tr>
-        <td colspan="4" class="pm-num">ضريبة القيمة المضافة (14%)</td>
-        <td class="currency-col pm-num">140</td>
-        <td class="currency-col pm-num">00</td>
+        <td colspan="3" class="pm-num">ضريبة القيمة المضافة (14%)</td>
+        <td class="currency-col">140</td>
       </tr>
       <tr class="pm-total-final">
-        <td colspan="4" class="pm-num">إجمالي الفاتورة</td>
-        <td class="currency-col pm-num">1,140</td>
-        <td class="currency-col pm-num">00</td>
+        <td colspan="3" class="pm-num">إجمالي الفاتورة</td>
+        <td class="currency-col">1,140</td>
       </tr>
     </tfoot>
   </table>

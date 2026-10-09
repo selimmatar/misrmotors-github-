@@ -84,9 +84,11 @@ ${PRINT_CSS}
 .signature-box{flex:1;text-align:center}
 .signature-line{border-top:1px solid #000;margin-top:48px;padding-top:6px;font-weight:600}
 @media print{.print-note{display:none}}
+.print-button{position:fixed;top:10px;left:10px;padding:8px 14px;cursor:pointer}
 </style>
 </head>
 <body>
+<button class="print-button no-print" onclick="window.print()">\u0637\u0628\u0627\u0639\u0629</button>
 ${printHeader({
 logoHtml: `${logoDataUrl ? `<img src="${logoDataUrl}" alt="Misr Motors Logo" class="company-logo" />` : `<div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">\u0645\u0635\u0631 \u0645\u0648\u062A\u0648\u0631\u0632</div>`}`,
 company: {

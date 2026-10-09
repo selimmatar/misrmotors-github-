@@ -1,5 +1,5 @@
 // Sales order print (Batch 3): Arabic RTL A4 HTML built from saved data. Pure; used by GET /api/sales-orders/print.
-import { escapeHtml, moneyCells, renderSoTotalsBlock, TOTALS_BLOCK_CSS } from "./print-html"
+import { escapeHtml, moneyCell, renderSoTotalsBlock, TOTALS_BLOCK_CSS } from "./print-html"
 import { computeSoPrintTotals } from "./print-totals"
 import { PRINT_CSS, printHeader, docTitle } from "./print/print-theme"
 
@@ -58,8 +58,8 @@ export function renderSoPrintHtml(data: SoPrintData): string {
         <td class="center">${idx + 1}</td>
         <td>${escapeHtml(item.name)}${item.returned > 0 ? `<div class="returned">مرتجع: ${item.returned}</div>` : ""}</td>
         <td class="center">${n(item.quantity)}</td>
-        ${moneyCells(n(item.unit_price))}
-        ${moneyCells(n(item.total))}
+        ${moneyCell(n(item.unit_price))}
+        ${moneyCell(n(item.total))}
       </tr>`,
     )
     .join("")
@@ -120,15 +120,11 @@ export function renderSoPrintHtml(data: SoPrintData): string {
   <table class="pm-table">
     <thead>
       <tr>
-        <th rowspan="2" class="pm-center" style="width: 6%;">م</th>
-        <th rowspan="2" style="width: 38%;">البيان</th>
-        <th rowspan="2" class="pm-center" style="width: 8%;">الكمية</th>
-        <th colspan="2" class="pm-center">سعر الوحدة</th>
-        <th colspan="2" class="pm-center">القيمة</th>
-      </tr>
-      <tr>
-        <th class="subheader pm-num" style="width: 12%;">جنيه</th><th class="subheader pm-num" style="width: 12%;">قرش</th>
-        <th class="subheader pm-num" style="width: 12%;">جنيه</th><th class="subheader pm-num" style="width: 12%;">قرش</th>
+        <th class="pm-center" style="width: 6%;">م</th>
+        <th style="width: 38%;">البيان</th>
+        <th class="pm-center" style="width: 8%;">الكمية</th>
+        <th class="pm-num" style="width: 24%;">سعر الوحدة (جنيه)</th>
+        <th class="pm-num" style="width: 24%;">القيمة (جنيه)</th>
       </tr>
     </thead>
     <tbody>${rows}

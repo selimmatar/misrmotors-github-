@@ -16,7 +16,23 @@ export function splitMoney(amount: number): { pounds: string; piastres: string; 
   }
 }
 
-/** Two currency cells (pounds, piastres) for a table row. */
+/**
+ * One money figure for print: whole pounds print without decimals ("5,750"), anything with piastres keeps exactly two
+ * ("2,943.33"). Rounded to the piastre first, so nothing is lost or invented.
+ */
+export function formatMoney(amount: number): string {
+  const cents = Math.round(Math.abs(round2(amount)) * 100)
+  const whole = cents % 100 === 0
+  const text = (cents / 100).toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })
+  return (amount < 0 && cents > 0 ? "-" : "") + text
+}
+
+/** One money cell for a table row (printables show money in a single column, no piastre column). */
+export function moneyCell(amount: number, style = ""): string {
+  return `<td class="currency-col"${style ? ` style="${style}"` : ""}>${formatMoney(amount)}</td>`
+}
+
+/** Two currency cells (pounds, piastres) for a table row. Kept for callers outside the printables. */
 export function moneyCells(amount: number, style = ""): string {
   const { pounds, piastres, negative } = splitMoney(amount)
   const s = style ? ` style="${style}"` : ""
@@ -30,7 +46,7 @@ export const TOTALS_BLOCK_CSS = `
     .totals-block { width: 60%; margin-right: 0; margin-left: auto; break-inside: avoid; page-break-inside: avoid; border: 2px solid #000; }
     .totals-block td { border: 1px solid #000; padding: 6px 8px; }
     .totals-block .label { text-align: right; }
-    .totals-block .currency-col { text-align: center; width: 18%; }`
+    .totals-block .currency-col { text-align: center; width: 40%; }`
 
 interface TotalsRow {
   label: string
@@ -43,7 +59,7 @@ function totalsTable(rows: TotalsRow[]): string {
   <table class="totals-block">
     <tbody>${rows
       .map((r) => `
-      <tr><td class="label" style="${r.style || ""}">${escapeHtml(r.label)}</td>${moneyCells(r.amount, r.style)}</tr>`)
+      <tr><td class="label" style="${r.style || ""}">${escapeHtml(r.label)}</td>${moneyCell(r.amount, r.style)}</tr>`)
       .join("")}
     </tbody>
   </table>`

@@ -116,19 +116,17 @@ test("PT11 long words wrap only when they cannot fit, never mid-word by default"
   assert.doesNotMatch(PRINT_CSS, /\.pm-table td \{[^}]*overflow-wrap: anywhere/)
 })
 
-test("PT12 split pound/piastre totals columns line up with the item table's money columns", () => {
-  // The totals box is 60% wide; 20% of it is the 12% each money column takes in the item table
-  assert.match(PRINT_CSS, /body \.totals-block td\.currency-col \{[^}]*width: 20%;/)
+test("PT12 totals money column lines up with the item table's money columns", () => {
+  // The totals box is 60% wide; 40% of it is the 24% each money column takes in the item table
+  assert.match(PRINT_CSS, /body \.totals-block td\.currency-col \{[^}]*width: 40%;/)
 })
 
-test("PT13 sales order money sub-headings sit over their figures", () => {
+test("PT13 sales order money headings sit over their figures", () => {
   const src = fs.readFileSync(path.join(REPO, "lib/so-print-html.ts"), "utf8")
-  const subs = src.match(/<th class="subheader[^"]*"/g) || []
-  assert.equal(subs.length, 4)
-  for (const s of subs) assert.match(s, /pm-num/)
-  assert.match(src, /<th rowspan="2" class="pm-center"[^>]*>م<\/th>/)
-  assert.match(src, /<th rowspan="2" class="pm-center"[^>]*>الكمية<\/th>/)
-  assert.equal((src.match(/<th colspan="2" class="pm-center">/g) || []).length, 2)
+  assert.match(src, /<th class="pm-center"[^>]*>م<\/th>/)
+  assert.match(src, /<th class="pm-center"[^>]*>الكمية<\/th>/)
+  assert.match(src, /<th class="pm-num"[^>]*>سعر الوحدة \(جنيه\)<\/th>/)
+  assert.match(src, /<th class="pm-num"[^>]*>القيمة \(جنيه\)<\/th>/)
 })
 
 test("PT14 work order fields sit in the shared field grid, not one long column", () => {
@@ -140,4 +138,16 @@ test("PT15 missing-items unit cost stays on one line", () => {
   const src = fs.readFileSync(path.join(REPO, "lib/missing-items-html.ts"), "utf8")
   assert.match(src, /<td class="mi-cost">/)
   assert.match(src, /\.mi-cost \{[^}]*white-space: nowrap;/)
+})
+
+test("PT16 no printable splits money into a piastre (قرش) column", () => {
+  for (const f of ["lib/so-print-html.ts", "components/quotation/quotation-preview-dialog.tsx", "app/api/invoices/ar/[id]/pdf/route.ts", "components/sales-order/edit-approved-order-dialog.tsx", "components/sales-quotation/approve-convert-quotation-dialog.tsx"]) {
+    const src = fs.readFileSync(path.join(REPO, f), "utf8")
+    assert.doesNotMatch(src, /قرش|Qirsh|moneyCells\(/, f)
+  }
+})
+
+test("PT17 the work order report has an on-screen print button that is hidden on paper", () => {
+  const src = fs.readFileSync(path.join(REPO, "app/api/maintenance/work-orders/[id]/pdf/route.ts"), "utf8")
+  assert.match(src, /<button class="print-button no-print" onclick="window\.print\(\)">/)
 })
