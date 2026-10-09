@@ -3,7 +3,7 @@ import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
-import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "@/lib/return-lines"
+import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { loadAvailability } from "@/lib/stock-hold"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
 import { reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
@@ -46,6 +46,7 @@ export async function GET() {
 
       // Batch 2: per-line delivery / return history, so the order can be edited safely after a return.
       const allPermits: any[] = ordersData.flatMap((o: any) => (o.delivery_permits || []).map((dp: any) => ({ ...dp, so_id: o.so_id })))
+      let returnedByPermitId = new Map<number, number>() // valid returned quantity per delivery permit
       const historyByOrder = new Map<number, { delivered: Map<string, number>; confirmed: Map<string, number>; onPermit: Set<string>; returned: Map<string, number> }>()
       if (allPermits.length > 0) {
         try {
@@ -56,6 +57,7 @@ export async function GET() {
             .in("permit_id", permitIds)
           if (dpItemsError) throw dpItemsError
           const returnLines = await loadReturnLines(supabase, permitIds)
+          returnedByPermitId = returnedTotalsByPermit(returnLines)
           for (const permit of allPermits) {
             const entry = historyByOrder.get(permit.so_id) || { delivered: new Map(), confirmed: new Map(), onPermit: new Set(), returned: new Map() }
             historyByOrder.set(permit.so_id, entry)
@@ -170,6 +172,8 @@ export async function GET() {
           permit_number: dp.permit_no,
           status: dp.status,
           createdAt: dp.created_at,
+          // returns raised against this permit only (the order-level figure is `returnedQuantity` on the order)
+          returnedQuantity: returnedByPermitId.get(dp.permit_id) || 0,
         })),
         deliveryAddress: order.delivery_address,
         deliveryContactName: order.delivery_contact_name,
