@@ -31,13 +31,15 @@ export interface ListCardProps {
   amount?: ReactNode
   party?: ReactNode
   status?: ReactNode
+  // Full-width line under the party/status row (for example a rejection reason).
+  note?: ReactNode
   actions?: ReactNode
   // Whole-card click. Anything inside `actions` keeps its own click and does not trigger this.
   onClick?: () => void
   className?: string
 }
 
-export function ListCard({ id, amount, party, status, actions, onClick, className }: ListCardProps) {
+export function ListCard({ id, amount, party, status, note, actions, onClick, className }: ListCardProps) {
   return (
     <div
       data-slot="list-card"
@@ -58,6 +60,7 @@ export function ListCard({ id, amount, party, status, actions, onClick, classNam
           {status != null && <div className="shrink-0">{status}</div>}
         </div>
       )}
+      {note != null && <div data-slot="list-card-note" className="min-w-0 break-words text-sm">{note}</div>}
       {actions != null && (
         <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
           {actions}

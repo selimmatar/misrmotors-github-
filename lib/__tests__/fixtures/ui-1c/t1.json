@@ -1,0 +1,55 @@
+{
+  "task": "t1",
+  "modules": {
+    "components/modules/purchase-order-module.tsx": {
+      "migrated": false,
+      "printRegion": {
+        "from": "const handlePrintInvoice",
+        "to": "const handleReject",
+        "sha256": "f5c93ab20fa586dc8e27f07208725438311123d06c32ad5d051d93e28a2c793f"
+      },
+      "surface": {
+        "api": [
+          "\"/api/accounts-payable",
+          "\"/api/balance",
+          "\"/api/payment-schedules",
+          "\"/api/purchase-orders/finalize-cost",
+          "\"/api/upload",
+          "`/api/accounts-payable?poId=${poIdInt}"
+        ],
+        "handlers": [
+          "handleAddItem",
+          "handleAddSuggestedItem",
+          "handleAdjustToMOQ",
+          "handleApprove",
+          "handleCreatePO",
+          "handleFinalizeCost",
+          "handlePaymentDetailChange",
+          "handlePaymentTypeChange",
+          "handlePendingCardClick",
+          "handlePrintInvoice",
+          "handleReject",
+          "handleRemoveItem"
+        ],
+        "ids": [
+          "id=\"poVatEnabled\"",
+          "name=\"poSource\"",
+          "name=\"poSource\"",
+          "name=\"poType\"",
+          "name=\"poType\""
+        ],
+        "fetch": 6,
+        "iso": 18,
+        "t": 59,
+        "onClick": 15
+      },
+      "must": [
+        {
+          "re": "/api/purchase-orders/pdf\\?poId=",
+          "min": 1,
+          "max": 1
+        }
+      ]
+    }
+  }
+}
