@@ -3,74 +3,108 @@
 <head>
 <meta charset="UTF-8">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
-*{margin:0;padding:0;box-sizing:border-box}
-@page{size:A4;margin:15mm}
-body{font-family:'Noto Naskh Arabic','Arial',sans-serif;font-size:12pt;line-height:1.4;color:#000;background:white;direction:rtl}
-.company-header{text-align:center;border-bottom:2px solid #000;padding:10px;margin-bottom:5mm;display:flex;flex-direction:column;align-items:center}
-.company-logo{width:80px;height:80px;object-fit:contain;margin-bottom:10px}
-.company-name-ar{font-size:18pt;font-weight:700;margin-bottom:3px}
-.company-name-en{font-size:14pt;font-weight:600;margin-bottom:8px}
-.company-details{font-size:10pt;line-height:1.6}
-.tax-info{font-size:9pt;margin-top:5px;border-top:1px solid #ccc;padding-top:5px}
-.doc-title{text-align:center;font-size:20pt;font-weight:700;margin:10mm 0;text-decoration:underline}
-.section{margin-bottom:25px}
-.section-title{font-weight:700;font-size:16px;color:#fff;background:#1a365d;padding:8px 15px;margin-bottom:10px;border-radius:4px}
-.field{margin:8px 0;display:flex;border-bottom:1px dotted #ddd;padding-bottom:5px}
-.field-label{font-weight:600;width:200px;color:#333}
-.field-value{flex:1;color:#000}
-.table{width:100%;border-collapse:collapse;margin-top:15px}
-.table th,.table td{border:1px solid #999;padding:10px;text-align:right}
-.table th{background:#1a365d;color:#fff;font-weight:600}
-.notes-section{min-height:180px;border:2px solid #ccc;padding:15px;margin-top:10px;border-radius:4px}
-.signature-section{margin-top:50px;display:flex;justify-content:space-between}
-.signature-box{width:45%;text-align:center}
-.signature-line{border-top:2px solid #000;margin-top:60px;padding-top:8px;font-weight:600}
-.print-note{text-align:center;color:#999;font-size:11px;margin-top:30px;border-top:1px solid #eee;padding-top:10px}
-@media print{body{margin:20px}.print-note{display:none}}
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+@page { size: A4; margin: 15mm; }
+html { background: #fff; }
+body { font-family: 'IBM Plex Sans Arabic', 'Noto Naskh Arabic', Arial, Tahoma, sans-serif; color: #000; background: #fff; font-size: 13px; line-height: 1.5; }
+img { max-inline-size: 100%; }
+table { border-collapse: collapse; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+.pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
+.pm-brand { display: flex; align-items: center; gap: 12px; }
+.pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }
+.pm-names { display: block; }
+.pm-name-ar { font-size: 17px; font-weight: 700; }
+.pm-name-en { font-size: 11px; color: #555; letter-spacing: 0.06em; }
+.pm-company { font-size: 11px; color: #555; line-height: 1.7; text-align: end; }
+.pm-tax { margin-block-start: 4px; font-size: 11px; color: #555; }
+.pm-title { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 18px 16px; }
+.pm-title .doc-title { font-size: 34px; font-weight: 700; line-height: 1.2; }
+.pm-title-note { font-size: 13px; font-weight: 600; }
+.pm-title-no { font-size: 13px; color: #333; text-align: end; }
+.pm-title-no .pm-value { font-size: 15px; font-weight: 600; color: #000; }
+.pm-info { margin-block: 14px; }
+.pm-info-title { margin-block-end: 6px; font-size: 13px; font-weight: 700; }
+.pm-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 16px; border-block-start: 1.5px solid #000; padding-block-start: 10px; }
+.pm-field { min-inline-size: 0; }
+.pm-field-wide { grid-column: span 2; }
+.pm-label { font-size: 11px; font-weight: 400; color: #555; }
+.pm-field .pm-label { display: block; }
+.pm-value { font-weight: 500; color: #000; overflow-wrap: anywhere; }
+.pm-section-title { margin-block: 16px 8px; padding-block-end: 4px; border-block-end: 1px solid #000; font-size: 14px; font-weight: 700; }
+.pm-note { margin-block: 12px; font-size: 12px; line-height: 1.6; color: #000; overflow-wrap: anywhere; }
+.pm-table { inline-size: 100%; margin-block: 8px 12px; border-collapse: collapse; }
+.pm-table th, .pm-table td { border: 0; }
+.pm-table th { padding: 6px; font-size: 11px; font-weight: 500; color: #555; text-align: start; background: none; border-block-end: 1.5px solid #000; }
+.pm-table td { padding: 7px 6px; vertical-align: top; border-block-end: 1px solid #ccc; overflow-wrap: anywhere; }
+.pm-table tfoot td { border-block-end: 0; }
+.pm-num, .pm-table .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
+.pm-center, .center { text-align: center; }
+.pm-table th.pm-num { text-align: end; }
+.pm-table th.pm-center { text-align: center; }
+.pm-totals { inline-size: 60%; margin-block: 8px; margin-inline: auto 0; break-inside: avoid; page-break-inside: avoid; }
+.pm-totals td { padding: 4px 6px; border: 0; }
+.pm-total-final, .pm-total-final td { border-block-start: 1.5px solid #000; font-weight: 700; }
+body .totals-block tr:has(td[style*="font-weight: 700"]) td { border-block-start: 1.5px solid #000 !important; font-weight: 700; }
+body .totals-block, body .totals-block td { border: 0 !important; }
+body .totals-block { margin-inline: auto 0; }
+body .totals-block td { padding: 4px 6px; }
+body .totals-block .label { text-align: start; }
+body .totals-block .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
+body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] { color: #000 !important; background: none !important; }
+.missing { font-weight: 700; }
+[class*="status"], [class*="badge"] { padding: 0 !important; border: 0 !important; font-weight: 600; }
+.pm-signatures { display: flex; justify-content: space-between; gap: 48px; margin-block-start: 40px; break-inside: avoid; page-break-inside: avoid; }
+.pm-sign { flex: 1; font-size: 11px; color: #333; }
+.pm-sign-line { margin-block-start: 6px; border-block-end: 1px solid #000; block-size: 28px; }
+.pm-footer { margin-block-start: 16px; font-size: 11px; color: #555; text-align: center; }
+@media print { .no-print { display: none !important; } }
+
+.section{margin-bottom:12px}
+.pm-table td{height:30px}
+.notes-section{min-height:180px;border-block:1px solid #000;margin-top:10px}
+.signature-section{margin-top:40px;display:flex;justify-content:space-between;gap:48px;break-inside:avoid}
+.signature-box{flex:1;text-align:center}
+.signature-line{border-top:1px solid #000;margin-top:48px;padding-top:6px;font-weight:600}
+@media print{.print-note{display:none}}
 </style>
 </head>
 <body>
-<div class="company-header">
-<div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div>
-<div class="company-name-ar">شركة مصر للمحركات</div>
-<div class="company-name-en">Misr Motors Co.</div>
-<div class="company-details">
-<div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
+<header class="pm-header"><div class="pm-brand"><div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div><div class="pm-names"><div class="pm-name-ar">شركة مصر للمحركات</div><div class="pm-name-en">Misr Motors Co.</div></div></div><div class="pm-company"><div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
 <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
-<div>البريد الإلكتروني: sales@misrmotors.com</div>
-</div>
-<div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
-</div>
+<div>البريد الإلكتروني: sales@misrmotors.com</div><div class="pm-tax">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div></div></header>
 
-<div class="doc-title">تقرير صيانة رقم: WO-2026-0001</div>
+<div class="pm-title"><div class="doc-title">تقرير صيانة</div><div class="pm-title-no"><span class="pm-label">رقم:</span> <span class="pm-value">WO-2026-0001</span></div></div>
 
 <div class="section">
-<div class="section-title">بيانات تقرير الصيانة</div>
-<div class="field"><span class="field-label">رقم التقرير:</span><span class="field-value">WO-2026-0001</span></div>
-<div class="field"><span class="field-label">رقم أمر البيع:</span><span class="field-value">SO-1001</span></div>
-<div class="field"><span class="field-label">تاريخ الإنشاء:</span><span class="field-value"><DATE></span></div>
-<div class="field"><span class="field-label">الحالة:</span><span class="field-value">قيد التنفيذ</span></div>
-<div class="field"><span class="field-label">الفني المسؤول:</span><span class="field-value">غير متوفر</span></div>
+<div class="pm-section-title">بيانات تقرير الصيانة</div>
+<div class="pm-field"><span class="pm-label">رقم التقرير:</span><span class="pm-value">WO-2026-0001</span></div>
+<div class="pm-field"><span class="pm-label">رقم أمر البيع:</span><span class="pm-value">SO-1001</span></div>
+<div class="pm-field"><span class="pm-label">تاريخ الإنشاء:</span><span class="pm-value"><DATE></span></div>
+<div class="pm-field"><span class="pm-label">الحالة:</span><span class="pm-value">قيد التنفيذ</span></div>
+<div class="pm-field"><span class="pm-label">الفني المسؤول:</span><span class="pm-value">غير متوفر</span></div>
 </div>
 
 <div class="section">
-<div class="section-title">بيانات العميل</div>
-<div class="field"><span class="field-label">اسم العميل:</span><span class="field-value">Customer Co</span></div>
-<div class="field"><span class="field-label">العنوان / الموقع:</span><span class="field-value">WO Street</span></div>
-<div class="field"><span class="field-label">رقم الهاتف:</span><span class="field-value">Phone-0600</span></div>
+<div class="pm-section-title">بيانات العميل</div>
+<div class="pm-field"><span class="pm-label">اسم العميل:</span><span class="pm-value">Customer Co</span></div>
+<div class="pm-field"><span class="pm-label">العنوان / الموقع:</span><span class="pm-value">WO Street</span></div>
+<div class="pm-field"><span class="pm-label">رقم الهاتف:</span><span class="pm-value">Phone-0600</span></div>
 </div>
 
 <div class="section">
-<div class="section-title">وصف العمل</div>
-<div class="field"><span class="field-label">العنوان:</span><span class="field-value">Replace pump</span></div>
-<div class="field"><span class="field-label">الوصف:</span><span class="field-value">Pump leaking</span></div>
-<div class="field"><span class="field-label">التصنيف:</span><span class="field-value">إصلاح</span></div>
+<div class="pm-section-title">وصف العمل</div>
+<div class="pm-field"><span class="pm-label">العنوان:</span><span class="pm-value">Replace pump</span></div>
+<div class="pm-field"><span class="pm-label">الوصف:</span><span class="pm-value">Pump leaking</span></div>
+<div class="pm-field"><span class="pm-label">التصنيف:</span><span class="pm-value">إصلاح</span></div>
 </div>
 
 <div class="section">
-<div class="section-title">المواد والقطع المستخدمة</div>
-<table class="table">
+<div class="pm-section-title">المواد والقطع المستخدمة</div>
+<table class="pm-table">
 <thead><tr><th>وصف الصنف</th><th>الكمية</th><th>الوحدة</th><th>ملاحظات</th></tr></thead>
 <tbody>
 <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
@@ -88,7 +122,7 @@ body{font-family:'Noto Naskh Arabic','Arial',sans-serif;font-size:12pt;line-heig
 </div>
 
 <div class="section">
-<div class="section-title">الأعمال المنفذة / الملاحظات</div>
+<div class="pm-section-title">الأعمال المنفذة / الملاحظات</div>
 <div class="notes-section"></div>
 </div>
 
@@ -97,6 +131,6 @@ body{font-family:'Noto Naskh Arabic','Arial',sans-serif;font-size:12pt;line-heig
 <div class="signature-box"><div class="signature-line">توقيع العميل / التاريخ</div></div>
 </div>
 
-<div class="print-note">هذا المستند تم إنشاؤه آلياً من نظام مصر موتورز - يرجى طباعته وتعبئته من قبل فريق الشحن</div>
+<div class="pm-note print-note">هذا المستند تم إنشاؤه آلياً من نظام مصر موتورز - يرجى طباعته وتعبئته من قبل فريق الشحن</div>
 </body>
 </html>

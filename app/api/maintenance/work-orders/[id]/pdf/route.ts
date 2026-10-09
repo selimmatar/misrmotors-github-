@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
+import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
 
@@ -74,74 +75,57 @@ export async function GET(
 <head>
 <meta charset="UTF-8">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
-*{margin:0;padding:0;box-sizing:border-box}
-@page{size:A4;margin:15mm}
-body{font-family:'Noto Naskh Arabic','Arial',sans-serif;font-size:12pt;line-height:1.4;color:#000;background:white;direction:rtl}
-.company-header{text-align:center;border-bottom:2px solid #000;padding:10px;margin-bottom:5mm;display:flex;flex-direction:column;align-items:center}
-.company-logo{width:80px;height:80px;object-fit:contain;margin-bottom:10px}
-.company-name-ar{font-size:18pt;font-weight:700;margin-bottom:3px}
-.company-name-en{font-size:14pt;font-weight:600;margin-bottom:8px}
-.company-details{font-size:10pt;line-height:1.6}
-.tax-info{font-size:9pt;margin-top:5px;border-top:1px solid #ccc;padding-top:5px}
-.doc-title{text-align:center;font-size:20pt;font-weight:700;margin:10mm 0;text-decoration:underline}
-.section{margin-bottom:25px}
-.section-title{font-weight:700;font-size:16px;color:#fff;background:#1a365d;padding:8px 15px;margin-bottom:10px;border-radius:4px}
-.field{margin:8px 0;display:flex;border-bottom:1px dotted #ddd;padding-bottom:5px}
-.field-label{font-weight:600;width:200px;color:#333}
-.field-value{flex:1;color:#000}
-.table{width:100%;border-collapse:collapse;margin-top:15px}
-.table th,.table td{border:1px solid #999;padding:10px;text-align:right}
-.table th{background:#1a365d;color:#fff;font-weight:600}
-.notes-section{min-height:180px;border:2px solid #ccc;padding:15px;margin-top:10px;border-radius:4px}
-.signature-section{margin-top:50px;display:flex;justify-content:space-between}
-.signature-box{width:45%;text-align:center}
-.signature-line{border-top:2px solid #000;margin-top:60px;padding-top:8px;font-weight:600}
-.print-note{text-align:center;color:#999;font-size:11px;margin-top:30px;border-top:1px solid #eee;padding-top:10px}
-@media print{body{margin:20px}.print-note{display:none}}
+${PRINT_CSS}
+.section{margin-bottom:12px}
+.pm-table td{height:30px}
+.notes-section{min-height:180px;border-block:1px solid #000;margin-top:10px}
+.signature-section{margin-top:40px;display:flex;justify-content:space-between;gap:48px;break-inside:avoid}
+.signature-box{flex:1;text-align:center}
+.signature-line{border-top:1px solid #000;margin-top:48px;padding-top:6px;font-weight:600}
+@media print{.print-note{display:none}}
 </style>
 </head>
 <body>
-<div class="company-header">
-${logoDataUrl ? `<img src="${logoDataUrl}" alt="Misr Motors Logo" class="company-logo" />` : `<div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">\u0645\u0635\u0631 \u0645\u0648\u062A\u0648\u0631\u0632</div>`}
-<div class="company-name-ar">${COMPANY_SETTINGS.nameAr}</div>
-<div class="company-name-en">${COMPANY_SETTINGS.nameEn}</div>
-<div class="company-details">
-<div>\u0627\u0644\u0639\u0646\u0648\u0627\u0646: ${COMPANY_SETTINGS.address}</div>
+${printHeader({
+logoHtml: `${logoDataUrl ? `<img src="${logoDataUrl}" alt="Misr Motors Logo" class="company-logo" />` : `<div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">\u0645\u0635\u0631 \u0645\u0648\u062A\u0648\u0631\u0632</div>`}`,
+company: {
+nameAr: `${COMPANY_SETTINGS.nameAr}`,
+nameEn: `${COMPANY_SETTINGS.nameEn}`,
+detailsHtml: `<div>\u0627\u0644\u0639\u0646\u0648\u0627\u0646: ${COMPANY_SETTINGS.address}</div>
 <div>\u062A\u0644\u064A\u0641\u0648\u0646: ${COMPANY_SETTINGS.phone} | \u0641\u0627\u0643\u0633: ${COMPANY_SETTINGS.fax}</div>
-<div>\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A: ${COMPANY_SETTINGS.email}</div>
-</div>
-<div class="tax-info">${getTaxInfo()}</div>
-</div>
+<div>\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A: ${COMPANY_SETTINGS.email}</div>`,
+},
+taxInfo: `${getTaxInfo()}`,
+})}
 
-<div class="doc-title">\u062A\u0642\u0631\u064A\u0631 \u0635\u064A\u0627\u0646\u0629 \u0631\u0642\u0645: ${escapeHtml(workOrder.work_order_number)}</div>
-
-<div class="section">
-<div class="section-title">\u0628\u064A\u0627\u0646\u0627\u062A \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0635\u064A\u0627\u0646\u0629</div>
-<div class="field"><span class="field-label">\u0631\u0642\u0645 \u0627\u0644\u062A\u0642\u0631\u064A\u0631:</span><span class="field-value">${escapeHtml(workOrder.work_order_number)}</span></div>
-<div class="field"><span class="field-label">\u0631\u0642\u0645 \u0623\u0645\u0631 \u0627\u0644\u0628\u064A\u0639:</span><span class="field-value">${escapeHtml(salesOrder?.so_number || na)}</span></div>
-<div class="field"><span class="field-label">\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0646\u0634\u0627\u0621:</span><span class="field-value">${dateStr}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u062D\u0627\u0644\u0629:</span><span class="field-value">${escapeHtml(statusAr)}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u0641\u0646\u064A \u0627\u0644\u0645\u0633\u0624\u0648\u0644:</span><span class="field-value">${escapeHtml(assignedEmployeeName || na)}</span></div>
-</div>
+${docTitle({ titleAr: `\u062A\u0642\u0631\u064A\u0631 \u0635\u064A\u0627\u0646\u0629`, numberLabel: `\u0631\u0642\u0645:`, number: `${escapeHtml(workOrder.work_order_number)}` })}
 
 <div class="section">
-<div class="section-title">\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644</div>
-<div class="field"><span class="field-label">\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644:</span><span class="field-value">${escapeHtml(customer?.customer_name || na)}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646 / \u0627\u0644\u0645\u0648\u0642\u0639:</span><span class="field-value">${escapeHtml(customer?.address || workOrder.location || na)}</span></div>
-<div class="field"><span class="field-label">\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641:</span><span class="field-value">${escapeHtml(customer?.phone || na)}</span></div>
+<div class="pm-section-title">\u0628\u064A\u0627\u0646\u0627\u062A \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0635\u064A\u0627\u0646\u0629</div>
+<div class="pm-field"><span class="pm-label">\u0631\u0642\u0645 \u0627\u0644\u062A\u0642\u0631\u064A\u0631:</span><span class="pm-value">${escapeHtml(workOrder.work_order_number)}</span></div>
+<div class="pm-field"><span class="pm-label">\u0631\u0642\u0645 \u0623\u0645\u0631 \u0627\u0644\u0628\u064A\u0639:</span><span class="pm-value">${escapeHtml(salesOrder?.so_number || na)}</span></div>
+<div class="pm-field"><span class="pm-label">\u062A\u0627\u0631\u064A\u062E \u0627\u0644\u0625\u0646\u0634\u0627\u0621:</span><span class="pm-value">${dateStr}</span></div>
+<div class="pm-field"><span class="pm-label">\u0627\u0644\u062D\u0627\u0644\u0629:</span><span class="pm-value">${escapeHtml(statusAr)}</span></div>
+<div class="pm-field"><span class="pm-label">\u0627\u0644\u0641\u0646\u064A \u0627\u0644\u0645\u0633\u0624\u0648\u0644:</span><span class="pm-value">${escapeHtml(assignedEmployeeName || na)}</span></div>
 </div>
 
 <div class="section">
-<div class="section-title">\u0648\u0635\u0641 \u0627\u0644\u0639\u0645\u0644</div>
-<div class="field"><span class="field-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646:</span><span class="field-value">${escapeHtml(workOrder.title)}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u0648\u0635\u0641:</span><span class="field-value">${escapeHtml(workOrder.description)}</span></div>
-<div class="field"><span class="field-label">\u0627\u0644\u062A\u0635\u0646\u064A\u0641:</span><span class="field-value">${escapeHtml(categoryAr)}</span></div>
+<div class="pm-section-title">\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644</div>
+<div class="pm-field"><span class="pm-label">\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644:</span><span class="pm-value">${escapeHtml(customer?.customer_name || na)}</span></div>
+<div class="pm-field"><span class="pm-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646 / \u0627\u0644\u0645\u0648\u0642\u0639:</span><span class="pm-value">${escapeHtml(customer?.address || workOrder.location || na)}</span></div>
+<div class="pm-field"><span class="pm-label">\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641:</span><span class="pm-value">${escapeHtml(customer?.phone || na)}</span></div>
 </div>
 
 <div class="section">
-<div class="section-title">\u0627\u0644\u0645\u0648\u0627\u062F \u0648\u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645\u0629</div>
-<table class="table">
+<div class="pm-section-title">\u0648\u0635\u0641 \u0627\u0644\u0639\u0645\u0644</div>
+<div class="pm-field"><span class="pm-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646:</span><span class="pm-value">${escapeHtml(workOrder.title)}</span></div>
+<div class="pm-field"><span class="pm-label">\u0627\u0644\u0648\u0635\u0641:</span><span class="pm-value">${escapeHtml(workOrder.description)}</span></div>
+<div class="pm-field"><span class="pm-label">\u0627\u0644\u062A\u0635\u0646\u064A\u0641:</span><span class="pm-value">${escapeHtml(categoryAr)}</span></div>
+</div>
+
+<div class="section">
+<div class="pm-section-title">\u0627\u0644\u0645\u0648\u0627\u062F \u0648\u0627\u0644\u0642\u0637\u0639 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645\u0629</div>
+<table class="pm-table">
 <thead><tr><th>\u0648\u0635\u0641 \u0627\u0644\u0635\u0646\u0641</th><th>\u0627\u0644\u0643\u0645\u064A\u0629</th><th>\u0627\u0644\u0648\u062D\u062F\u0629</th><th>\u0645\u0644\u0627\u062D\u0638\u0627\u062A</th></tr></thead>
 <tbody>
 ${emptyRows}
@@ -150,7 +134,7 @@ ${emptyRows}
 </div>
 
 <div class="section">
-<div class="section-title">\u0627\u0644\u0623\u0639\u0645\u0627\u0644 \u0627\u0644\u0645\u0646\u0641\u0630\u0629 / \u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0627\u062A</div>
+<div class="pm-section-title">\u0627\u0644\u0623\u0639\u0645\u0627\u0644 \u0627\u0644\u0645\u0646\u0641\u0630\u0629 / \u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0627\u062A</div>
 <div class="notes-section"></div>
 </div>
 
@@ -159,7 +143,7 @@ ${emptyRows}
 <div class="signature-box"><div class="signature-line">\u062A\u0648\u0642\u064A\u0639 \u0627\u0644\u0639\u0645\u064A\u0644 / \u0627\u0644\u062A\u0627\u0631\u064A\u062E</div></div>
 </div>
 
-<div class="print-note">\u0647\u0630\u0627 \u0627\u0644\u0645\u0633\u062A\u0646\u062F \u062A\u0645 \u0625\u0646\u0634\u0627\u0624\u0647 \u0622\u0644\u064A\u0627\u064B \u0645\u0646 \u0646\u0638\u0627\u0645 \u0645\u0635\u0631 \u0645\u0648\u062A\u0648\u0631\u0632 - \u064A\u0631\u062C\u0649 \u0637\u0628\u0627\u0639\u062A\u0647 \u0648\u062A\u0639\u0628\u0626\u062A\u0647 \u0645\u0646 \u0642\u0628\u0644 \u0641\u0631\u064A\u0642 \u0627\u0644\u0634\u062D\u0646</div>
+<div class="pm-note print-note">\u0647\u0630\u0627 \u0627\u0644\u0645\u0633\u062A\u0646\u062F \u062A\u0645 \u0625\u0646\u0634\u0627\u0624\u0647 \u0622\u0644\u064A\u0627\u064B \u0645\u0646 \u0646\u0638\u0627\u0645 \u0645\u0635\u0631 \u0645\u0648\u062A\u0648\u0631\u0632 - \u064A\u0631\u062C\u0649 \u0637\u0628\u0627\u0639\u062A\u0647 \u0648\u062A\u0639\u0628\u0626\u062A\u0647 \u0645\u0646 \u0642\u0628\u0644 \u0641\u0631\u064A\u0642 \u0627\u0644\u0634\u062D\u0646</div>
 </body>
 </html>`
 
