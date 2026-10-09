@@ -491,6 +491,7 @@ export function PORequestModule() {
                             onClick={() => handleRemoveItem(index)}
                             disabled={items.length === 1}
                             className="text-destructive hover:text-destructive"
+                            aria-label={`${t("action.remove")} ${index + 1}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

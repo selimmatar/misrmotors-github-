@@ -374,6 +374,7 @@ export function ProductModule() {
                         size="icon"
                         variant="destructive"
                         className="absolute top-1 end-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label={t("action.remove")}
                         onClick={(e) => {
                           e.stopPropagation()
                           handleDeleteImage(image.image_id)

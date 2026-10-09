@@ -173,9 +173,9 @@ export function ReorderSuggestionsModule() {
   const getTrendIcon = (trend: string) => {
     switch (trend) {
       case "increasing":
-        return <TrendingUp className="h-4 w-4 text-green-600" />
+        return <TrendingUp className="h-4 w-4 text-green-700" />
       case "decreasing":
-        return <TrendingDown className="h-4 w-4 text-red-600" />
+        return <TrendingDown className="h-4 w-4 text-red-700" />
       default:
         return <Minus className="h-4 w-4 text-muted-foreground" />
     }
@@ -214,6 +214,7 @@ export function ReorderSuggestionsModule() {
     <Checkbox
       checked={filteredSuggestions.length > 0 && filteredSuggestions.every((s) => selectedItems.has(s.productId))}
       onCheckedChange={handleSelectAll}
+      aria-label={t("a11y.select-all")}
     />
   )
 
@@ -221,6 +222,7 @@ export function ReorderSuggestionsModule() {
     <Checkbox
       checked={selectedItems.has(item.productId)}
       onCheckedChange={(checked) => handleSelectItem(item.productId, checked as boolean)}
+      aria-label={`${t("a11y.select-row")} ${item.productName}`}
     />
   )
 
@@ -231,6 +233,7 @@ export function ReorderSuggestionsModule() {
       value={customValues[item.productId] || item.suggestedReorderPoint}
       onChange={(e) => handleCustomValueChange(item.productId, e.target.value)}
       min={1}
+      aria-label={`${t("reorder.new-value")} ${item.productName}`}
     />
   )
 
@@ -312,6 +315,7 @@ export function ReorderSuggestionsModule() {
                   <Checkbox
                     checked={showOnlyNeedsUpdate}
                     onCheckedChange={(checked) => setShowOnlyNeedsUpdate(checked as boolean)}
+                    aria-label={t("reorder.only-needs-update")}
                   />
                   <span className="text-sm">{t("reorder.only-needs-update")}</span>
                 </label>
@@ -393,7 +397,7 @@ export function ReorderSuggestionsModule() {
                             <NumCell>
                               <span
                                 className={
-                                  item.currentQuantity <= item.currentReorderPoint ? "text-red-600 font-semibold" : ""
+                                  item.currentQuantity <= item.currentReorderPoint ? "text-red-700 font-semibold" : ""
                                 }
                               >
                                 {formatNumber(item.currentQuantity)}
@@ -491,11 +495,11 @@ export function ReorderSuggestionsModule() {
             </div>
             <div className="flex gap-4 text-sm pt-2 border-t flex-wrap">
               <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-green-600" />
+                <TrendingUp className="h-4 w-4 text-green-700" />
                 <span>{t("reorder.increasing-buffer")}</span>
               </div>
               <div className="flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-red-600" />
+                <TrendingDown className="h-4 w-4 text-red-700" />
                 <span>{t("reorder.decreasing-reduction")}</span>
               </div>
               <div className="flex items-center gap-2">
