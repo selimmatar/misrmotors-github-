@@ -2,7 +2,7 @@
   "task": "t2",
   "modules": {
     "components/modules/supplier-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/accounts-payable",
@@ -20,10 +20,19 @@
         "iso": 0,
         "t": 55,
         "onClick": 9
+      },
+      "must": [
+        {
+          "re": "rtl:rotate",
+          "min": 1
+        }
+      ],
+      "allow": {
+        "toLocaleString": 1
       }
     },
     "components/modules/product-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "`/api/product-images?imageId=${imageId}",
@@ -42,7 +51,7 @@
       }
     },
     "components/modules/po-request-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/categories",
@@ -72,11 +81,19 @@
           "re": "/api/po-requests/pdf\\?requestId=",
           "min": 1,
           "max": 1
+        },
+        {
+          "re": "<ResponsiveList",
+          "min": 1
+        },
+        {
+          "re": "isRTL \\?",
+          "min": 65
         }
       ]
     },
     "components/modules/pricing-review-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/products/update-pricing",
@@ -95,10 +112,13 @@
         "iso": 0,
         "t": 22,
         "onClick": 1
+      },
+      "allow": {
+        "toFixed2": 2
       }
     },
     "components/modules/inventory-costing-settings.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/settings",
