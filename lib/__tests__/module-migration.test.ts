@@ -12,7 +12,12 @@ const read = (f: string) => fs.readFileSync(path.join(REPO, f), "utf8")
 const FIXTURE = path.join(REPO, "lib/__tests__/fixtures/ui-1b/protected.json")
 
 // Each module task appends its paths.
-const MIGRATED: string[] = []
+const MIGRATED: string[] = [
+  "components/modules/approve-sales-orders-module.tsx",
+  "components/modules/delivery-permits-module.tsx",
+  "components/modules/customer-module.tsx",
+  "components/modules/lost-sales-module.tsx",
+]
 // Allowed leftover BANNED matches per file; each entry needs a ledgered ruling.
 const ALLOW: Record<string, Partial<Record<keyof typeof BANNED, number>>> = {}
 // Files that render inside another screen and carry no page header of their own.
@@ -52,4 +57,11 @@ test("migrated modules use the shared blocks", () => {
     for (const [i, line] of src.split("\n").entries()) if (RTL_BAD.test(line)) problems.push(`${f}:${i + 1}: physical class`)
   }
   assert.deepEqual(problems, [], problems.join("\n"))
+})
+
+test("approve orders uses the module title; permits keep their own labels", () => {
+  const a = read("components/modules/approve-sales-orders-module.tsx")
+  assert.match(a, /t\("module\.approve-sales-orders"\)/); assert.doesNotMatch(a, /t\("approve\.(title|description)"\)/)
+  const d = read("components/modules/delivery-permits-module.tsx")
+  assert.doesNotMatch(d, /<PermitStatusBadge/); assert.match(d, /label=\{t\(`permit\.status\./)
 })
