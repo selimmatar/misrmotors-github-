@@ -2,7 +2,7 @@
   "task": "t8",
   "modules": {
     "components/modules/analytics-dashboard.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/ai/action-recommendations",
@@ -21,10 +21,23 @@
         "iso": 1,
         "t": 19,
         "onClick": 12
+      },
+      "must": [
+        {
+          "re": "<KpiTile",
+          "min": 11
+        },
+        {
+          "re": "openDetail\\(",
+          "min": 4
+        }
+      ],
+      "allow": {
+        "toLocaleString": 2
       }
     },
     "components/modules/ceo-chat-assistant.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/ai/ceo-chat"
@@ -39,10 +52,17 @@
         "iso": 0,
         "t": 0,
         "onClick": 4
-      }
+      },
+      "must": [
+        {
+          "re": "<h2",
+          "min": 0,
+          "max": 0
+        }
+      ]
     },
     "components/modules/ai-assistant-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/ai/ceo-assistant",
