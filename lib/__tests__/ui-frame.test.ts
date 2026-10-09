@@ -17,6 +17,7 @@ const FRAME_FILES: string[] = [
   "components/layout/sidebar.tsx",
   "components/layout/header.tsx",
   "components/layout/mobile-tabs.tsx",
+  "components/auth/login-page.tsx",
 ]
 
 const BAD = /(?<![\w-])(?:(?:ml|mr|pl|pr|left|right)-[\w[]|text-(?:left|right)\b|(?:border|rounded)-[lr]\b|flex-row\b)/
@@ -37,4 +38,22 @@ test("components/erp exists", () => { assert.equal(FRAME_FILES.length >= 6, true
 
 test("Welcome is gone from the top bar", () => {
   assert.ok(!read("components/layout/header.tsx").includes('t("welcome")'))
+})
+
+test("login keeps every role, name and handler", () => {
+  const src = read("components/auth/login-page.tsx")
+  const ROLES: Array<[string, string]> = [["admin", "Administrator"], ["ceo", "CEO / Owner"], ["accountant", "Accountant"],
+    ["sales-rep", "Sales Representative"], ["po-rep", "Purchasing Agent"], ["warehouse-rep", "Warehouse Representative"],
+    ["shipment", "Shipping & Operations"]]
+  for (const [role, name] of ROLES) {
+    assert.ok(src.includes(`role: "${role}" as const`), role)
+    assert.ok(src.includes(`name: "${name}"`), name)
+  }
+  assert.ok(src.includes("onLogin(user)"))
+  assert.ok(src.includes("Select your role to access the system"))
+})
+
+test("login cards are neutral: no gradient, no scale, no solid role colours", () => {
+  const src = read("components/auth/login-page.tsx")
+  assert.doesNotMatch(src, /bg-gradient|hover:scale-|text-white|bg-\w+-500/)
 })
