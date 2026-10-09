@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { Money } from "@/components/erp/money"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
+import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { formatDate, formatMoney } from "@/lib/format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAppContext } from "@/lib/app-context"
 import { analyzeInventory } from "@/lib/ai-utils"
@@ -64,7 +71,7 @@ interface SoldItem extends PendingItem {
 }
 
 export function InventoryModule({ userRole }: InventoryModuleProps) {
-  const { t, formatNumber, formatCurrency, formatDate, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const { inventory, salesOrders, customers, products, suppliers, warehouses: appWarehouses, refreshInventory, refreshWarehouses } = useAppContext()
 
   const [aiAnalysis, setAiAnalysis] = useState<any>(null)
@@ -553,24 +560,102 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
   const canViewReports = userRole === "ceo" || userRole === "accountant" || userRole === "warehouse-rep"
 
+  const outsourcedTag = (
+    <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
+      Outsourced
+    </Badge>
+  )
+
+  // Product name with its tags, shared by the table cell and the phone card.
+  const renderProductName = (name: React.ReactNode, tags?: React.ReactNode) => (
+    <div className="flex items-center gap-2">
+      <span>{name}</span>
+      {tags}
+    </div>
+  )
+
+  // Stock-state badge (same condition as before), with the Returned tag above it.
+  const renderStockStatus = (item: any) => (
+    <div className="flex flex-col gap-1">
+      {item.isReturned && (
+        <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs w-fit">
+          Returned
+        </Badge>
+      )}
+      {item.quantity == null || Number(item.quantity) === 0 ? (
+        <StatusBadge status="out_of_stock" label={t("status.out-of-stock")} />
+      ) : Number(item.quantity) <= Number(item.reorderPoint || 0) ? (
+        <StatusBadge status="low_stock" label={t("status.low-stock")} />
+      ) : (
+        <StatusBadge status="in_stock" label={t("status.in-stock")} />
+      )}
+    </div>
+  )
+
+  // Row actions: each element is defined once and used by both the table cells and the phone card.
+  const removeReturnedButton = (item: any) =>
+    item.isReturned ? (
+      <Button variant="destructive" size="sm" onClick={() => handleRemoveReturnedItem(item)} className="gap-1">
+        <X className="w-4 h-4" />
+        Remove
+      </Button>
+    ) : null
+  const viewPhotosButton = (item: any) => (
+    <Button variant="outline" size="sm" onClick={() => handleViewPhotos(item)} className="gap-1">
+      <Camera className="w-4 h-4" />
+      {t("photo.view")}
+    </Button>
+  )
+  const renderStockActions = (item: any) => (
+    <>
+      {removeReturnedButton(item)}
+      {viewPhotosButton(item)}
+    </>
+  )
+  const renderPendingActions = (item: PendingItem) => (
+    <Button variant="ghost" size="sm" onClick={() => handleViewSODetails(item)}>
+      <Eye className="w-4 h-4 me-1" />
+      {t("action.view")}
+    </Button>
+  )
+  const renderSoldActions = (item: SoldItem) => (
+    <Button variant="ghost" size="sm" onClick={() => handleViewSODetails(item)}>
+      <Eye className="w-4 h-4 me-1" />
+      {t("action.view")}
+    </Button>
+  )
+  const renderReturnActions = (item: any) => (
+    <>
+      <Button variant="outline" size="sm" onClick={() => handleRestockReturnedItem(item)} className="gap-1">
+        <Warehouse className="w-4 h-4" />
+        Restock to Warehouse
+      </Button>
+      <Button variant="destructive" size="sm" onClick={() => handleRemoveReturnedItem(item)} className="gap-1">
+        <X className="w-4 h-4" />
+        Remove & Credit
+      </Button>
+    </>
+  )
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{t("inventory.title")}</h1>
-          <p className="text-muted-foreground mt-2">{t("inventory.description")}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowAddCategoryDialog(true)}>
-            + Category
-          </Button>
-          <Button variant="outline" onClick={handleAnalyzeInventory} disabled={isAnalyzing}>
-            {isAnalyzing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-            {t("inventory.ai-insights")}
-          </Button>
-          {canViewReports && <ReportGenerator reportType="inventory" />}
-        </div>
-      </div>
+      <PageHeader
+        group={t("group.inventory")}
+        title={t("inventory.title")}
+        subtitle={t("inventory.description")}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setShowAddCategoryDialog(true)}>
+              + Category
+            </Button>
+            <Button variant="outline" onClick={handleAnalyzeInventory} disabled={isAnalyzing}>
+              {isAnalyzing ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Sparkles className="w-4 h-4 me-2" />}
+              {t("inventory.ai-insights")}
+            </Button>
+            {canViewReports && <ReportGenerator reportType="inventory" />}
+          </>
+        }
+      />
 
       {lowStockItems.length > 0 && (
         <Card className="border-yellow-200 bg-yellow-50">
@@ -590,12 +675,12 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
       <div className="flex flex-wrap gap-4 items-center">
         <div className="relative flex-1 min-w-[200px] max-w-[400px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder={t("inventory.search-placeholder") || "Search by name, SKU..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="ps-9"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -663,42 +748,15 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
         {/* On Hand Inventory Tab */}
         <TabsContent value="on-hand" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t("inventory.total-items")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatNumber(filteredInventory.length)}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t("inventory.total-value")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalValue)}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t("inventory.low-stock")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-yellow-600">{formatNumber(lowStockItems.length)}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t("inventory.out-of-stock")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-red-600">
-                  {formatNumber(filteredInventory.filter((i) => i.quantity === 0).length)}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <KpiGrid>
+            <KpiTile label={t("inventory.total-items")} value={formatNumber(filteredInventory.length)} />
+            <KpiTile label={`${t("inventory.total-value")} (EGP)`} value={<Money value={totalValue} />} />
+            <KpiTile label={t("inventory.low-stock")} value={formatNumber(lowStockItems.length)} />
+            <KpiTile
+              label={t("inventory.out-of-stock")}
+              value={formatNumber(filteredInventory.filter((i) => i.quantity === 0).length)}
+            />
+          </KpiGrid>
 
           <Card>
             <CardHeader>
@@ -706,103 +764,81 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
               <CardDescription>{t("inventory.stock-description")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("field.product-name")}</TableHead>
-                      <TableHead>{t("field.sku")}</TableHead>
-                      <TableHead>{t("field.quantity")}</TableHead>
-                      <TableHead>{t("inventory.on-hold")}</TableHead>
-                      <TableHead>{t("inventory.reorder-point")}</TableHead>
-                      <TableHead>{t("field.unit-cost")}</TableHead>
-                      <TableHead>{t("field.total-value")}</TableHead>
-                      <TableHead>{t("field.supplier")}</TableHead>
-                      <TableHead>{t("field.so-number")}</TableHead>
-                      {warehouseFilter !== "all" && <TableHead>{t("warehouse.warehouse")}</TableHead>}
-                      <TableHead>{t("field.status")}</TableHead>
-                      <TableHead>Returned Items</TableHead>
-                      <TableHead>{t("photo.photos")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredInventory.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <span>{item.productName || "Unknown"}</span>
-                            {item.isOutsourced && (
-                              <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
-                                Outsourced
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>{item.sku}</TableCell>
-                        <TableCell>{formatNumber(item.quantity)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {item.onHold ? formatNumber(item.onHold) : "-"}
-                        </TableCell>
-                        <TableCell>{formatNumber(item.reorderPoint)}</TableCell>
-                        <TableCell>{formatCurrency(item.unitCost ?? 0)}</TableCell>
-                        <TableCell>{formatCurrency(item.quantity * (item.unitCost ?? 0))}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {item.supplierName || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {item.soNumber || "—"}
-                        </TableCell>
-                        {warehouseFilter !== "all" && (
-                          <TableCell>
-                            <Badge variant="outline" className="gap-1">
-                              <Warehouse className="w-3 h-3" />
-                              {item.warehouseName || item.location || "Main"}
-                            </Badge>
-                          </TableCell>
-                        )}
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            {item.isReturned && (
-                              <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs w-fit">
-                                Returned
-                              </Badge>
-                            )}
-                            {item.quantity == null || Number(item.quantity) === 0 ? (
-                              <Badge variant="destructive">{t("status.out-of-stock")}</Badge>
-                            ) : Number(item.quantity) <= Number(item.reorderPoint || 0) ? (
-                              <Badge className="bg-yellow-500">{t("status.low-stock")}</Badge>
-                            ) : (
-                              <Badge variant="secondary">{t("status.in-stock")}</Badge>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {item.isReturned && (
-                            <Button 
-                              variant="destructive" 
-                              size="sm" 
-                              onClick={() => handleRemoveReturnedItem(item)}
-                              className="gap-1"
-                            >
-                              <X className="w-4 h-4" />
-                              Remove
-                            </Button>
-                          )}
-                          {!item.isReturned && (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm" onClick={() => handleViewPhotos(item)} className="gap-1">
-                            <Camera className="w-4 h-4" />
-                            {t("photo.view")}
-                          </Button>
-                        </TableCell>
+              <ResponsiveList
+                rows={filteredInventory}
+                table={
+                  <ErpTable>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t("field.product-name")}</TableHead>
+                        <TableHead>{t("field.sku")}</TableHead>
+                        <NumHead>{t("field.quantity")}</NumHead>
+                        <NumHead>{t("inventory.on-hold")}</NumHead>
+                        <NumHead>{t("inventory.reorder-point")}</NumHead>
+                        <NumHead>{t("field.unit-cost")} (EGP)</NumHead>
+                        <NumHead>{t("field.total-value")} (EGP)</NumHead>
+                        <TableHead>{t("field.supplier")}</TableHead>
+                        <TableHead>{t("field.so-number")}</TableHead>
+                        {warehouseFilter !== "all" && <TableHead>{t("warehouse.warehouse")}</TableHead>}
+                        <TableHead>{t("field.status")}</TableHead>
+                        <TableHead>Returned Items</TableHead>
+                        <ActionsHead>{t("photo.photos")}</ActionsHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredInventory.map((item) => (
+                        <TableRow key={item.id}>
+                          <IdCell>{renderProductName(item.productName || "Unknown", item.isOutsourced && outsourcedTag)}</IdCell>
+                          <TableCell>{item.sku}</TableCell>
+                          <NumCell>{formatNumber(item.quantity)}</NumCell>
+                          <NumCell className="text-sm text-muted-foreground">
+                            {item.onHold ? formatNumber(item.onHold) : "-"}
+                          </NumCell>
+                          <NumCell>{formatNumber(item.reorderPoint)}</NumCell>
+                          <NumCell>{formatMoney(item.unitCost ?? 0, language)}</NumCell>
+                          <NumCell>{formatMoney(item.quantity * (item.unitCost ?? 0), language)}</NumCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {item.supplierName || "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {item.soNumber || "—"}
+                          </TableCell>
+                          {warehouseFilter !== "all" && (
+                            <TableCell>
+                              <Badge variant="outline" className="gap-1">
+                                <Warehouse className="w-3 h-3" />
+                                {item.warehouseName || item.location || "Main"}
+                              </Badge>
+                            </TableCell>
+                          )}
+                          <TableCell>{renderStockStatus(item)}</TableCell>
+                          <TableCell>
+                            {item.isReturned ? removeReturnedButton(item) : <span className="text-xs text-muted-foreground">—</span>}
+                          </TableCell>
+                          <ActionsCell>{viewPhotosButton(item)}</ActionsCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </ErpTable>
+                }
+                card={(item) => (
+                  <ListCard
+                    id={renderProductName(item.productName || "Unknown", item.isOutsourced && outsourcedTag)}
+                    amount={formatMoney(item.quantity * (item.unitCost ?? 0), language)}
+                    party={item.sku}
+                    status={renderStockStatus(item)}
+                    note={
+                      <>
+                        {t("field.quantity")}: {formatNumber(item.quantity)} · {t("inventory.reorder-point")}: {formatNumber(item.reorderPoint)}
+                        {item.supplierName ? ` · ${item.supplierName}` : ""}
+                        {item.soNumber ? ` · ${item.soNumber}` : ""}
+                        {warehouseFilter !== "all" ? ` · ${item.warehouseName || item.location || "Main"}` : ""}
+                      </>
+                    }
+                    actions={renderStockActions(item)}
+                  />
+                )}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -815,64 +851,64 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
               <CardDescription>{t("inventory.pending-description")}</CardDescription>
             </CardHeader>
             <CardContent>
-              {pendingItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Package className="w-12 h-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">{t("inventory.no-pending-items")}</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
+              <ResponsiveList
+                rows={pendingItems}
+                empty={
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Package className="w-12 h-12 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">{t("inventory.no-pending-items")}</p>
+                  </div>
+                }
+                table={
+                  <ErpTable>
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t("field.product-name")}</TableHead>
                         <TableHead>{t("field.sku")}</TableHead>
-                        <TableHead>{t("field.quantity")}</TableHead>
-                        <TableHead>{t("field.unit-price")}</TableHead>
-                        <TableHead>{t("field.total")}</TableHead>
+                        <NumHead>{t("field.quantity")}</NumHead>
+                        <NumHead>{t("field.unit-price")} (EGP)</NumHead>
+                        <NumHead>{t("field.total")} (EGP)</NumHead>
                         <TableHead>{t("field.so-number")}</TableHead>
                         <TableHead>{t("field.customer")}</TableHead>
                         <TableHead>{t("field.status")}</TableHead>
-                        <TableHead>{t("field.actions")}</TableHead>
+                        <ActionsHead>{t("field.actions")}</ActionsHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {pendingItems.map((item) => (
                         <TableRow key={item.id}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <span>{item.productName}</span>
-                              {!item.productId && (
-                                <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
-                                  Outsourced
-                                </Badge>
-                              )}
-                            </div>
-                          </TableCell>
+                          <IdCell>{renderProductName(item.productName, !item.productId && outsourcedTag)}</IdCell>
                           <TableCell>{item.sku}</TableCell>
-                          <TableCell>{formatNumber(item.quantity)}</TableCell>
-                          <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
-                          <TableCell>{formatCurrency(item.total)}</TableCell>
+                          <NumCell>{formatNumber(item.quantity)}</NumCell>
+                          <NumCell>{formatMoney(item.unitPrice, language)}</NumCell>
+                          <NumCell>{formatMoney(item.total, language)}</NumCell>
                           <TableCell>{item.soNumber}</TableCell>
                           <TableCell>{item.customerName}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
-                              <Clock className="w-3 h-3 mr-1" />
-                              {t("inventory.awaiting-dp")}
-                            </Badge>
+                            <StatusBadge status="pending" label={t("inventory.awaiting-dp")} />
                           </TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm" onClick={() => handleViewSODetails(item)}>
-                              <Eye className="w-4 h-4 mr-1" />
-                              {t("action.view")}
-                            </Button>
-                          </TableCell>
+                          <ActionsCell>{renderPendingActions(item)}</ActionsCell>
                         </TableRow>
                       ))}
                     </TableBody>
-                  </Table>
-                </div>
-              )}
+                  </ErpTable>
+                }
+                card={(item) => (
+                  <ListCard
+                    id={renderProductName(item.productName, !item.productId && outsourcedTag)}
+                    amount={formatMoney(item.total, language)}
+                    party={item.customerName}
+                    status={<StatusBadge status="pending" label={t("inventory.awaiting-dp")} />}
+                    note={
+                      <>
+                        {item.sku} · {t("field.quantity")}: {formatNumber(item.quantity)}
+                        {item.soNumber ? ` · ${item.soNumber}` : ""}
+                      </>
+                    }
+                    actions={renderPendingActions(item)}
+                  />
+                )}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -881,12 +917,12 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         <TabsContent value="sold" className="space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <CardTitle>{t("inventory.sold-items")}</CardTitle>
                   <CardDescription>{t("inventory.sold-description")}</CardDescription>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-4">
                   <div className="flex items-center gap-2">
                     <Label className="text-sm whitespace-nowrap">{t("field.from")}:</Label>
                     <Input
@@ -914,7 +950,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                         setSoldDateTo("")
                       }}
                     >
-                      <X className="w-4 h-4 mr-1" />
+                      <X className="w-4 h-4 me-1" />
                       {t("action.clear")}
                     </Button>
                   )}
@@ -922,59 +958,61 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
               </div>
             </CardHeader>
             <CardContent>
-              {soldItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <CheckCircle className="w-12 h-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">{t("inventory.no-sold-items")}</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
+              <ResponsiveList
+                rows={soldItems}
+                empty={
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <CheckCircle className="w-12 h-12 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">{t("inventory.no-sold-items")}</p>
+                  </div>
+                }
+                table={
+                  <ErpTable>
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t("field.product-name")}</TableHead>
                         <TableHead>{t("field.sku")}</TableHead>
-                        <TableHead>{t("field.quantity")}</TableHead>
-                        <TableHead>{t("field.unit-price")}</TableHead>
-                        <TableHead>{t("field.total")}</TableHead>
+                        <NumHead>{t("field.quantity")}</NumHead>
+                        <NumHead>{t("field.unit-price")} (EGP)</NumHead>
+                        <NumHead>{t("field.total")} (EGP)</NumHead>
                         <TableHead>{t("field.so-number")}</TableHead>
                         <TableHead>{t("field.customer")}</TableHead>
                         <TableHead>{t("inventory.sold-date")}</TableHead>
-                        <TableHead>{t("field.actions")}</TableHead>
+                        <ActionsHead>{t("field.actions")}</ActionsHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {soldItems.map((item) => (
                         <TableRow key={item.id}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <span>{item.productName}</span>
-                              {!item.productId && (
-                                <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
-                                  Outsourced
-                                </Badge>
-                              )}
-                            </div>
-                          </TableCell>
+                          <IdCell>{renderProductName(item.productName, !item.productId && outsourcedTag)}</IdCell>
                           <TableCell>{item.sku}</TableCell>
-                          <TableCell>{formatNumber(item.quantity)}</TableCell>
-                          <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
-                          <TableCell>{formatCurrency(item.total)}</TableCell>
+                          <NumCell>{formatNumber(item.quantity)}</NumCell>
+                          <NumCell>{formatMoney(item.unitPrice, language)}</NumCell>
+                          <NumCell>{formatMoney(item.total, language)}</NumCell>
                           <TableCell>{item.soNumber}</TableCell>
                           <TableCell>{item.customerName}</TableCell>
-                          <TableCell>{formatDate(item.soldDate)}</TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm" onClick={() => handleViewSODetails(item)}>
-                              <Eye className="w-4 h-4 mr-1" />
-                              {t("action.view")}
-                            </Button>
-                          </TableCell>
+                          <TableCell>{formatDate(item.soldDate, language)}</TableCell>
+                          <ActionsCell>{renderSoldActions(item)}</ActionsCell>
                         </TableRow>
                       ))}
                     </TableBody>
-                  </Table>
-                </div>
-              )}
+                  </ErpTable>
+                }
+                card={(item) => (
+                  <ListCard
+                    id={renderProductName(item.productName, !item.productId && outsourcedTag)}
+                    amount={formatMoney(item.total, language)}
+                    party={item.customerName}
+                    note={
+                      <>
+                        {item.sku} · {t("field.quantity")}: {formatNumber(item.quantity)}
+                        {item.soNumber ? ` · ${item.soNumber}` : ""} · {formatDate(item.soldDate, language)}
+                      </>
+                    }
+                    actions={renderSoldActions(item)}
+                  />
+                )}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -993,78 +1031,78 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {returnedItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <RotateCcw className="w-12 h-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No returned items in inventory</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
+              <ResponsiveList
+                rows={returnedItems}
+                empty={
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <RotateCcw className="w-12 h-12 text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No returned items in inventory</p>
+                  </div>
+                }
+                table={
+                  <ErpTable>
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t("field.product-name")}</TableHead>
                         <TableHead>{t("field.sku")}</TableHead>
-                        <TableHead>{t("field.quantity")}</TableHead>
-                        <TableHead>{t("field.unit-cost")}</TableHead>
-                        <TableHead>Total Value</TableHead>
+                        <NumHead>{t("field.quantity")}</NumHead>
+                        <NumHead>{t("field.unit-cost")} (EGP)</NumHead>
+                        <NumHead>Total Value (EGP)</NumHead>
                         <TableHead>Supplier</TableHead>
                         <TableHead>SO Number</TableHead>
                         <TableHead>{t("warehouse.warehouse")}</TableHead>
-                        <TableHead>{t("field.actions")}</TableHead>
+                        <ActionsHead>{t("field.actions")}</ActionsHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {returnedItems.map((item: any) => (
                         <TableRow key={item.id}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <span>{item.productName}</span>
-                              {item.isOutsourced && (
-                                <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
-                                  Outsourced
+                          <IdCell>
+                            {renderProductName(
+                              item.productName,
+                              <>
+                                {item.isOutsourced && outsourcedTag}
+                                <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 border-amber-200">
+                                  Returned
                                 </Badge>
-                              )}
-                              <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 border-amber-200">
-                                Returned
-                              </Badge>
-                            </div>
-                          </TableCell>
+                              </>,
+                            )}
+                          </IdCell>
                           <TableCell>{item.sku || "—"}</TableCell>
-                          <TableCell>{formatNumber(item.quantity)}</TableCell>
-                          <TableCell>{formatCurrency(item.unitCost || 0)}</TableCell>
-                          <TableCell>{formatCurrency((item.quantity || 0) * (item.unitCost || 0))}</TableCell>
+                          <NumCell>{formatNumber(item.quantity)}</NumCell>
+                          <NumCell>{formatMoney(item.unitCost || 0, language)}</NumCell>
+                          <NumCell>{formatMoney((item.quantity || 0) * (item.unitCost || 0), language)}</NumCell>
                           <TableCell>{item.supplierName || "—"}</TableCell>
                           <TableCell>{item.soNumber || "—"}</TableCell>
                           <TableCell>{item.warehouseName || "—"}</TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRestockReturnedItem(item)}
-                                className="gap-1"
-                              >
-                                <Warehouse className="w-4 h-4" />
-                                Restock to Warehouse
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleRemoveReturnedItem(item)}
-                                className="gap-1"
-                              >
-                                <X className="w-4 h-4" />
-                                Remove & Credit
-                              </Button>
-                            </div>
-                          </TableCell>
+                          <ActionsCell>{renderReturnActions(item)}</ActionsCell>
                         </TableRow>
                       ))}
                     </TableBody>
-                  </Table>
-                </div>
-              )}
+                  </ErpTable>
+                }
+                card={(item: any) => (
+                  <ListCard
+                    id={renderProductName(
+                      item.productName,
+                      <>
+                        {item.isOutsourced && outsourcedTag}
+                        <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 border-amber-200">
+                          Returned
+                        </Badge>
+                      </>,
+                    )}
+                    amount={formatMoney((item.quantity || 0) * (item.unitCost || 0), language)}
+                    party={item.supplierName || "—"}
+                    note={
+                      <>
+                        {item.sku || "—"} · {t("field.quantity")}: {formatNumber(item.quantity)} · {item.soNumber || "—"} · {item.warehouseName || "—"}
+                      </>
+                    }
+                    actions={renderReturnActions(item)}
+                  />
+                )}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -1113,22 +1151,22 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="absolute left-2 top-1/2 -translate-y-1/2"
+                        className="absolute start-2 top-1/2 -translate-y-1/2"
                         onClick={() =>
                           setSelectedImageIndex((prev) => (prev > 0 ? prev - 1 : productImages.length - 1))
                         }
                       >
-                        <ChevronLeft className="w-6 h-6" />
+                        <ChevronLeft className="w-6 h-6 rtl:rotate-180" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="absolute right-2 top-1/2 -translate-y-1/2"
+                        className="absolute end-2 top-1/2 -translate-y-1/2"
                         onClick={() =>
                           setSelectedImageIndex((prev) => (prev < productImages.length - 1 ? prev + 1 : 0))
                         }
                       >
-                        <ChevronRight className="w-6 h-6" />
+                        <ChevronRight className="w-6 h-6 rtl:rotate-180" />
                       </Button>
                     </>
                   )}
@@ -1166,9 +1204,9 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 <Button variant="outline" disabled={isUploadingPhoto} asChild>
                   <span>
                     {isUploadingPhoto ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      <Loader2 className="w-4 h-4 me-2 animate-spin" />
                     ) : (
-                      <Camera className="w-4 h-4 mr-2" />
+                      <Camera className="w-4 h-4 me-2" />
                     )}
                     {t("photo.upload")}
                   </span>
@@ -1198,10 +1236,10 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                   <strong>Quantity:</strong> {formatNumber(selectedReturnedItem.quantity)}
                 </p>
                 <p className="text-sm text-amber-900 mt-2">
-                  <strong>Unit Cost:</strong> {formatCurrency(selectedReturnedItem.unitCost || 0)}
+                  <strong>Unit Cost (EGP):</strong> <Money value={selectedReturnedItem.unitCost || 0} />
                 </p>
                 <p className="text-sm text-amber-900 mt-2 font-semibold">
-                  <strong>Total Credit:</strong> {formatCurrency((selectedReturnedItem.quantity || 0) * (selectedReturnedItem.unitCost || 0))}
+                  <strong>Total Credit (EGP):</strong> <Money value={(selectedReturnedItem.quantity || 0) * (selectedReturnedItem.unitCost || 0)} />
                 </p>
                 {selectedReturnedItem.supplierName && (
                   <p className="text-sm text-amber-900 mt-2">
@@ -1227,7 +1265,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 >
                   {isRemovingItem ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      <Loader2 className="w-4 h-4 me-2 animate-spin" />
                       Processing...
                     </>
                   ) : (
@@ -1256,7 +1294,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                   <strong>Quantity:</strong> {formatNumber(selectedRestockItem.quantity)}
                 </p>
                 <p className="text-sm text-foreground mt-2">
-                  <strong>Unit Cost:</strong> {formatCurrency(selectedRestockItem.unitCost || 0)}
+                  <strong>Unit Cost (EGP):</strong> <Money value={selectedRestockItem.unitCost || 0} />
                 </p>
                 {selectedRestockItem.warehouseName && (
                   <p className="text-sm text-foreground mt-2">
@@ -1279,7 +1317,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 <Button onClick={handleConfirmRestockReturnedItem} disabled={isRestockingItem}>
                   {isRestockingItem ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      <Loader2 className="w-4 h-4 me-2 animate-spin" />
                       Processing...
                     </>
                   ) : (
@@ -1309,7 +1347,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.date")}</p>
-                  <p className="font-medium">{formatDate(selectedSODetails.orderDate)}</p>
+                  <p className="font-medium">{formatDate(selectedSODetails.orderDate, language)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.customer")}</p>
@@ -1318,12 +1356,12 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("field.total")}</p>
-                  <p className="font-medium text-lg">{formatCurrency(selectedSODetails.total)}</p>
+                  <p className="text-sm text-muted-foreground">{t("field.total")} (EGP)</p>
+                  <p className="font-medium text-lg"><Money value={selectedSODetails.total} /></p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.status")}</p>
-                  <Badge>{selectedSODetails.status}</Badge>
+                  <StatusBadge status={selectedSODetails.status} />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("payment.type")}</p>
@@ -1337,8 +1375,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                     <TableRow>
                       <TableHead>{t("field.product")}</TableHead>
                       <TableHead>{t("field.quantity")}</TableHead>
-                      <TableHead>{t("field.unit-price")}</TableHead>
-                      <TableHead>{t("field.total")}</TableHead>
+                      <TableHead>{t("field.unit-price")} (EGP)</TableHead>
+                      <TableHead>{t("field.total")} (EGP)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1348,8 +1386,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                           {item.productName || products.find((p) => p.id === item.productId)?.productName || "-"}
                         </TableCell>
                         <TableCell>{formatNumber(item.quantity)}</TableCell>
-                        <TableCell>{formatCurrency(item.unitPrice)}</TableCell>
-                        <TableCell>{formatCurrency(item.total)}</TableCell>
+                        <TableCell><Money value={item.unitPrice} /></TableCell>
+                        <TableCell><Money value={item.total} /></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
