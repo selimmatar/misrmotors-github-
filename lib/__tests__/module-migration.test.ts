@@ -12,7 +12,7 @@ const read = (f: string) => fs.readFileSync(path.join(REPO, f), "utf8")
 const FIXTURE = path.join(REPO, "lib/__tests__/fixtures/ui-1b/protected.json")
 
 // Each module task appends its paths.
-const MIGRATED: string[] = []
+const MIGRATED: string[] = ["components/modules/sales-order-module.tsx"]
 // Allowed leftover BANNED matches per file; each entry needs a ledgered ruling.
 const ALLOW: Record<string, Partial<Record<keyof typeof BANNED, number>>> = {}
 // Files that render inside another screen and carry no page header of their own.
@@ -52,4 +52,9 @@ test("migrated modules use the shared blocks", () => {
     for (const [i, line] of src.split("\n").entries()) if (RTL_BAD.test(line)) problems.push(`${f}:${i + 1}: physical class`)
   }
   assert.deepEqual(problems, [], problems.join("\n"))
+})
+
+test("sales order shows approval steps in its details dialog and can be embedded", () => {
+  const s = read("components/modules/sales-order-module.tsx")
+  assert.match(s, /<ApprovalSteps status=\{selectedOrder\.status\}/); assert.match(s, /embedded\?: boolean/)
 })
