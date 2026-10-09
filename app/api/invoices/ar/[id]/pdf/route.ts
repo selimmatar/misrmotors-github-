@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
+import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 import { VAT_RATE, computeInvoiceAmount, computeWholeOrderAmount, loadSoInvoicingState, round2 } from "@/lib/invoicing"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 
@@ -224,188 +225,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   <meta charset="UTF-8">
   <title>فاتورة - ${escapeHtml(invoice.invoice_number)}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
-    
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    @page { size: A4; margin: 15mm; }
-    
-    body {
-      font-family: 'Noto Naskh+Arabic', 'Arial', sans-serif;
-      font-size: 12pt;
-      line-height: 1.4;
-      color: #000;
-      background: white;
-      direction: rtl;
-    }
-    
-    /* NO modern UI - plain paper form style */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      border: 2px solid #000;
-    }
-    
-    th, td {
-      border: 1px solid #000;
-      padding: 8px;
-      text-align: right;
-    }
-    
-    th {
-      background: #f0f0f0;
-      font-weight: 700;
-    }
-    
-    .header-table {
-      width: 100%;
-      border: 2px solid #000;
-      margin-bottom: 10mm;
-    }
-    
-    .header-table td {
-      border: 1px solid #000;
-      padding: 4px 8px;
-    }
-    
-    .company-header {
-      text-align: center;
-      border-bottom: 2px solid #000;
-      padding: 10px;
-      margin-bottom: 5mm;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    
-    .company-logo {
-      width: 80px;
-      height: 80px;
-      object-fit: contain;
-      margin-bottom: 10px;
-    }
-    
-    .company-name-ar {
-      font-size: 18pt;
-      font-weight: 700;
-      margin-bottom: 3px;
-    }
-    
-    .company-name-en {
-      font-size: 14pt;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-    
-    .company-details {
-      font-size: 10pt;
-      line-height: 1.6;
-    }
-    
-    .tax-info {
-      font-size: 9pt;
-      margin-top: 5px;
-      border-top: 1px solid #ccc;
-      padding-top: 5px;
-    }
-    
-    .doc-title {
-      text-align: center;
-      font-size: 20pt;
-      font-weight: 700;
-      margin: 10mm 0;
-      text-decoration: underline;
-    }
-    
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0;
-      margin-bottom: 10mm;
-    }
-    
-    .info-cell {
-      border: 1px solid #000;
-      padding: 6px 10px;
-      display: flex;
-      gap: 10px;
-    }
-    
-    .info-label {
-      font-weight: 700;
-      min-width: 100px;
-    }
-    
-    /* Items table with جنيه/قرش columns */
-    .items-table {
-      width: 100%;
-      border: 2px solid #000;
-      margin-bottom: 10mm;
-    }
-    
-    .items-table th {
-      background: #e8e8e8;
-      font-weight: 700;
-      text-align: center;
-      padding: 8px 4px;
-    }
-    
-    .items-table td {
-      text-align: right;
-      padding: 6px 4px;
-    }
-    
-    .items-table .center {
-      text-align: center;
-    }
-    
-    /* Currency split columns */
-    .currency-col {
-      text-align: center;
-    }
-    
-    .currency-header {
-      text-align: center;
-    }
-    
-    .subheader {
-      font-size: 10pt;
-      font-weight: 600;
-    }
-    
-    .footer-section {
-      margin-top: 15mm;
-      border-top: 2px solid #000;
-      padding-top: 10mm;
-    }
-    
-    .signatures {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 20mm;
-      margin-top: 15mm;
-    }
-    
-    .signature-box {
-      text-align: center;
-    }
-    
-    .signature-label {
-      font-weight: 700;
-      margin-bottom: 20mm;
-      text-decoration: underline;
-    }
-    
-    .signature-line {
-      border-top: 1px solid #000;
-      margin-top: 15mm;
-    }
-    
-    @media print {
-      .no-print { display: none !important; }
-      body { margin: 0; padding: 0; }
-    }
-    
+    ${PRINT_CSS}
     .print-button {
       position: fixed;
       top: 10px;
@@ -424,90 +244,85 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 <body>
   <button class="print-button no-print" onclick="window.print()">🖨️ طباعة</button>
   
-  <!-- Company Header -->
-  <div class="company-header">
-    ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Misr Motors Logo" class="company-logo" />` : `<div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div>`}
-    <div class="company-name-ar">${COMPANY_SETTINGS.nameAr}</div>
-    <div class="company-name-en">${COMPANY_SETTINGS.nameEn}</div>
-    <div class="company-details">
-      <div>العنوان: ${COMPANY_SETTINGS.address}</div>
+  ${printHeader({
+    logoHtml: `${logoDataUrl ? `<img src="${logoDataUrl}" alt="Misr Motors Logo" class="company-logo" />` : `<div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div>`}`,
+    company: {
+      nameAr: `${COMPANY_SETTINGS.nameAr}`,
+      nameEn: `${COMPANY_SETTINGS.nameEn}`,
+      detailsHtml: `<div>العنوان: ${COMPANY_SETTINGS.address}</div>
       <div>تليفون: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax}</div>
-      <div>البريد الإلكتروني: ${COMPANY_SETTINGS.email}</div>
-    </div>
-    <div class="tax-info">${getTaxInfo()}</div>
-  </div>
+      <div>البريد الإلكتروني: ${COMPANY_SETTINGS.email}</div>`,
+    },
+    taxInfo: `${getTaxInfo()}`,
+  })}
   
   <!-- Document Title -->
-  <div class="doc-title">فاتورة</div>
+  ${docTitle({ titleAr: `فاتورة` })}
   
   <!-- Invoice Info -->
-  <table class="header-table">
-    <tr>
-      <td style="width: 25%;"><strong>رقم الفاتورة:</strong></td>
-      <td style="width: 25%;">${escapeHtml(invoice.invoice_number)}</td>
-      <td style="width: 25%;"><strong>التاريخ:</strong></td>
-      <td style="width: 25%;">${formatInvoiceDate(invoice.invoice_date)}</td>
-    </tr>
+  <section class="pm-info">
+  <div class="pm-fields">
+    <div class="pm-field pm-field-wide">
+      <span class="pm-label">رقم الفاتورة:</span>
+      <span class="pm-value">${escapeHtml(invoice.invoice_number)}</span>
+    </div>
+    <div class="pm-field pm-field-wide">
+      <span class="pm-label">التاريخ:</span>
+      <span class="pm-value">${formatInvoiceDate(invoice.invoice_date)}</span>
+    </div>
     ${
       qrNumber
-        ? `<tr>
-      <td style="width: 25%;"><strong>رقم طلب التسعير:</strong></td>
-      <td colspan="3">${escapeHtml(qrNumber)}</td>
-    </tr>`
+        ? `<div class="pm-field pm-field-wide">
+      <span class="pm-label">رقم طلب التسعير:</span>
+      <span class="pm-value">${escapeHtml(qrNumber)}</span>
+    </div>`
         : ""
     }
     ${
       deliveryPermits.length > 0
-        ? `<tr>
-      <td style="width: 25%;"><strong>أذونات التسليم:</strong></td>
-      <td colspan="3">${deliveryPermits.map((dp: any) => escapeHtml(dp.permit_no)).join(" - ")}</td>
-    </tr>`
+        ? `<div class="pm-field pm-field-wide">
+      <span class="pm-label">أذونات التسليم:</span>
+      <span class="pm-value">${deliveryPermits.map((dp: any) => escapeHtml(dp.permit_no)).join(" - ")}</span>
+    </div>`
         : ""
     }
-    <tr>
-      <td colspan="4">
-        <strong>المطلوب من السيد:</strong> ${escapeHtml(customer.customer_name || "-")}
-      </td>
-    </tr>
+    <div class="pm-field pm-field-wide">
+      <span class="pm-label">المطلوب من السيد:</span> <span class="pm-value">${escapeHtml(customer.customer_name || "-")}</span>
+    </div>
     ${
       so.department_name
-        ? `<tr>
-      <td colspan="4">
-        <strong>القسم ورقم طلب التسعير:</strong> ${escapeHtml(so.department_name)}
-      </td>
-    </tr>`
+        ? `<div class="pm-field pm-field-wide">
+      <span class="pm-label">القسم ورقم طلب التسعير:</span> <span class="pm-value">${escapeHtml(so.department_name)}</span>
+    </div>`
         : ""
     }
     ${
       so.receiver_name || so.delivery_contact_name
-        ? `<tr>
-      <td colspan="4">
-        <strong>اسم المستلم:</strong> ${escapeHtml(so.receiver_name || so.delivery_contact_name)}${so.delivery_contact_phone ? ` - تليفون: ${escapeHtml(so.delivery_contact_phone)}` : ""}
-      </td>
-    </tr>`
+        ? `<div class="pm-field pm-field-wide">
+      <span class="pm-label">اسم المستلم:</span> <span class="pm-value">${escapeHtml(so.receiver_name || so.delivery_contact_name)}${so.delivery_contact_phone ? ` - تليفون: ${escapeHtml(so.delivery_contact_phone)}` : ""}</span>
+    </div>`
         : ""
     }
-    <tr>
-      <td colspan="4">
-        <strong>العنوان:</strong> ${escapeHtml(customer.address || "-")}, ${escapeHtml(customer.city || "-")}
-      </td>
-    </tr>
-  </table>
+    <div class="pm-field pm-field-wide">
+      <span class="pm-label">العنوان:</span> <span class="pm-value">${escapeHtml(customer.address || "-")}, ${escapeHtml(customer.city || "-")}</span>
+    </div>
+  </div>
+  </section>
   
   <!-- Items Table - EXACT COLUMNS -->
-  <table class="items-table">
+  <table class="items-table pm-table">
     <thead>
       <tr>
         <th rowspan="2" style="width: 8%;">عدد</th>
         <th rowspan="2" style="width: 40%;">البيان</th>
-        <th colspan="2" class="currency-header">سعر الوحدة</th>
-        <th colspan="2" class="currency-header">القيمة</th>
+        <th colspan="2" class="currency-header pm-center">سعر الوحدة</th>
+        <th colspan="2" class="currency-header pm-center">القيمة</th>
       </tr>
       <tr>
-        <th class="subheader" style="width: 13%;">جنيه</th>
-        <th class="subheader" style="width: 13%;">قرش</th>
-        <th class="subheader" style="width: 13%;">جنيه</th>
-        <th class="subheader" style="width: 13%;">قرش</th>
+        <th class="subheader pm-num" style="width: 13%;">جنيه</th>
+        <th class="subheader pm-num" style="width: 13%;">قرش</th>
+        <th class="subheader pm-num" style="width: 13%;">جنيه</th>
+        <th class="subheader pm-num" style="width: 13%;">قرش</th>
       </tr>
     </thead>
     <tbody>
@@ -528,12 +343,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
           return `
         <tr>
-          <td class="center">${quantity}</td>
+          <td class="center pm-center">${quantity}</td>
           <td>${escapeHtml(itemName)}</td>
-          <td class="currency-col">${unitGineh.toLocaleString('en-US')}</td>
-          <td class="currency-col">${unitQirsh.toString().padStart(2, '0')}</td>
-          <td class="currency-col">${totalGineh.toLocaleString('en-US')}</td>
-          <td class="currency-col">${totalQirsh.toString().padStart(2, '0')}</td>
+          <td class="currency-col pm-num">${unitGineh.toLocaleString('en-US')}</td>
+          <td class="currency-col pm-num">${unitQirsh.toString().padStart(2, '0')}</td>
+          <td class="currency-col pm-num">${totalGineh.toLocaleString('en-US')}</td>
+          <td class="currency-col pm-num">${totalQirsh.toString().padStart(2, '0')}</td>
         </tr>
       `
         })
@@ -541,36 +356,36 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     </tbody>
     <tfoot>
       <tr>
-        <td colspan="4" style="text-align: left;">المجموع الفرعي</td>
-        <td class="currency-col">${Math.floor(subtotalBeforeVat).toLocaleString('en-US')}</td>
-        <td class="currency-col">${Math.round((subtotalBeforeVat - Math.floor(subtotalBeforeVat)) * 100).toString().padStart(2, '0')}</td>
+        <td colspan="4" class="pm-num">المجموع الفرعي</td>
+        <td class="currency-col pm-num">${Math.floor(subtotalBeforeVat).toLocaleString('en-US')}</td>
+        <td class="currency-col pm-num">${Math.round((subtotalBeforeVat - Math.floor(subtotalBeforeVat)) * 100).toString().padStart(2, '0')}</td>
       </tr>
       <tr>
-        <td colspan="4" style="text-align: left;">ضريبة القيمة المضافة (14%)</td>
-        <td class="currency-col">${Math.floor(vatAmount).toLocaleString('en-US')}</td>
-        <td class="currency-col">${Math.round((vatAmount - Math.floor(vatAmount)) * 100).toString().padStart(2, '0')}</td>
+        <td colspan="4" class="pm-num">ضريبة القيمة المضافة (14%)</td>
+        <td class="currency-col pm-num">${Math.floor(vatAmount).toLocaleString('en-US')}</td>
+        <td class="currency-col pm-num">${Math.round((vatAmount - Math.floor(vatAmount)) * 100).toString().padStart(2, '0')}</td>
       </tr>
-      <tr>
-        <td colspan="4" style="text-align: left; font-weight: 700;">إجمالي الفاتورة</td>
-        <td class="currency-col" style="font-weight: 700;">${Math.floor(totalWithVat).toLocaleString('en-US')}</td>
-        <td class="currency-col" style="font-weight: 700;">${Math.round((totalWithVat - Math.floor(totalWithVat)) * 100).toString().padStart(2, '0')}</td>
+      <tr class="pm-total-final">
+        <td colspan="4" class="pm-num">إجمالي الفاتورة</td>
+        <td class="currency-col pm-num">${Math.floor(totalWithVat).toLocaleString('en-US')}</td>
+        <td class="currency-col pm-num">${Math.round((totalWithVat - Math.floor(totalWithVat)) * 100).toString().padStart(2, '0')}</td>
       </tr>
     </tfoot>
   </table>
   
   <!-- Footer -->
-  <div class="signatures">
-    <div class="signature-box">
-      <div class="signature-label">الحسابات</div>
-      <div class="signature-line"></div>
+  <div class="pm-signatures">
+    <div class="pm-sign">
+      <div class="pm-sign-label">الحسابات</div>
+      <div class="pm-sign-line"></div>
     </div>
-    <div class="signature-box">
-      <div class="signature-label">توقيع المستلم</div>
-      <div class="signature-line"></div>
+    <div class="pm-sign">
+      <div class="pm-sign-label">توقيع المستلم</div>
+      <div class="pm-sign-line"></div>
     </div>
-    <div class="signature-box">
-      <div class="signature-label">ختم الشركة</div>
-      <div class="signature-line"></div>
+    <div class="pm-sign">
+      <div class="pm-sign-label">ختم الشركة</div>
+      <div class="pm-sign-line"></div>
     </div>
   </div>
 </body>

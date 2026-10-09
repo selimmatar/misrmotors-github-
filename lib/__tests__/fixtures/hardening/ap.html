@@ -5,201 +5,66 @@
   <meta charset="UTF-8">
   <title>فاتورة مورد - APINV-PO-2026-0001</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
     
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-      font-family: 'Noto Naskh Arabic', 'Arial', sans-serif;
-      font-size: 14px;
-      line-height: 1.6;
-      color: #1a1a1a;
-      background: white;
-      padding: 20mm;
-      direction: rtl;
-    }
-    
-    .invoice-container {
-      max-width: 210mm;
-      margin: 0 auto;
-      border: 2px solid #dc2626;
-      padding: 15mm;
-    }
-    
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      border-bottom: 3px solid #dc2626;
-      padding-bottom: 15px;
-      margin-bottom: 20px;
-    }
-    
-    .company-header { text-align: right; }
-    .company-name-ar { font-size: 24px; font-weight: 700; color: #dc2626; margin-bottom: 5px; }
-    .company-name-en { font-size: 16px; font-weight: 500; color: #374151; margin-bottom: 5px; }
-    .company-details { font-size: 12px; color: #4b5563; }
-    .tax-info { font-size: 12px; color: #4b5563; margin-top: 10px; }
-    
-    .document-title { text-align: center; flex: 1; }
-    .document-title h1 {
-      font-size: 28px;
-      font-weight: 700;
-      color: #dc2626;
-      border: 2px solid #dc2626;
-      padding: 10px 30px;
-      display: inline-block;
-      background: #fef2f2;
-    }
-    
-    .invoice-badge {
-      background: #dc2626;
-      color: white;
-      padding: 5px 15px;
-      border-radius: 20px;
-      font-size: 12px;
-      margin-top: 10px;
-      display: inline-block;
-    }
-    
-    .document-info {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
-      margin-bottom: 25px;
-      background: #fef2f2;
-      padding: 15px;
-      border-radius: 5px;
-    }
-    
-    .info-row { display: flex; gap: 10px; }
-    .info-label { font-weight: 600; color: #374151; min-width: 120px; }
-    .info-value { color: #1f2937; }
-    
-    .section { margin-bottom: 25px; }
-    .section-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: #dc2626;
-      background: #fef2f2;
-      padding: 8px 15px;
-      margin-bottom: 15px;
-      border-right: 4px solid #dc2626;
-    }
-    
-    .supplier-info {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      padding: 10px;
-      border: 1px solid #e5e7eb;
-      border-radius: 5px;
-    }
-    
-    .items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-    }
-    
-    .items-table th {
-      background: #dc2626;
-      color: white;
-      padding: 12px 10px;
-      text-align: right;
-      font-weight: 600;
-    }
-    
-    .items-table td {
-      padding: 10px;
-      border-bottom: 1px solid #e5e7eb;
-      text-align: right;
-    }
-    
-    .items-table tr:nth-child(even) { background: #f9fafb; }
-    .items-table .number-col { text-align: center; width: 50px; }
-    .items-table .qty-col { text-align: center; width: 80px; }
-    .items-table .price-col { text-align: left; width: 120px; }
-    
-    .totals-section {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 25px;
-    }
-    
-    .totals-box {
-      width: 300px;
-      border: 2px solid #dc2626;
-      border-radius: 5px;
-      overflow: hidden;
-    }
-    
-    .total-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 15px;
-      border-bottom: 1px solid #fecaca;
-    }
-    
-    .total-row:last-child {
-      border-bottom: none;
-      background: #dc2626;
-      color: white;
-      font-weight: 700;
-      font-size: 16px;
-    }
-    
-    .payment-info {
-      background: #fef2f2;
-      padding: 15px;
-      border-radius: 5px;
-      margin-bottom: 25px;
-    }
-    
-    .payment-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 15px;
-    }
-    
-    .payment-item {
-      text-align: center;
-      padding: 10px;
-      background: white;
-      border-radius: 5px;
-      border: 1px solid #fecaca;
-    }
-    
-    .payment-label { font-size: 12px; color: #6b7280; margin-bottom: 5px; }
-    .payment-value { font-weight: 700; color: #dc2626; }
-    
-    .status-badge {
-      display: inline-block;
-      padding: 5px 15px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    
-    .status-pending { background: #fef3c7; color: #92400e; }
-    .status-paid { background: #d1fae5; color: #065f46; }
-    .status-partially_paid { background: #dbeafe; color: #1e40af; }
-    
-    .footer {
-      margin-top: 30px;
-      padding-top: 15px;
-      border-top: 1px solid #e5e7eb;
-      text-align: center;
-      font-size: 11px;
-      color: #6b7280;
-    }
-    
-    @media print {
-      body { padding: 0; }
-      .invoice-container { border: none; padding: 10mm; }
-      .no-print { display: none !important; }
-    }
-    
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+@page { size: A4; margin: 15mm; }
+html { background: #fff; }
+body { font-family: 'IBM Plex Sans Arabic', 'Noto Naskh Arabic', Arial, Tahoma, sans-serif; color: #000; background: #fff; font-size: 13px; line-height: 1.5; }
+img { max-inline-size: 100%; }
+table { border-collapse: collapse; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+.pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
+.pm-brand { display: flex; align-items: center; gap: 12px; }
+.pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }
+.pm-names { display: block; }
+.pm-name-ar { font-size: 17px; font-weight: 700; }
+.pm-name-en { font-size: 11px; color: #555; letter-spacing: 0.06em; }
+.pm-company { font-size: 11px; color: #555; line-height: 1.7; text-align: end; }
+.pm-tax { margin-block-start: 4px; font-size: 11px; color: #555; }
+.pm-title { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 18px 16px; }
+.pm-title .doc-title { font-size: 34px; font-weight: 700; line-height: 1.2; }
+.pm-title-note { font-size: 13px; font-weight: 600; }
+.pm-title-no { font-size: 13px; color: #333; text-align: end; }
+.pm-title-no .pm-value { font-size: 15px; font-weight: 600; color: #000; }
+.pm-info { margin-block: 14px; }
+.pm-info-title { margin-block-end: 6px; font-size: 13px; font-weight: 700; }
+.pm-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 16px; border-block-start: 1.5px solid #000; padding-block-start: 10px; }
+.pm-field { min-inline-size: 0; }
+.pm-field-wide { grid-column: span 2; }
+.pm-label { font-size: 11px; font-weight: 400; color: #555; }
+.pm-field .pm-label { display: block; }
+.pm-value { font-weight: 500; color: #000; overflow-wrap: anywhere; }
+.pm-section-title { margin-block: 16px 8px; padding-block-end: 4px; border-block-end: 1px solid #000; font-size: 14px; font-weight: 700; }
+.pm-note { margin-block: 12px; font-size: 12px; line-height: 1.6; color: #000; overflow-wrap: anywhere; }
+.pm-table { inline-size: 100%; margin-block: 8px 12px; border-collapse: collapse; }
+.pm-table th, .pm-table td { border: 0; }
+.pm-table th { padding: 6px; font-size: 11px; font-weight: 500; color: #555; text-align: start; background: none; border-block-end: 1.5px solid #000; }
+.pm-table td { padding: 7px 6px; vertical-align: top; border-block-end: 1px solid #ccc; overflow-wrap: anywhere; }
+.pm-table tfoot td { border-block-end: 0; }
+.pm-num, .pm-table .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
+.pm-center, .center { text-align: center; }
+.pm-table th.pm-num { text-align: end; }
+.pm-table th.pm-center { text-align: center; }
+.pm-totals { inline-size: 60%; margin-block: 8px; margin-inline: auto 0; break-inside: avoid; page-break-inside: avoid; }
+.pm-totals td { padding: 4px 6px; border: 0; }
+.pm-total-final, .pm-total-final td { border-block-start: 1.5px solid #000; font-weight: 700; }
+body .totals-block tr:has(td[style*="font-weight: 700"]) td { border-block-start: 1.5px solid #000 !important; font-weight: 700; }
+body .totals-block, body .totals-block td { border: 0 !important; }
+body .totals-block { margin-inline: auto 0; }
+body .totals-block td { padding: 4px 6px; }
+body .totals-block .label { text-align: start; }
+body .totals-block .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
+body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] { color: #000 !important; background: none !important; }
+.missing { font-weight: 700; }
+[class*="status"], [class*="badge"] { padding: 0 !important; border: 0 !important; font-weight: 600; }
+.pm-signatures { display: flex; justify-content: space-between; gap: 48px; margin-block-start: 40px; break-inside: avoid; page-break-inside: avoid; }
+.pm-sign { flex: 1; font-size: 11px; color: #333; }
+.pm-sign-line { margin-block-start: 6px; border-block-end: 1px solid #000; block-size: 28px; }
+.pm-footer { margin-block-start: 16px; font-size: 11px; color: #555; text-align: center; }
+@media print { .no-print { display: none !important; } }
+
     .print-bar {
       position: fixed;
       top: 0;
@@ -229,12 +94,6 @@
     
     .print-bar button:hover { background: #fef2f2; }
     .print-spacer { height: 60px; }
-    
-    .company-logo {
-      width: 100px;
-      height: 100px;
-      object-fit: contain;
-    }
   </style>
 </head>
 <body>
@@ -248,164 +107,147 @@
   <div class="print-spacer no-print"></div>
   
   <div class="invoice-container">
-    <div class="header">
-      <div class="company-header">
-        <div class="company-name-ar">شركة مصر للمحركات</div>
-        <div class="company-name-en">Misr Motors Co.</div>
-        <div class="company-details">
-          <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
+    <header class="pm-header"><div class="pm-brand"><img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" /><div class="pm-names"><div class="pm-name-ar">شركة مصر للمحركات</div><div class="pm-name-en">Misr Motors Co.</div></div></div><div class="pm-company"><div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
           <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
-          <div>البريد الإلكتروني: sales@misrmotors.com</div>
-        </div>
-        <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
-      </div>
-      <div class="document-title">
-        <h1>فاتورة مورد</h1>
-        <div class="invoice-badge">مستحقة الدفع</div>
-      </div>
-      <div>
-        <img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" />
-      </div>
-    </div>
+          <div>البريد الإلكتروني: sales@misrmotors.com</div><div class="pm-tax">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div></div></header>
+    <div class="pm-title"><div class="doc-title">فاتورة مورد</div><div class="pm-title-note"><div class="invoice-badge">مستحقة الدفع</div></div></div>
     
-    <div class="document-info">
-      <div class="info-row">
-        <span class="info-label">رقم الفاتورة:</span>
-        <span class="info-value">APINV-PO-2026-0001</span>
+    <section class="pm-info">
+    <div class="pm-fields">
+      <div class="pm-field">
+        <span class="pm-label">رقم الفاتورة:</span>
+        <span class="pm-value">APINV-PO-2026-0001</span>
       </div>
-      <div class="info-row">
-        <span class="info-label">تاريخ الفاتورة:</span>
-        <span class="info-value"><DATE></span>
+      <div class="pm-field">
+        <span class="pm-label">تاريخ الفاتورة:</span>
+        <span class="pm-value"><DATE></span>
       </div>
-      <div class="info-row">
-        <span class="info-label">رقم أمر الشراء:</span>
-        <span class="info-value">PO-2026-0001</span>
+      <div class="pm-field">
+        <span class="pm-label">رقم أمر الشراء:</span>
+        <span class="pm-value">PO-2026-0001</span>
       </div>
-      <div class="info-row">
-        <span class="info-label">تاريخ الاستحقاق:</span>
-        <span class="info-value"><DATE></span>
+      <div class="pm-field">
+        <span class="pm-label">تاريخ الاستحقاق:</span>
+        <span class="pm-value"><DATE></span>
       </div>
-      <div class="info-row">
-        <span class="info-label">الحالة:</span>
-        <span class="status-badge status-partially_paid">مدفوعة جزئياً</span>
+      <div class="pm-field">
+        <span class="pm-label">الحالة:</span>
+        <span class="pm-value status-badge status-partially_paid">مدفوعة جزئياً</span>
       </div>
-      <div class="info-row">
-        <span class="info-label">نوع الدفع:</span>
-        <span class="info-value">هجين (مقدم + أقساط)</span>
+      <div class="pm-field">
+        <span class="pm-label">نوع الدفع:</span>
+        <span class="pm-value">هجين (مقدم + أقساط)</span>
       </div>
     </div>
+    </section>
     
-    <div class="section">
-      <div class="section-title">بيانات المورد</div>
-      <div class="supplier-info">
-        <div class="info-row">
-          <span class="info-label">اسم المورد:</span>
-          <span class="info-value">Supplier Three</span>
+    <section class="pm-info">
+      <div class="pm-info-title">بيانات المورد</div>
+      <div class="pm-fields">
+        <div class="pm-field pm-field-wide">
+          <span class="pm-label">اسم المورد:</span>
+          <span class="pm-value">Supplier Three</span>
         </div>
-        <div class="info-row">
-          <span class="info-label">الهاتف:</span>
-          <span class="info-value">Phone-0400</span>
+        <div class="pm-field">
+          <span class="pm-label">الهاتف:</span>
+          <span class="pm-value">Phone-0400</span>
         </div>
-        <div class="info-row">
-          <span class="info-label">العنوان:</span>
-          <span class="info-value">AP Street</span>
+        <div class="pm-field pm-field-wide">
+          <span class="pm-label">العنوان:</span>
+          <span class="pm-value">AP Street</span>
         </div>
-        <div class="info-row">
-          <span class="info-label">المدينة:</span>
-          <span class="info-value">Giza</span>
+        <div class="pm-field">
+          <span class="pm-label">المدينة:</span>
+          <span class="pm-value">Giza</span>
         </div>
       </div>
-    </div>
+    </section>
     
     <div class="section">
-      <div class="section-title">الأصناف</div>
-      <table class="items-table">
+      <div class="pm-section-title">الأصناف</div>
+      <table class="items-table pm-table">
         <thead>
           <tr>
-            <th class="number-col">م</th>
+            <th class="pm-center">م</th>
             <th>الصنف</th>
             <th>الكود</th>
-            <th class="qty-col">الكمية</th>
-            <th class="price-col">سعر الوحدة</th>
-            <th class="price-col">الإجمالي</th>
+            <th class="pm-num">الكمية</th>
+            <th class="pm-num">سعر الوحدة</th>
+            <th class="pm-num">الإجمالي</th>
           </tr>
         </thead>
         <tbody>
           
             <tr>
-              <td class="number-col">1</td>
+              <td class="pm-center">1</td>
               <td>Gasket G</td>
               <td>SKU-G</td>
-              <td class="qty-col">4</td>
-              <td class="price-col">250.00 ج.م</td>
-              <td class="price-col">1,000.00 ج.م</td>
+              <td class="pm-num">4</td>
+              <td class="pm-num">250.00 ج.م</td>
+              <td class="pm-num">1,000.00 ج.م</td>
             </tr>
           
             <tr>
-              <td class="number-col">2</td>
+              <td class="pm-center">2</td>
               <td>Outsourced Job</td>
               <td>خارجي</td>
-              <td class="qty-col">1</td>
-              <td class="price-col">150.00 ج.م</td>
-              <td class="price-col">150.00 ج.م</td>
+              <td class="pm-num">1</td>
+              <td class="pm-num">150.00 ج.م</td>
+              <td class="pm-num">150.00 ج.م</td>
             </tr>
           
         </tbody>
       </table>
     </div>
     
-    <div class="totals-section">
-      <div class="totals-box">
-        <div class="total-row">
-          <span>إجمالي الفاتورة</span>
-          <span>1,150.00 ج.م</span>
-        </div>
-        <div class="total-row">
-          <span>المدفوع</span>
-          <span>300.00 ج.م</span>
-        </div>
-        <div class="total-row">
-          <span>المتبقي</span>
-          <span>850.00 ج.م</span>
-        </div>
+    <table class="pm-totals">
+      <tr>
+        <td>إجمالي الفاتورة</td>
+        <td class="pm-num">1,150.00 ج.م</td>
+      </tr>
+      <tr>
+        <td>المدفوع</td>
+        <td class="pm-num">300.00 ج.م</td>
+      </tr>
+      <tr class="pm-total-final">
+        <td>المتبقي</td>
+        <td class="pm-num">850.00 ج.م</td>
+      </tr>
+    </table>
+    
+    
+    <section class="pm-info">
+      <div class="pm-info-title">تفاصيل الدفع الهجين</div>
+      <div class="pm-fields">
+          <div class="pm-field">
+            <div class="pm-label">المقدم</div>
+            <div class="pm-value">345.00 ج.م</div>
+          </div>
+          <div class="pm-field">
+            <div class="pm-label">المتبقي</div>
+            <div class="pm-value">805.00 ج.م</div>
+          </div>
+          <div class="pm-field">
+            <div class="pm-label">عدد الأقساط</div>
+            <div class="pm-value">4 شهر</div>
+          </div>
+          <div class="pm-field">
+            <div class="pm-label">القسط الشهري</div>
+            <div class="pm-value">201.25 ج.م</div>
+          </div>
+          <div class="pm-field">
+            <div class="pm-label">تاريخ استحقاق المقدم</div>
+            <div class="pm-value">-</div>
+          </div>
+          <div class="pm-field">
+            <div class="pm-label">بداية الأقساط</div>
+            <div class="pm-value"><DATE></div>
+          </div>
       </div>
-    </div>
+    </section>
     
     
-    <div class="section">
-      <div class="section-title">تفاصيل الدفع الهجين</div>
-      <div class="payment-info">
-        <div class="payment-grid">
-          <div class="payment-item">
-            <div class="payment-label">المقدم</div>
-            <div class="payment-value">345.00 ج.م</div>
-          </div>
-          <div class="payment-item">
-            <div class="payment-label">المتبقي</div>
-            <div class="payment-value">805.00 ج.م</div>
-          </div>
-          <div class="payment-item">
-            <div class="payment-label">عدد الأقساط</div>
-            <div class="payment-value">4 شهر</div>
-          </div>
-          <div class="payment-item">
-            <div class="payment-label">القسط الشهري</div>
-            <div class="payment-value">201.25 ج.م</div>
-          </div>
-          <div class="payment-item">
-            <div class="payment-label">تاريخ استحقاق المقدم</div>
-            <div class="payment-value">-</div>
-          </div>
-          <div class="payment-item">
-            <div class="payment-label">بداية الأقساط</div>
-            <div class="payment-value"><DATE></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    
-    <div class="footer">
+    <div class="pm-footer">
       <p>تم إنشاء هذه الفاتورة آلياً من نظام إدارة الموارد</p>
       <p>للاستفسار: 02-12242222</p>
     </div>
