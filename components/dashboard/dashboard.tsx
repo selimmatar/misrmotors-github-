@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
+import { MobileTabs } from "@/components/layout/mobile-tabs"
+import { ROLE_MODULES } from "@/components/layout/nav-config"
 import { PurchaseOrderModule } from "@/components/modules/purchase-order-module"
 import { PORequestModule } from "@/components/modules/po-request-module"
 import { SupplierModule } from "@/components/modules/supplier-module"
@@ -217,8 +219,16 @@ case "po-requests":
           onMenuClick={() => setMobileSidebarOpen(true)}
           activeModule={activeModule}
         />
-        <main className="flex-1 overflow-auto p-4 md:p-6">{renderModule()}</main>
+        <main className="flex-1 overflow-auto p-4 md:p-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6">
+          {renderModule()}
+        </main>
       </div>
+      <MobileTabs
+        items={ROLE_MODULES[user.role] ?? []}
+        activeModule={activeModule}
+        onNavigate={(id) => setActiveModule(id as ModuleType)}
+        onOpenMenu={() => setMobileSidebarOpen(true)}
+      />
     </div>
   )
 }

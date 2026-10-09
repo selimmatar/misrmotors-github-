@@ -16,6 +16,7 @@ const FRAME_FILES: string[] = [
   ...(fs.existsSync(ERP_DIR) ? fs.readdirSync(ERP_DIR).filter((f) => f.endsWith(".tsx")).map((f) => `components/erp/${f}`) : []),
   "components/layout/sidebar.tsx",
   "components/layout/header.tsx",
+  "components/layout/mobile-tabs.tsx",
 ]
 
 const BAD = /(?<![\w-])(?:(?:ml|mr|pl|pr|left|right)-[\w[]|text-(?:left|right)\b|(?:border|rounded)-[lr]\b|flex-row\b)/
