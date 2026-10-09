@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useI18n } from "@/lib/i18n-context"
+import { PageHeader } from "@/components/erp/page-header"
+import { Money } from "@/components/erp/money"
 import { DollarSign, TrendingUp, Package, Calculator } from "lucide-react"
 
 type PricingProduct = {
@@ -31,7 +33,7 @@ type PricingReviewModuleProps = {
 }
 
 export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const [products, setProducts] = useState<PricingProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -138,18 +140,17 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{t("pricing.title")}</h1>
-          <p className="text-muted-foreground mt-2">
-            {t("pricing.description").replace("{count}", formatNumber(products.length))}
-          </p>
-        </div>
-        <Button onClick={handleSavePricing} disabled={saving} size="lg">
-          <DollarSign className="w-4 h-4 mr-2" />
-          {saving ? t("action.saving") : t("pricing.save-all")}
-        </Button>
-      </div>
+      <PageHeader
+        group={t("group.purchasing")}
+        title={t("pricing.title")}
+        subtitle={t("pricing.description").replace("{count}", formatNumber(products.length))}
+        actions={
+          <Button onClick={handleSavePricing} disabled={saving} size="lg">
+            <DollarSign className="w-4 h-4 me-2" />
+            {saving ? t("action.saving") : t("pricing.save-all")}
+          </Button>
+        }
+      />
 
       <div className="grid gap-6">
         {products.map((product) => {
@@ -168,9 +169,11 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
                       {t("field.sku")}: {product.sku}
                     </CardDescription>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm text-muted-foreground">{t("pricing.current-price")}</div>
-                    <div className="text-2xl font-bold">{formatCurrency(product.currentUnitPrice)}</div>
+                  <div className="text-end">
+                    <div className="text-sm text-muted-foreground">{t("pricing.current-price")} (EGP)</div>
+                    <div className="text-2xl font-bold">
+                      <Money value={product.currentUnitPrice} />
+                    </div>
                   </div>
                 </div>
               </CardHeader>
@@ -187,16 +190,22 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
                       <div className="font-medium">{latestPurchase.poNumber}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">{t("pricing.base-cost")}</div>
-                      <div className="font-medium">{formatCurrency(latestPurchase.unitPrice)}</div>
+                      <div className="text-muted-foreground">{t("pricing.base-cost")} (EGP)</div>
+                      <div className="font-medium">
+                        <Money value={latestPurchase.unitPrice} />
+                      </div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">{t("pricing.tax-overhead")}</div>
-                      <div className="font-medium">{formatCurrency(latestPurchase.allocatedOverhead)}</div>
+                      <div className="text-muted-foreground">{t("pricing.tax-overhead")} (EGP)</div>
+                      <div className="font-medium">
+                        <Money value={latestPurchase.allocatedOverhead} />
+                      </div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">{t("pricing.landed-cost")}</div>
-                      <div className="font-bold text-lg">{formatCurrency(landedCostPerUnit)}</div>
+                      <div className="text-muted-foreground">{t("pricing.landed-cost")} (EGP)</div>
+                      <div className="font-bold text-lg">
+                        <Money value={landedCostPerUnit} />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -245,9 +254,9 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
                 {/* Summary */}
                 <div className="flex items-center justify-between pt-4 border-t">
                   <div className="text-sm text-muted-foreground">
-                    {t("pricing.profit-per-unit")}:{" "}
+                    {t("pricing.profit-per-unit")} (EGP):{" "}
                     <span className="font-semibold text-foreground">
-                      {formatCurrency(pricing.price - landedCostPerUnit)}
+                      <Money value={pricing.price - landedCostPerUnit} />
                     </span>
                   </div>
                   {pricing.price < landedCostPerUnit && (
