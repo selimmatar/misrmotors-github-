@@ -21,6 +21,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { PageHeader } from "@/components/erp/page-header"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { ErpTable, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
+import { formatDate } from "@/lib/format"
 import {
   Dialog,
   DialogContent,
@@ -28,11 +33,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { Plus, Trash2, Printer, Eye, Search, X } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 // Supplier from API (transformed format)
 interface Supplier {
@@ -64,7 +67,7 @@ interface PORequest {
 
 export function PORequestModule() {
   const { toast } = useToast()
-  const { language } = useI18n()
+  const { t, language } = useI18n()
   const isRTL = language === "ar"
 
   const [requests, setRequests] = useState<PORequest[]>([])
@@ -264,36 +267,33 @@ export function PORequestModule() {
     window.open(printUrl, "_blank")
   }
 
-  const getStatusBadge = (status: string) => {
+  const requestStatusLabel = (status: string): string | undefined => {
     switch (status) {
       case "pending":
-        return (
-          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
-            {isRTL ? "في انتظار عرض السعر" : "Awaiting Quote"}
-          </Badge>
-        )
+        return isRTL ? "في انتظار عرض السعر" : "Awaiting Quote"
       case "quoted":
-        return (
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
-            {isRTL ? "تم استلام عرض السعر" : "Quote Received"}
-          </Badge>
-        )
+        return isRTL ? "تم استلام عرض السعر" : "Quote Received"
       case "converted":
-        return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-            {isRTL ? "تم التحويل لأمر شراء" : "Converted to PO"}
-          </Badge>
-        )
+        return isRTL ? "تم التحويل لأمر شراء" : "Converted to PO"
       case "cancelled":
-        return (
-          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300">
-            {isRTL ? "ملغي" : "Cancelled"}
-          </Badge>
-        )
+        return isRTL ? "ملغي" : "Cancelled"
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return undefined
     }
   }
+
+  const renderRowActions = (request: PORequest) => (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setSelectedRequest(request)} className="gap-1">
+        <Eye className="w-4 h-4" />
+        {isRTL ? "عرض" : "View"}
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => handlePrint(request.request_id)} className="gap-1">
+        <Printer className="w-4 h-4" />
+        {isRTL ? "طباعة" : "Print"}
+      </Button>
+    </>
+  )
 
   const filteredRequests = requests.filter(
     (req) =>
@@ -304,107 +304,88 @@ export function PORequestModule() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">{isRTL ? "طلبات عروض الأسعار" : "PO Quotation Requests"}</h2>
-          <p className="text-muted-foreground">
-            {isRTL ? "إدارة طلبات عروض الأسعار من الموردين" : "Manage quotation requests from suppliers"}
-          </p>
-  </div>
-  <div className="flex gap-2">
-    <Button variant="outline" onClick={() => setShowAddCategoryDialog(true)}>
-      + Category
-    </Button>
-    <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
-      <Plus className="w-4 h-4" />
-      {isRTL ? "طلب عرض سعر جديد" : "New Quotation Request"}
-    </Button>
-  </div>
-  </div>
+      <PageHeader
+        group={t("group.purchasing")}
+        title={isRTL ? "طلبات عروض الأسعار" : "PO Quotation Requests"}
+        subtitle={isRTL ? "إدارة طلبات عروض الأسعار من الموردين" : "Manage quotation requests from suppliers"}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setShowAddCategoryDialog(true)}>
+              + Category
+            </Button>
+            <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
+              <Plus className="w-4 h-4" />
+              {isRTL ? "طلب عرض سعر جديد" : "New Quotation Request"}
+            </Button>
+          </>
+        }
+      />
 
       {/* Search */}
       <div className="relative max-w-md">
-        <Search
-          className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground", isRTL ? "right-3" : "left-3")}
-        />
+        <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
           placeholder={isRTL ? "بحث برقم الطلب أو اسم المورد..." : "Search by request number or supplier..."}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className={isRTL ? "pr-10" : "pl-10"}
+          className="ps-10"
         />
       </div>
 
       {/* Requests Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className={isRTL ? "text-right" : "text-left"}>
-                  {isRTL ? "رقم الطلب" : "Request No."}
-                </TableHead>
-                <TableHead className={isRTL ? "text-right" : "text-left"}>{isRTL ? "المورد" : "Supplier"}</TableHead>
-                <TableHead className={isRTL ? "text-right" : "text-left"}>
-                  {isRTL ? "تاريخ الطلب" : "Request Date"}
-                </TableHead>
-                <TableHead className={isRTL ? "text-right" : "text-left"}>{isRTL ? "عدد الأصناف" : "Items"}</TableHead>
-                <TableHead className="text-center">{isRTL ? "الإجراءات" : "Actions"}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
-                    {isRTL ? "جاري التحميل..." : "Loading..."}
-                  </TableCell>
-                </TableRow>
-              ) : filteredRequests.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    {isRTL ? "لا توجد طلبات عروض أسعار" : "No quotation requests found"}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredRequests.map((request) => (
-                  <TableRow key={request.request_id}>
-                    <TableCell className="font-medium">{request.request_number}</TableCell>
-                    <TableCell>{request.suppliers?.supplier_name || "-"}</TableCell>
-                    <TableCell>
-                      {new Date(request.request_date || request.created_at).toLocaleDateString(
-                        isRTL ? "ar-EG" : "en-US"
-                      )}
-                    </TableCell>
-                    <TableCell>{request.po_request_items?.length || 0}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedRequest(request)}
-                          className="gap-1"
-                        >
-                          <Eye className="w-4 h-4" />
-                          {isRTL ? "عرض" : "View"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePrint(request.request_id)}
-                          className="gap-1"
-                        >
-                          <Printer className="w-4 h-4" />
-                          {isRTL ? "طباعة" : "Print"}
-                        </Button>
-                      </div>
-                    </TableCell>
+      <ResponsiveList
+        rows={isLoading ? [] : filteredRequests}
+        empty={
+          isLoading ? (
+            <div className="py-8 text-center">{isRTL ? "جاري التحميل..." : "Loading..."}</div>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">
+              {isRTL ? "لا توجد طلبات عروض أسعار" : "No quotation requests found"}
+            </div>
+          )
+        }
+        table={
+          <Card>
+            <CardContent className="p-0">
+              <ErpTable>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{isRTL ? "رقم الطلب" : "Request No."}</TableHead>
+                    <TableHead>{isRTL ? "المورد" : "Supplier"}</TableHead>
+                    <TableHead>{isRTL ? "تاريخ الطلب" : "Request Date"}</TableHead>
+                    <TableHead>{isRTL ? "عدد الأصناف" : "Items"}</TableHead>
+                    <ActionsHead>{isRTL ? "الإجراءات" : "Actions"}</ActionsHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {filteredRequests.map((request) => (
+                    <TableRow key={request.request_id}>
+                      <IdCell>{request.request_number}</IdCell>
+                      <TableCell>{request.suppliers?.supplier_name || "-"}</TableCell>
+                      <TableCell>{formatDate(request.request_date || request.created_at, language)}</TableCell>
+                      <TableCell>{request.po_request_items?.length || 0}</TableCell>
+                      <ActionsCell>{renderRowActions(request)}</ActionsCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </ErpTable>
+            </CardContent>
+          </Card>
+        }
+        card={(request) => (
+          <ListCard
+            id={request.request_number}
+            party={request.suppliers?.supplier_name || "-"}
+            note={
+              <>
+                {formatDate(request.request_date || request.created_at, language)} · {isRTL ? "عدد الأصناف" : "Items"}:{" "}
+                {request.po_request_items?.length || 0}
+              </>
+            }
+            actions={renderRowActions(request)}
+          />
+        )}
+      />
 
       {/* Create Request Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -456,16 +437,16 @@ export function PORequestModule() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className={cn("w-[250px]", isRTL ? "text-right" : "text-left")}>
+                      <TableHead className="w-[250px] text-start">
                         {isRTL ? "اسم الصنف" : "Item Name"}
                       </TableHead>
-                      <TableHead className={cn("w-[100px]", isRTL ? "text-right" : "text-left")}>
+                      <TableHead className="w-[100px] text-start">
                         {isRTL ? "الكمية" : "Qty"}
                       </TableHead>
-                      <TableHead className={cn("w-[100px]", isRTL ? "text-right" : "text-left")}>
+                      <TableHead className="w-[100px] text-start">
                         {isRTL ? "الوحدة" : "Unit"}
                       </TableHead>
-                      <TableHead className={isRTL ? "text-right" : "text-left"}>
+                      <TableHead className="text-start">
                         {isRTL ? "ملاحظات" : "Notes"}
                       </TableHead>
                       <TableHead className="w-[50px]"></TableHead>
@@ -562,21 +543,21 @@ export function PORequestModule() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">{isRTL ? "الحالة" : "Status"}</Label>
-                  <div className="mt-1">{getStatusBadge(selectedRequest.status)}</div>
+                  <div className="mt-1">
+                    <StatusBadge status={selectedRequest.status} label={requestStatusLabel(selectedRequest.status)} />
+                  </div>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">{isRTL ? "تاريخ الطلب" : "Request Date"}</Label>
                   <p className="font-medium">
-                    {new Date(selectedRequest.request_date || selectedRequest.created_at).toLocaleDateString(
-                      isRTL ? "ar-EG" : "en-US"
-                    )}
+                    {formatDate(selectedRequest.request_date || selectedRequest.created_at, language)}
                   </p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">{isRTL ? "تاريخ التسليم المتوقع" : "Expected Delivery"}</Label>
                   <p className="font-medium">
                     {selectedRequest.expected_delivery_date
-                      ? new Date(selectedRequest.expected_delivery_date).toLocaleDateString(isRTL ? "ar-EG" : "en-US")
+                      ? formatDate(selectedRequest.expected_delivery_date, language)
                       : "-"}
                   </p>
                 </div>
