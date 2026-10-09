@@ -1,34 +1,30 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n-context"
-import { PermitStatusBadge, DeliveryPermitCard } from "@/components/delivery-permit"
+import { DeliveryPermitCard } from "@/components/delivery-permit"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { Money } from "@/components/erp/money"
+import { ErpTable, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
+import { formatDate } from "@/lib/format"
 import type { DeliveryPermit, UserRole } from "@/lib/types"
-import {
-  Search,
-  FileText,
-  Clock,
-  Truck,
-  CheckCircle,
-  XCircle,
-  Printer,
-  RefreshCw,
-  Eye,
-  Download,
-} from "lucide-react"
+import { Search, FileText, RefreshCw, Eye, Download } from "lucide-react"
 
 interface DeliveryPermitsModuleProps {
   userRole: UserRole
 }
 
 export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModuleProps) {
-  const { t, formatDate, formatCurrency } = useI18n()
+  const { t, language } = useI18n()
   const [permits, setPermits] = useState<DeliveryPermit[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -108,102 +104,62 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
   }
 
 
+  const renderStatus = (permit: DeliveryPermit) => (
+    <StatusBadge
+      status={permit.status}
+      label={t(`permit.status.${permit.status.toLowerCase().replace(/_/g, "-")}`)}
+    />
+  )
+
+  const renderRowActions = (permit: DeliveryPermit) => (
+    <>
+      <Button variant="outline" size="sm" onClick={() => handleViewDetails(permit)}>
+        {t("action.view-details")}
+      </Button>
+      {permit.status === "SUBMITTED_SIGNED" && (
+        <Button variant="outline" size="sm" onClick={() => handleOpenReviewDialog(permit)}>
+          <Eye className="h-4 w-4 me-1" />
+          {t("permit.signed-document")}
+        </Button>
+      )}
+    </>
+  )
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">{t("module.delivery-permits")}</h2>
-          <p className="text-muted-foreground mt-1">{t("permit.module-description")}</p>
-        </div>
-        <Button variant="outline" onClick={fetchPermits} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          {t("action.refresh")}
-        </Button>
-      </div>
+      <PageHeader
+        group={t("group.sales")}
+        title={t("module.delivery-permits")}
+        subtitle={t("permit.module-description")}
+        actions={
+          <Button variant="outline" onClick={fetchPermits} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 me-2 ${loading ? "animate-spin" : ""}`} />
+            {t("action.refresh")}
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-        <Card className="cursor-pointer hover:border-primary" onClick={() => setActiveTab("draft")}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <FileText className="h-4 w-4 text-gray-500" />
-              {t("permit.status.draft")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statusCounts.draft}</div>
-          </CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:border-primary" onClick={() => setActiveTab("printed")}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Printer className="h-4 w-4 text-blue-500" />
-              {t("permit.status.printed")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statusCounts.printed}</div>
-          </CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:border-primary" onClick={() => setActiveTab("out_for_delivery")}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Truck className="h-4 w-4 text-amber-500" />
-              {t("permit.status.out-for-delivery")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statusCounts.out_for_delivery}</div>
-          </CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:border-primary" onClick={() => setActiveTab("submitted")}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Clock className="h-4 w-4 text-purple-500" />
-              {t("permit.status.submitted-signed")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statusCounts.submitted}</div>
-          </CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:border-primary" onClick={() => setActiveTab("approved")}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              {t("permit.status.approved")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statusCounts.approved}</div>
-          </CardContent>
-        </Card>
-        <Card className="cursor-pointer hover:border-primary" onClick={() => setActiveTab("rejected")}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-red-500" />
-              {t("permit.status.rejected")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{statusCounts.rejected}</div>
-          </CardContent>
-        </Card>
-      </div>
+      <KpiGrid className="md:grid-cols-3 lg:grid-cols-6">
+        <KpiTile label={t("permit.status.draft")} value={statusCounts.draft} onClick={() => setActiveTab("draft")} />
+        <KpiTile label={t("permit.status.printed")} value={statusCounts.printed} onClick={() => setActiveTab("printed")} />
+        <KpiTile label={t("permit.status.out-for-delivery")} value={statusCounts.out_for_delivery} onClick={() => setActiveTab("out_for_delivery")} />
+        <KpiTile label={t("permit.status.submitted-signed")} value={statusCounts.submitted} onClick={() => setActiveTab("submitted")} />
+        <KpiTile label={t("permit.status.approved")} value={statusCounts.approved} onClick={() => setActiveTab("approved")} />
+        <KpiTile label={t("permit.status.rejected")} value={statusCounts.rejected} onClick={() => setActiveTab("rejected")} />
+      </KpiGrid>
 
       {/* Search and Tabs */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-4">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={t("permit.search-placeholder")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="ps-10"
               />
             </div>
           </div>
@@ -222,64 +178,54 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
             </TabsList>
 
             <TabsContent value={activeTab}>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("permit.permit-no")}</TableHead>
-                      <TableHead>{t("field.so-number")}</TableHead>
-                      <TableHead>{t("field.customer")}</TableHead>
-                      <TableHead>{t("permit.recipient")}</TableHead>
-                      <TableHead>{t("field.status")}</TableHead>
-                      <TableHead>{t("field.date")}</TableHead>
-                      <TableHead className="text-right">{t("field.actions")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
-                          {t("loading")}...
-                        </TableCell>
-                      </TableRow>
-                    ) : filteredPermits.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          {t("no-data")}
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredPermits.map((permit) => (
-                        <TableRow key={permit.id}>
-                          <TableCell className="font-medium">{permit.permitNo}</TableCell>
-                          <TableCell>{permit.soNumber || "-"}</TableCell>
-                          <TableCell>{permit.customerName || "-"}</TableCell>
-                          <TableCell>{permit.recipientName || "-"}</TableCell>
-                          <TableCell>
-                            <PermitStatusBadge status={permit.status} size="sm" />
-                          </TableCell>
-                          <TableCell>{formatDate(permit.createdAt || "")}</TableCell>
-                          <TableCell className="text-right flex gap-2 justify-end">
-                              <Button variant="outline" size="sm" onClick={() => handleViewDetails(permit)}>
-                                {t("action.view-details")}
-                              </Button>
-                              {permit.status === "SUBMITTED_SIGNED" && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleOpenReviewDialog(permit)}
-                                >
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  {t("permit.signed-document")}
-                                </Button>
-                              )}
-                          </TableCell>
+              <ResponsiveList
+                rows={loading ? [] : filteredPermits}
+                empty={
+                  loading ? (
+                    <div className="py-8 text-center">{t("loading")}...</div>
+                  ) : (
+                    <div className="py-8 text-center text-muted-foreground">{t("no-data")}</div>
+                  )
+                }
+                table={
+                  <div className="rounded-md border">
+                    <ErpTable>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t("permit.permit-no")}</TableHead>
+                          <TableHead>{t("field.so-number")}</TableHead>
+                          <TableHead>{t("field.customer")}</TableHead>
+                          <TableHead>{t("permit.recipient")}</TableHead>
+                          <TableHead>{t("field.status")}</TableHead>
+                          <TableHead>{t("field.date")}</TableHead>
+                          <ActionsHead>{t("field.actions")}</ActionsHead>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredPermits.map((permit) => (
+                          <TableRow key={permit.id}>
+                            <IdCell>{permit.permitNo}</IdCell>
+                            <TableCell>{permit.soNumber || "-"}</TableCell>
+                            <TableCell>{permit.customerName || "-"}</TableCell>
+                            <TableCell>{permit.recipientName || "-"}</TableCell>
+                            <TableCell>{renderStatus(permit)}</TableCell>
+                            <TableCell>{formatDate(permit.createdAt, language)}</TableCell>
+                            <ActionsCell>{renderRowActions(permit)}</ActionsCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </ErpTable>
+                  </div>
+                }
+                card={(permit) => (
+                  <ListCard
+                    id={permit.permitNo}
+                    party={permit.customerName || "-"}
+                    status={renderStatus(permit)}
+                    actions={renderRowActions(permit)}
+                  />
+                )}
+              />
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -338,7 +284,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">{t("field.date")}</p>
-                    <p className="font-medium">{formatDate(permitToReview.createdAt || "")}</p>
+                    <p className="font-medium">{formatDate(permitToReview.createdAt, language)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">{t("shipping.driver")}</p>
@@ -356,9 +302,9 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                       <TableHeader>
                         <TableRow>
                           <TableHead>{t("field.product")}</TableHead>
-                          <TableHead className="text-right">{t("field.quantity")}</TableHead>
-                          <TableHead className="text-right">{t("field.unit-price")}</TableHead>
-                          <TableHead className="text-right">{t("field.total")}</TableHead>
+                          <TableHead className="text-end">{t("field.quantity")}</TableHead>
+                          <TableHead className="text-end">{t("field.unit-price")} (EGP)</TableHead>
+                          <TableHead className="text-end">{t("field.total")} (EGP)</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -367,7 +313,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                             <TableCell>
                               {item.itemNameSnapshot || item.productName || `Product #${item.productId}`}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-end">
                               {item.quantity}
                               {Number((item as any).returnedQuantity) > 0 && (
                                 <span className="block text-xs text-red-600">
@@ -375,8 +321,8 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                                 </span>
                               )}
                             </TableCell>
-                            <TableCell className="text-right">{formatCurrency(item.unitPrice || 0)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(item.total || 0)}</TableCell>
+                            <TableCell className="text-end"><Money value={item.unitPrice || 0} /></TableCell>
+                            <TableCell className="text-end"><Money value={item.total || 0} /></TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -401,7 +347,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                           if (url) window.open(url, "_blank")
                         }}
                       >
-                        <Eye className="h-4 w-4 mr-1" />
+                        <Eye className="h-4 w-4 me-1" />
                         {t("action.view")}
                       </Button>
                       <Button variant="outline" size="sm" asChild>
@@ -414,7 +360,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          <Download className="h-4 w-4 mr-1" />
+                          <Download className="h-4 w-4 me-1" />
                           {t("action.download")}
                         </a>
                       </Button>

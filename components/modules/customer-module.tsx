@@ -10,6 +10,10 @@ import { itemDeliveryChip, permitChip } from "@/lib/customer-dp-chip"
 import { useI18n } from "@/lib/i18n-context"
 import { COUNTRIES, getCitiesForCountry } from "@/lib/countries-data"
 import { ReportGenerator } from "@/components/report-generator"
+import { PageHeader } from "@/components/erp/page-header"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { Money } from "@/components/erp/money"
+import { formatDate } from "@/lib/format"
 import type { Customer, SalesOrder } from "@/lib/types"
 import { Plus, ChevronLeft, Search } from "lucide-react"
 
@@ -23,7 +27,7 @@ interface CustomerModuleProps {
 }
 
 export function CustomerModule({ userRole }: CustomerModuleProps) {
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const { customers, addCustomer, salesOrders, customerInvoices } = useAppContext()
   const [showForm, setShowForm] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -161,29 +165,12 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
     return invoices.reduce((sum, inv) => sum + (inv.collectedAmount || 0), 0)
   }
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      draft: "bg-gray-100 text-gray-800",
-      pending: "bg-yellow-100 text-yellow-800",
-      approved: "bg-blue-100 text-blue-800",
-      pending_warehouse: "bg-purple-100 text-purple-800",
-      ready_for_delivery: "bg-green-100 text-green-800",
-      delivered: "bg-emerald-100 text-emerald-800",
-      shipped: "bg-green-100 text-green-800",
-      cancelled: "bg-red-100 text-red-800",
-      pending_accountant: "bg-yellow-200 text-yellow-900",
-      accountant_approved: "bg-blue-200 text-blue-900",
-    }
-    return colors[status] || "bg-gray-100 text-gray-800"
-  }
-
   const getOrderPaymentStatus = (order: SalesOrder) => {
     const invoice = orderInvoices[order.id]
 
     if (!invoice) {
       return {
-        status: "No Invoice",
-        color: "bg-gray-100 text-gray-800",
+        status: "no_invoice",
         monthsPaid: 0,
         totalMonths: order.installments || 1,
         amountPaid: 0,
@@ -199,25 +186,20 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
     const totalAmount = invoice.amount || order.total
     const amountDue = totalAmount - amountPaid
 
-    let status = "Not Paid"
-    let color = "bg-red-100 text-red-800"
+    let status = "unpaid"
 
     // Payment status is based on AMOUNT paid, not months
     if (amountPaid === 0) {
-      status = "Not Paid"
-      color = "bg-red-100 text-red-800"
+      status = "unpaid"
     } else if (amountPaid > 0 && amountPaid < totalAmount) {
-      status = "Partially Paid"
-      color = "bg-yellow-100 text-yellow-800"
+      status = "partially_paid"
     } else if (amountPaid >= totalAmount) {
-      status = "Fully Paid"
-      color = "bg-green-100 text-green-800"
+      status = "paid"
     }
 
 
     return {
       status,
-      color,
       monthsPaid,
       totalMonths,
       amountPaid,
@@ -237,7 +219,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
       <div className="space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => setSelectedCustomer(null)} className="gap-2">
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
             {t("action.back")} {t("customer.title")}
           </Button>
         </div>
@@ -274,16 +256,16 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                 <p className="font-semibold">{customerOrders.length}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("customer.total-spent")}</p>
-                <p className="font-semibold text-lg">{formatCurrency(totalSpent)}</p>
+                <p className="text-sm text-muted-foreground">{t("customer.total-spent")} (EGP)</p>
+                <p className="font-semibold text-lg"><Money value={totalSpent} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("customer.total-paid")}</p>
-                <p className="font-semibold text-lg">{formatCurrency(totalPaid)}</p>
+                <p className="text-sm text-muted-foreground">{t("customer.total-paid")} (EGP)</p>
+                <p className="font-semibold text-lg"><Money value={totalPaid} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("customer.balance-due")}</p>
-                <p className="font-semibold text-lg">{formatCurrency(totalSpent - totalPaid)}</p>
+                <p className="text-sm text-muted-foreground">{t("customer.balance-due")} (EGP)</p>
+                <p className="font-semibold text-lg"><Money value={totalSpent - totalPaid} /></p>
               </div>
             </div>
 
@@ -306,27 +288,23 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.date")}</p>
-                            <p className="font-semibold">{order.orderDate}</p>
+                            <p className="font-semibold">{formatDate(order.orderDate, language)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
-                            <p className="font-semibold">{formatCurrency(order.total)}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.total-amount")} (EGP)</p>
+                            <p className="font-semibold"><Money value={order.total} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount-paid")}</p>
-                            <p className="font-semibold text-green-600">{formatCurrency(paymentStatus.amountPaid)}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-paid")} (EGP)</p>
+                            <p className="font-semibold text-green-600"><Money value={paymentStatus.amountPaid} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount-due")}</p>
-                            <p className="font-semibold text-orange-600">{formatCurrency(paymentStatus.amountDue)}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-due")} (EGP)</p>
+                            <p className="font-semibold text-orange-600"><Money value={paymentStatus.amountDue} /></p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("customer.payment-status")}</p>
-                            <span
-                              className={`inline-block px-2 py-1 rounded text-xs font-semibold ${paymentStatus.color}`}
-                            >
-                              {paymentStatus.status}
-                            </span>
+                            <StatusBadge status={paymentStatus.status} />
                             {order.paymentTerms === "installment" && (
                               <p className="text-xs text-muted-foreground mt-1">
                                 {paymentStatus.monthsPaid}/{paymentStatus.totalMonths} {t("customer.months")}
@@ -335,11 +313,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.order-status")}</p>
-                            <span
-                              className={`inline-block px-2 py-1 rounded text-xs font-semibold ${getStatusColor(order.status)}`}
-                            >
-                              {t(`status.${order.status}`)}
-                            </span>
+                            <StatusBadge status={order.status} label={t(`status.${order.status}`)} />
                             {/* Show delivery permit fulfillment status */}
                             {order.deliveryPermits && order.deliveryPermits.length > 0 && (
                               <div className="mt-2 space-y-1">
@@ -372,7 +346,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                                   <span>
                                     {item.productName} × {item.quantity}
                                     {Number(item.returnedQuantity) > 0 && (
-                                      <span className="ml-2 px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-700">
+                                      <span className="ms-2 px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-700">
                                         Returned ({item.returnedQuantity})
                                       </span>
                                     )}
@@ -385,10 +359,10 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                                           : chip.tone === "orange"
                                             ? "bg-orange-100 text-orange-700"
                                             : "bg-yellow-100 text-yellow-700"
-                                      return <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${tone}`}>{chip.label}</span>
+                                      return <span className={`ms-2 px-1.5 py-0.5 rounded text-xs ${tone}`}>{chip.label}</span>
                                     })()}
                                   </span>
-                                  <span className="font-semibold">{formatCurrency(item.total)}</span>
+                                  <span className="font-semibold"><Money value={item.total} /> EGP</span>
                                 </div>
                               ))}
                             </div>
@@ -408,30 +382,31 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{t("customer.title")}</h1>
-          <p className="text-muted-foreground mt-2">{t("customer.description")}</p>
-        </div>
-        <div className="flex gap-2 items-center">
-          <div className="relative w-64 mr-2">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t("customer.search")}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8"
-            />
-          </div>
-          <ReportGenerator type="customers" userRole={userRole || "sales-rep"} />
-          {canAddCustomer && (
-            <Button onClick={() => setShowForm(!showForm)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              {t("customer.add")}
-            </Button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        group={t("group.sales")}
+        title={t("customer.title")}
+        subtitle={t("customer.description")}
+        actions={
+          <>
+            <div className="relative w-full md:w-64">
+              <Search className="absolute start-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={t("customer.search")}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="ps-8"
+              />
+            </div>
+            <ReportGenerator type="customers" userRole={userRole || "sales-rep"} />
+            {canAddCustomer && (
+              <Button onClick={() => setShowForm(!showForm)} className="gap-2">
+                <Plus className="w-4 h-4" />
+                {t("customer.add")}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {showForm && (
         <Card>

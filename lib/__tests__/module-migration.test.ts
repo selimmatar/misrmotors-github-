@@ -24,6 +24,10 @@ const MIGRATED: string[] = [
   "components/modules/maintenance-invoices-module.tsx",
   "components/modules/accountant-module.tsx",
   "components/accounting/maintenance-invoice-tab.tsx",
+  "components/modules/approve-sales-orders-module.tsx",
+  "components/modules/delivery-permits-module.tsx",
+  "components/modules/customer-module.tsx",
+  "components/modules/lost-sales-module.tsx",
 ]
 // Allowed leftover BANNED matches per file; each entry needs a ledgered ruling.
 const ALLOW: Record<string, Partial<Record<keyof typeof BANNED, number>>> = {}
@@ -95,4 +99,11 @@ test("maintenance screen has one heading; accountant embed unchanged", () => {
   assert.match(read("components/modules/maintenance-invoices-module.tsx"), /<MaintenanceInvoiceTab showHeading=\{false\}/)
   assert.match(read("components/accounting/maintenance-invoice-tab.tsx"), /showHeading = true/)
   assert.match(read("components/modules/accountant-module.tsx"), /<MaintenanceInvoiceTab\s*\/>/)
+})
+
+test("approve orders uses the module title; permits keep their own labels", () => {
+  const a = read("components/modules/approve-sales-orders-module.tsx")
+  assert.match(a, /t\("module\.approve-sales-orders"\)/); assert.doesNotMatch(a, /t\("approve\.(title|description)"\)/)
+  const d = read("components/modules/delivery-permits-module.tsx")
+  assert.doesNotMatch(d, /<PermitStatusBadge/); assert.match(d, /label=\{t\(`permit\.status\./)
 })
