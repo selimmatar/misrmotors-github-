@@ -661,7 +661,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         <Card className="border-yellow-200 bg-yellow-50">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-yellow-700 mt-0.5" />
               <div>
                 <h3 className="font-semibold text-yellow-900">{t("inventory.low-stock-alert")}</h3>
                 <p className="text-sm text-yellow-700 mt-1">
@@ -727,7 +727,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       </div>
 
       <Tabs defaultValue="on-hand" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="h-auto flex-wrap w-full justify-start">
           <TabsTrigger value="on-hand" className="gap-2">
             <Package className="w-4 h-4" />
             {t("inventory.on-hand")} ({formatNumber(filteredInventory.length)})
@@ -1113,7 +1113,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-yellow-500" />
+              <Sparkles className="w-5 h-5 text-yellow-700" />
               {t("inventory.ai-insights")}
             </DialogTitle>
           </DialogHeader>
@@ -1151,6 +1151,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={t("a11y.inventory.previous-photo")}
                         className="absolute start-2 top-1/2 -translate-y-1/2"
                         onClick={() =>
                           setSelectedImageIndex((prev) => (prev > 0 ? prev - 1 : productImages.length - 1))
@@ -1161,6 +1162,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={t("a11y.inventory.next-photo")}
                         className="absolute end-2 top-1/2 -translate-y-1/2"
                         onClick={() =>
                           setSelectedImageIndex((prev) => (prev < productImages.length - 1 ? prev + 1 : 0))
@@ -1176,6 +1178,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                     <button
                       key={img.image_id}
                       onClick={() => setSelectedImageIndex(idx)}
+                      aria-label={`${t("a11y.inventory.photo")} ${idx + 1}`}
                       className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 ${
                         idx === selectedImageIndex ? "border-primary" : "border-transparent"
                       }`}
@@ -1198,7 +1201,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 <p className="text-muted-foreground">{t("photo.no-photos")}</p>
               </div>
             )}
-            <div className="flex justify-between items-center pt-4 border-t">
+            <div className="flex justify-between items-center pt-4 border-t flex-wrap gap-2">
               <label className="cursor-pointer">
                 <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                 <Button variant="outline" disabled={isUploadingPhoto} asChild>
@@ -1250,7 +1253,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
               <p className="text-sm text-muted-foreground">
                 This will remove the item from inventory and create a credit memo with the supplier for the total value.
               </p>
-              <div className="flex gap-2 justify-end">
+              <div className="flex flex-wrap gap-2 justify-end">
                 <Button
                   variant="outline"
                   onClick={() => setRemoveReturnedItemDialog(false)}
@@ -1306,7 +1309,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 This will add the returned quantity back into sellable warehouse stock and remove it from the
                 Returns list. No supplier credit will be created.
               </p>
-              <div className="flex gap-2 justify-end">
+              <div className="flex flex-wrap gap-2 justify-end">
                 <Button
                   variant="outline"
                   onClick={() => setRestockReturnedItemDialog(false)}
@@ -1437,7 +1440,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
               />
             </div>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
               onClick={() => {
@@ -1473,7 +1476,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
               />
             </div>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
               onClick={() => {

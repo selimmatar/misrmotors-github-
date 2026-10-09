@@ -62,7 +62,7 @@ export function GoodsReceiptTrackingModule() {
 
   const getDiscrepancyIcon = (type: string | null) => {
     if (!type) return null
-    return <AlertCircle className="w-4 h-4 text-red-500" />
+    return <AlertCircle className="w-4 h-4 text-red-700" />
   }
 
   if (loading) {
@@ -78,7 +78,7 @@ export function GoodsReceiptTrackingModule() {
       />
 
       {/* Filters */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           variant={filterStatus === "all" ? "default" : "outline"}
           onClick={() => setFilterStatus("all")}
@@ -114,13 +114,13 @@ export function GoodsReceiptTrackingModule() {
         ) : (
           filteredReceipts.map((receipt) => (
             <Card key={receipt.id} className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
+              <div className="flex items-start justify-between flex-wrap gap-2">
+                <div className="flex-1 min-w-0 break-words">
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="font-semibold text-lg">{receipt.grnNumber}</h3>
                     <StatusBadge status={receipt.status} />
                     {receipt.lines.some((l) => l.discrepancyType) && (
-                      <div className="flex items-center gap-1 text-red-600">
+                      <div className="flex items-center gap-1 text-red-700">
                         <AlertCircle className="w-4 h-4" />
                         <span className="text-sm">Has Issues</span>
                       </div>
@@ -146,7 +146,7 @@ export function GoodsReceiptTrackingModule() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Discrepancies</span>
-                      <p className={`font-medium ${receipt.lines.filter((l) => l.discrepancyType).length > 0 ? 'text-red-600 text-lg' : ''}`}>
+                      <p className={`font-medium ${receipt.lines.filter((l) => l.discrepancyType).length > 0 ? 'text-red-700 text-lg' : ''}`}>
                         {receipt.lines.filter((l) => l.discrepancyType).length}
                       </p>
                     </div>
@@ -183,8 +183,8 @@ export function GoodsReceiptTrackingModule() {
                           line.discrepancyType ? "bg-red-50 border-red-200" : "bg-gray-50"
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
+                        <div className="flex items-start justify-between gap-4 flex-wrap">
+                          <div className="flex-1 min-w-0 break-words">
                             <div className="flex items-center gap-2 mb-1">
                               <p className="font-medium">{line.productName}</p>
                               {line.discrepancyType && (
@@ -195,7 +195,7 @@ export function GoodsReceiptTrackingModule() {
                             </div>
                             <p className="text-sm text-muted-foreground mb-2">SKU: {line.sku}</p>
 
-                            <div className="grid grid-cols-3 gap-4 text-sm mb-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-2">
                               <div>
                                 <span className="text-muted-foreground">Ordered</span>
                                 <p className="font-medium">{line.quantityOrdered} units</p>
