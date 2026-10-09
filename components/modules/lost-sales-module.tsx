@@ -2,13 +2,19 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { PackageX, TrendingDown, Plus, AlertTriangle, Loader2, Trash2, Package, Users } from "lucide-react"
+import { PackageX, Plus, AlertTriangle, Loader2, Trash2 } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { ErpTable, NumHead, NumCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
+import { formatDate } from "@/lib/format"
 
 interface LostSale {
   lost_sale_id: number
@@ -38,7 +44,7 @@ interface TopLostItem {
 }
 
 export function LostSalesModule() {
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const { lostSales, addLostSale, deleteLostSale, loadData } = useAppContext()
   const [summary, setSummary] = useState({
     totalRequests: 0,
@@ -172,26 +178,31 @@ export function LostSalesModule() {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        <span className="ml-2">{t("loading")}</span>
+        <span className="ms-2">{t("loading")}</span>
       </div>
     )
   }
 
+  const renderRowActions = (sale: any) => (
+    <Button variant="ghost" size="sm" onClick={() => handleDelete(sale.lost_sale_id)}>
+      <Trash2 className="w-4 h-4 text-red-500" />
+    </Button>
+  )
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{t("lost-sales.title")}</h1>
-          <p className="text-muted-foreground mt-2">{t("lost-sales.description")}</p>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        group={t("group.sales")}
+        title={t("lost-sales.title")}
+        subtitle={t("lost-sales.description")}
+        actions={
           <Button variant="outline" onClick={() => setShowAddModal(true)}>
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="w-4 h-4 me-2" />
             {t("lost-sales.add")}
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {error && (
         <div className="flex items-center justify-center">
@@ -203,44 +214,12 @@ export function LostSalesModule() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t("lost-sales.total-requests")}</CardTitle>
-            <TrendingDown className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(summary.totalRequests)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t("lost-sales.total-quantity")}</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(summary.totalQuantity)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t("lost-sales.unique-products")}</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(summary.uniqueProducts)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t("lost-sales.unique-customers")}</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(summary.uniqueCustomers)}</div>
-          </CardContent>
-        </Card>
-      </div>
+      <KpiGrid>
+        <KpiTile label={t("lost-sales.total-requests")} value={formatNumber(summary.totalRequests)} />
+        <KpiTile label={t("lost-sales.total-quantity")} value={formatNumber(summary.totalQuantity)} />
+        <KpiTile label={t("lost-sales.unique-products")} value={formatNumber(summary.uniqueProducts)} />
+        <KpiTile label={t("lost-sales.unique-customers")} value={formatNumber(summary.uniqueCustomers)} />
+      </KpiGrid>
 
       {/* Search */}
       <div className="flex gap-2">
@@ -258,49 +237,53 @@ export function LostSalesModule() {
           <CardTitle>{t("lost-sales.list")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-start p-2">{t("lost-sales.product")}</th>
-                  <th className="text-start p-2">{t("lost-sales.customer")}</th>
-                  <th className="text-start p-2">{t("lost-sales.quantity")}</th>
-                  <th className="text-start p-2">{t("lost-sales.date")}</th>
-                  <th className="text-start p-2">{t("field.email")}</th>
-                  <th className="text-start p-2">{t("field.phone")}</th>
-                  <th className="text-start p-2">{t("field.actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLostSales.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center p-8 text-muted-foreground">
-                      <PackageX className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                      <p>{t("lost-sales.no-data")}</p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredLostSales.map((sale) => (
-                    <tr key={sale.lost_sale_id} className="border-b hover:bg-muted/50">
-                      <td className="p-2 font-medium">{sale.requested_item_name}</td>
-                      <td className="p-2">{sale.customer_name || "-"}</td>
-                      <td className="p-2">{formatNumber(sale.requested_quantity)}</td>
-                      <td className="p-2">
-                        {new Date(sale.request_date).toLocaleDateString(language === "ar" ? "ar-EG" : "en-US")}
-                      </td>
-                      <td className="p-2">{sale.customer_email || "-"}</td>
-                      <td className="p-2">{sale.customer_phone || "-"}</td>
-                      <td className="p-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(sale.lost_sale_id)}>
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveList
+            rows={filteredLostSales}
+            empty={
+              <div className="p-8 text-center text-muted-foreground">
+                <PackageX className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>{t("lost-sales.no-data")}</p>
+              </div>
+            }
+            table={
+              <div className="overflow-x-auto">
+                <ErpTable>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t("lost-sales.product")}</TableHead>
+                      <TableHead>{t("lost-sales.customer")}</TableHead>
+                      <NumHead>{t("lost-sales.quantity")}</NumHead>
+                      <TableHead>{t("lost-sales.date")}</TableHead>
+                      <TableHead>{t("field.email")}</TableHead>
+                      <TableHead>{t("field.phone")}</TableHead>
+                      <ActionsHead>{t("field.actions")}</ActionsHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredLostSales.map((sale) => (
+                      <TableRow key={sale.lost_sale_id} className="hover:bg-muted/50">
+                        <TableCell className="font-medium">{sale.requested_item_name}</TableCell>
+                        <TableCell>{sale.customer_name || "-"}</TableCell>
+                        <NumCell>{formatNumber(sale.requested_quantity)}</NumCell>
+                        <TableCell>{formatDate(sale.request_date, language)}</TableCell>
+                        <TableCell>{sale.customer_email || "-"}</TableCell>
+                        <TableCell>{sale.customer_phone || "-"}</TableCell>
+                        <ActionsCell>{renderRowActions(sale)}</ActionsCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </ErpTable>
+              </div>
+            }
+            card={(sale: any) => (
+              <ListCard
+                id={sale.requested_item_name}
+                amount={formatNumber(sale.requested_quantity)}
+                party={sale.customer_name || "-"}
+                actions={renderRowActions(sale)}
+              />
+            )}
+          />
         </CardContent>
       </Card>
 

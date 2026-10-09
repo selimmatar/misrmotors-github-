@@ -60,7 +60,7 @@ import { OrderSummaryCard } from "@/components/order-summary-card"
 import { Badge } from "@/components/ui/badge"
 import { SOTypeSelector, SOTypeBadge } from "@/components/so-type"
 import { Label } from "@/components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DeliveryPermitCard, PermitStatusBadge } from "@/components/delivery-permit"
 import { QuotationRequestUploadWidget } from "@/components/sales-order/quotation-request-upload-widget"
 import { SalesOrderMaintenanceTab } from "@/components/sales-order/maintenance-tab"
@@ -72,14 +72,24 @@ import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { EditApprovedOrderDialog } from "@/components/sales-order/edit-approved-order-dialog"
 import { toSalesOrderPaymentTerms } from "@/lib/payment-type"
 import { isPlannedPermit } from "@/lib/dp-planned"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { ApprovalSteps } from "@/components/erp/approval-steps"
+import { Money } from "@/components/erp/money"
+import { formatDate, formatMoney } from "@/lib/format"
 
 // Declare SalesOrderModuleProps type
 type SalesOrderModuleProps = {
   userRole: UserRole
+  // Rendered inside another screen's page header: skip our own header and keep only the actions.
+  embedded?: boolean
 }
 
-export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModuleProps) {
+  const { t, formatNumber, language } = useI18n()
   const {
     salesOrders,
     setSalesOrders,
@@ -351,28 +361,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
   const getCustomerName = (customerId: string) => {
     return customers.find((c) => c.id === customerId)?.name || "Unknown"
-  }
-
-  const getStatusColor = (status: string) => {
-  const colors: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-800",
-  pending: "bg-yellow-100 text-yellow-800",
-  pending_accountant: "bg-amber-100 text-amber-800",
-  accountant_approved: "bg-blue-100 text-blue-800",
-  ready_for_delivery: "bg-indigo-100 text-indigo-800",
-  out_for_delivery: "bg-purple-100 text-purple-800",
-  delivered: "bg-green-100 text-green-800",
-  shipped: "bg-green-100 text-green-800",
-  cancelled: "bg-red-100 text-red-800",
-  rejected: "bg-red-100 text-red-800",
-  approved: "bg-blue-100 text-blue-800",
-  pending_warehouse: "bg-orange-100 text-orange-800",
-  partially_paid: "bg-cyan-100 text-cyan-800",
-  paid: "bg-emerald-100 text-emerald-800",
-  not_delivered: "bg-gray-100 text-gray-800",
-  partially_delivered: "bg-yellow-100 text-yellow-800",
-  }
-  return colors[status] || "bg-gray-100 text-gray-800"
   }
 
   // Overall delivery-fulfillment status for a Sales Order, always one of exactly
@@ -966,7 +954,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                 variant="outline"
                 className="border-blue-300 bg-transparent"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-4 h-4 me-2" />
                 {t("action.add")}
               </Button>
             </div>
@@ -1062,7 +1050,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                 variant="outline"
                 className="border-orange-300 bg-transparent"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-4 h-4 me-2" />
                 {t("action.add")}
               </Button>
             </div>
@@ -1173,7 +1161,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
               }}
               variant="outline"
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4 me-2" />
               Add from Inventory
             </Button>
             <Button
@@ -1193,7 +1181,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
               }}
               variant="secondary"
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4 me-2" />
               Add Outsourced Item
             </Button>
           </div>
@@ -1698,53 +1686,127 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
   const handleCreateDpFromDialog_alias = handleCreateDpFromDialog // Alias for clarity in DialogFooter
 
+  const headerActions = (
+    /* Changed button layout to use the new report generator state and translated button text */
+    <Button variant="outline" onClick={() => setShowReportGenerator(true)}>
+      {t("report.generate")}
+    </Button>
+  )
+
+  // One action set shared by the table row and the phone card.
+  const renderRowActions = (order: any) => (
+    <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                handlePrintSalesOrder(order)
+              }}
+              title="Print Sales Order"
+            >
+              <Printer className="w-4 h-4" /> Print SO
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)} title="View Details">
+              <Eye className="w-4 h-4" /> View
+            </Button>
+      {getSODeliveryStatus(order) !== "delivered" && (
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => e.stopPropagation()}
+                title="Print a report of items not yet delivered to the customer"
+              >
+                <PackageX className="w-4 h-4" /> Missing Items <ChevronDown className="w-3 h-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, false)}>
+                Print with Unit Cost
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, true)}>
+                Print without Unit Cost (hide cost)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={(e) => {
+          e.stopPropagation()
+          handleOpenCreateDpDialog(order)
+        }}
+        title={
+          order.status === "draft" 
+            ? "Approve quotation first" 
+            : order.status === "pending_accountant"
+            ? "Waiting for accountant approval"
+            : "Create Delivery Permit"
+        }
+        disabled={order.status === "draft" || order.status === "pending_accountant" || order.status === "pending" || order.status === "pending_ceo"}
+      >
+        <FileText className="w-4 h-4" /> Create DP
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={(e) => {
+          e.stopPropagation()
+          setSelectedOrder(order)
+        }}
+        title="Manage Maintenance for this order"
+      >
+        <Wrench className="w-4 h-4" /> Maintenance
+      </Button>
+      {showEditButton(order) && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation()
+            setEditingOrder(order)
+          }}
+          disabled={!canEditApprovedOrder(order)}
+          title={
+            canEditApprovedOrder(order)
+              ? hasReturns(order)
+                ? "Edit this order after a return (keep delivered items, add the replacement as a new line)"
+                : "Edit this approved order (items, customer, payment terms)"
+              : "Cannot edit - a delivery permit has already been created for this order"
+          }
+        >
+          <Pencil className="w-4 h-4" /> Edit
+        </Button>
+      )}
+    </>
+  )
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{t("so.title")}</h1>
-          <p className="text-muted-foreground mt-2">{t("so.description")}</p>
-        </div>
-        {/* Changed button layout to use the new report generator state and translated button text */}
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowReportGenerator(true)}>
-            {t("report.generate")}
-          </Button>
-        </div>
-      </div>
+      {embedded ? (
+        <div className="flex flex-wrap justify-end gap-2">{headerActions}</div>
+      ) : (
+        <PageHeader group={t("group.sales")} title={t("so.title")} subtitle={t("so.description")} actions={headerActions} />
+      )}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">{t("so.total-orders")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(salesOrders.length)}</div>
-          </CardContent>
-        </Card>
-        <Card
-          className="cursor-pointer hover:shadow-md transition-shadow"
+      <KpiGrid className="lg:grid-cols-3">
+        <KpiTile label={t("so.total-orders")} value={formatNumber(salesOrders.length)} />
+        <KpiTile
+          label={t("so.pending-orders")}
+          value={formatNumber(pendingOrders.length)}
+          sub={t("click-to-view")}
           onClick={() => setShowPendingOrdersDialog(true)}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">{t("so.pending-orders")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{formatNumber(pendingOrders.length)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{t("click-to-view")}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">{t("so.total-value")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatCurrency(salesOrders.reduce((sum, so) => sum + so.total, 0))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        />
+        <KpiTile
+          label={`${t("so.total-value")} (EGP)`}
+          value={<Money value={salesOrders.reduce((sum, so) => sum + so.total, 0)} />}
+        />
+      </KpiGrid>
 
       <Dialog open={showPendingOrdersDialog} onOpenChange={setShowPendingOrdersDialog}>
         <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-y-auto">
@@ -1764,11 +1826,11 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-muted">
-                    <th className="border p-2 text-left">{t("so-number")}</th>
-                    <th className="border p-2 text-left">{t("field.customer")}</th>
-                    <th className="border p-2 text-left">{t("field.status")}</th>
-                    <th className="border p-2 text-left">{t("field.date")}</th>
-                    <th className="border p-2 text-right">{t("field.total")}</th>
+                    <th className="border p-2 text-start">{t("so-number")}</th>
+                    <th className="border p-2 text-start">{t("field.customer")}</th>
+                    <th className="border p-2 text-start">{t("field.status")}</th>
+                    <th className="border p-2 text-start">{t("field.date")}</th>
+                    <th className="border p-2 text-end">{t("field.total")} (EGP)</th>
                     <th className="border p-2 text-center">{t("field.actions")}</th>
                   </tr>
                 </thead>
@@ -1778,10 +1840,10 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                       <td className="border p-2 font-medium">{order.soNumber}</td>
                       <td className="border p-2">{getCustomerName(order.customerId)}</td>
                       <td className="border p-2">
-                        <Badge className={getStatusColor(order.status)}>{t(`status.${order.status}`)}</Badge>
+                        <StatusBadge status={order.status} label={t(`status.${order.status}`)} />
                       </td>
-                      <td className="border p-2">{order.orderDate}</td>
-                      <td className="border p-2 text-right">{formatCurrency(order.total)}</td>
+                      <td className="border p-2">{formatDate(order.orderDate, language)}</td>
+                      <td className="border p-2 text-end"><Money value={order.total} /></td>
                       <td className="border p-2 text-center">
                         <Button
                           size="sm"
@@ -1816,10 +1878,10 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
             </div>
             {/* Added search input and translated placeholder */}
             <div className="relative w-64">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute start-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={t("action.search")}
-                className="pl-8"
+                className="ps-8"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -1827,131 +1889,59 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                {/* Translated table headers */}
-                <TableRow>
-                  <TableHead className="p-2">{t("so.number")}</TableHead>
-                  <TableHead className="p-2">{t("so.customer")}</TableHead>
-                  <TableHead className="p-2">{t("so.order-date")}</TableHead>
-                  <TableHead className="p-2">{t("so.delivery-date")}</TableHead>
-                  <TableHead className="p-2">{t("so.items")}</TableHead>
-                  <TableHead className="p-2">{t("so.total-amount")}</TableHead>
-                  <TableHead className="p-2">{t("field.status")}</TableHead>
-                  <TableHead className="p-2 text-right">{t("field.actions")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredOrdersBySearch.map((order) => (
-                  <TableRow key={order.id} className="border-b hover:bg-muted/50">
-                    <TableCell className="p-2 font-medium">{order.soNumber}</TableCell>
-                    <TableCell className="p-2">{getCustomerName(order.customerId)}</TableCell>
-                    <TableCell className="p-2">{order.orderDate}</TableCell>
-                    <TableCell className="p-2">{order.deliveryDate || "-"}</TableCell>
-                    <TableCell className="p-2">{formatNumber(order.items?.length || 0)}</TableCell>
-                    <TableCell className="p-2">{formatCurrency(order.total)}</TableCell>
-                    <TableCell className="p-2">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(getSODeliveryStatus(order))}`}>
-                        {t(`so.status.${getSODeliveryStatus(order)}`)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="p-2 text-right">
-                      <div className="flex gap-2 justify-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handlePrintSalesOrder(order)
-                          }}
-                          title="Print Sales Order"
-                        >
-                          <Printer className="w-4 h-4" /> Print SO
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)} title="View Details">
-                          <Eye className="w-4 h-4" /> View
-                        </Button>
-                  {getSODeliveryStatus(order) !== "delivered" && (
-                    <>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Print a report of items not yet delivered to the customer"
-                          >
-                            <PackageX className="w-4 h-4" /> Missing Items <ChevronDown className="w-3 h-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                          <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, false)}>
-                            Print with Unit Cost
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, true)}>
-                            Print without Unit Cost (hide cost)
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleOpenCreateDpDialog(order)
-                    }}
-                    title={
-                      order.status === "draft" 
-                        ? "Approve quotation first" 
-                        : order.status === "pending_accountant"
-                        ? "Waiting for accountant approval"
-                        : "Create Delivery Permit"
-                    }
-                    disabled={order.status === "draft" || order.status === "pending_accountant" || order.status === "pending" || order.status === "pending_ceo"}
-                  >
-                    <FileText className="w-4 h-4" /> Create DP
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectedOrder(order)
-                    }}
-                    title="Manage Maintenance for this order"
-                  >
-                    <Wrench className="w-4 h-4" /> Maintenance
-                  </Button>
-                  {showEditButton(order) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setEditingOrder(order)
-                      }}
-                      disabled={!canEditApprovedOrder(order)}
-                      title={
-                        canEditApprovedOrder(order)
-                          ? hasReturns(order)
-                            ? "Edit this order after a return (keep delivered items, add the replacement as a new line)"
-                            : "Edit this approved order (items, customer, payment terms)"
-                          : "Cannot edit - a delivery permit has already been created for this order"
-                      }
-                    >
-                      <Pencil className="w-4 h-4" /> Edit
-                    </Button>
-                  )}
-                      </div>
-                    </TableCell>
+          <ResponsiveList
+            rows={filteredOrdersBySearch}
+            table={
+              <ErpTable>
+                <TableHeader>
+                  {/* Translated table headers */}
+                  <TableRow>
+                    <TableHead className="p-2">{t("so.number")}</TableHead>
+                    <TableHead className="p-2">{t("so.customer")}</TableHead>
+                    <TableHead className="p-2">{t("so.order-date")}</TableHead>
+                    <TableHead className="p-2">{t("so.delivery-date")}</TableHead>
+                    <NumHead className="p-2">{t("so.items")}</NumHead>
+                    <NumHead className="p-2">{t("so.total-amount")} (EGP)</NumHead>
+                    <TableHead className="p-2">{t("field.status")}</TableHead>
+                    <ActionsHead className="p-2">{t("field.actions")}</ActionsHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {filteredOrdersBySearch.map((order) => (
+                    <TableRow key={order.id} className="border-b hover:bg-muted/50">
+                      <IdCell className="p-2">{order.soNumber}</IdCell>
+                      <TableCell className="p-2">{getCustomerName(order.customerId)}</TableCell>
+                      <TableCell className="p-2">{formatDate(order.orderDate, language)}</TableCell>
+                      <TableCell className="p-2">{formatDate(order.deliveryDate, language)}</TableCell>
+                      <NumCell className="p-2">{formatNumber(order.items?.length || 0)}</NumCell>
+                      <NumCell className="p-2">{formatMoney(order.total, language)}</NumCell>
+                      <TableCell className="p-2">
+                        <StatusBadge
+                          status={getSODeliveryStatus(order)}
+                          label={t(`so.status.${getSODeliveryStatus(order)}`)}
+                        />
+                      </TableCell>
+                      <ActionsCell className="p-2">{renderRowActions(order)}</ActionsCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </ErpTable>
+            }
+            card={(order) => (
+              <ListCard
+                id={order.soNumber}
+                amount={formatMoney(order.total, language)}
+                party={getCustomerName(order.customerId)}
+                status={
+                  <StatusBadge
+                    status={getSODeliveryStatus(order)}
+                    label={t(`so.status.${getSODeliveryStatus(order)}`)}
+                  />
+                }
+                actions={renderRowActions(order)}
+              />
+            )}
+          />
         </CardContent>
       </Card>
 
@@ -1960,6 +1950,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("sales-orders.details")}: {selectedOrder?.soNumber}</DialogTitle>
+            {selectedOrder && <ApprovalSteps status={selectedOrder.status} />}
             <DialogDescription className="sr-only">
               Full details, pricing, payment, and maintenance history for this sales order
             </DialogDescription>
@@ -1968,18 +1959,18 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
             <Tabs defaultValue="maintenance" className="flex-1 overflow-hidden flex flex-col">
               <TabsList className="grid w-full grid-cols-3 bg-muted p-1 h-auto mb-4">
                 <TabsTrigger value="details" className="data-[state=active]:bg-background">
-                  <FileText className="w-4 h-4 mr-2" />
+                  <FileText className="w-4 h-4 me-2" />
                   Order Details
                 </TabsTrigger>
                 <TabsTrigger value="maintenance" className="data-[state=active]:bg-background">
-                  <Wrench className="w-4 h-4 mr-2" />
+                  <Wrench className="w-4 h-4 me-2" />
                   Maintenance
                 </TabsTrigger>
                 <TabsTrigger value="approvals" className="data-[state=active]:bg-background relative">
-                  <CheckCircle className="w-4 h-4 mr-2" />
+                  <CheckCircle className="w-4 h-4 me-2" />
                   Approve Reports
                   {pendingReportsCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold px-1">
+                    <span className="absolute -top-1 -end-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold px-1">
                       {pendingReportsCount}
                     </span>
                   )}
@@ -2004,11 +1995,11 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                   )}
                   <div>
                     <p className="text-sm text-muted-foreground">{t("field.date")}</p>
-                    <p className="font-semibold">{selectedOrder.orderDate}</p>
+                    <p className="font-semibold">{formatDate(selectedOrder.orderDate, language)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">{t("field.status")}</p>
-                    <Badge className={getStatusColor(selectedOrder.status)}>{t(`status.${selectedOrder.status}`)}</Badge>
+                    <StatusBadge status={selectedOrder.status} label={t(`status.${selectedOrder.status}`)} />
                     
                     {/* Show delivery permit fulfillment status */}
                     {selectedOrder.deliveryPermits && selectedOrder.deliveryPermits.length > 0 && (
@@ -2094,7 +2085,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                             </div>
                           </div>
                           <span className="font-semibold whitespace-nowrap">
-                            {item.total.toLocaleString()}
+                            <Money value={item.total} /> EGP
                           </span>
                         </div>
                       )
@@ -2104,7 +2095,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                 <div className="border-t pt-4">
                   <div className="flex justify-between">
                     <span className="font-semibold">Total Amount</span>
-                    <span className="text-lg font-bold">{selectedOrder.total.toLocaleString()}</span>
+                    <span className="text-lg font-bold"><Money value={selectedOrder.total} /> EGP</span>
                   </div>
                 </div>
               </TabsContent>
@@ -2237,7 +2228,7 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                         {item.sku ? `SKU: ${item.sku}` : item.outsourced_name ? "(Outsourced)" : ""}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="text-sm text-muted-foreground">SO Qty: {item.quantity}</p>
                       {deliveredQty > 0 && <p className="text-sm text-orange-600">Delivered: {deliveredQty}</p>}
                       <p className={`text-sm font-medium ${isFullyDelivered ? "text-green-600" : "text-blue-600"}`}>

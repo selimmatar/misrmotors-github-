@@ -12,7 +12,23 @@ const read = (f: string) => fs.readFileSync(path.join(REPO, f), "utf8")
 const FIXTURE = path.join(REPO, "lib/__tests__/fixtures/ui-1b/protected.json")
 
 // Each module task appends its paths.
-const MIGRATED: string[] = []
+const MIGRATED: string[] = [
+  "components/modules/sales-order-module.tsx",
+  "components/modules/sales-quotations-hub-module.tsx",
+  "components/modules/sales-quotation-module.tsx",
+  "components/modules/approve-sales-quotations-module.tsx",
+  "components/modules/accounts-receivable-module.tsx",
+  "components/modules/accounts-payable-module.tsx",
+  "components/modules/payment-schedule-module.tsx",
+  "components/modules/balance-module.tsx",
+  "components/modules/maintenance-invoices-module.tsx",
+  "components/modules/accountant-module.tsx",
+  "components/accounting/maintenance-invoice-tab.tsx",
+  "components/modules/approve-sales-orders-module.tsx",
+  "components/modules/delivery-permits-module.tsx",
+  "components/modules/customer-module.tsx",
+  "components/modules/lost-sales-module.tsx",
+]
 // Allowed leftover BANNED matches per file; each entry needs a ledgered ruling.
 const ALLOW: Record<string, Partial<Record<keyof typeof BANNED, number>>> = {}
 // Files that render inside another screen and carry no page header of their own.
@@ -52,4 +68,53 @@ test("migrated modules use the shared blocks", () => {
     for (const [i, line] of src.split("\n").entries()) if (RTL_BAD.test(line)) problems.push(`${f}:${i + 1}: physical class`)
   }
   assert.deepEqual(problems, [], problems.join("\n"))
+})
+
+test("sales order shows approval steps in its details dialog and can be embedded", () => {
+  const s = read("components/modules/sales-order-module.tsx")
+  assert.match(s, /<ApprovalSteps status=\{selectedOrder\.status\}/); assert.match(s, /embedded\?: boolean/)
+})
+
+test("hub owns the page header and embeds its three tabs", () => {
+  const hub = read("components/modules/sales-quotations-hub-module.tsx")
+  for (const m of ["SalesOrderModule", "SalesQuotationModule", "ApproveSalesQuotationsModule"]) assert.match(hub, new RegExp(`<${m}[^>]*\\bembedded\\b`), m)
+  assert.match(hub, /title=\{t\("module\.sales-orders"\)\}/)
+  for (const f of ["sales-quotation", "approve-sales-quotations"]) assert.match(read(`components/modules/${f}-module.tsx`), /embedded\?: boolean/, f)
+})
+
+test("AR keeps its whole-row click on the phone card", () => {
+  const s = read("components/modules/accounts-receivable-module.tsx")
+  assert.match(s, /<ListCard[\s\S]{0,400}?onClick=/); assert.match(s, /renderRowActions\(/)
+})
+
+test("AP: three clickable tiles, total balance is not", () => {
+  const s = read("components/modules/accounts-payable-module.tsx")
+  const tiles = s.split("<KpiTile").slice(1).map((c) => c.split("</KpiGrid>")[0])
+  assert.equal(tiles.length, 4); assert.equal(tiles.filter((c) => /\bonClick=/.test(c)).length, 3)
+  assert.doesNotMatch(tiles[3], /\bonClick=/)
+  assert.match(s, /title=\{t\("ap\.title"\)\}/)
+})
+
+test("maintenance screen has one heading; accountant embed unchanged", () => {
+  assert.match(read("components/modules/maintenance-invoices-module.tsx"), /<MaintenanceInvoiceTab showHeading=\{false\}/)
+  assert.match(read("components/accounting/maintenance-invoice-tab.tsx"), /showHeading = true/)
+  assert.match(read("components/modules/accountant-module.tsx"), /<MaintenanceInvoiceTab\s*\/>/)
+})
+
+test("approve orders uses the module title; permits keep their own labels", () => {
+  const a = read("components/modules/approve-sales-orders-module.tsx")
+  assert.match(a, /t\("module\.approve-sales-orders"\)/); assert.doesNotMatch(a, /t\("approve\.(title|description)"\)/)
+  const d = read("components/modules/delivery-permits-module.tsx")
+  assert.doesNotMatch(d, /<PermitStatusBadge/); assert.match(d, /label=\{t\(`permit\.status\./)
+})
+
+test("missing title keys fall back to the module title; missing subtitles are dropped", () => {
+  const c = read("components/modules/customer-module.tsx")
+  assert.match(c, /title=\{t\("module\.customers"\)\}/); assert.doesNotMatch(c, /t\("customer\.(title|description)"\)/)
+  const b = read("components/modules/balance-module.tsx")
+  assert.match(b, /title=\{t\("module\.balance"\)\}/); assert.doesNotMatch(b, /t\("balance\.(title|description)"\)/)
+})
+
+test("permit status badge survives a missing status", () => {
+  assert.match(read("components/modules/delivery-permits-module.tsx"), /\(permit\.status \|\| "DRAFT"\)/)
 })
