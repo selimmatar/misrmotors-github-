@@ -160,7 +160,7 @@ test("1c tones", () => {
     returned: "waiting", near_reorder: "waiting", healthy: "done", over: "waiting", short: "danger", match: "done",
     pass: "done", fail: "danger", warn: "waiting", valid: "done", mismatch: "danger", excellent: "done",
     good: "approved", fair: "waiting", poor: "danger", urgent: "danger", high: "danger", medium: "waiting",
-    low: "neutral", busy: "waiting", available: "done",
+    low: "neutral", busy: "waiting", available: "done", submitted: "waiting", cancelled: "danger",
   }
   const problems: string[] = []
   for (const [value, tone] of Object.entries(TONES))
@@ -174,4 +174,39 @@ test("ListCard has a full-width note slot", () => {
   assert.ok(src.includes("note?: ReactNode"), "note?: ReactNode")
   assert.ok(s.includes('data-slot="list-card-note"'), "list-card-note slot")
   assert.ok(s.includes("{note != null &&"), "note rendered only when given")
+})
+
+// Ruling: PageHeader titles and subtitles use translation keys that exist (lib/i18n-context.tsx is not edited, so a
+// missing key is replaced by the screen's `module.<id>` title, or the subtitle is dropped).
+test("1c headers use translation keys that exist", () => {
+  const i18n = read("lib/i18n-context.tsx")
+  const iEn = i18n.indexOf("  en: {"), iAr = i18n.indexOf("  ar: {", iEn)
+  assert.ok(iEn >= 0 && iAr > iEn, "en and ar dictionaries")
+  const en = i18n.slice(iEn, iAr), ar = i18n.slice(iAr)
+  const has = (block: string, key: string) =>
+    new RegExp(`["']${key.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}["']\\s*:`).test(block)
+  const problems: string[] = []
+  for (const f of MODULES_1C) {
+    for (const header of read(f).match(/<PageHeader[\s\S]*?\/>/g) ?? []) {
+      for (const attr of ["title", "subtitle"]) {
+        const key = header.match(new RegExp(`${attr}=\\{t\\("([^"]+)"\\)`))?.[1]
+        if (!key) continue
+        if (!has(en, key)) problems.push(`${f}: ${attr} key "${key}" is not in the English dictionary`)
+        else if (key.startsWith("module.") && !has(ar, key)) problems.push(`${f}: ${attr} key "${key}" is not in the Arabic dictionary`)
+      }
+    }
+  }
+  assert.deepEqual(problems, [], problems.join("\n"))
+})
+
+test("1c header rulings", () => {
+  const titleOf = (f: string) => read(`components/modules/${f}`).match(/<PageHeader[\s\S]*?title=\{t\("([^"]+)"\)/)?.[1]
+  assert.equal(titleOf("supplier-module.tsx"), "module.suppliers")
+  assert.equal(titleOf("pricing-review-module.tsx"), "module.pricing-review")
+  assert.equal(titleOf("goods-receipt-module.tsx"), "module.goods-receipt")
+  assert.equal(titleOf("reorder-suggestions-module.tsx"), "module.reorder-suggestions")
+  assert.equal(titleOf("user-management-module.tsx"), "module.user-management")
+  assert.equal(titleOf("analytics-dashboard.tsx"), "module.analytics")
+  // Ruling 11: the HR status badge uses StatusBadge's default status.* label.
+  assert.ok(!/label=\{getStatusLabel\(/.test(read("components/modules/hr-management-module.tsx")), "hr label")
 })

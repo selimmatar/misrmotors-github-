@@ -173,10 +173,6 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
     }
   }
 
-  const getStatusLabel = (status: string) => {
-    return status.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
-  }
-
   const filteredEmployees = employees.filter((emp) => {
     const matchesSearch =
       emp.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -372,10 +368,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                                 <h3 className="text-lg font-semibold">{employee.full_name}</h3>
                                 <p className="text-sm text-muted-foreground">{employee.employee_number}</p>
                               </div>
-                              <StatusBadge
-                                status={employee.employment_status}
-                                label={getStatusLabel(employee.employment_status)}
-                              />
+                              <StatusBadge status={employee.employment_status} />
                             </div>
 
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
