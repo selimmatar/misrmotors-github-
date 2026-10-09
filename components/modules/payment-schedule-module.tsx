@@ -219,11 +219,11 @@ export function PaymentScheduleModule() {
                       </div>
                       <div>
                         <p className="text-muted-foreground">Paid (EGP)</p>
-                        <p className="font-semibold text-green-600"><Money value={paidAmount} /></p>
+                        <p className="font-semibold text-green-700"><Money value={paidAmount} /></p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Remaining (EGP)</p>
-                        <p className="font-semibold text-orange-600"><Money value={remaining} /></p>
+                        <p className="font-semibold text-orange-700"><Money value={remaining} /></p>
                       </div>
                     </div>
                     
