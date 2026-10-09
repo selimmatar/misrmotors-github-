@@ -26,7 +26,7 @@ export function SalesQuotationsHubModule({ userRole }: SalesQuotationsHubModuleP
     <div className="flex flex-col gap-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-6">
         <PageHeader group={t("group.sales")} title={t("module.sales-orders")}>
-          <TabsList className="w-full justify-start sm:w-auto">
+          <TabsList className="h-auto w-full flex-wrap justify-start sm:w-auto">
             <TabsTrigger value="create-quotations" className="gap-2">
               <Plus className="w-4 h-4" />
               Create Quotations

@@ -198,7 +198,7 @@ export function PaymentScheduleBuilder({
 
         {/* Mode Selection */}
         <Tabs value={scheduleMode} onValueChange={(v) => onScheduleModeChange(v as "AUTO" | "MANUAL")}>
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="h-auto w-full flex-wrap justify-start">
             <TabsTrigger value="AUTO">{t("payment.auto-schedule") || "Auto (Equal Split)"}</TabsTrigger>
             <TabsTrigger value="MANUAL">{t("payment.manual-schedule") || "Manual (Custom)"}</TabsTrigger>
           </TabsList>
@@ -307,6 +307,7 @@ export function PaymentScheduleBuilder({
                             type="button"
                             variant="ghost"
                             size="icon"
+                            aria-label={t("action.delete")}
                             onClick={() => handleRemoveEntry(entry.id)}
                             className="h-8 w-8 text-destructive hover:text-destructive"
                           >
@@ -326,7 +327,7 @@ export function PaymentScheduleBuilder({
           {isHybrid && downPaymentAmount > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">{t("payment.down-payment")}:</span>
-              <span className="font-medium text-green-600">{formatCurrency(downPaymentAmount)}</span>
+              <span className="font-medium text-green-700">{formatCurrency(downPaymentAmount)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm">
@@ -344,19 +345,19 @@ export function PaymentScheduleBuilder({
             <div className="flex items-center gap-2">
               {isValid ? (
                 <>
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <span className="font-medium text-green-600">{formatCurrency(0)}</span>
+                  <CheckCircle2 className="h-4 w-4 text-green-700" />
+                  <span className="font-medium text-green-700">{formatCurrency(0)}</span>
                 </>
               ) : (
                 <>
-                  <AlertCircle className="h-4 w-4 text-red-600" />
-                  <span className="font-medium text-red-600">{formatCurrency(difference)}</span>
+                  <AlertCircle className="h-4 w-4 text-red-700" />
+                  <span className="font-medium text-red-700">{formatCurrency(difference)}</span>
                 </>
               )}
             </div>
           </div>
           {!isValid && (
-            <p className="text-xs text-red-600 flex items-center gap-1">
+            <p className="text-xs text-red-700 flex items-center gap-1">
               <AlertCircle className="h-3 w-3" />
               {t("payment.schedule-must-match") || "Schedule total must match payable amount to save"}
             </p>

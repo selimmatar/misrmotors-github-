@@ -31,7 +31,7 @@ export function SOTypeSelector({ value, onChange, disabled }: SOTypeSelectorProp
           </SelectItem>
           <SelectItem value="MAINTENANCE_PARTS">
             <div className="flex items-center gap-2">
-              <Wrench className="w-4 h-4 text-orange-600" />
+              <Wrench className="w-4 h-4 text-orange-700" />
               <span>{t("so-type.maintenance-parts")}</span>
             </div>
           </SelectItem>

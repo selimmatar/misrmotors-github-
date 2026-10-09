@@ -351,9 +351,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
   const getTrendIcon = (trend: string) => {
     switch (trend) {
       case "rising":
-        return <TrendingUp className="w-4 h-4 text-green-600" />
+        return <TrendingUp className="w-4 h-4 text-green-700" />
       case "declining":
-        return <TrendingDown className="w-4 h-4 text-red-600" />
+        return <TrendingDown className="w-4 h-4 text-red-700" />
       default:
         return <Target className="w-4 h-4 text-blue-600" />
     }
@@ -1041,7 +1041,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           <div className="border rounded-lg p-4 bg-orange-50/50">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
-                <Wrench className="w-5 h-5 text-orange-600" />
+                <Wrench className="w-5 h-5 text-orange-700" />
                 <h3 className="font-semibold text-orange-800">{t("so-type.maintenance-items")}</h3>
               </div>
               <Button
@@ -1848,6 +1848,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                         <Button
                           size="sm"
                           variant="outline"
+                          aria-label={`${t("action.view")} ${order.soNumber}`}
                           onClick={() => {
                             setSelectedOrder(order)
                             setShowPendingOrdersDialog(false)
@@ -1957,7 +1958,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           </DialogHeader>
           {selectedOrder && (
             <Tabs defaultValue="maintenance" className="flex-1 overflow-hidden flex flex-col">
-              <TabsList className="grid w-full grid-cols-3 bg-muted p-1 h-auto mb-4">
+              <TabsList className="h-auto w-full flex-wrap justify-start bg-muted p-1 mb-4">
                 <TabsTrigger value="details" className="data-[state=active]:bg-background">
                   <FileText className="w-4 h-4 me-2" />
                   Order Details
@@ -1970,7 +1971,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                   <CheckCircle className="w-4 h-4 me-2" />
                   Approve Reports
                   {pendingReportsCount > 0 && (
-                    <span className="absolute -top-1 -end-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold px-1">
+                    <span className="absolute -top-1 -end-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-700 text-white text-xs font-bold px-1">
                       {pendingReportsCount}
                     </span>
                   )}
@@ -2230,8 +2231,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                     </div>
                     <div className="text-end">
                       <p className="text-sm text-muted-foreground">SO Qty: {item.quantity}</p>
-                      {deliveredQty > 0 && <p className="text-sm text-orange-600">Delivered: {deliveredQty}</p>}
-                      <p className={`text-sm font-medium ${isFullyDelivered ? "text-green-600" : "text-blue-600"}`}>
+                      {deliveredQty > 0 && <p className="text-sm text-orange-700">Delivered: {deliveredQty}</p>}
+                      <p className={`text-sm font-medium ${isFullyDelivered ? "text-green-700" : "text-blue-600"}`}>
                         Remaining: {remainingQty}
                       </p>
                     </div>
@@ -2250,7 +2251,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                         disabled={isFullyDelivered}
                         className={isFullyDelivered ? "bg-gray-100" : ""}
                       />
-                      {isFullyDelivered && <p className="text-xs text-green-600 mt-1">Fully delivered</p>}
+                      {isFullyDelivered && <p className="text-xs text-green-700 mt-1">Fully delivered</p>}
                     </div>
                     <div>
                       <label className="text-sm font-medium">Unit Price</label>

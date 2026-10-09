@@ -732,6 +732,7 @@ ${renderTotalsBlock(printTotals)}
                         <Button
                           variant="destructive"
                           size="icon"
+                          aria-label={t("action.remove-item")}
                           onClick={() => removeItem(item)}
                           disabled={item.onDeliveryPermit && keptOf(item) > 0}
                           title={
