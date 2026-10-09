@@ -2,7 +2,7 @@
   "task": "t5",
   "modules": {
     "components/modules/warehouse-delivery-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/delivery-permits",
@@ -34,7 +34,7 @@
       ]
     },
     "components/modules/shipping-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/delivery-permits",
@@ -63,11 +63,16 @@
           "re": "/api/delivery-permits/pdf\\?permitId=",
           "min": 1,
           "max": 1
+        },
+        {
+          "re": "const formatDate",
+          "max": 0,
+          "min": 0
         }
       ]
     },
     "components/modules/courier-management-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/couriers",
@@ -97,7 +102,22 @@
         "iso": 0,
         "t": 64,
         "onClick": 10
-      }
+      },
+      "must": [
+        {
+          "re": "<PageHeader",
+          "min": 2
+        },
+        {
+          "re": "<ResponsiveList",
+          "min": 2
+        },
+        {
+          "re": "const formatDate",
+          "max": 0,
+          "min": 0
+        }
+      ]
     }
   }
 }
