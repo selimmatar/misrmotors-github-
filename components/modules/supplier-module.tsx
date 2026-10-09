@@ -29,7 +29,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
   const [showForm, setShowForm] = useState(false)
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
   const [supplierPayments, setSupplierPayments] = useState<any[]>([])
-  const [orderInvoices, setOrderInvoices] = useState<Record<string, any>>({})
+  const [orderInvoices, setOrderInvoices] = useState<Record<string, any[]>>({})
   const [supplierCredits, setSupplierCredits] = useState<Record<string, number>>({})
   const [creditsDetail, setCreditsDetail] = useState<Record<string, any[]>>({})
   const [markingCredits, setMarkingCredits] = useState(false)
@@ -76,9 +76,10 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
         const response = await fetch("/api/accounts-payable")
         if (response.ok) {
           const invoices = await response.json()
-          const invoiceMap: Record<string, any> = {}
+          // A purchase order can have several AP invoices: keep them all.
+          const invoiceMap: Record<string, any[]> = {}
           invoices.forEach((inv: any) => {
-            invoiceMap[inv.poId] = inv
+            (invoiceMap[inv.poId] ||= []).push(inv)
           })
           setOrderInvoices(invoiceMap)
         }
@@ -171,9 +172,9 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
   }
 
   const getOrderPaymentStatus = (order: PurchaseOrder) => {
-    const invoice = orderInvoices[order.id]
+    const invoices = orderInvoices[order.id] || []
 
-    if (!invoice) {
+    if (invoices.length === 0) {
       return {
         status: "no_invoice",
         label: "No Invoice",
@@ -185,22 +186,27 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
       }
     }
 
-    const monthsPaid = invoice.monthsPaid || 0
-    const totalMonths = invoice.installmentMonths || 1
-    const amountPaid = invoice.paidAmount || 0
-    const totalAmount = invoice.amount || order.total
-    const amountDue = totalAmount - amountPaid
+    // Paid status is measured on money across every invoice against the ORDER total (in piastres, so float sums
+    // don't leave a phantom balance); months are shown for information only.
+    const monthsPaid = Math.max(0, ...invoices.map((inv: any) => Number(inv.monthsPaid) || 0))
+    const totalMonths = Math.max(0, ...invoices.map((inv: any) => Number(inv.installmentMonths) || 0)) || 1
+    const amountPaid = invoices.reduce((sum: number, inv: any) => sum + (Number(inv.paidAmount) || 0), 0)
+    const invoiced = invoices.reduce((sum: number, inv: any) => sum + (Number(inv.amount) || 0), 0)
+    const totalAmount = Math.max(Number(order.total) || 0, invoiced)
+    const paidC = Math.round(amountPaid * 100)
+    const totalC = Math.round(totalAmount * 100)
+    const amountDue = Math.max(0, (totalC - paidC) / 100)
 
     let status = "not_paid"
     let label = "Not Paid"
 
-    if (monthsPaid === 0 && amountPaid === 0) {
+    if (paidC <= 0) {
       status = "not_paid"
       label = "Not Paid"
-    } else if (monthsPaid > 0 && monthsPaid < totalMonths) {
+    } else if (paidC < totalC) {
       status = "partially_paid"
       label = "Partially Paid"
-    } else if (monthsPaid >= totalMonths || amountPaid >= totalAmount) {
+    } else {
       status = "fully_paid"
       label = "Fully Paid"
     }
