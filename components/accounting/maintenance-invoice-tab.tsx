@@ -10,8 +10,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { DollarSign, FileText, Eye, CheckCircle, Wrench } from "lucide-react"
+import { DollarSign, FileText, Eye, Wrench } from "lucide-react"
 import { WorkflowStatusBadge, WorkflowTimeline } from "@/components/maintenance/workflow-status-manager"
+import { Money } from "@/components/erp/money"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { useI18n } from "@/lib/i18n-context"
+import { formatDate } from "@/lib/format"
 
 interface ApprovedWorkOrder {
   work_order_id: number
@@ -36,7 +40,8 @@ interface ApprovedWorkOrder {
 
 const fetcher = (url: string) => fetch(url).then(r => r.ok ? r.json() : Promise.reject(r))
 
-export function MaintenanceInvoiceTab() {
+export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: boolean }) {
+  const { language } = useI18n()
   const { data: workOrders = [], mutate } = useSWR<ApprovedWorkOrder[]>(
     "/api/maintenance/work-orders/ready-for-invoice",
     fetcher,
@@ -95,40 +100,27 @@ export function MaintenanceInvoiceTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Maintenance Invoices</h2>
-          <p className="text-muted-foreground">Create invoices for approved maintenance work orders</p>
+      {showHeading && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold">Maintenance Invoices</h2>
+            <p className="text-muted-foreground">Create invoices for approved maintenance work orders</p>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ready for Invoice</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingInvoice.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Total: EGP {pendingInvoice.reduce((sum, wo) => sum + wo.actual_cost, 0).toFixed(2)}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Invoiced</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{invoiced.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Total: EGP {invoiced.reduce((sum, wo) => sum + (wo.invoice_amount || wo.actual_cost), 0).toFixed(2)}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <KpiGrid className="lg:grid-cols-2">
+        <KpiTile
+          label="Ready for Invoice"
+          value={pendingInvoice.length}
+          sub={<>Total: <Money value={pendingInvoice.reduce((sum, wo) => sum + wo.actual_cost, 0)} /> EGP</>}
+        />
+        <KpiTile
+          label="Invoiced"
+          value={invoiced.length}
+          sub={<>Total: <Money value={invoiced.reduce((sum, wo) => sum + (wo.invoice_amount || wo.actual_cost), 0)} /> EGP</>}
+        />
+      </KpiGrid>
 
       <Card>
         <CardHeader>
@@ -152,7 +144,7 @@ export function MaintenanceInvoiceTab() {
                   <TableHead>Sales Order</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Title</TableHead>
-                  <TableHead>Amount</TableHead>
+                  <TableHead>Amount (EGP)</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -164,7 +156,7 @@ export function MaintenanceInvoiceTab() {
                     <TableCell className="font-mono">{order.sales_order_number || "N/A"}</TableCell>
                     <TableCell>{order.customer_name}</TableCell>
                     <TableCell>{order.title}</TableCell>
-                    <TableCell className="font-semibold">EGP {order.actual_cost.toFixed(2)}</TableCell>
+                    <TableCell className="font-semibold"><Money value={order.actual_cost} /></TableCell>
                     <TableCell>
                       <WorkflowStatusBadge currentStage="ready_for_invoice" />
                     </TableCell>
@@ -173,7 +165,7 @@ export function MaintenanceInvoiceTab() {
                         size="sm"
                         onClick={() => setSelectedOrder(order)}
                       >
-                        <FileText className="w-4 h-4 mr-2" />
+                        <FileText className="w-4 h-4 me-2" />
                         Create Invoice
                       </Button>
                     </TableCell>
@@ -226,16 +218,16 @@ export function MaintenanceInvoiceTab() {
                   {/* Cost Breakdown */}
                   <div className="grid grid-cols-3 gap-4 pt-3 border-t">
                     <div className="p-3 bg-muted rounded-md text-center">
-                      <p className="text-xs text-muted-foreground">Labor Cost</p>
-                      <p className="text-lg font-bold">EGP {(selectedOrder.labor_cost || 0).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Labor Cost (EGP)</p>
+                      <p className="text-lg font-bold"><Money value={selectedOrder.labor_cost || 0} /></p>
                     </div>
                     <div className="p-3 bg-muted rounded-md text-center">
-                      <p className="text-xs text-muted-foreground">Parts Cost</p>
-                      <p className="text-lg font-bold">EGP {(selectedOrder.parts_cost || 0).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Parts Cost (EGP)</p>
+                      <p className="text-lg font-bold"><Money value={selectedOrder.parts_cost || 0} /></p>
                     </div>
                     <div className="p-3 bg-primary/10 rounded-md text-center">
-                      <p className="text-xs text-muted-foreground">Total Cost</p>
-                      <p className="text-lg font-bold">EGP {(selectedOrder.actual_cost || 0).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Total Cost (EGP)</p>
+                      <p className="text-lg font-bold"><Money value={selectedOrder.actual_cost || 0} /></p>
                     </div>
                   </div>
 
@@ -251,7 +243,7 @@ export function MaintenanceInvoiceTab() {
                         size="sm"
                         onClick={() => window.open(selectedOrder.uploaded_pdf_url, '_blank')}
                       >
-                        <FileText className="w-4 h-4 mr-2" />
+                        <FileText className="w-4 h-4 me-2" />
                         View Completed Work Order PDF
                       </Button>
                     </div>
@@ -272,7 +264,7 @@ export function MaintenanceInvoiceTab() {
                       onChange={(e) => setInvoiceAmount(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Suggested: EGP {selectedOrder.actual_cost.toFixed(2)}
+                      Suggested: <Money value={selectedOrder.actual_cost} /> EGP
                     </p>
                   </div>
                   
@@ -326,12 +318,12 @@ export function MaintenanceInvoiceTab() {
                       <h4 className="font-semibold text-blue-900 mb-1">Invoice Preview</h4>
                       <div className="space-y-1 text-sm text-blue-700">
                         <p>Customer: <span className="font-semibold">{selectedOrder.customer_name}</span></p>
-                        <p>Amount: <span className="font-semibold">EGP {(parseFloat(invoiceAmount) || selectedOrder.actual_cost).toFixed(2)}</span></p>
+                        <p>Amount: <span className="font-semibold"><Money value={parseFloat(invoiceAmount) || selectedOrder.actual_cost} /> EGP</span></p>
                         <p>Payment Terms: <span className="font-semibold">
                           {paymentTerms === "custom" ? `Net ${customDays} Days` : paymentTerms.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
                         </span></p>
                         <p>Due Date: <span className="font-semibold">
-                          {new Date(Date.now() + (paymentTerms === "custom" ? parseInt(customDays || "0") : parseInt(paymentTerms.split("_")[1] || "0")) * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                          {formatDate(new Date(Date.now() + (paymentTerms === "custom" ? parseInt(customDays || "0") : parseInt(paymentTerms.split("_")[1] || "0")) * 24 * 60 * 60 * 1000), language)}
                         </span></p>
                       </div>
                     </div>
@@ -351,7 +343,7 @@ export function MaintenanceInvoiceTab() {
                   onClick={handleCreateInvoice}
                   disabled={loading}
                 >
-                  <FileText className="w-4 h-4 mr-2" />
+                  <FileText className="w-4 h-4 me-2" />
                   Create Invoice
                 </Button>
               </DialogFooter>

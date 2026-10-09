@@ -3,7 +3,6 @@
 import { useRef, useState } from "react"
 import { useApp } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,13 +10,19 @@ import { Progress } from "@/components/ui/progress"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { Money } from "@/components/erp/money"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
+import { formatDate, formatMoney } from "@/lib/format"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   DollarSign,
   CheckCircle,
   Clock,
-  AlertCircle,
   Calendar,
   Eye,
   XCircle,
@@ -50,7 +55,7 @@ interface PaymentScheduleEntry {
 
 export function AccountsPayableModule() {
   const { supplierInvoices, suppliers, purchaseOrders, user, loadData } = useApp()
-  const { t, formatCurrency, formatDate } = useI18n()
+  const { t, language } = useI18n()
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<SupplierInvoice | null>(null)
   const [paymentReceiptFile, setPaymentReceiptFile] = useState<File | null>(null)
@@ -132,22 +137,6 @@ export function AccountsPayableModule() {
     weekFromNow.setDate(weekFromNow.getDate() + 7)
     if (dueDate <= weekFromNow) return "due-soon"
     return "pending"
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "paid":
-        return "bg-green-100 text-green-700"
-      case "overdue":
-        return "bg-red-100 text-red-700"
-      case "due-soon":
-        return "bg-amber-100 text-amber-700"
-      case "partial":
-      case "partially_paid":
-        return "bg-blue-100 text-blue-700"
-      default:
-        return "bg-gray-100 text-gray-700"
-    }
   }
 
   const getScheduleStatusIcon = (status: string) => {
@@ -679,173 +668,158 @@ export function AccountsPayableModule() {
   }
   }
 
+  const renderRowActions = (invoice: SupplierInvoice) => {
+    const status = getInvoiceStatus(invoice)
+    return (
+      <>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => handleViewPaymentDetails(invoice)}
+          title={t("ap.payment-details") || "Payment Details"}
+        >
+          <CreditCard className="w-4 h-4" />
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => handleViewSchedule(invoice)}>
+          <Calendar className="w-4 h-4 me-1" />
+          {t("ar.view-schedule")}
+        </Button>
+        {status !== "paid" && (
+          <Button
+            size="sm"
+            onClick={() => {
+              setSelectedInvoiceForPayment(invoice)
+              openPaymentForm((invoice.amount || 0) - (invoice.paidAmount || 0))
+              setPaymentDialogOpen(true)
+            }}
+          >
+            <DollarSign className="w-4 h-4 me-1" />
+            {t("action.pay")}
+          </Button>
+        )}
+        <Button size="sm" variant="outline" onClick={() => handleDownloadInvoicePDF(invoice)}>
+          <FileText className="w-4 h-4 me-2" />
+          {t("action.print-invoice") || "Print Invoice"}
+        </Button>
+      </>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card
-          className="cursor-pointer hover:shadow-md transition-shadow border-red-200"
+      <PageHeader group={t("group.finance")} title={t("ap.title")} />
+
+      {/* Summary tiles */}
+      <KpiGrid>
+        <KpiTile
+          label={t("ap.overdue")}
+          value={overdueInvoices.length}
+          sub={
+            <>
+              <Money
+                value={overdueInvoices.reduce((sum, inv) => sum + (inv.amount || 0) - (inv.paidAmount || 0), 0)}
+              />{" "}
+              EGP
+            </>
+          }
           onClick={() => openWidgetDialog("overdue")}
-        >
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">{t("ap.overdue")}</p>
-                <p className="text-2xl font-bold text-red-600">{overdueInvoices.length}</p>
-                <p className="text-sm text-red-600">
-                  {formatCurrency(
-                    overdueInvoices.reduce((sum, inv) => sum + (inv.amount || 0) - (inv.paidAmount || 0), 0),
-                  )}
-                </p>
-              </div>
-              <AlertCircle className="w-8 h-8 text-red-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="cursor-pointer hover:shadow-md transition-shadow border-amber-200"
+        />
+        <KpiTile
+          label={t("ap.due-soon")}
+          value={dueSoonInvoices.length}
+          sub={
+            <>
+              <Money
+                value={dueSoonInvoices.reduce((sum, inv) => sum + (inv.amount || 0) - (inv.paidAmount || 0), 0)}
+              />{" "}
+              EGP
+            </>
+          }
           onClick={() => openWidgetDialog("due-soon")}
-        >
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">{t("ap.due-soon")}</p>
-                <p className="text-2xl font-bold text-amber-600">{dueSoonInvoices.length}</p>
-                <p className="text-sm text-amber-600">
-                  {formatCurrency(
-                    dueSoonInvoices.reduce((sum, inv) => sum + (inv.amount || 0) - (inv.paidAmount || 0), 0),
-                  )}
-                </p>
-              </div>
-              <Clock className="w-8 h-8 text-amber-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="cursor-pointer hover:shadow-md transition-shadow border-green-200"
+        />
+        <KpiTile
+          label={t("ap.paid")}
+          value={paidInvoices.length}
+          sub={
+            <>
+              <Money value={totalPaid} /> EGP
+            </>
+          }
           onClick={() => openWidgetDialog("paid")}
-        >
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">{t("ap.paid")}</p>
-                <p className="text-2xl font-bold text-green-600">{paidInvoices.length}</p>
-                <p className="text-sm text-green-600">{formatCurrency(totalPaid)}</p>
-              </div>
-              <CheckCircle className="w-8 h-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-blue-200">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">{t("ap.total-balance")}</p>
-                <p className="text-2xl font-bold text-blue-600">{formatCurrency(totalBalance)}</p>
-                <p className="text-sm text-muted-foreground">
-                  {supplierInvoices.length} {t("ap.invoices")}
-                </p>
-              </div>
-              <DollarSign className="w-8 h-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        />
+        <KpiTile
+          label={t("ap.total-balance") + " (EGP)"}
+          value={<Money value={totalBalance} />}
+          sub={`${supplierInvoices.length} ${t("ap.invoices")}`}
+        />
+      </KpiGrid>
 
       {/* Invoices Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("ap.invoices")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("ap.invoice-number")}</TableHead>
-                <TableHead>{t("field.supplier")}</TableHead>
-                <TableHead>{t("field.po-number")}</TableHead>
-                <TableHead>{t("field.payment-type")}</TableHead>
-                <TableHead>{t("field.due-date")}</TableHead>
-                <TableHead className="text-right">{t("field.amount")}</TableHead>
-                <TableHead className="text-right">{t("field.paid")}</TableHead>
-                <TableHead className="text-right">{t("field.balance")}</TableHead>
-                <TableHead>{t("field.status")}</TableHead>
-                <TableHead>{t("field.actions")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {supplierInvoices.map((invoice) => {
-                const status = getInvoiceStatus(invoice)
-                const balance = (invoice.amount || 0) - (invoice.paidAmount || 0)
-                const paymentType = getPOPaymentType(invoice.poId)
-
-                return (
-                  <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-                    <TableCell>{getSupplierName(invoice.supplierId)}</TableCell>
-                    <TableCell>{getPONumber(invoice.poId)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {paymentType}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{formatDate(invoice.dueDate)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(invoice.amount || 0)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(invoice.paidAmount || 0)}</TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(balance)}</TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(status)}>{t(`status.${status}`)}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleViewPaymentDetails(invoice)}
-                          title={t("ap.payment-details") || "Payment Details"}
-                        >
-                          <CreditCard className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleViewSchedule(invoice)}>
-                          <Calendar className="w-4 h-4 mr-1" />
-                          {t("ar.view-schedule")}
-                        </Button>
-                        {status !== "paid" && (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setSelectedInvoiceForPayment(invoice)
-                              openPaymentForm((invoice.amount || 0) - (invoice.paidAmount || 0))
-                              setPaymentDialogOpen(true)
-                            }}
-                          >
-                            <DollarSign className="w-4 h-4 mr-1" />
-                            {t("action.pay")}
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" onClick={() => handleDownloadInvoicePDF(invoice)}>
-                          <FileText className="w-4 h-4 mr-2" />
-                          {t("action.print-invoice") || "Print Invoice"}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-              {supplierInvoices.length === 0 && (
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold">{t("ap.invoices")}</h2>
+        <ResponsiveList
+          rows={supplierInvoices}
+          empty={<div className="py-8 text-center text-muted-foreground">{t("message.no-invoices")}</div>}
+          table={
+            <ErpTable>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                    {t("message.no-invoices")}
-                  </TableCell>
+                  <TableHead>{t("ap.invoice-number")}</TableHead>
+                  <TableHead>{t("field.supplier")}</TableHead>
+                  <TableHead>{t("field.po-number")}</TableHead>
+                  <TableHead>{t("field.payment-type")}</TableHead>
+                  <TableHead>{t("field.due-date")}</TableHead>
+                  <NumHead>{t("field.amount")} (EGP)</NumHead>
+                  <NumHead>{t("field.paid")} (EGP)</NumHead>
+                  <NumHead>{t("field.balance")} (EGP)</NumHead>
+                  <TableHead>{t("field.status")}</TableHead>
+                  <ActionsHead />
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {supplierInvoices.map((invoice) => {
+                  const status = getInvoiceStatus(invoice)
+                  const balance = (invoice.amount || 0) - (invoice.paidAmount || 0)
+                  const paymentType = getPOPaymentType(invoice.poId)
+
+                  return (
+                    <TableRow key={invoice.id}>
+                      <IdCell>{invoice.invoiceNumber}</IdCell>
+                      <TableCell>{getSupplierName(invoice.supplierId)}</TableCell>
+                      <TableCell>{getPONumber(invoice.poId)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">
+                          {paymentType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{formatDate(invoice.dueDate, language)}</TableCell>
+                      <NumCell>{formatMoney(invoice.amount || 0, language)}</NumCell>
+                      <NumCell>{formatMoney(invoice.paidAmount || 0, language)}</NumCell>
+                      <NumCell className="font-medium">{formatMoney(balance, language)}</NumCell>
+                      <TableCell>
+                        <StatusBadge status={status} label={t(`status.${status}`)} />
+                      </TableCell>
+                      <ActionsCell>{renderRowActions(invoice)}</ActionsCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </ErpTable>
+          }
+          card={(invoice) => {
+            const status = getInvoiceStatus(invoice)
+            return (
+              <ListCard
+                id={invoice.invoiceNumber}
+                amount={formatMoney(invoice.amount || 0, language)}
+                party={getSupplierName(invoice.supplierId)}
+                status={<StatusBadge status={status} label={t(`status.${status}`)} />}
+                actions={renderRowActions(invoice)}
+              />
+            )
+          }}
+        />
+      </section>
 
       {/* Payment Schedule Dialog */}
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
@@ -863,7 +837,7 @@ export function AccountsPayableModule() {
                   onClick={() => regenerateSchedulesForPO(selectedInvoiceForSchedule)}
                   title="Recalculate payment schedule if amounts seem incorrect"
                 >
-                  <Calendar className="w-4 h-4 mr-1" />
+                  <Calendar className="w-4 h-4 me-1" />
                   Recalculate
                 </Button>
               )}
@@ -888,7 +862,7 @@ export function AccountsPayableModule() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
-                  <p className="font-medium">{formatCurrency(selectedInvoiceForSchedule.amount || 0)}</p>
+                  <p className="font-medium"><Money value={selectedInvoiceForSchedule.amount || 0} /> EGP</p>
                 </div>
               </div>
 
@@ -896,13 +870,14 @@ export function AccountsPayableModule() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>
-                    {t("field.paid")}: {formatCurrency(selectedInvoiceForSchedule.paidAmount || 0)}
+                    {t("field.paid")}: <Money value={selectedInvoiceForSchedule.paidAmount || 0} /> EGP
                   </span>
                   <span>
                     {t("field.balance")}:{" "}
-                    {formatCurrency(
-                      (selectedInvoiceForSchedule.amount || 0) - (selectedInvoiceForSchedule.paidAmount || 0),
-                    )}
+                    <Money
+                      value={(selectedInvoiceForSchedule.amount || 0) - (selectedInvoiceForSchedule.paidAmount || 0)}
+                    />{" "}
+                    EGP
                   </span>
                 </div>
                 <Progress
@@ -942,7 +917,7 @@ export function AccountsPayableModule() {
                           selectedInvoiceForSchedule && regenerateSchedulesForPO(selectedInvoiceForSchedule)
                         }
                       >
-                        <RefreshCw className="w-4 h-4 mr-1" />
+                        <RefreshCw className="w-4 h-4 me-1" />
                         {t("action.save-schedule") || "Save Schedule"}
                       </Button>
                     </div>
@@ -952,8 +927,8 @@ export function AccountsPayableModule() {
                       <TableRow>
                         <TableHead className="w-[120px]">#</TableHead>
                         <TableHead>{t("field.due-date")}</TableHead>
-                        <TableHead className="text-right">{t("field.amount")}</TableHead>
-                        <TableHead className="text-right">{t("field.paid")}</TableHead>
+                        <TableHead className="text-end">{t("field.amount")} (EGP)</TableHead>
+                        <TableHead className="text-end">{t("field.paid")} (EGP)</TableHead>
                         <TableHead>{t("field.payment-date")}</TableHead>
                         <TableHead>{t("field.status")}</TableHead>
                         <TableHead>{t("field.actions")}</TableHead>
@@ -986,18 +961,17 @@ export function AccountsPayableModule() {
                                 </span>
                               )}
                             </TableCell>
-                            <TableCell>{formatDate(schedule.dueDate)}</TableCell>
-                            <TableCell className="text-right font-medium">{formatCurrency(schedule.amount)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(schedule.paidAmount || 0)}</TableCell>
-                            <TableCell>{schedule.paymentDate ? formatDate(schedule.paymentDate) : "-"}</TableCell>
+                            <TableCell>{formatDate(schedule.dueDate, language)}</TableCell>
+                            <TableCell className="text-end font-medium"><Money value={schedule.amount} /></TableCell>
+                            <TableCell className="text-end"><Money value={schedule.paidAmount || 0} /></TableCell>
+                            <TableCell>{schedule.paymentDate ? formatDate(schedule.paymentDate, language) : "-"}</TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 {getScheduleStatusIcon(isPaid ? "paid" : isOverdue ? "overdue" : schedule.status)}
-                                <Badge
-                                  className={getStatusColor(isPaid ? "paid" : isOverdue ? "overdue" : schedule.status)}
-                                >
-                                  {t(`status.${isPaid ? "paid" : isOverdue ? "overdue" : schedule.status}`)}
-                                </Badge>
+                                <StatusBadge
+                                  status={isPaid ? "paid" : isOverdue ? "overdue" : schedule.status}
+                                  label={t(`status.${isPaid ? "paid" : isOverdue ? "overdue" : schedule.status}`)}
+                                />
                               </div>
                             </TableCell>
                             <TableCell>
@@ -1019,7 +993,7 @@ export function AccountsPayableModule() {
                                       setSchedulePaymentDialogOpen(true)
                                     }}
                                   >
-                                    <DollarSign className="w-4 h-4 mr-1" />
+                                    <DollarSign className="w-4 h-4 me-1" />
                                     {t("action.pay")}
                                   </Button>
                                 )}
@@ -1034,7 +1008,7 @@ export function AccountsPayableModule() {
                                     }}
                                     title="View uploaded receipt"
                                   >
-                                    <Eye className="w-4 h-4 mr-1" />
+                                    <Eye className="w-4 h-4 me-1" />
                                     {t("action.view-receipt")}
                                   </Button>
                                 )}
@@ -1069,11 +1043,11 @@ export function AccountsPayableModule() {
                       ? t("payment.down-payment")
                       : `${t("payment.installment")} ${selectedScheduleForPayment.installmentNumber}`}
                   </span>
-                  <span className="font-medium">{formatCurrency(selectedScheduleForPayment.amount)}</span>
+                  <span className="font-medium"><Money value={selectedScheduleForPayment.amount} /> EGP</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("field.due-date")}</span>
-                  <span>{formatDate(selectedScheduleForPayment.dueDate)}</span>
+                  <span>{formatDate(selectedScheduleForPayment.dueDate, language)}</span>
                 </div>
               </div>
 
@@ -1138,9 +1112,10 @@ export function AccountsPayableModule() {
                 <div className="flex justify-between">
                   <span>{t("field.balance")}:</span>
                   <span className="font-medium">
-                    {formatCurrency(
-                      (selectedInvoiceForPayment.amount || 0) - (selectedInvoiceForPayment.paidAmount || 0),
-                    )}
+                    <Money
+                      value={(selectedInvoiceForPayment.amount || 0) - (selectedInvoiceForPayment.paidAmount || 0)}
+                    />{" "}
+                    EGP
                   </span>
                 </div>
               </div>
@@ -1204,7 +1179,7 @@ export function AccountsPayableModule() {
                 <TableHead>{t("ap.invoice-number")}</TableHead>
                 <TableHead>{t("field.supplier")}</TableHead>
                 <TableHead>{t("field.due-date")}</TableHead>
-                <TableHead className="text-right">{t("field.balance")}</TableHead>
+                <TableHead className="text-end">{t("field.balance")} (EGP)</TableHead>
                 <TableHead>{t("field.actions")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -1213,9 +1188,9 @@ export function AccountsPayableModule() {
                 <TableRow key={invoice.id}>
                   <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
                   <TableCell>{getSupplierName(invoice.supplierId)}</TableCell>
-                  <TableCell>{formatDate(invoice.dueDate)}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency((invoice.amount || 0) - (invoice.paidAmount || 0))}
+                  <TableCell>{formatDate(invoice.dueDate, language)}</TableCell>
+                  <TableCell className="text-end font-medium">
+                    <Money value={(invoice.amount || 0) - (invoice.paidAmount || 0)} />
                   </TableCell>
                   <TableCell>
                     <Button
@@ -1226,7 +1201,7 @@ export function AccountsPayableModule() {
                         handleViewSchedule(invoice)
                       }}
                     >
-                      <Calendar className="w-4 h-4 mr-1" />
+                      <Calendar className="w-4 h-4 me-1" />
                       {t("ar.view-schedule")}
                     </Button>
                   </TableCell>
@@ -1279,7 +1254,7 @@ export function AccountsPayableModule() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
-                          <p className="font-medium">{formatCurrency(selectedInvoiceForPaymentDetails.amount || 0)}</p>
+                          <p className="font-medium"><Money value={selectedInvoiceForPaymentDetails.amount || 0} /> EGP</p>
                         </div>
                         {/* Download PDF: uploaded payment receipt if available, otherwise generated invoice */}
                         <div>
@@ -1293,11 +1268,11 @@ export function AccountsPayableModule() {
                                   variant="outline"
                                   onClick={() => window.open(receipt.receiptUrl, "_blank")}
                                 >
-                                  <FileText className="w-4 h-4 mr-1" />
+                                  <FileText className="w-4 h-4 me-1" />
                                   {paymentDetailsReceipts.length > 1
                                     ? `${t("action.view-receipt") || "Receipt"} ${index + 1}`
                                     : t("action.view-receipt") || "View Receipt"}
-                                  {receipt.paymentDate ? ` (${formatDate(receipt.paymentDate)})` : ""}
+                                  {receipt.paymentDate ? ` (${formatDate(receipt.paymentDate, language)})` : ""}
                                 </Button>
                               ))}
                             </div>
@@ -1307,7 +1282,7 @@ export function AccountsPayableModule() {
                               variant="outline"
                               onClick={() => handleDownloadInvoicePDF(selectedInvoiceForPaymentDetails)}
                             >
-                              <Download className="w-4 h-4 mr-1" />
+                              <Download className="w-4 h-4 me-1" />
                               {t("action.download")}
                             </Button>
                           )}
@@ -1364,7 +1339,7 @@ export function AccountsPayableModule() {
                                   <p className="text-xs text-muted-foreground">
                                     {t("payment.cheque-due-date") || "Cheque Due Date"}
                                   </p>
-                                  <p className="font-medium">{formatDate(bankDetails.chequeDueDate)}</p>
+                                  <p className="font-medium">{formatDate(bankDetails.chequeDueDate, language)}</p>
                                 </div>
                               )}
                               {bankDetails.chequeAmount > 0 && (
@@ -1372,7 +1347,7 @@ export function AccountsPayableModule() {
                                   <p className="text-xs text-muted-foreground">
                                     {t("payment.cheque-amount") || "Cheque Amount"}
                                   </p>
-                                  <p className="font-medium">{formatCurrency(bankDetails.chequeAmount)}</p>
+                                  <p className="font-medium"><Money value={bankDetails.chequeAmount} /> EGP</p>
                                 </div>
                               )}
                               {bankDetails.chequeNotes && (
@@ -1419,7 +1394,7 @@ export function AccountsPayableModule() {
                                   <p className="text-xs text-muted-foreground">
                                     {t("payment.cheque-due-date") || "Cheque Due Date"}
                                   </p>
-                                  <p className="font-medium">{formatDate(bankDetails.downPaymentChequeDueDate)}</p>
+                                  <p className="font-medium">{formatDate(bankDetails.downPaymentChequeDueDate, language)}</p>
                                 </div>
                               )}
                             </>
@@ -1537,12 +1512,12 @@ export function AccountsPayableModule() {
                         <div className="border rounded-lg p-4 space-y-2">
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">{t("field.amount")}</span>
-                            <span className="font-medium">{formatCurrency(bankDetails.downPaymentAmount)}</span>
+                            <span className="font-medium"><Money value={bankDetails.downPaymentAmount} /> EGP</span>
                           </div>
                           {bankDetails.downPaymentDueDate && (
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">{t("field.due-date")}</span>
-                              <span className="font-medium">{formatDate(bankDetails.downPaymentDueDate)}</span>
+                              <span className="font-medium">{formatDate(bankDetails.downPaymentDueDate, language)}</span>
                             </div>
                           )}
                           {bankDetails.downPaymentType && (
