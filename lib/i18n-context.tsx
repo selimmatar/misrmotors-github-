@@ -1,26 +1,13 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { keyToReadable } from "@/lib/i18n-fallback"
 
 type Language = "en" | "ar"
 type TranslationKey = string
 
 // Track missing keys for developer diagnostics
 const missingKeys = new Set<string>()
-
-function keyToReadable(key: string): string {
-  // Remove prefix like "field.", "status.", "module.", etc.
-  const parts = key.split(".")
-  const lastPart = parts[parts.length - 1]
-
-  // Convert kebab-case and snake_case to Title Case
-  return lastPart
-    .replace(/[-_]/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .split(" ")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ")
-}
 
 // Complete translations dictionary with ALL keys used in the app
 const translations: Record<Language, Record<string, string>> = {
