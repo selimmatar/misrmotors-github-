@@ -1124,7 +1124,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             size="sm"
             onClick={() => handleApprove(order.id)}
             title="Approve PO"
-            className="bg-green-600 hover:bg-green-700 text-white"
+            className="bg-green-700 hover:bg-green-800 text-white"
           >
             <CheckCircle className="w-4 h-4 me-1" />
             Approve
@@ -1151,6 +1151,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           setShowDetailsModal(true)
         }}
         title="View Order Details"
+        aria-label={t("action.view")}
       >
         <Eye className="w-4 h-4" />
       </Button>
@@ -1162,6 +1163,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           window.open(printUrl, "_blank")
         }}
         title="Print PO"
+        aria-label={t("action.print")}
       >
         <FileText className="w-4 h-4" />
       </Button>
@@ -1171,7 +1173,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   // The rejection reason: its own full-width row in the table, the note line on a phone card.
   const renderRejectionReason = (order: PurchaseOrder) => (
     <div className="flex items-start gap-2">
-      <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+      <AlertCircle className="w-4 h-4 text-red-700 mt-0.5 flex-shrink-0" />
       <div>
         <span className="font-semibold text-red-900">Rejection Reason: </span>
         <span className="text-red-800">{order.rejectionReason}</span>
@@ -1429,7 +1431,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               {poSource === "sales_order" && (
                 <div className="mt-3">
                   {!formData.supplierId ? (
-                    <p className="text-sm text-amber-600 flex items-center gap-2">
+                    <p className="text-sm text-amber-700 flex items-center gap-2">
                       <AlertCircle className="h-4 w-4" />
                       Please select a supplier first to see their sales orders.
                     </p>
@@ -1487,7 +1489,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         )
                       })()}
                       {selectedSourceSoId && orderItems.length > 0 && (
-                        <p className="text-xs text-emerald-600 mt-2 flex items-center gap-1">
+                        <p className="text-xs text-emerald-700 mt-2 flex items-center gap-1">
                           <CheckCircle className="h-3 w-3" />
                           {orderItems.length} outsourced item(s) imported from the sales order.
                         </p>
@@ -1634,7 +1636,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   className="flex-1"
                 />
                 {poInvoiceFile && (
-                  <div className="flex items-center gap-2 text-sm text-green-600">
+                  <div className="flex items-center gap-2 text-sm text-green-700">
                     <Upload className="w-4 h-4" />
                     <span>{poInvoiceFile.name}</span>
                   </div>
