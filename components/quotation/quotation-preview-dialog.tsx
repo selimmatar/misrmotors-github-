@@ -10,6 +10,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { Printer } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
 import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
+import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 
 interface QuotationItem {
   id: number
@@ -143,7 +144,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
 
       if (activeQuotation.payment_details?.paymentType === "installments" && activeQuotation.payment_details?.installmentMonths) {
         paymentDetailsHtml = `
-          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
+          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000;">
             <strong>تفاصيل التقسيط:</strong><br/>
             <span>عدد الأشهر: ${activeQuotation.payment_details.installmentMonths}</span><br/>
             <span>القسط الشهري: ${(activeQuotation.payment_details.monthlyAmount || 0).toLocaleString("en-US")} جنيه</span>
@@ -153,7 +154,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
 
       if (activeQuotation.payment_details?.paymentType === "hybrid") {
         paymentDetailsHtml = `
-          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
+          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000;">
             <strong>تفاصيل الدفع:</strong><br/>
             <span>الدفعة المقدمة: ${(activeQuotation.payment_details.downPaymentAmount || 0).toLocaleString("en-US")} جنيه</span><br/>
             <span>المبلغ المتبقي: ${(activeQuotation.payment_details.remainingAmount || 0).toLocaleString("en-US")} جنيه</span>
@@ -163,7 +164,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
 
       if (activeQuotation.payment_details?.paymentType === "cheque") {
         paymentDetailsHtml = `
-          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000; background: #f9f9f9;">
+          <div style="margin-top: 8px; padding: 8px; border: 1px solid #000;">
             <strong>تفاصيل الشيك:</strong><br/>
             ${activeQuotation.payment_details.chequeNumber ? `<span>رقم الشيك: ${escapeHtml(activeQuotation.payment_details.chequeNumber)}</span><br/>` : ""}
             ${activeQuotation.payment_details.chequeBankName ? `<span>البنك: ${escapeHtml(activeQuotation.payment_details.chequeBankName)}</span><br/>` : ""}
@@ -189,7 +190,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
             <strong>جدول السداد:</strong>
             <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-top: 5px;">
               <thead>
-                <tr style="background: #e8e8e8;">
+                <tr>
                   <th style="border: 1px solid #000; padding: 4px; width: 8%;">#</th>
                   <th style="border: 1px solid #000; padding: 4px;">تاريخ الاستحقاق</th>
                   <th style="border: 1px solid #000; padding: 4px;">المبلغ</th>
@@ -198,7 +199,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
               </thead>
               <tbody>
                 ${rows}
-                <tr style="background: #e8e8e8; font-weight: 700;">
+                <tr style="font-weight: 700;">
                   <td colspan="2" style="border: 1px solid #000; padding: 4px; text-align: left;">الإجمالي</td>
                   <td style="border: 1px solid #000; padding: 4px; text-align: center;">${totalSchedule.toLocaleString("en-US")} جنيه</td>
                   <td style="border: 1px solid #000; padding: 4px;"></td>
@@ -233,135 +234,64 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
   <meta charset="UTF-8">
   <title>عرض سعر - ${escapeHtml(activeQuotation.quotation_number)}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { size: A4; margin: 15mm; }
-    body {
-      font-family: 'Noto Naskh Arabic', 'Arial', sans-serif;
-      font-size: 12pt;
-      line-height: 1.4;
-      color: #000;
-      background: white;
-      direction: rtl;
-    }
-    table { width: 100%; border-collapse: collapse; border: 2px solid #000; }
-    th, td { border: 1px solid #000; padding: 8px; text-align: right; }
-    th { background: #e8e8e8; font-weight: 700; }
-    .company-header {
-      text-align: center;
-      border-bottom: 2px solid #000;
-      padding: 10px;
-      margin-bottom: 5mm;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .company-logo { width: 80px; height: 80px; object-fit: contain; margin-bottom: 10px; }
-    .company-name-ar { font-size: 18pt; font-weight: 700; margin-bottom: 3px; }
-    .company-name-en { font-size: 14pt; font-weight: 600; margin-bottom: 8px; }
-    .company-details { font-size: 10pt; line-height: 1.6; }
-    .tax-info { font-size: 9pt; margin-top: 5px; border-top: 1px solid #ccc; padding-top: 5px; }
-    .doc-title { text-align: center; font-size: 20pt; font-weight: 700; margin: 10mm 0; text-decoration: underline; }
-    .header-table { width: 100%; border: 2px solid #000; margin-bottom: 10mm; }
-    .header-table td { border: 1px solid #000; padding: 4px 8px; }
-    .items-table { width: 100%; border: 2px solid #000; margin-bottom: 10mm; }
-    .items-table th { background: #e8e8e8; font-weight: 700; text-align: center; padding: 8px 4px; }
-    .items-table td { text-align: right; padding: 6px 4px; }
-    .items-table .center { text-align: center; }
-    .currency-col { text-align: center; }
-    .subheader { font-size: 10pt; font-weight: 600; }
-    .signatures { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20mm; margin-top: 15mm; }
-    .signature-box { text-align: center; }
-    .signature-label { font-weight: 700; margin-bottom: 20mm; text-decoration: underline; }
-    .signature-line { border-top: 1px solid #000; margin-top: 15mm; }
-    .terms-section { margin-top: 8mm; font-size: 10pt; }
-    .terms-section li { margin-bottom: 3px; }
-    @media print { body { margin: 0; padding: 0; } }${TOTALS_BLOCK_CSS}
+    ${PRINT_CSS}${TOTALS_BLOCK_CSS}
+    .center { text-align: center; }
   </style>
 </head>
 <body>
-  <!-- Company Header -->
-  <div class="company-header">
-    <img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" onerror="this.style.display='none'" />
-    <div class="company-name-ar">شركة مصر للمحركات</div>
-    <div class="company-name-en">Misr Motors Co.</div>
-    <div class="company-details">
-      <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
+  ${printHeader({
+    logoHtml: `<img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" onerror="this.style.display='none'" />`,
+    company: {
+      nameAr: `شركة مصر للمحركات`,
+      nameEn: `Misr Motors Co.`,
+      detailsHtml: `<div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
       <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
-      <div>البريد الإلكتروني: sales@misrmotors.com</div>
-    </div>
-    <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
-  </div>
+      <div>البريد الإلكتروني: sales@misrmotors.com</div>`,
+    },
+    taxInfo: `بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100`,
+  })}
 
-  <!-- Title -->
-  <div class="doc-title">عرض سعر</div>
+  ${docTitle({ titleAr: `عرض سعر` })}
 
   <!-- Quotation Info -->
-  <table class="header-table">
-    <tr>
-      <td style="width: 25%;"><strong>رقم العرض:</strong></td>
-      <td style="width: 25%;">${escapeHtml(activeQuotation.quotation_number)}</td>
-      <td style="width: 25%;"><strong>التاريخ:</strong></td>
-      <td style="width: 25%;">${formatDateAr(quotationDate)}</td>
-    </tr>
-    ${activeQuotation.quotation_request_number ? `
-    <tr>
-      <td><strong>رقم طلب التسعير:</strong></td>
-      <td colspan="3">${escapeHtml(activeQuotation.quotation_request_number)}</td>
-    </tr>` : ""}
-    <tr>
-      <td><strong>صالح حتى:</strong></td>
-      <td>${validUntil ? formatDateAr(validUntil.toISOString()) : "-"}</td>
-      <td><strong>مدة الصلاحية:</strong></td>
-      <td>${activeQuotation.validity_days || 30} يوم</td>
-    </tr>
-    <tr>
-      <td colspan="4"><strong>السادة:</strong> ${escapeHtml(activeQuotation.customer_name)}</td>
-    </tr>
-    ${activeQuotation.customer_phone ? `
-    <tr>
-      <td><strong>الهاتف:</strong></td>
-      <td>${escapeHtml(activeQuotation.customer_phone)}</td>
-      <td><strong>البريد الإلكتروني:</strong></td>
-      <td>${escapeHtml(activeQuotation.customer_email || "-")}</td>
-    </tr>` : ""}
-    ${activeQuotation.department_name ? `
-    <tr>
-      <td><strong>القسم:</strong></td>
-      <td colspan="3">${escapeHtml(activeQuotation.department_name)}</td>
-    </tr>` : ""}
-    ${activeQuotation.receiver_name ? `
-    <tr>
-      <td><strong>المستلم:</strong></td>
-      <td colspan="3">${escapeHtml(activeQuotation.receiver_name)}</td>
-    </tr>` : ""}
-    ${activeQuotation.delivery_address ? `
-    <tr>
-      <td><strong>عنوان التسليم:</strong></td>
-      <td colspan="3">${escapeHtml(activeQuotation.delivery_address)}</td>
-    </tr>` : ""}
-    ${activeQuotation.delivery_date ? `
-    <tr>
-      <td><strong>تاريخ التسليم المتوقع:</strong></td>
-      <td colspan="3">${formatDateAr(activeQuotation.delivery_date)}</td>
-    </tr>` : ""}
-  </table>
+  <section class="pm-info">
+    <div class="pm-fields">
+      <div class="pm-field"><div class="pm-label">رقم العرض:</div><div class="pm-value">${escapeHtml(activeQuotation.quotation_number)}</div></div>
+      <div class="pm-field"><div class="pm-label">التاريخ:</div><div class="pm-value">${formatDateAr(quotationDate)}</div></div>
+      ${activeQuotation.quotation_request_number ? `
+      <div class="pm-field pm-field-wide"><div class="pm-label">رقم طلب التسعير:</div><div class="pm-value">${escapeHtml(activeQuotation.quotation_request_number)}</div></div>` : ""}
+      <div class="pm-field"><div class="pm-label">صالح حتى:</div><div class="pm-value">${validUntil ? formatDateAr(validUntil.toISOString()) : "-"}</div></div>
+      <div class="pm-field"><div class="pm-label">مدة الصلاحية:</div><div class="pm-value">${activeQuotation.validity_days || 30} يوم</div></div>
+      <div class="pm-field pm-field-wide"><div class="pm-label">السادة:</div><div class="pm-value">${escapeHtml(activeQuotation.customer_name)}</div></div>
+      ${activeQuotation.customer_phone ? `
+      <div class="pm-field"><div class="pm-label">الهاتف:</div><div class="pm-value">${escapeHtml(activeQuotation.customer_phone)}</div></div>
+      <div class="pm-field"><div class="pm-label">البريد الإلكتروني:</div><div class="pm-value">${escapeHtml(activeQuotation.customer_email || "-")}</div></div>` : ""}
+      ${activeQuotation.department_name ? `
+      <div class="pm-field pm-field-wide"><div class="pm-label">القسم:</div><div class="pm-value">${escapeHtml(activeQuotation.department_name)}</div></div>` : ""}
+      ${activeQuotation.receiver_name ? `
+      <div class="pm-field pm-field-wide"><div class="pm-label">المستلم:</div><div class="pm-value">${escapeHtml(activeQuotation.receiver_name)}</div></div>` : ""}
+      ${activeQuotation.delivery_address ? `
+      <div class="pm-field pm-field-wide"><div class="pm-label">عنوان التسليم:</div><div class="pm-value">${escapeHtml(activeQuotation.delivery_address)}</div></div>` : ""}
+      ${activeQuotation.delivery_date ? `
+      <div class="pm-field pm-field-wide"><div class="pm-label">تاريخ التسليم المتوقع:</div><div class="pm-value">${formatDateAr(activeQuotation.delivery_date)}</div></div>` : ""}
+    </div>
+  </section>
 
   <!-- Items Table -->
-  <table class="items-table">
+  <table class="pm-table items-table">
     <thead>
       <tr>
-        <th rowspan="2" style="width: 6%;">م</th>
+        <th rowspan="2" class="pm-center" style="width: 6%;">م</th>
         <th rowspan="2" style="width: 36%;">البيان</th>
-        <th rowspan="2" style="width: 8%;">الكمية</th>
-        <th colspan="2" style="text-align: center;">سعر الوحدة</th>
-        <th colspan="2" style="text-align: center;">القيمة</th>
+        <th rowspan="2" class="pm-center" style="width: 8%;">الكمية</th>
+        <th colspan="2" class="pm-center">سعر الوحدة</th>
+        <th colspan="2" class="pm-center">القيمة</th>
       </tr>
       <tr>
-        <th class="subheader" style="width: 12.5%;">جنيه</th>
-        <th class="subheader" style="width: 12.5%;">قرش</th>
-        <th class="subheader" style="width: 12.5%;">جنيه</th>
-        <th class="subheader" style="width: 12.5%;">قرش</th>
+        <th class="subheader pm-num" style="width: 12.5%;">جنيه</th>
+        <th class="subheader pm-num" style="width: 12.5%;">قرش</th>
+        <th class="subheader pm-num" style="width: 12.5%;">جنيه</th>
+        <th class="subheader pm-num" style="width: 12.5%;">قرش</th>
       </tr>
     </thead>
     <tbody>
@@ -373,9 +303,9 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
   ${paymentTermsHtml}
 
   <!-- General Terms -->
-  <div class="terms-section">
+  <div class="pm-note">
     <div style="font-weight: 700; margin-bottom: 5px;">الشروط والأحكام:</div>
-    <ul style="padding-right: 20px;">
+    <ul style="padding-inline-start: 20px;">
       <li>هذا العرض صالح لمدة ${activeQuotation.validity_days || 30} يوم من تاريخ الإصدار</li>
       <li>الأسعار قابلة للتغيير بعد انتهاء فترة الصلاحية</li>
       <li>مواعيد التسليم تقديرية وتخضع للتوافر</li>
@@ -386,14 +316,14 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
   ${notesHtml}
 
   <!-- Signatures -->
-  <div class="signatures">
-    <div class="signature-box">
-      <div class="signature-label">توقيع العميل</div>
-      <div class="signature-line"></div>
+  <div class="pm-signatures">
+    <div class="pm-sign">
+      <div>توقيع العميل</div>
+      <div class="pm-sign-line"></div>
     </div>
-    <div class="signature-box">
-      <div class="signature-label">التوقيع المعتمد</div>
-      <div class="signature-line"></div>
+    <div class="pm-sign">
+      <div>التوقيع المعتمد</div>
+      <div class="pm-sign-line"></div>
     </div>
   </div>
 </body>
