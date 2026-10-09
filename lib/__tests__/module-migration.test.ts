@@ -12,7 +12,7 @@ const read = (f: string) => fs.readFileSync(path.join(REPO, f), "utf8")
 const FIXTURE = path.join(REPO, "lib/__tests__/fixtures/ui-1b/protected.json")
 
 // Each module task appends its paths.
-const MIGRATED: string[] = []
+const MIGRATED: string[] = ["components/modules/accounts-payable-module.tsx"]
 // Allowed leftover BANNED matches per file; each entry needs a ledgered ruling.
 const ALLOW: Record<string, Partial<Record<keyof typeof BANNED, number>>> = {}
 // Files that render inside another screen and carry no page header of their own.
@@ -52,4 +52,12 @@ test("migrated modules use the shared blocks", () => {
     for (const [i, line] of src.split("\n").entries()) if (RTL_BAD.test(line)) problems.push(`${f}:${i + 1}: physical class`)
   }
   assert.deepEqual(problems, [], problems.join("\n"))
+})
+
+test("AP: three clickable tiles, total balance is not", () => {
+  const s = read("components/modules/accounts-payable-module.tsx")
+  const tiles = s.split("<KpiTile").slice(1).map((c) => c.split("</KpiGrid>")[0])
+  assert.equal(tiles.length, 4); assert.equal(tiles.filter((c) => /\bonClick=/.test(c)).length, 3)
+  assert.doesNotMatch(tiles[3], /\bonClick=/)
+  assert.match(s, /title=\{t\("ap\.title"\)\}/)
 })
