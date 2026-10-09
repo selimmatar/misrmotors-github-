@@ -2,7 +2,7 @@
   "task": "t4",
   "modules": {
     "components/modules/goods-receipt-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/product-images",
@@ -29,7 +29,7 @@
       }
     },
     "components/modules/goods-receipt-tracking-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/goods-receipts"
@@ -40,10 +40,17 @@
         "iso": 0,
         "t": 0,
         "onClick": 5
-      }
+      },
+      "must": [
+        {
+          "re": "\\bp-6\\b",
+          "min": 0,
+          "max": 0
+        }
+      ]
     },
     "components/modules/reorder-suggestions-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/inventory/reorder-suggestions",
@@ -60,10 +67,23 @@
         "iso": 0,
         "t": 48,
         "onClick": 6
-      }
+      },
+      "must": [
+        {
+          "re": "<ResponsiveList"
+        },
+        {
+          "re": "<KpiTile",
+          "min": 5
+        },
+        {
+          "re": "Checkbox",
+          "min": 4
+        }
+      ]
     },
     "components/modules/warehouse-transfers-module.tsx": {
-      "migrated": false,
+      "migrated": true,
       "surface": {
         "api": [
           "\"/api/warehouse-transfers",
