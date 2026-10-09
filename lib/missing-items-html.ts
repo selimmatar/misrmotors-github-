@@ -1,6 +1,7 @@
 // HTML for the Missing Items report (Batch 3). Pure: takes the data from lib/missing-items.ts.
 import { escapeHtml } from "./print-html"
 import type { MissingItemsReport } from "./missing-items"
+import { PRINT_CSS, docTitle } from "./print/print-theme"
 
 const money = (n: number) => `EGP ${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const date = (s: string | null | undefined) => {
@@ -52,68 +53,49 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Missing Items — ${escapeHtml(so.so_number)}</title>
   <style>
-    * { box-sizing: border-box; }
+    ${PRINT_CSS}
     @page { size: A4 landscape; margin: 12mm; }
-    body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; margin: 0; padding: 24px; background: #fff; }
     .container { max-width: 1200px; margin: 0 auto; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a56db; padding-bottom: 16px; margin-bottom: 20px; }
-    .header h1 { margin: 0; font-size: 20px; color: #1a56db; }
-    .header .subtitle { margin-top: 4px; font-size: 12px; color: #6b7280; }
-    .generated-at { font-size: 11px; color: #9ca3af; text-align: right; }
-    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 24px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; padding: 16px; margin-bottom: 20px; font-size: 13px; }
-    .info-grid .label { color: #6b7280; }
-    .info-grid .value { font-weight: 600; color: #111827; }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 16px; }
-    thead { display: table-header-group; }
-    thead th { background: #1a56db; color: #fff; text-align: left; padding: 7px 8px; font-weight: 600; }
-    tbody td { padding: 7px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
-    tbody tr { break-inside: avoid; page-break-inside: avoid; }
-    tbody tr:nth-child(even) { background: #f9fafb; }
-    td.n, th.n { text-align: center; }
-    td.missing { font-weight: 700; color: #b45309; }
-    .sku { color: #9ca3af; font-size: 10px; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; }
-    .badge-ordered { background: #dbeafe; color: #1e40af; }
-    .badge-partial { background: #ede9fe; color: #5b21b6; }
-    .badge-rejected { background: #fee2e2; color: #991b1b; }
-    .badge-needs-po { background: #fef3c7; color: #92400e; }
-    .badge-stock { background: #dcfce7; color: #166534; }
-    .type-tag { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
-    .type-stock { background: #e0e7ff; color: #3730a3; }
-    .type-outsourced { background: #fce7f3; color: #9d174d; }
-    .totals { text-align: right; font-size: 13px; margin-bottom: 12px; break-inside: avoid; }
-    .totals .value { font-weight: 700; color: #1a56db; font-size: 16px; }
-    .note { font-size: 11px; color: #6b7280; }
-    .legend { font-size: 11px; color: #6b7280; margin-bottom: 16px; }
-    .empty-state { text-align: center; padding: 40px; border: 1px dashed #d1d5db; border-radius: 8px; color: #6b7280; }
+    .mi-sub { font-size: 12px; color: #555; }
+    .mi-generated { margin-block-start: 2px; font-size: 11px; color: #555; }
+    .pm-fields .pm-label { display: inline; }
+    .pm-table { font-size: 11px; }
+    .pm-table th.n, .pm-table td.n { text-align: center; }
+    .pm-table td.missing { font-weight: 700; }
+    .sku { color: #555; font-size: 10px; }
+    .badge, .type-tag { font-size: 10px; font-weight: 600; }
+    .totals { text-align: end; font-size: 13px; margin-block-end: 12px; break-inside: avoid; }
+    .totals .value { font-weight: 700; font-size: 16px; }
+    .note { font-size: 11px; color: #555; }
+    .legend { font-size: 11px; color: #555; margin-block-end: 16px; }
+    .empty-state { text-align: center; padding: 40px; border: 1px solid #ccc; color: #555; }
     .print-button { position: fixed; top: 14px; right: 14px; padding: 10px 18px; background: #1a56db; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; z-index: 1000; }
+    @media screen { body { padding: 24px; } }
     @media print { .no-print { display: none !important; } body { padding: 0; } }
   </style>
 </head>
 <body>
   <button class="print-button no-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
   <div class="container">
-    <div class="header">
-      <div>
-        <h1>Missing Items Report</h1>
-        <div class="subtitle">Items on this sales order not yet delivered to the customer</div>
+    ${docTitle({ titleAr: `Missing Items Report` })}
+    <div class="mi-sub">Items on this sales order not yet delivered to the customer</div>
+    <div class="mi-generated">Generated: ${escapeHtml(opts.generatedAt)}</div>
+    <div class="pm-info">
+      <div class="pm-fields">
+        <div class="pm-field"><span class="pm-label">Sales Order #:</span> <span class="pm-value">${escapeHtml(so.so_number)}</span></div>
+        <div class="pm-field"><span class="pm-label">Customer:</span> <span class="pm-value">${escapeHtml(so.customerName)}</span></div>
+        <div class="pm-field"><span class="pm-label">Order Date:</span> <span class="pm-value">${date(so.order_date)}</span></div>
+        <div class="pm-field"><span class="pm-label">Delivery Date:</span> <span class="pm-value">${date(so.delivery_date)}</span></div>
+        <div class="pm-field"><span class="pm-label">Order Status:</span> <span class="pm-value">${escapeHtml(so.status)}</span></div>
+        <div class="pm-field"><span class="pm-label">Delivery Permits Issued:</span> <span class="pm-value">${report.permitCount}</span></div>
       </div>
-      <div class="generated-at">Generated: ${escapeHtml(opts.generatedAt)}</div>
-    </div>
-    <div class="info-grid">
-      <div><span class="label">Sales Order #:</span> <span class="value">${escapeHtml(so.so_number)}</span></div>
-      <div><span class="label">Customer:</span> <span class="value">${escapeHtml(so.customerName)}</span></div>
-      <div><span class="label">Order Date:</span> <span class="value">${date(so.order_date)}</span></div>
-      <div><span class="label">Delivery Date:</span> <span class="value">${date(so.delivery_date)}</span></div>
-      <div><span class="label">Order Status:</span> <span class="value">${escapeHtml(so.status)}</span></div>
-      <div><span class="label">Delivery Permits Issued:</span> <span class="value">${report.permitCount}</span></div>
     </div>
     ${
       missing.length === 0
         ? `<div class="empty-state">✅ No missing items — every line item on this order has been delivered.</div>`
         : `
     <div class="legend">Ordered = sales order quantity · Out for Delivery = on permits currently out for delivery · Delivered = on delivered / approved permits · Returned = accepted returns · Net = Delivered − Returned · Missing = Ordered − Net − Out for Delivery · PO Ordered = active purchase orders · Received = goods receipts</div>
-    <table>
+    <table class="pm-table">
       <thead>
         <tr>
           <th>#</th><th style="width:20%">Item</th><th>Type</th><th>Supplier</th>
