@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Loader2, Trash2 } from "lucide-react"
+import { useI18n } from "@/lib/i18n-context"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +26,7 @@ interface User {
 }
 
 export default function UsersPage() {
+  const { t } = useI18n()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -124,7 +126,12 @@ export default function UsersPage() {
                     <Badge variant="outline">{user.role}</Badge>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="sm" disabled={deletingUserId === user.id}>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={deletingUserId === user.id}
+                          aria-label={`${t("action.delete")} ${user.email}`}
+                        >
                           {deletingUserId === user.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
