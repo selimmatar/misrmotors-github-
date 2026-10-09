@@ -348,7 +348,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                                   <div key={dp.permit_number || dp.permitNumber} className="text-xs flex items-center gap-1">
                                     <span className="font-mono">{dp.permit_number || dp.permitNumber}</span>
                                     {(() => {
-                                      const chip = permitChip(dp.status, (order as any).returnedQuantity)
+                                      const chip = permitChip(dp.status, dp.returnedQuantity)
                                       const tone =
                                         chip.tone === "green"
                                           ? "bg-green-100 text-green-700"
@@ -371,6 +371,11 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                                 <div key={item.id || `${item.productId}-${itemIndex}`} className="text-sm flex justify-between">
                                   <span>
                                     {item.productName} × {item.quantity}
+                                    {Number(item.returnedQuantity) > 0 && (
+                                      <span className="ml-2 px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-700">
+                                        Returned ({item.returnedQuantity})
+                                      </span>
+                                    )}
                                     {item.deliveryState && (
                                       <span
                                         className={`ml-2 px-1.5 py-0.5 rounded text-xs ${

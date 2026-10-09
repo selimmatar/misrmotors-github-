@@ -133,6 +133,18 @@ test("LO7. Customers tab chip: delivered statuses, pending otherwise, returns fl
   assert.match(returned.label, /3 returned/)
 })
 
+test("LO7b. Customers tab chip: only the permit that has returns is flagged (the other stays plainly Delivered)", () => {
+  const permits = [
+    { status: "APPROVED", returnedQuantity: 3 }, // DP with the return
+    { status: "APPROVED", returnedQuantity: 0 }, // DP of the same order without returns
+  ]
+  const chips = permits.map((p) => permitChip(p.status, p.returnedQuantity))
+  assert.equal(chips[0].label, "Delivered (3 returned)")
+  assert.equal(chips[0].tone, "orange")
+  assert.deepEqual(chips[1], { label: "Delivered", tone: "green" })
+  assert.deepEqual(permitChip("APPROVED", undefined as any), { label: "Delivered", tone: "green" })
+})
+
 // ---- item 4 -------------------------------------------------------------------------------------------------
 test("LO8. Create-DP: a rejected permit's quantity can be planned again, agreeing with isSOFullyDelivered", async () => {
   const permits = [

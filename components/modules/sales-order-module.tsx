@@ -47,6 +47,7 @@ import {
   CheckCircle,
   PackageX,
   Pencil,
+  ChevronDown,
 } from "lucide-react"
 import {
   PaymentTypeSelector,
@@ -65,7 +66,7 @@ import { QuotationRequestUploadWidget } from "@/components/sales-order/quotation
 import { SalesOrderMaintenanceTab } from "@/components/sales-order/maintenance-tab"
 import { MaintenanceApprovalTab } from "@/components/sales/maintenance-approval-tab"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { EditApprovedOrderDialog } from "@/components/sales-order/edit-approved-order-dialog"
@@ -103,8 +104,6 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null)
   const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null)
-  // Missing Items report: hide the Unit Cost column (and the cost total) when ticked. Default: visible.
-  const [hideMissingItemsCost, setHideMissingItemsCost] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [aiInsights, setAiInsights] = useState<any>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -388,9 +387,10 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
 
   // Opens the Missing Items report (items not yet delivered to the customer). The route reads live data on each
   // request, so re-clicking always reflects the current state of the order.
-  const handlePrintMissingItems = (order: any) => {
+  // `hideCost` is chosen from the Missing Items menu: it removes the Unit Cost column and the cost total.
+  const handlePrintMissingItems = (order: any, hideUnitCost: boolean) => {
     const soIdValue = order.so_id || order.id
-    const hideCost = hideMissingItemsCost ? "&hideCost=1" : ""
+    const hideCost = hideUnitCost ? "&hideCost=1" : ""
     const url = `${window.location.origin}/api/sales-orders/missing-items-pdf?soId=${soIdValue}${hideCost}`
     window.open(url, "_blank")
   }
@@ -1874,25 +1874,26 @@ export function SalesOrderModule({ userRole }: SalesOrderModuleProps) {
                         </Button>
                   {getSODeliveryStatus(order) !== "delivered" && (
                     <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handlePrintMissingItems(order)
-                        }}
-                        title="Print a report of items not yet delivered to the customer"
-                      >
-                        <PackageX className="w-4 h-4" /> Missing Items
-                      </Button>
-                      <label
-                        className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer"
-                        title="Hide Unit Cost (and the cost total) on the Missing Items report"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Checkbox checked={hideMissingItemsCost} onCheckedChange={(v) => setHideMissingItemsCost(v === true)} />
-                        Hide Unit Cost
-                      </label>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Print a report of items not yet delivered to the customer"
+                          >
+                            <PackageX className="w-4 h-4" /> Missing Items <ChevronDown className="w-3 h-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, false)}>
+                            Print with Unit Cost
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, true)}>
+                            Print without Unit Cost (hide cost)
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </>
                   )}
                   <Button

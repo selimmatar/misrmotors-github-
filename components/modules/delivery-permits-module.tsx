@@ -367,7 +367,14 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                             <TableCell>
                               {item.itemNameSnapshot || item.productName || `Product #${item.productId}`}
                             </TableCell>
-                            <TableCell className="text-right">{item.quantity}</TableCell>
+                            <TableCell className="text-right">
+                              {item.quantity}
+                              {Number((item as any).returnedQuantity) > 0 && (
+                                <span className="block text-xs text-red-600">
+                                  Returned {(item as any).returnedQuantity} · net {Number(item.quantity) - Number((item as any).returnedQuantity)}
+                                </span>
+                              )}
+                            </TableCell>
                             <TableCell className="text-right">{formatCurrency(item.unitPrice || 0)}</TableCell>
                             <TableCell className="text-right">{formatCurrency(item.total || 0)}</TableCell>
                           </TableRow>
