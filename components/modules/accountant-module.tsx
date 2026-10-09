@@ -2,8 +2,6 @@
 
 import { Calendar } from "@/components/ui/calendar"
 
-import { Badge } from "@/components/ui/badge"
-
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
@@ -20,9 +18,13 @@ import { Eye, Upload, CheckCircle, Loader2, Wrench } from "lucide-react"
 import { ReportGenerator } from "@/components/report-generator"
 import { MaintenanceInvoiceTab } from "@/components/accounting/maintenance-invoice-tab"
 import { resolveInstallmentCount } from "@/lib/payment-type"
+import { PageHeader } from "@/components/erp/page-header"
+import { Money } from "@/components/erp/money"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { formatDate } from "@/lib/format"
 
 export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const {
     supplierInvoices,
     customerInvoices,
@@ -100,19 +102,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
 
   const getInstallmentMonths = (poId: string) => {
     return purchaseOrders.find((po) => po.id === poId)?.installments || 0
-  }
-
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: "bg-yellow-100 text-yellow-800",
-      pending_accountant: "bg-orange-100 text-orange-800",
-      accountant_approved: "bg-blue-100 text-blue-800",
-      approved: "bg-blue-100 text-blue-800",
-      paid: "bg-green-100 text-green-800",
-      ready_for_delivery: "bg-purple-100 text-purple-800", // Changed from 'out_for_delivery' to 'ready_for_delivery'
-      shipped: "bg-sky-100 text-sky-800",
-    }
-    return colors[status] || "bg-gray-100 text-gray-800"
   }
 
   const installmentSupplierInvoices = supplierInvoices.filter((inv) => {
@@ -307,20 +296,19 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Accountant Module</h1>
-          <p className="text-muted-foreground mt-2">Manage invoices and approve sales orders</p>
-        </div>
-        <ReportGenerator type="financial" userRole="accountant" />
-      </div>
+      <PageHeader
+        group={t("group.finance")}
+        title={t("module.accountant")}
+        subtitle="Manage invoices and approve sales orders"
+        actions={<ReportGenerator type="financial" userRole="accountant" />}
+      />
 
       <Tabs defaultValue={defaultTab || "approve-so"} className="space-y-4">
         <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="approve-so" className="relative">
             {t("tabs.approve_so")}
             {pendingSalesOrders.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+              <span className="absolute -top-1 -end-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                 {pendingSalesOrders.length}
               </span>
             )}
@@ -333,10 +321,10 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
           <TabsTrigger value="customers">{t("tabs.customers")}</TabsTrigger>
           <TabsTrigger value="suppliers">{t("tabs.suppliers")}</TabsTrigger>
           <TabsTrigger value="maintenance-invoices" className="relative">
-                  <Wrench className="w-4 h-4 mr-2" />
+                  <Wrench className="w-4 h-4 me-2" />
                   Maintenance
                   {pendingMaintenanceInvoices > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold px-1">
+                    <span className="absolute -top-1 -end-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold px-1">
                       {pendingMaintenanceInvoices}
                     </span>
                   )}
@@ -372,27 +360,25 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="text-sm text-muted-foreground">SO: {so?.soNumber || invoice.soNumber}</p>
                             <p className="text-sm text-muted-foreground">Invoice: {invoice.invoiceNumber}</p>
                           </div>
-                          <Badge variant={invoice.status === "paid" ? "default" : "secondary"}>
-                            {invoice.status}
-                          </Badge>
+                          <StatusBadge status={invoice.status} />
                         </div>
                         
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                           <div>
-                            <p className="text-muted-foreground">Total Amount</p>
-                            <p className="font-semibold">{formatCurrency(invoice.amount)}</p>
+                            <p className="text-muted-foreground">Total Amount (EGP)</p>
+                            <p className="font-semibold"><Money value={invoice.amount} /></p>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">Monthly Payment</p>
-                            <p className="font-semibold">{formatCurrency(monthlyPayment)}</p>
+                            <p className="text-muted-foreground">Monthly Payment (EGP)</p>
+                            <p className="font-semibold"><Money value={monthlyPayment} /></p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Progress</p>
                             <p className="font-semibold">{invoice.monthsPaid || 0} / {invoice.installmentMonths} months</p>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">Remaining</p>
-                            <p className="font-semibold text-orange-600">{formatCurrency(remaining)}</p>
+                            <p className="text-muted-foreground">Remaining (EGP)</p>
+                            <p className="font-semibold text-orange-600"><Money value={remaining} /></p>
                           </div>
                         </div>
                         
@@ -433,7 +419,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             }}
                             disabled={invoice.status === "paid"}
                           >
-                            <Calendar className="w-4 h-4 mr-2" />
+                            <Calendar className="w-4 h-4 me-2" />
                             Reschedule Payment Plan
                           </Button>
                           <Button
@@ -441,7 +427,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             onClick={() => handleMarkCustomerReceived(invoice.id)}
                             disabled={invoice.status === "paid" || monthsRemaining <= 0}
                           >
-                            <CheckCircle className="w-4 h-4 mr-2" />
+                            <CheckCircle className="w-4 h-4 me-2" />
                             Mark Payment Received
                           </Button>
                         </div>
@@ -481,8 +467,8 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                           <p className="font-semibold">{getCustomerName(order.customerId)}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("field.amount")}</p>
-                          <p className="font-semibold">{formatCurrency(order.total)}</p>
+                          <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                          <p className="font-semibold"><Money value={order.total} /></p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
@@ -590,8 +576,8 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="font-semibold">{getCustomerName(order.customerId)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount")}</p>
-                            <p className="font-semibold">{formatCurrency(order.total)}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                            <p className="font-semibold"><Money value={order.total} /></p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
@@ -599,11 +585,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.status")}</p>
-                            <span className="inline-block px-2 py-1 rounded text-xs font-semibold bg-purple-100 text-purple-800">
-                              {" "}
-                              {/* Updated text and color */}
-                              {t("status.ready_for_delivery")}
-                            </span>
+                            <StatusBadge status="ready_for_delivery" label={t("status.ready_for_delivery")} />
                           </div>
                         </div>
                         <div className="flex gap-2 mt-4">
@@ -653,8 +635,8 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="font-semibold">{getCustomerName(order.customerId)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount")}</p>
-                            <p className="font-semibold">{formatCurrency(order.total)}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                            <p className="font-semibold"><Money value={order.total} /></p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
@@ -729,12 +711,12 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="font-semibold">{getSupplierName(invoice.supplierId)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount")}</p>
-                            <p className="font-semibold">{formatCurrency(invoice.amount)}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                            <p className="font-semibold"><Money value={invoice.amount} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.monthly")}</p>
-                            <p className="font-semibold">{formatCurrency(monthlyAmount)}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.monthly")} (EGP)</p>
+                            <p className="font-semibold"><Money value={monthlyAmount} /></p>
                           </div>
                           <div className="col-span-2">
                             <p className="text-sm text-muted-foreground mb-1">{t("field.progress")}</p>
@@ -801,12 +783,12 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="font-semibold">{getCustomerName(invoice.customerId)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount")}</p>
-                            <p className="font-semibold">{formatCurrency(invoice.amount)}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                            <p className="font-semibold"><Money value={invoice.amount} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.monthly")}</p>
-                            <p className="font-semibold">{formatCurrency(monthlyAmount)}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.monthly")} (EGP)</p>
+                            <p className="font-semibold"><Money value={monthlyAmount} /></p>
                           </div>
                           <div className="col-span-2">
                             <p className="text-sm text-muted-foreground mb-1">{t("field.progress")}</p>
@@ -896,21 +878,21 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                       <p className="font-semibold text-lg">{getCustomerOrders(selectedCustomer).length}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.total_spent")}</p>
-                      <p className="font-semibold text-lg">{formatCurrency(getCustomerTotalSpent(selectedCustomer))}</p>
+                      <p className="text-sm text-muted-foreground">{t("field.total_spent")} (EGP)</p>
+                      <p className="font-semibold text-lg"><Money value={getCustomerTotalSpent(selectedCustomer)} /></p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.amount_paid")}</p>
+                      <p className="text-sm text-muted-foreground">{t("field.amount_paid")} (EGP)</p>
                       <p className="font-semibold text-lg text-green-600">
-                        {formatCurrency(customerPaymentsByCustomer[selectedCustomer] || 0)}
+                        <Money value={customerPaymentsByCustomer[selectedCustomer] || 0} />
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.balance_due")}</p>
+                      <p className="text-sm text-muted-foreground">{t("field.balance_due")} (EGP)</p>
                       <p className="font-semibold text-lg text-orange-600">
-                        {formatCurrency(
-                          getCustomerTotalSpent(selectedCustomer) - (customerPaymentsByCustomer[selectedCustomer] || 0),
-                        )}
+                        <Money
+                          value={getCustomerTotalSpent(selectedCustomer) - (customerPaymentsByCustomer[selectedCustomer] || 0)}
+                        />
                       </p>
                     </div>
                   </div>
@@ -941,33 +923,32 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                                 </div>
                                 <div>
                                   <p className="text-sm text-muted-foreground">{t("field.order_date")}</p>
-                                  <p className="font-semibold">{order.orderDate}</p>
+                                  <p className="font-semibold">{formatDate(order.orderDate, language)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-sm text-muted-foreground">{t("field.total_amount")}</p>
-                                  <p className="font-semibold">{formatCurrency(order.total)}</p>
+                                  <p className="text-sm text-muted-foreground">{t("field.total_amount")} (EGP)</p>
+                                  <p className="font-semibold"><Money value={order.total} /></p>
                                 </div>
                                 <div>
-                                  <p className="text-sm text-muted-foreground">{t("field.amount_paid")}</p>
-                                  <p className="font-semibold text-green-600">{formatCurrency(amountPaid)}</p>
+                                  <p className="text-sm text-muted-foreground">{t("field.amount_paid")} (EGP)</p>
+                                  <p className="font-semibold text-green-600"><Money value={amountPaid} /></p>
                                 </div>
                                 <div>
-                                  <p className="text-sm text-muted-foreground">{t("field.amount_due")}</p>
-                                  <p className="font-semibold text-orange-600">{formatCurrency(amountDue)}</p>
+                                  <p className="text-sm text-muted-foreground">{t("field.amount_due")} (EGP)</p>
+                                  <p className="font-semibold text-orange-600"><Money value={amountDue} /></p>
                                 </div>
                                 <div>
                                   <p className="text-sm text-muted-foreground">{t("field.payment_status")}</p>
-                                  <span
-                                    className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
+                                  <StatusBadge
+                                    status={
                                       paymentStatus === t("status.fully_paid")
-                                        ? "bg-green-100 text-green-800"
+                                        ? "fully_paid"
                                         : paymentStatus === t("status.partially_paid")
-                                          ? "bg-yellow-100 text-yellow-800"
-                                          : "bg-red-100 text-red-800"
-                                    }`}
-                                  >
-                                    {paymentStatus}
-                                  </span>
+                                          ? "partially_paid"
+                                          : "not_paid"
+                                    }
+                                    label={paymentStatus}
+                                  />
                                   {order.paymentTerms === "installment" && invoice && (
                                     <p className="text-xs text-muted-foreground mt-1">
                                       {invoice.monthsPaid}/{order.installments} {t("label.months")}
@@ -983,7 +964,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                                       <span>
                                         {item.productName} × {item.quantity}
                                       </span>
-                                      <span>{formatCurrency(item.total)}</span>
+                                      <span><Money value={item.total} /> EGP</span>
                                     </div>
                                   ))}
                                 </div>
@@ -1058,8 +1039,8 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                               <p className="font-semibold">{orderCount}</p>
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">{t("field.total_spent")}</p>
-                              <p className="font-semibold text-lg">{formatCurrency(totalSpent)}</p>
+                              <p className="text-sm text-muted-foreground">{t("field.total_spent")} (EGP)</p>
+                              <p className="font-semibold text-lg"><Money value={totalSpent} /></p>
                             </div>
                           </div>
                         </div>
@@ -1131,8 +1112,8 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                       <p className="font-semibold text-lg">{getSupplierPOs(selectedSupplier).length}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.total_purchased")}</p>
-                      <p className="font-semibold text-lg">{formatCurrency(getSupplierTotalSpent(selectedSupplier))}</p>
+                      <p className="text-sm text-muted-foreground">{t("field.total_purchased")} (EGP)</p>
+                      <p className="font-semibold text-lg"><Money value={getSupplierTotalSpent(selectedSupplier)} /></p>
                     </div>
                   </div>
 
@@ -1152,11 +1133,11 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                               </div>
                               <div>
                                 <p className="text-sm text-muted-foreground">{t("field.order_date")}</p>
-                                <p className="font-semibold">{po.orderDate}</p>
+                                <p className="font-semibold">{formatDate(po.orderDate, language)}</p>
                               </div>
                               <div>
-                                <p className="text-sm text-muted-foreground">{t("field.amount")}</p>
-                                <p className="font-semibold">{formatCurrency(po.total)}</p>
+                                <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                                <p className="font-semibold"><Money value={po.total} /></p>
                               </div>
                               <div>
                                 <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
@@ -1164,11 +1145,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                               </div>
                               <div>
                                 <p className="text-sm text-muted-foreground">{t("field.status")}</p>
-                                <span
-                                  className={`inline-block px-2 py-1 rounded text-xs font-semibold ${getStatusColor(po.status)}`}
-                                >
-                                  {t(`status.${po.status}`)}
-                                </span>
+                                <StatusBadge status={po.status} label={t(`status.${po.status}`)} />
                               </div>
                             </div>
                             <div className="mt-3">
@@ -1179,7 +1156,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                                     <span>
                                       {item.productName} × {item.quantity}
                                     </span>
-                                    <span>{formatCurrency(item.total)}</span>
+                                    <span><Money value={item.total} /> EGP</span>
                                   </div>
                                 ))}
                               </div>
@@ -1242,8 +1219,8 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                               <p className="font-semibold">{poCount}</p>
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">{t("field.total_purchased")}</p>
-                              <p className="font-semibold text-lg">{formatCurrency(totalSpent)}</p>
+                              <p className="text-sm text-muted-foreground">{t("field.total_purchased")} (EGP)</p>
+                              <p className="font-semibold text-lg"><Money value={totalSpent} /></p>
                             </div>
                           </div>
                         </div>
@@ -1281,7 +1258,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.order_date")}</p>
-                  <p className="font-semibold">{selectedSalesOrder.orderDate}</p>
+                  <p className="font-semibold">{formatDate(selectedSalesOrder.orderDate, language)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
@@ -1296,7 +1273,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                       <span>
                         {item.productName} (Qty: {item.quantity})
                       </span>
-                      <span className="font-semibold">{formatCurrency(item.total)}</span>
+                      <span className="font-semibold"><Money value={item.total} /> EGP</span>
                     </div>
                   ))}
                 </div>
@@ -1304,7 +1281,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
               <div className="border-t pt-4">
                 <div className="flex justify-between">
                   <span className="font-semibold">{t("field.total_amount")}</span>
-                  <span className="text-lg font-bold">{formatCurrency(selectedSalesOrder.total)}</span>
+                  <span className="text-lg font-bold"><Money value={selectedSalesOrder.total} /> EGP</span>
                 </div>
               </div>
             </div>

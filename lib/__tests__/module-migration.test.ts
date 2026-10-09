@@ -12,7 +12,13 @@ const read = (f: string) => fs.readFileSync(path.join(REPO, f), "utf8")
 const FIXTURE = path.join(REPO, "lib/__tests__/fixtures/ui-1b/protected.json")
 
 // Each module task appends its paths.
-const MIGRATED: string[] = []
+const MIGRATED: string[] = [
+  "components/modules/payment-schedule-module.tsx",
+  "components/modules/balance-module.tsx",
+  "components/modules/maintenance-invoices-module.tsx",
+  "components/modules/accountant-module.tsx",
+  "components/accounting/maintenance-invoice-tab.tsx",
+]
 // Allowed leftover BANNED matches per file; each entry needs a ledgered ruling.
 const ALLOW: Record<string, Partial<Record<keyof typeof BANNED, number>>> = {}
 // Files that render inside another screen and carry no page header of their own.
@@ -52,4 +58,10 @@ test("migrated modules use the shared blocks", () => {
     for (const [i, line] of src.split("\n").entries()) if (RTL_BAD.test(line)) problems.push(`${f}:${i + 1}: physical class`)
   }
   assert.deepEqual(problems, [], problems.join("\n"))
+})
+
+test("maintenance screen has one heading; accountant embed unchanged", () => {
+  assert.match(read("components/modules/maintenance-invoices-module.tsx"), /<MaintenanceInvoiceTab showHeading=\{false\}/)
+  assert.match(read("components/accounting/maintenance-invoice-tab.tsx"), /showHeading = true/)
+  assert.match(read("components/modules/accountant-module.tsx"), /<MaintenanceInvoiceTab\s*\/>/)
 })
