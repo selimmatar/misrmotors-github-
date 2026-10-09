@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useAppContext } from "@/lib/app-context"
+import { useI18n } from "@/lib/i18n-context"
+import { PageHeader } from "@/components/erp/page-header"
 import type { UserRole } from "@/lib/types"
-import { Sparkles, Send, Loader2, Bot, UserIcon } from "lucide-react"
+import { Send, Loader2, Bot, UserIcon } from "lucide-react"
 
 interface AIAssistantModuleProps {
   userRole: UserRole
@@ -20,6 +22,7 @@ interface Message {
 }
 
 export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
+  const { t } = useI18n()
   const {
     suppliers,
     products,
@@ -147,19 +150,15 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
 
   return (
     <div className="space-y-6 h-full flex flex-col">
-      <div>
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-8 h-8 text-primary" />
-          <h1 className="text-3xl font-bold">
-            {isCEO ? "CEO Business Intelligence Assistant" : "AI Purchase Order Assistant"}
-          </h1>
-        </div>
-        <p className="text-muted-foreground mt-2">
-          {isCEO
+      <PageHeader
+        group={t("group.overview")}
+        title={t("module.ai-assistant")}
+        subtitle={
+          isCEO
             ? "Ask me anything about your business - assets, debt, orders, receivables, and more!"
-            : "Create purchase orders using natural language. Just tell me what you need!"}
-        </p>
-      </div>
+            : "Create purchase orders using natural language. Just tell me what you need!"
+        }
+      />
 
       <Card className="flex-1 flex flex-col">
         <CardHeader>
@@ -181,10 +180,10 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
                     ? "Ask me about your business metrics, financial health, or operational status!"
                     : "Ask me to create purchase orders and I'll help you!"}
                 </p>
-                <div className="mt-6 space-y-2 text-sm text-left max-w-md mx-auto">
+                <div className="mt-6 space-y-2 text-sm text-start max-w-md mx-auto">
                   <p className="font-medium">Example requests:</p>
                   {isCEO ? (
-                    <ul className="space-y-1 ml-4">
+                    <ul className="space-y-1 ms-4">
                       <li>• "How much total assets do we have?"</li>
                       <li>• "What's our current debt situation?"</li>
                       <li>• "Show me all purchase orders in progress"</li>
@@ -193,7 +192,7 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
                       <li>• "Give me a business overview"</li>
                     </ul>
                   ) : (
-                    <ul className="space-y-1 ml-4">
+                    <ul className="space-y-1 ms-4">
                       <li>• "Show me available suppliers"</li>
                       <li>• "Show me available products"</li>
                       <li>• "Order 50 water pumps from [supplier name]"</li>
