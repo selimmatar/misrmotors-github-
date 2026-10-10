@@ -35,6 +35,7 @@ import {
 import dynamic from "next/dynamic"
 import type { UserRole } from "@/lib/types"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { Money } from "@/components/erp/money"
@@ -69,6 +70,23 @@ const roleVisibleTabs: Record<UserRole, string[]> = {
   shipment: ["operations"],
 }
 
+// Display-only maps: the raw values (risk, confidence, priority, AI category) stay as they are in data.
+const LEVEL_KEYS: Record<string, string> = {
+  high: "analytics.level-high",
+  medium: "analytics.level-medium",
+  low: "analytics.level-low",
+  High: "analytics.level-high-cap",
+  Medium: "analytics.level-medium-cap",
+  Low: "analytics.level-low-cap",
+}
+
+const CATEGORY_LABEL_KEYS: Record<string, string> = {
+  sales: "group.sales",
+  inventory: "group.inventory",
+  financial: "analytics.tab-financial",
+  operations: "group.operations",
+}
+
 function DetailDialog({
   open,
   onOpenChange,
@@ -97,6 +115,7 @@ function DetailDialog({
 
 export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
   const { t, formatNumber } = useI18n()
+  const levelLabel = (value: string) => (LEVEL_KEYS[value] ? t(LEVEL_KEYS[value]) : value)
 
   const visibleTabs = roleVisibleTabs[userRole]
   const [activeTab, setActiveTab] = useState(visibleTabs[0] || "executive")
@@ -286,23 +305,23 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Total Revenue (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("analytics.total-revenue-egp")}</p>
                 <p className="text-2xl font-bold">
                   <Money value={kpiData?.revenue?.total || 0} />
                 </p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Growth Trend</p>
+                <p className="text-sm text-muted-foreground">{t("analytics.growth-trend")}</p>
                 <p className="text-2xl font-bold text-emerald-700">{kpiData?.revenue?.trend || "+0%"}</p>
               </div>
             </div>
             <div className="space-y-2">
-              <h4 className="font-medium">Top Revenue Sources</h4>
+              <h4 className="font-medium">{t("analytics.top-revenue-sources")}</h4>
               {salesData?.topCustomers?.slice(0, 5).map((customer: any, idx: number) => (
                 <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                   <span className="font-medium">{customer.customerName}</span>
                   <span className="text-emerald-700 font-bold">
-                    <Money value={customer.totalSpent || 0} /> EGP
+                    <Money value={customer.totalSpent || 0} /> {t("common.egp-2")}
                   </span>
                 </div>
               ))}
@@ -314,13 +333,13 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Gross Profit (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("analytics.gross-profit-egp")}</p>
                 <p className="text-2xl font-bold">
                   <Money value={kpiData?.grossProfit?.total || 0} />
                 </p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Profit Margin</p>
+                <p className="text-sm text-muted-foreground">{t("analytics.profit-margin")}</p>
                 <p className="text-2xl font-bold text-emerald-700">
                   {formatNumber(kpiData?.grossProfit?.margin || 0)}%
                 </p>
@@ -328,8 +347,12 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
             </div>
             <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
               <p className="text-sm">
-                Your profit margin is {kpiData?.grossProfit?.margin > 20 ? "healthy" : "below target"}.
-                {kpiData?.grossProfit?.margin < 20 && " Consider reviewing pricing or reducing costs."}
+                {fill(t("analytics.profit-margin-is"), {
+                  status:
+                    kpiData?.grossProfit?.margin > 20 ? t("analytics.status-healthy") : t("analytics.status-below-target"),
+                })}
+                {kpiData?.grossProfit?.margin < 20 && " "}
+                {kpiData?.grossProfit?.margin < 20 && t("analytics.margin-review-pricing")}
               </p>
             </div>
           </div>
@@ -339,19 +362,19 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Net Cash Position (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("analytics.net-cash-position-egp")}</p>
                 <p className="text-2xl font-bold">
                   <Money value={kpiData?.cashPosition?.total || 0} />
                 </p>
               </div>
               <div className="p-4 bg-emerald-500/10 rounded-lg">
-                <p className="text-sm text-muted-foreground">Receivables (AR) (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("analytics.receivables-ar-egp")}</p>
                 <p className="text-2xl font-bold text-emerald-700">
                   <Money value={kpiData?.cashPosition?.ar || 0} />
                 </p>
               </div>
               <div className="p-4 bg-red-500/10 rounded-lg">
-                <p className="text-sm text-muted-foreground">Payables (AP) (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("analytics.payables-ap-egp")}</p>
                 <p className="text-2xl font-bold text-red-700">
                   <Money value={kpiData?.cashPosition?.ap || 0} />
                 </p>
@@ -364,38 +387,38 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Total Value (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("common.total-value-egp")}</p>
                 <p className="text-2xl font-bold">
                   <Money value={kpiData?.inventory?.value || 0} />
                 </p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Turnover Rate</p>
+                <p className="text-sm text-muted-foreground">{t("analytics.turnover-rate")}</p>
                 <p className="text-2xl font-bold">{formatNumber(kpiData?.inventory?.turnover || 0)}x</p>
               </div>
             </div>
             <div className="space-y-2">
-              <h4 className="font-medium">ABC Classification</h4>
+              <h4 className="font-medium">{t("analytics.abc-classification")}</h4>
               <div className="grid grid-cols-3 gap-2">
                 <div className="p-3 bg-emerald-500/10 rounded-lg text-center">
                   <p className="text-2xl font-bold">{inventoryData?.abcAnalysis?.aItems || 0}</p>
-                  <p className="text-xs text-muted-foreground">A Items (High Value)</p>
+                  <p className="text-xs text-muted-foreground">{t("analytics.a-items")}</p>
                 </div>
                 <div className="p-3 bg-amber-500/10 rounded-lg text-center">
                   <p className="text-2xl font-bold">{inventoryData?.abcAnalysis?.bItems || 0}</p>
-                  <p className="text-xs text-muted-foreground">B Items (Medium)</p>
+                  <p className="text-xs text-muted-foreground">{t("analytics.b-items")}</p>
                 </div>
                 <div className="p-3 bg-gray-500/10 rounded-lg text-center">
                   <p className="text-2xl font-bold">{inventoryData?.abcAnalysis?.cItems || 0}</p>
-                  <p className="text-xs text-muted-foreground">C Items (Low Value)</p>
+                  <p className="text-xs text-muted-foreground">{t("analytics.c-items")}</p>
                 </div>
               </div>
             </div>
             {inventoryData?.stockoutRisk?.highRisk > 0 && (
               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-                <p className="font-medium text-red-700">Stock-out Alert</p>
+                <p className="font-medium text-red-700">{t("analytics.stock-out-alert")}</p>
                 <p className="text-sm text-muted-foreground">
-                  {inventoryData.stockoutRisk.highRisk} products at high risk of running out
+                  {fill(t("analytics.products-high-risk-running-out"), { count: inventoryData.stockoutRisk.highRisk })}
                 </p>
               </div>
             )}
@@ -414,7 +437,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
         actions={
           <Button onClick={loadAllAnalytics} variant="outline">
             <Activity className="h-4 w-4 me-2" />
-            Refresh Data
+            {t("analytics.refresh-data")}
           </Button>
         }
       />
@@ -430,37 +453,37 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="h-auto w-full flex-wrap justify-start bg-muted/50">
-          {visibleTabs.includes("executive") && <TabsTrigger value="executive">Executive</TabsTrigger>}
-          {visibleTabs.includes("sales") && <TabsTrigger value="sales">Sales</TabsTrigger>}
-          {visibleTabs.includes("inventory") && <TabsTrigger value="inventory">Inventory</TabsTrigger>}
-          {visibleTabs.includes("financial") && <TabsTrigger value="financial">Financial</TabsTrigger>}
-          {visibleTabs.includes("operations") && <TabsTrigger value="operations">Operations</TabsTrigger>}
-          {visibleTabs.includes("predictions") && <TabsTrigger value="predictions">AI Predictions</TabsTrigger>}
+          {visibleTabs.includes("executive") && <TabsTrigger value="executive">{t("analytics.tab-executive")}</TabsTrigger>}
+          {visibleTabs.includes("sales") && <TabsTrigger value="sales">{t("group.sales")}</TabsTrigger>}
+          {visibleTabs.includes("inventory") && <TabsTrigger value="inventory">{t("group.inventory")}</TabsTrigger>}
+          {visibleTabs.includes("financial") && <TabsTrigger value="financial">{t("analytics.tab-financial")}</TabsTrigger>}
+          {visibleTabs.includes("operations") && <TabsTrigger value="operations">{t("group.operations")}</TabsTrigger>}
+          {visibleTabs.includes("predictions") && <TabsTrigger value="predictions">{t("analytics.tab-ai-predictions")}</TabsTrigger>}
         </TabsList>
 
         {visibleTabs.includes("executive") && (
           <TabsContent value="executive" className="space-y-4">
             <KpiGrid>
               <KpiTile
-                label={`${t("analytics.total-revenue")} (EGP)`}
+                label={fill(t("analytics.label-egp"), { label: t("analytics.total-revenue") })}
                 value={<Money value={kpiData?.revenue?.total || 0} />}
                 sub={`${kpiData?.revenue?.trend || "0%"} ${t("analytics.from-last-month")}`}
                 onClick={() => openDetail("revenue", t("analytics.revenue-details"), t("analytics.revenue-breakdown"))}
               />
               <KpiTile
-                label={`${t("analytics.gross-profit")} (EGP)`}
+                label={fill(t("analytics.label-egp"), { label: t("analytics.gross-profit") })}
                 value={<Money value={kpiData?.grossProfit?.total || 0} />}
                 sub={`${t("analytics.margin")}: ${formatNumber(kpiData?.grossProfit?.margin || 0)}%`}
                 onClick={() => openDetail("profit", t("analytics.profit-analysis"), t("analytics.profit-details"))}
               />
               <KpiTile
-                label={`${t("analytics.cash-position")} (EGP)`}
+                label={fill(t("analytics.label-egp"), { label: t("analytics.cash-position") })}
                 value={<Money value={kpiData?.cashPosition?.total || 0} />}
                 sub={`${t("analytics.accounts-receivable")}: ${formatNumber(kpiData?.cashPosition?.ar || 0)} | ${t("analytics.accounts-payable")}: ${formatNumber(kpiData?.cashPosition?.ap || 0)}`}
                 onClick={() => openDetail("cash", t("analytics.cash-position"), t("analytics.cash-overview"))}
               />
               <KpiTile
-                label={`${t("analytics.inventory-value")} (EGP)`}
+                label={fill(t("analytics.label-egp"), { label: t("analytics.inventory-value") })}
                 value={<Money value={kpiData?.inventory?.value || 0} />}
                 sub={`${t("analytics.turnover")}: ${formatNumber(kpiData?.inventory?.turnover || 0)}x`}
                 onClick={() =>
@@ -472,14 +495,14 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Key Metrics</CardTitle>
-                  <CardDescription>Performance indicators at a glance</CardDescription>
+                  <CardTitle>{t("analytics.key-metrics")}</CardTitle>
+                  <CardDescription>{t("analytics.performance-at-a-glance")}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
                     <div className="flex items-center gap-2">
                       <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Avg Order Value (EGP)</span>
+                      <span className="text-sm font-medium">{t("analytics.avg-order-value-egp")}</span>
                     </div>
                     <span className="text-sm font-bold">
                       <Money value={kpiData?.orders?.avgValue || 0} />
@@ -488,21 +511,21 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Order Fulfillment Rate</span>
+                      <span className="text-sm font-medium">{t("analytics.order-fulfillment-rate")}</span>
                     </div>
                     <span className="text-sm font-bold">{formatNumber(kpiData?.orders?.fulfillmentRate || 0)}%</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Total Customers</span>
+                      <span className="text-sm font-medium">{t("analytics.total-customers")}</span>
                     </div>
                     <span className="text-sm font-bold">{kpiData?.customers?.total || 0}</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
                     <div className="flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-emerald-700" />
-                      <span className="text-sm font-medium">New Customers (This Month)</span>
+                      <span className="text-sm font-medium">{t("analytics.new-customers-month")}</span>
                     </div>
                     <span className="text-sm font-bold">{kpiData?.customers?.newThisMonth || 0}</span>
                   </div>
@@ -511,17 +534,17 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Alerts & Recommendations</CardTitle>
-                  <CardDescription>Action items requiring attention</CardDescription>
+                  <CardTitle>{t("analytics.alerts-recommendations")}</CardTitle>
+                  <CardDescription>{t("analytics.action-items")}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {inventoryData?.stockoutRisk?.highRisk > 0 && (
                     <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg cursor-pointer hover:bg-red-500/20 transition-colors">
                       <AlertTriangle className="h-4 w-4 text-red-700 mt-0.5" />
                       <div className="flex-1">
-                        <p className="text-sm font-medium">Stock-out Risk</p>
+                        <p className="text-sm font-medium">{t("analytics.stock-out-risk")}</p>
                         <p className="text-xs text-muted-foreground">
-                          {inventoryData.stockoutRisk.highRisk} products at high risk
+                          {fill(t("analytics.products-at-high-risk"), { count: inventoryData.stockoutRisk.highRisk })}
                         </p>
                       </div>
                       <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -531,9 +554,9 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg cursor-pointer hover:bg-amber-500/20 transition-colors">
                       <AlertTriangle className="h-4 w-4 text-amber-700 mt-0.5" />
                       <div className="flex-1">
-                        <p className="text-sm font-medium">Pending Orders</p>
+                        <p className="text-sm font-medium">{t("so.pending-orders")}</p>
                         <p className="text-xs text-muted-foreground">
-                          {kpiData.orders.pendingCount} orders awaiting approval
+                          {fill(t("analytics.orders-awaiting-approval"), { count: kpiData.orders.pendingCount })}
                         </p>
                       </div>
                       <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -543,9 +566,9 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     <div className="flex items-start gap-2 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg cursor-pointer hover:bg-indigo-500/20 transition-colors">
                       <Package className="h-4 w-4 text-indigo-600 mt-0.5" />
                       <div className="flex-1">
-                        <p className="text-sm font-medium">Slow-Moving Inventory</p>
+                        <p className="text-sm font-medium">{t("analytics.slow-moving-inventory")}</p>
                         <p className="text-xs text-muted-foreground">
-                          {inventoryData.slowMoving.length} items with low turnover
+                          {fill(t("analytics.items-low-turnover"), { count: inventoryData.slowMoving.length })}
                         </p>
                       </div>
                       <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -556,7 +579,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     !inventoryData?.slowMoving?.length && (
                       <div className="flex items-center justify-center p-8 text-muted-foreground">
                         <CheckCircle className="h-5 w-5 me-2 text-emerald-700" />
-                        All systems operating normally
+                        {t("analytics.all-systems-normal")}
                       </div>
                     )}
                 </CardContent>
@@ -571,8 +594,8 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Top Customers by Revenue</CardTitle>
-                  <CardDescription>Customer lifetime value leaders</CardDescription>
+                  <CardTitle>{t("analytics.top-customers-revenue")}</CardTitle>
+                  <CardDescription>{t("analytics.customer-lifetime-leaders")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {salesData?.topCustomers?.length > 0 ? (
@@ -587,14 +610,14 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         <YAxis stroke="rgb(161, 161, 170)" tick={{ fill: "rgb(161, 161, 170)" }} />
                         <Tooltip
                           contentStyle={{ backgroundColor: "rgb(24, 24, 27)", border: "1px solid rgb(39, 39, 42)" }}
-                          formatter={(value: any) => [`EGP ${value.toLocaleString()}`, "Revenue"]}
+                          formatter={(value: any) => [fill(t("analytics.egp-amount"), { amount: value.toLocaleString() }), t("analytics.revenue")]}
                         />
                         <Bar dataKey="totalSpent" fill="rgb(99, 102, 241)" radius={[8, 8, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
                     <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-                      No sales data available
+                      {t("analytics.no-sales-data")}
                     </div>
                   )}
                 </CardContent>
@@ -602,8 +625,8 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Sales Funnel</CardTitle>
-                  <CardDescription>Order conversion pipeline</CardDescription>
+                  <CardTitle>{t("analytics.sales-funnel")}</CardTitle>
+                  <CardDescription>{t("analytics.order-conversion-pipeline")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -611,7 +634,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full bg-amber-500" />
-                          Pending
+                          {t("status.pending")}
                         </span>
                         <span className="text-sm font-bold">{salesData?.funnel?.pending || 0}</span>
                       </div>
@@ -628,7 +651,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full bg-indigo-500" />
-                          Approved
+                          {t("status.approved")}
                         </span>
                         <span className="text-sm font-bold">{salesData?.funnel?.approved || 0}</span>
                       </div>
@@ -645,7 +668,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                          Shipped
+                          {t("status.shipped")}
                         </span>
                         <span className="text-sm font-bold">{salesData?.funnel?.shipped || 0}</span>
                       </div>
@@ -660,7 +683,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     </div>
                     <div className="pt-4 border-t border-border">
                       <div className="flex items-center justify-between p-3 bg-emerald-500/10 rounded-lg">
-                        <span className="text-sm font-medium">Conversion Rate</span>
+                        <span className="text-sm font-medium">{t("analytics.conversion-rate")}</span>
                         <span className="text-xl font-bold text-emerald-700">
                           {salesData?.funnel?.conversionRate?.toFixed(1) || 0}%
                         </span>
@@ -673,8 +696,8 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Product Affinity Analysis</CardTitle>
-                <CardDescription>Products frequently purchased together</CardDescription>
+                <CardTitle>{t("analytics.product-affinity")}</CardTitle>
+                <CardDescription>{t("analytics.frequently-purchased-together")}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -689,12 +712,12 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                           <span className="text-muted-foreground">+</span>
                           <Badge variant="outline">{pair.product2}</Badge>
                         </div>
-                        <Badge>{pair.count} orders</Badge>
+                        <Badge>{fill(t("analytics.count-orders"), { count: pair.count })}</Badge>
                       </div>
                     ))
                   ) : (
                     <div className="flex items-center justify-center p-8 text-muted-foreground">
-                      Not enough data for affinity analysis
+                      {t("analytics.not-enough-affinity-data")}
                     </div>
                   )}
                 </div>
@@ -708,27 +731,27 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <TabsContent value="inventory" className="space-y-4">
             <KpiGrid>
               <KpiTile
-                label="A Items (High Value)"
+                label={t("analytics.a-items")}
                 value={inventoryData?.abcAnalysis?.aItems || 0}
-                sub="80% of inventory value"
+                sub={t("analytics.pct-80-inventory-value")}
               />
               <KpiTile
-                label="B Items (Medium)"
+                label={t("analytics.b-items")}
                 value={inventoryData?.abcAnalysis?.bItems || 0}
-                sub="15% of inventory value"
+                sub={t("analytics.pct-15-inventory-value")}
               />
               <KpiTile
-                label="C Items (Low Value)"
+                label={t("analytics.c-items")}
                 value={inventoryData?.abcAnalysis?.cItems || 0}
-                sub="5% of inventory value"
+                sub={t("analytics.pct-5-inventory-value")}
               />
             </KpiGrid>
 
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Stock-out Risk Analysis</CardTitle>
-                  <CardDescription>Items at risk of running out</CardDescription>
+                  <CardTitle>{t("analytics.stock-out-risk-analysis")}</CardTitle>
+                  <CardDescription>{t("analytics.items-at-risk")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -737,19 +760,19 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         <div key={idx} className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium">{item.productName}</span>
-                            <Badge variant="destructive">{item.riskLevel} risk</Badge>
+                            <Badge variant="destructive">{fill(t("analytics.level-risk"), { level: levelLabel(item.riskLevel) })}</Badge>
                           </div>
                           <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                            <div>Stock: {item.currentStock}</div>
-                            <div>Velocity: {item.dailyVelocity?.toFixed(1)}/day</div>
-                            <div>Days left: {item.daysUntilStockout?.toFixed(0)}</div>
+                            <div>{fill(t("analytics.stock-value"), { n: item.currentStock })}</div>
+                            <div>{fill(t("analytics.velocity-per-day"), { rate: item.dailyVelocity?.toFixed(1) })}</div>
+                            <div>{fill(t("analytics.days-left"), { days: item.daysUntilStockout?.toFixed(0) })}</div>
                           </div>
                         </div>
                       ))
                     ) : (
                       <div className="flex items-center justify-center p-8 text-muted-foreground">
                         <CheckCircle className="h-5 w-5 me-2 text-emerald-700" />
-                        No high-risk items
+                        {t("analytics.no-high-risk-items")}
                       </div>
                     )}
                   </div>
@@ -758,8 +781,8 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Slow-Moving Inventory</CardTitle>
-                  <CardDescription>Items with low turnover rate</CardDescription>
+                  <CardTitle>{t("analytics.slow-moving-inventory")}</CardTitle>
+                  <CardDescription>{t("analytics.items-low-turnover-rate")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
@@ -768,16 +791,16 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                           <div>
                             <p className="font-medium">{item.productName}</p>
-                            <p className="text-xs text-muted-foreground">Stock: {item.quantity}</p>
+                            <p className="text-xs text-muted-foreground">{fill(t("analytics.stock-value"), { n: item.quantity })}</p>
                           </div>
                           <Badge variant="outline">
-                            <Money value={item.totalValue || 0} /> EGP
+                            <Money value={item.totalValue || 0} /> {t("common.egp-2")}
                           </Badge>
                         </div>
                       ))
                     ) : (
                       <div className="flex items-center justify-center p-8 text-muted-foreground">
-                        No slow-moving items detected
+                        {t("analytics.no-slow-moving")}
                       </div>
                     )}
                   </div>
@@ -793,32 +816,32 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Cash Flow Overview</CardTitle>
-                  <CardDescription>Receivables vs Payables</CardDescription>
+                  <CardTitle>{t("analytics.cash-flow-overview")}</CardTitle>
+                  <CardDescription>{t("analytics.receivables-vs-payables")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div className="p-4 bg-emerald-500/10 rounded-lg">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Accounts Receivable (EGP)</span>
+                        <span className="text-sm font-medium">{t("analytics.accounts-receivable-egp")}</span>
                         <span className="text-xl font-bold text-emerald-700">
                           <Money value={kpiData?.cashPosition?.ar || 0} />
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">Money owed to you</p>
+                      <p className="text-xs text-muted-foreground mt-1">{t("analytics.money-owed-to-you")}</p>
                     </div>
                     <div className="p-4 bg-red-500/10 rounded-lg">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Accounts Payable (EGP)</span>
+                        <span className="text-sm font-medium">{t("analytics.accounts-payable-egp")}</span>
                         <span className="text-xl font-bold text-red-700">
                           <Money value={kpiData?.cashPosition?.ap || 0} />
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">Money you owe</p>
+                      <p className="text-xs text-muted-foreground mt-1">{t("analytics.money-you-owe")}</p>
                     </div>
                     <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Net Position (EGP)</span>
+                        <span className="text-sm font-medium">{t("analytics.net-position-egp")}</span>
                         <span
                           className={`text-xl font-bold ${(kpiData?.cashPosition?.total || 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}
                         >
@@ -832,34 +855,34 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Profitability Metrics</CardTitle>
-                  <CardDescription>Revenue and margin analysis</CardDescription>
+                  <CardTitle>{t("analytics.profitability-metrics")}</CardTitle>
+                  <CardDescription>{t("analytics.revenue-margin-analysis")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                      <span className="text-sm font-medium">Total Revenue (EGP)</span>
+                      <span className="text-sm font-medium">{t("analytics.total-revenue-egp")}</span>
                       <span className="font-bold">
                         <Money value={kpiData?.revenue?.total || 0} />
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                      <span className="text-sm font-medium">Gross Profit (EGP)</span>
+                      <span className="text-sm font-medium">{t("analytics.gross-profit-egp")}</span>
                       <span className="font-bold text-emerald-700">
                         <Money value={kpiData?.grossProfit?.total || 0} />
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                      <span className="text-sm font-medium">Gross Margin</span>
+                      <span className="text-sm font-medium">{t("analytics.gross-margin")}</span>
                       <span className="font-bold">{formatNumber(kpiData?.grossProfit?.margin || 0)}%</span>
                     </div>
                     <div className="p-4 rounded-lg bg-gradient-to-r from-primary/10 to-emerald-500/10">
                       <p className="text-sm">
                         {kpiData?.grossProfit?.margin >= 25
-                          ? "Excellent margin! Your pricing strategy is working well."
+                          ? t("analytics.margin-excellent")
                           : kpiData?.grossProfit?.margin >= 15
-                            ? "Good margin. Consider optimizing high-volume products."
-                            : "Margin needs improvement. Review pricing and costs."}
+                            ? t("analytics.margin-good")
+                            : t("analytics.margin-needs-improvement")}
                       </p>
                     </div>
                   </div>
@@ -873,9 +896,9 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
         {visibleTabs.includes("operations") && (
           <TabsContent value="operations" className="space-y-4">
             <KpiGrid>
-              <KpiTile label="Active Suppliers" value={supplierData?.scorecard?.length || 0} sub="Verified partners" />
+              <KpiTile label={t("analytics.active-suppliers")} value={supplierData?.scorecard?.length || 0} sub={t("analytics.verified-partners")} />
               <KpiTile
-                label="Supplier Performance"
+                label={t("analytics.supplier-performance")}
                 value={
                   <>
                     {supplierData?.scorecard?.length > 0
@@ -887,10 +910,10 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     %
                   </>
                 }
-                sub="Average quality score"
+                sub={t("analytics.average-quality-score")}
               />
               <KpiTile
-                label="On-Time Delivery"
+                label={t("analytics.on-time-delivery")}
                 value={
                   <>
                     {supplierData?.scorecard?.length > 0
@@ -902,10 +925,10 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     %
                   </>
                 }
-                sub="Delivery reliability"
+                sub={t("analytics.delivery-reliability")}
               />
               <KpiTile
-                label="Total Procurement (EGP)"
+                label={t("analytics.total-procurement-egp")}
                 value={
                   <Money
                     value={
@@ -914,20 +937,20 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     }
                   />
                 }
-                sub="Total purchase value"
+                sub={t("analytics.total-purchase-value")}
               />
             </KpiGrid>
 
             <Card>
               <CardHeader>
-                <CardTitle>Inventory Health Dashboard</CardTitle>
-                <CardDescription>Real-time stock levels and reorder alerts</CardDescription>
+                <CardTitle>{t("analytics.inventory-health")}</CardTitle>
+                <CardDescription>{t("analytics.realtime-stock-levels")}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-3 mb-6">
                   <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Optimal Stock</span>
+                      <span className="text-sm font-medium">{t("analytics.optimal-stock")}</span>
                       <CheckCircle className="h-4 w-4 text-emerald-700" />
                     </div>
                     <div className="text-2xl font-bold">
@@ -935,33 +958,33 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         (item: any) => item.quantity > (item.reorderPoint || 0),
                       )?.length || 0}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Products well-stocked</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t("analytics.products-well-stocked")}</p>
                   </div>
 
                   <div className="p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Low Stock Alert</span>
+                      <span className="text-sm font-medium">{t("analytics.low-stock-alert")}</span>
                       <AlertTriangle className="h-4 w-4 text-amber-700" />
                     </div>
                     <div className="text-2xl font-bold text-amber-700">
                       {inventoryData?.stockoutRisk?.mediumRisk || 0}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Products need reorder soon</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t("analytics.products-need-reorder")}</p>
                   </div>
 
                   <div className="p-4 bg-red-500/10 rounded-lg border border-red-500/20">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Critical Stock</span>
+                      <span className="text-sm font-medium">{t("analytics.critical-stock")}</span>
                       <AlertTriangle className="h-4 w-4 text-red-700" />
                     </div>
                     <div className="text-2xl font-bold text-red-700">{inventoryData?.stockoutRisk?.highRisk || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Products at risk of stockout</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t("analytics.products-at-risk-stockout")}</p>
                   </div>
                 </div>
 
                 {inventoryData?.abcAnalysis?.details && inventoryData.abcAnalysis.details.length > 0 && (
                   <div className="space-y-3">
-                    <h4 className="font-medium text-sm">Stock Value by Category</h4>
+                    <h4 className="font-medium text-sm">{t("analytics.stock-value-by-category")}</h4>
                     <ResponsiveContainer width="100%" height={200}>
                       <BarChart
                         data={inventoryData.abcAnalysis.details
@@ -985,8 +1008,8 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="category" />
                         <YAxis />
-                        <Tooltip formatter={(value: any) => `EGP ${value.toLocaleString()}`} />
-                        <Bar dataKey="value" fill={CHART_COLORS[0]} name="Total Value (EGP)" />
+                        <Tooltip formatter={(value: any) => fill(t("analytics.egp-amount"), { amount: value.toLocaleString() })} />
+                        <Bar dataKey="value" fill={CHART_COLORS[0]} name={t("common.total-value-egp")} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -996,8 +1019,8 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Supplier Performance Scorecard</CardTitle>
-                <CardDescription>Quality, delivery, and reliability metrics</CardDescription>
+                <CardTitle>{t("analytics.supplier-scorecard")}</CardTitle>
+                <CardDescription>{t("analytics.quality-delivery-reliability")}</CardDescription>
               </CardHeader>
               <CardContent>
                 {supplierData?.scorecard && supplierData.scorecard.length > 0 ? (
@@ -1018,24 +1041,24 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                                   : "destructive"
                             }
                           >
-                            {Math.round(supplier.overallScore)}% Overall Score
+                            {fill(t("analytics.overall-score"), { score: Math.round(supplier.overallScore) })}
                           </Badge>
                         </div>
                         <div className="grid grid-cols-4 gap-4 text-sm">
                           <div>
-                            <p className="text-muted-foreground">On-Time Rate</p>
+                            <p className="text-muted-foreground">{t("analytics.on-time-rate")}</p>
                             <p className="font-bold">{Math.round(supplier.onTimeRate)}%</p>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">Avg Lead Time</p>
-                            <p className="font-bold">{Math.round(supplier.avgLeadTime)} days</p>
+                            <p className="text-muted-foreground">{t("analytics.avg-lead-time")}</p>
+                            <p className="font-bold">{Math.round(supplier.avgLeadTime)} {t("common.days")}</p>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">Total Orders</p>
+                            <p className="text-muted-foreground">{t("so.total-orders")}</p>
                             <p className="font-bold">{supplier.orderCount}</p>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">Purchase Value (EGP)</p>
+                            <p className="text-muted-foreground">{t("analytics.purchase-value-egp")}</p>
                             <p className="font-bold">
                               <Money value={supplier.totalPurchaseValue || 0} />
                             </p>
@@ -1046,7 +1069,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center p-8 text-muted-foreground">
-                    No supplier data available
+                    {t("analytics.no-supplier-data")}
                   </div>
                 )}
               </CardContent>
@@ -1059,8 +1082,8 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <TabsContent value="predictions" className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div>
-                <h2 className="text-2xl font-bold">AI-Powered Predictions</h2>
-                <p className="text-sm text-muted-foreground">Generate forecasts and analyze business trends</p>
+                <h2 className="text-2xl font-bold">{t("analytics.ai-powered-predictions")}</h2>
+                <p className="text-sm text-muted-foreground">{t("analytics.generate-forecasts")}</p>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1070,28 +1093,28 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     ) : (
                       <Lightbulb className="h-4 w-4" />
                     )}
-                    Actions to Take
+                    {t("analytics.actions-to-take")}
                     <ChevronDown className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>Get AI Recommendations For</DropdownMenuLabel>
+                  <DropdownMenuLabel>{t("analytics.get-ai-recommendations-for")}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => generateAIActions("sales")} className="cursor-pointer">
                     <ShoppingCart className="h-4 w-4 me-2" />
-                    Sales Strategy
+                    {t("analytics.sales-strategy")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => generateAIActions("inventory")} className="cursor-pointer">
                     <Package className="h-4 w-4 me-2" />
-                    Inventory Management
+                    {t("analytics.inventory-management")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => generateAIActions("financial")} className="cursor-pointer">
                     <DollarSign className="h-4 w-4 me-2" />
-                    Financial Optimization
+                    {t("analytics.financial-optimization")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => generateAIActions("operations")} className="cursor-pointer">
                     <Building2 className="h-4 w-4 me-2" />
-                    Operations Efficiency
+                    {t("analytics.operations-efficiency")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1102,9 +1125,13 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Lightbulb className="h-5 w-5 text-primary" />
-                    AI Recommendations: {aiActions.category.charAt(0).toUpperCase() + aiActions.category.slice(1)}
+                    {fill(t("analytics.ai-recommendations-category"), {
+                      category: CATEGORY_LABEL_KEYS[aiActions.category]
+                        ? t(CATEGORY_LABEL_KEYS[aiActions.category])
+                        : aiActions.category.charAt(0).toUpperCase() + aiActions.category.slice(1),
+                    })}
                   </CardTitle>
-                  <CardDescription>Actionable insights for best business outcomes</CardDescription>
+                  <CardDescription>{t("analytics.actionable-insights")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -1122,10 +1149,10 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                             <p className="text-sm text-muted-foreground mb-2">{rec.description}</p>
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="text-xs">
-                                {rec.priority} Priority
+                                {fill(t("analytics.priority-badge"), { level: levelLabel(rec.priority) })}
                               </Badge>
                               <Badge variant="secondary" className="text-xs">
-                                Impact: {rec.expectedImpact}
+                                {fill(t("analytics.impact"), { impact: rec.expectedImpact })}
                               </Badge>
                             </div>
                           </div>
@@ -1145,16 +1172,16 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-primary" />
-                    Demand Forecasting
+                    {t("analytics.demand-forecasting")}
                   </CardTitle>
-                  <CardDescription>Predict next month's demand by product using historical sales data</CardDescription>
+                  <CardDescription>{t("analytics.predict-next-month")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button variant="outline" className="w-full bg-transparent" disabled={predicting}>
                     {predicting && predictions?.type === "demand" ? (
                       <Loader2 className="h-4 w-4 animate-spin me-2" />
                     ) : null}
-                    Generate Forecast
+                    {t("analytics.generate-forecast")}
                   </Button>
                 </CardContent>
               </Card>
@@ -1166,16 +1193,16 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <DollarSign className="h-5 w-5 text-emerald-700" />
-                    Dynamic Pricing
+                    {t("analytics.dynamic-pricing")}
                   </CardTitle>
-                  <CardDescription>Optimize prices based on market trends and inventory levels</CardDescription>
+                  <CardDescription>{t("analytics.optimize-prices")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button variant="outline" className="w-full bg-transparent" disabled={predicting}>
                     {predicting && predictions?.type === "pricing" ? (
                       <Loader2 className="h-4 w-4 animate-spin me-2" />
                     ) : null}
-                    Get Recommendations
+                    {t("analytics.get-recommendations")}
                   </Button>
                 </CardContent>
               </Card>
@@ -1187,16 +1214,16 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <AlertTriangle className="h-5 w-5 text-amber-700" />
-                    Churn Prediction
+                    {t("analytics.churn-prediction")}
                   </CardTitle>
-                  <CardDescription>Identify at-risk customers and prevent revenue loss</CardDescription>
+                  <CardDescription>{t("analytics.identify-at-risk")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button variant="outline" className="w-full bg-transparent" disabled={predicting}>
                     {predicting && predictions?.type === "churn" ? (
                       <Loader2 className="h-4 w-4 animate-spin me-2" />
                     ) : null}
-                    Analyze Churn Risk
+                    {t("analytics.analyze-churn-risk")}
                   </Button>
                 </CardContent>
               </Card>
@@ -1207,17 +1234,17 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardHeader>
                   <CardTitle>
                     {predictions.type === "demand"
-                      ? "📊 Demand Forecast Results"
+                      ? t("analytics.demand-forecast-results")
                       : predictions.type === "pricing"
-                        ? "💰 Pricing Recommendations"
-                        : "⚠️ Churn Risk Analysis"}
+                        ? t("analytics.pricing-recommendations")
+                        : t("analytics.churn-risk-analysis")}
                   </CardTitle>
                   <CardDescription>
                     {predictions.type === "demand"
-                      ? "Predicted demand for the next 30 days based on historical sales patterns"
+                      ? t("analytics.predicted-demand-30-days")
                       : predictions.type === "pricing"
-                        ? "Suggested price adjustments to optimize profit margins"
-                        : "Customers requiring immediate attention to prevent churn"}
+                        ? t("analytics.suggested-price-adjustments")
+                        : t("analytics.customers-immediate-attention")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1227,23 +1254,23 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         <>
                           <div className="grid grid-cols-3 gap-4 mb-4 p-4 bg-muted/50 rounded-lg">
                             <div>
-                              <p className="text-sm text-muted-foreground">Total Forecasted Demand</p>
+                              <p className="text-sm text-muted-foreground">{t("analytics.total-forecasted-demand")}</p>
                               <p className="text-2xl font-bold">
                                 {predictions.data.predictions.reduce(
                                   (sum: number, p: any) => sum + p.predictedDemand,
                                   0,
                                 )}{" "}
-                                units
+                                {t("common.units")}
                               </p>
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">High Confidence Items</p>
+                              <p className="text-sm text-muted-foreground">{t("analytics.high-confidence-items")}</p>
                               <p className="text-2xl font-bold text-emerald-700">
                                 {predictions.data.predictions.filter((p: any) => p.confidence === "high").length}
                               </p>
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">Requires Restocking</p>
+                              <p className="text-sm text-muted-foreground">{t("analytics.requires-restocking")}</p>
                               <p className="text-2xl font-bold text-amber-700">
                                 {
                                   predictions.data.predictions.filter(
@@ -1270,25 +1297,25 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                                           : "outline"
                                     }
                                   >
-                                    {pred.confidence} confidence
+                                    {fill(t("analytics.level-confidence"), { level: levelLabel(pred.confidence) })}
                                   </Badge>
                                   {pred.predictedDemand > (pred.currentStock || 0) && (
-                                    <Badge variant="destructive">Restock Needed</Badge>
+                                    <Badge variant="destructive">{t("analytics.restock-needed")}</Badge>
                                   )}
                                 </div>
                               </div>
                               <div className="text-end">
-                                <p className="text-xs text-muted-foreground">Predicted Demand</p>
-                                <span className="text-lg font-bold">{pred.predictedDemand} units</span>
+                                <p className="text-xs text-muted-foreground">{t("analytics.predicted-demand")}</p>
+                                <span className="text-lg font-bold">{pred.predictedDemand} {t("common.units")}</span>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  Current: {pred.currentStock || 0} units
+                                  {fill(t("analytics.current-units"), { n: pred.currentStock || 0 })}
                                 </p>
                               </div>
                             </div>
                           ))}
                         </>
                       ) : (
-                        <div className="text-center py-8 text-muted-foreground">No demand predictions available</div>
+                        <div className="text-center py-8 text-muted-foreground">{t("analytics.no-demand-predictions")}</div>
                       ))}
                     {predictions.type === "pricing" &&
                       (predictions.data?.recommendations?.length > 0 ? (
@@ -1298,10 +1325,10 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                               <p className="text-sm font-medium">{rec.productName}</p>
                               <div className="text-end">
                                 <span className="text-sm line-through text-muted-foreground">
-                                  <Money value={rec.currentPrice} /> EGP
+                                  <Money value={rec.currentPrice} /> {t("common.egp-2")}
                                 </span>
                                 <span className="ms-2 text-sm font-bold text-emerald-700">
-                                  <Money value={rec.suggestedPrice} /> EGP
+                                  <Money value={rec.suggestedPrice} /> {t("common.egp-2")}
                                 </span>
                                 <Badge variant="outline" className="ms-2">
                                   {(((rec.suggestedPrice - rec.currentPrice) / rec.currentPrice) * 100).toFixed(1)}%
@@ -1313,7 +1340,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         ))
                       ) : (
                         <div className="text-center py-8 text-muted-foreground">
-                          No pricing recommendations available
+                          {t("analytics.no-pricing-recommendations")}
                         </div>
                       ))}
                     {predictions.type === "churn" &&
@@ -1321,13 +1348,13 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         <>
                           <div className="grid grid-cols-3 gap-4 mb-4 p-4 bg-red-500/10 rounded-lg border border-red-500/20">
                             <div>
-                              <p className="text-sm text-muted-foreground">High Risk Customers</p>
+                              <p className="text-sm text-muted-foreground">{t("analytics.high-risk-customers")}</p>
                               <p className="text-2xl font-bold text-red-700">
                                 {predictions.data.atRisk.filter((c: any) => c.riskLevel === "high").length}
                               </p>
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">Potential Revenue at Risk (EGP)</p>
+                              <p className="text-sm text-muted-foreground">{t("analytics.revenue-at-risk-egp")}</p>
                               <p className="text-2xl font-bold">
                                 <Money
                                   value={predictions.data.atRisk.reduce(
@@ -1338,7 +1365,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                               </p>
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">Action Required</p>
+                              <p className="text-sm text-muted-foreground">{t("analytics.action-required")}</p>
                               <p className="text-2xl font-bold text-amber-700">
                                 {predictions.data.atRisk.filter((c: any) => c.lastOrderDays > 60).length}
                               </p>
@@ -1350,7 +1377,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                                 <div>
                                   <p className="text-sm font-medium">{cust.customerName}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    Lifetime Value: <Money value={cust.totalSpent || 0} /> EGP
+                                    {t("analytics.lifetime-value")} <Money value={cust.totalSpent || 0} /> {t("common.egp-2")}
                                   </p>
                                 </div>
                                 <Badge
@@ -1362,12 +1389,12 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                                         : "outline"
                                   }
                                 >
-                                  {cust.riskLevel} risk
+                                  {fill(t("analytics.level-risk"), { level: levelLabel(cust.riskLevel) })}
                                 </Badge>
                               </div>
                               <div className="flex items-center justify-between">
                                 <p className="text-xs text-muted-foreground">
-                                  Last order: <span className="font-medium">{cust.lastOrderDays} days ago</span>
+                                  {t("analytics.last-order")} <span className="font-medium">{fill(t("analytics.days-ago"), { days: cust.lastOrderDays })}</span>
                                 </p>
                                 <p className="text-xs text-muted-foreground">{cust.reasoning}</p>
                               </div>
@@ -1377,8 +1404,8 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                       ) : (
                         <div className="text-center py-8 text-muted-foreground">
                           <CheckCircle className="h-8 w-8 mx-auto mb-2 text-emerald-700" />
-                          <p className="font-medium">No at-risk customers detected</p>
-                          <p className="text-sm">All customers are engaging regularly with your business</p>
+                          <p className="font-medium">{t("analytics.no-at-risk-customers")}</p>
+                          <p className="text-sm">{t("analytics.customers-engaging")}</p>
                         </div>
                       ))}
                   </div>
