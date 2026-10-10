@@ -101,7 +101,7 @@ export function QuotationRequestUploadWidget({
           <div className="space-y-2">
             <Label className="text-sm text-muted-foreground">Uploaded Document</Label>
             <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
-              <FileText className="h-5 w-5 text-green-600" />
+              <FileText className="h-5 w-5 text-green-700" />
               <div className="flex-1">
                 <p className="text-sm font-medium">QR {existingFile.quotation_request_number}</p>
                 <p className="text-xs text-muted-foreground truncate">{existingFile.quotation_request_file_name}</p>
@@ -112,6 +112,7 @@ export function QuotationRequestUploadWidget({
               <Button
                 size="sm"
                 variant="ghost"
+                aria-label={t("a11y.sales.open-file")}
                 onClick={() => window.open(existingFile.quotation_request_file_path, "_blank")}
               >
                 <ExternalLink className="h-4 w-4" />
@@ -164,17 +165,8 @@ export function QuotationRequestUploadWidget({
 
             {selectedFile && (
               <Button onClick={handleUpload} disabled={isUploading} className="w-full">
-                {isUploading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Quotation Request
-                  </>
-                )}
+                {isUploading ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Upload className="h-4 w-4 me-2" />}
+                {isUploading ? "Uploading..." : "Upload Quotation Request"}
               </Button>
             )}
           </div>

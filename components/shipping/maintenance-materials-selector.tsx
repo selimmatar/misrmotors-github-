@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useI18n } from "@/lib/i18n-context"
 import { Package, Plus, Trash2, Search, ShoppingCart } from "lucide-react"
 
 export interface MaterialItem {
@@ -38,6 +39,7 @@ export function MaintenanceMaterialsSelector({
   materials,
   onMaterialsChange,
 }: MaintenanceMaterialsSelectorProps) {
+  const { t } = useI18n()
   const [products, setProducts] = useState<Product[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [loading, setLoading] = useState(false)
@@ -157,7 +159,7 @@ export function MaintenanceMaterialsSelector({
               setShowAddForm(true)
             }}
           >
-            <Package className="w-4 h-4 mr-1" />
+            <Package className="w-4 h-4 me-1" />
             From Inventory
           </Button>
           <Button
@@ -169,7 +171,7 @@ export function MaintenanceMaterialsSelector({
               setShowAddForm(true)
             }}
           >
-            <ShoppingCart className="w-4 h-4 mr-1" />
+            <ShoppingCart className="w-4 h-4 me-1" />
             Outsourced Item
           </Button>
         </div>
@@ -178,12 +180,12 @@ export function MaintenanceMaterialsSelector({
         {showAddForm && addType === "inventory" && (
           <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Search products by name or SKU..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
+                className="ps-9"
               />
             </div>
             {searchTerm && (
@@ -195,13 +197,13 @@ export function MaintenanceMaterialsSelector({
                     <button
                       key={product.id}
                       type="button"
-                      className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between text-sm"
+                      className="w-full text-start px-3 py-2 max-md:min-h-11 hover:bg-muted flex items-center justify-between text-sm"
                       onClick={() => addInventoryItem(product)}
                     >
                       <div>
                         <span className="font-medium">{product.productName}</span>
                         {product.sku && (
-                          <span className="text-muted-foreground ml-2">({product.sku})</span>
+                          <span className="text-muted-foreground ms-2">({product.sku})</span>
                         )}
                       </div>
                       <span className="text-muted-foreground">
@@ -253,7 +255,7 @@ export function MaintenanceMaterialsSelector({
               onClick={addOutsourcedItem}
               disabled={!outsourcedName || !outsourcedCost}
             >
-              <Plus className="w-4 h-4 mr-1" />
+              <Plus className="w-4 h-4 me-1" />
               Add Outsourced Item
             </Button>
           </div>
@@ -290,7 +292,7 @@ export function MaintenanceMaterialsSelector({
                     className="w-16 h-8 text-center text-sm"
                   />
                   <span className="text-xs text-muted-foreground w-8">{item.unit || "pcs"}</span>
-                  <span className="text-sm font-semibold w-24 text-right">
+                  <span className="text-sm font-semibold w-24 text-end">
                     EGP {item.totalCost.toLocaleString()}
                   </span>
                   <Button
@@ -298,6 +300,7 @@ export function MaintenanceMaterialsSelector({
                     variant="ghost"
                     size="sm"
                     className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                    aria-label={`${t("action.remove")} ${item.productName}`}
                     onClick={() => removeItem(index)}
                   >
                     <Trash2 className="w-4 h-4" />

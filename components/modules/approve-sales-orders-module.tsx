@@ -92,7 +92,7 @@ export function ApproveSalesOrdersModule() {
                       <p className="font-semibold">{t(`payment.${order.paymentType || order.paymentTerms || "cash"}`)}</p>
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex flex-wrap gap-2 mt-4">
                     <Button
                       size="sm"
                       className="gap-2"
@@ -166,21 +166,13 @@ export function ApproveSalesOrdersModule() {
               className="gap-2"
             >
               {processing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Processing...
-                </>
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : actionDialog?.action === "approve" ? (
-                <>
-                  <CheckCircle className="w-4 h-4" />
-                  Approve
-                </>
+                <CheckCircle className="w-4 h-4" />
               ) : (
-                <>
-                  <XCircle className="w-4 h-4" />
-                  Reject
-                </>
+                <XCircle className="w-4 h-4" />
               )}
+              {processing ? "Processing..." : actionDialog?.action === "approve" ? "Approve" : "Reject"}
             </Button>
           </DialogFooter>
         </DialogContent>

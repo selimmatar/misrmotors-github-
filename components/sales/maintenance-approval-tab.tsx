@@ -148,7 +148,7 @@ export function MaintenanceApprovalTab({ userRole }: { userRole: string }) {
       </div>
 
       <Tabs defaultValue="pending" className="space-y-4">
-        <TabsList>
+        <TabsList className="h-auto w-full flex-wrap justify-start">
           <TabsTrigger value="pending">
             <Clock className="w-4 h-4 mr-2" />
             Pending Approval ({pendingReports.length})

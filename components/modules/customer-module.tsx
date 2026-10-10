@@ -217,7 +217,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
 
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => setSelectedCustomer(null)} className="gap-2">
             <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
             {t("action.back")} {t("module.customers")}
@@ -296,11 +296,11 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.amount-paid")} (EGP)</p>
-                            <p className="font-semibold text-green-600"><Money value={paymentStatus.amountPaid} /></p>
+                            <p className="font-semibold text-green-700"><Money value={paymentStatus.amountPaid} /></p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.amount-due")} (EGP)</p>
-                            <p className="font-semibold text-orange-600"><Money value={paymentStatus.amountDue} /></p>
+                            <p className="font-semibold text-orange-700"><Money value={paymentStatus.amountDue} /></p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("customer.payment-status")}</p>
@@ -499,7 +499,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                   />
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button onClick={handleAddCustomer}>{t("action.save")}</Button>
                 <Button variant="outline" onClick={() => setShowForm(false)}>
                   {t("action.cancel")}

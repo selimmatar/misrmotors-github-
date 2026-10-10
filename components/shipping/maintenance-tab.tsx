@@ -95,25 +95,25 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="min-w-0 break-words">
           <h2 className="text-2xl font-bold">Maintenance Work Orders</h2>
           <p className="text-muted-foreground">View and manage maintenance tasks</p>
         </div>
       </div>
 
       <Tabs defaultValue="assigned" className="space-y-4">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap w-full justify-start">
           <TabsTrigger value="assigned">
-            <Clock className="w-4 h-4 mr-2" />
+            <Clock className="w-4 h-4 me-2" />
             My Tasks ({assignedWorkOrders.length})
           </TabsTrigger>
           <TabsTrigger value="submitted">
-            <Upload className="w-4 h-4 mr-2" />
+            <Upload className="w-4 h-4 me-2" />
             Submitted Reports ({reportSubmittedWorkOrders.length})
           </TabsTrigger>
           <TabsTrigger value="completed">
-            <CheckCircle className="w-4 h-4 mr-2" />
+            <CheckCircle className="w-4 h-4 me-2" />
             Completed ({completedWorkOrders.length})
           </TabsTrigger>
         </TabsList>
@@ -135,7 +135,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
             assignedWorkOrders.map((wo) => (
               <Card key={wo.work_order_id}>
                 <CardHeader>
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between flex-wrap gap-2">
                     <div className="space-y-1">
                       <CardTitle className="flex items-center gap-2">
                         <Wrench className="w-5 h-5" />
@@ -174,7 +174,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                         setShowReportDialog(true)
                       }}
                     >
-                      <Upload className="w-4 h-4 mr-2" />
+                      <Upload className="w-4 h-4 me-2" />
                       Submit Report
                     </Button>
                     <Button
@@ -184,14 +184,14 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                         setShowDetailsDialog(true)
                       }}
                     >
-                      <Eye className="w-4 h-4 mr-2" />
+                      <Eye className="w-4 h-4 me-2" />
                       View Details
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => window.open(`/api/maintenance/work-orders/${wo.work_order_id}/pdf`, '_blank')}
                     >
-                      <Printer className="w-4 h-4 mr-2" />
+                      <Printer className="w-4 h-4 me-2" />
                       Print Template
                     </Button>
                   </div>
@@ -212,7 +212,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
             reportSubmittedWorkOrders.map((wo) => (
               <Card key={wo.work_order_id}>
                 <CardHeader>
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between flex-wrap gap-2">
                     <div className="space-y-1">
                       <CardTitle className="flex items-center gap-2">
                         <Wrench className="w-5 h-5" />
@@ -232,7 +232,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                     disabled={loadingReport}
                     onClick={() => fetchReportForWorkOrder(wo.work_order_id)}
                   >
-                    <Eye className="w-4 h-4 mr-2" />
+                    <Eye className="w-4 h-4 me-2" />
                     {loadingReport ? "Loading..." : "View Report"}
                   </Button>
                 </CardContent>
@@ -252,10 +252,10 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
             completedWorkOrders.map((wo) => (
               <Card key={wo.work_order_id}>
                 <CardHeader>
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between flex-wrap gap-2">
                     <div className="space-y-1">
                       <CardTitle className="flex items-center gap-2">
-                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        <CheckCircle className="w-5 h-5 text-green-700" />
                         {wo.work_order_number}
                       </CardTitle>
                       <CardDescription>{wo.title}</CardDescription>
@@ -270,7 +270,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                     disabled={loadingReport}
                     onClick={() => fetchReportForWorkOrder(wo.work_order_id)}
                   >
-                    <Eye className="w-4 h-4 mr-2" />
+                    <Eye className="w-4 h-4 me-2" />
                     View Report
                   </Button>
                 </CardContent>
@@ -333,7 +333,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                 <Button
                   onClick={() => window.open(`/api/maintenance/work-orders/${detailsWorkOrder.work_order_id}/pdf`, '_blank')}
                 >
-                  <Printer className="w-4 h-4 mr-2" />
+                  <Printer className="w-4 h-4 me-2" />
                   Print Work Order Template
                 </Button>
                 <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>
@@ -387,7 +387,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
               </div>
 
               {/* Cost Summary */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="p-3 border rounded-md text-center">
                   <p className="text-sm text-muted-foreground">Labor Hours</p>
                   <p className="text-lg font-bold">{viewingReport.labor_hours || viewingReport.actual_hours || 0}</p>
@@ -411,9 +411,9 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                       <TableRow>
                         <TableHead>Source</TableHead>
                         <TableHead>Item</TableHead>
-                        <TableHead className="text-right">Qty</TableHead>
-                        <TableHead className="text-right">Unit Cost</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-end">Qty</TableHead>
+                        <TableHead className="text-end">Unit Cost</TableHead>
+                        <TableHead className="text-end">Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -425,9 +425,9 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                             </Badge>
                           </TableCell>
                           <TableCell className="font-medium">{item.productName}</TableCell>
-                          <TableCell className="text-right">{item.quantity}</TableCell>
-                          <TableCell className="text-right">EGP {(item.unitCost || 0).toLocaleString()}</TableCell>
-                          <TableCell className="text-right font-semibold">EGP {(item.totalCost || 0).toLocaleString()}</TableCell>
+                          <TableCell className="text-end">{item.quantity}</TableCell>
+                          <TableCell className="text-end">EGP {(item.unitCost || 0).toLocaleString()}</TableCell>
+                          <TableCell className="text-end font-semibold">EGP {(item.totalCost || 0).toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -449,7 +449,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                   variant="outline"
                   onClick={() => window.open(viewingReport.uploaded_pdf_url, "_blank")}
                 >
-                  <FileText className="w-4 h-4 mr-2" />
+                  <FileText className="w-4 h-4 me-2" />
                   View Uploaded PDF
                 </Button>
               )}

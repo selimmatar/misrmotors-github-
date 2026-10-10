@@ -313,7 +313,7 @@ export function MaintenanceModule() {
       />
 
       <Tabs defaultValue="work-orders" className="space-y-4">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap w-full justify-start">
           <TabsTrigger value="work-orders" className="gap-2">
             <Wrench className="w-4 h-4" />
             Work Orders
@@ -327,8 +327,8 @@ export function MaintenanceModule() {
         <TabsContent value="work-orders" className="space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="min-w-0 break-words">
                   <CardTitle>Work Orders</CardTitle>
                   <CardDescription>Manage and track maintenance work orders</CardDescription>
                 </div>
@@ -619,7 +619,7 @@ export function MaintenanceModule() {
                 rows={2}
               />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="labor_hours">Labor Hours *</Label>
                 <Input
@@ -655,7 +655,7 @@ export function MaintenanceModule() {
               </div>
             </div>
             <div className="bg-muted p-4 rounded-lg">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center flex-wrap gap-2">
                 <span className="font-medium">Total Cost:</span>
                 <span className="text-lg font-bold">
                   <Money value={parseFloat(reportFormData.materials_cost || "0") + parseFloat(reportFormData.labor_cost || "0")} /> EGP

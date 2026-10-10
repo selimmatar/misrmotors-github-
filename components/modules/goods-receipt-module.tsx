@@ -403,7 +403,7 @@ export function GoodsReceiptModule() {
         <Card className="border-yellow-200 bg-yellow-50">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-yellow-700 mt-0.5" />
               <div>
                 <h3 className="font-semibold text-yellow-900">{t("gr.no-approved-po")}</h3>
                 <p className="text-sm text-yellow-700 mt-1">{t("gr.no-approved-po-description")}</p>
@@ -420,8 +420,8 @@ export function GoodsReceiptModule() {
             return (
               <Card key={po.id}>
                 <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
+                  <div className="flex items-start justify-between flex-wrap gap-2">
+                    <div className="min-w-0 break-words">
                       <CardTitle className="text-lg">{po.poNumber}</CardTitle>
                       <p className="text-sm text-muted-foreground mt-1">
                         {t("gr.supplier")}: {getSupplierName(po.supplierId)}
@@ -429,19 +429,19 @@ export function GoodsReceiptModule() {
                       <p className="text-sm text-muted-foreground">
                         {t("gr.order-date")}: {po.orderDate} | {t("gr.expected")}: {po.deliveryDate || t("gr.tbd")}
                       </p>
-                      <div className="flex items-center gap-4 mt-2">
+                      <div className="flex flex-wrap items-center gap-4 mt-2">
                         <div className="flex items-center gap-1.5 text-sm">
-                          <Clock className="w-4 h-4 text-blue-500" />
+                          <Clock className="w-4 h-4 text-blue-600" />
                           <span className="text-muted-foreground">{t("gr.lead-time")}:</span>
                           <span className="font-medium">
                             {formatNumber(leadTime)} {t("gr.days")}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5 text-sm">
-                          <CalendarDays className="w-4 h-4 text-green-500" />
+                          <CalendarDays className="w-4 h-4 text-green-700" />
                           <span className="text-muted-foreground">{t("gr.eta")}:</span>
                           <span
-                            className={`font-semibold ${eta.daysRemaining <= 0 ? "text-red-600" : eta.daysRemaining <= 3 ? "text-orange-600" : "text-green-600"}`}
+                            className={`font-semibold ${eta.daysRemaining <= 0 ? "text-red-700" : eta.daysRemaining <= 3 ? "text-orange-700" : "text-green-700"}`}
                           >
                             {eta.date}
                             {eta.daysRemaining <= 0
@@ -552,7 +552,7 @@ export function GoodsReceiptModule() {
             </div>
             <p className="text-sm text-muted-foreground">{t("gr.rejection-note")}</p>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
               onClick={() => {
@@ -587,7 +587,7 @@ export function GoodsReceiptModule() {
               {receiptLines.some(l => l.itemType === 'outsourced') && (
                 <div className="space-y-3">
                   <h4 className="font-semibold text-sm flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-amber-600" />
+                    <FileText className="w-4 h-4 text-amber-700" />
                     Outsourced Services
                     <span className="text-xs font-normal text-muted-foreground">(no warehouse allocation needed)</span>
                   </h4>
@@ -597,8 +597,8 @@ export function GoodsReceiptModule() {
                       const globalIndex = receiptLines.indexOf(line)
                       return (
                         <Card key={line.productId} className="p-4 border-amber-200 bg-amber-50/50">
-                          <div className="flex items-center justify-between gap-4">
-                            <div className="flex-1">
+                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex-1 min-w-0 break-words">
                               <p className="font-medium">{line.productName}</p>
                               <p className="text-sm text-muted-foreground">Outsourced service — Ordered: {line.quantityOrdered + line.alreadyReceived}{line.alreadyReceived > 0 ? ` (already received ${line.alreadyReceived}, remaining ${line.quantityOrdered})` : ''}</p>
                             </div>
@@ -643,8 +643,8 @@ export function GoodsReceiptModule() {
                       return (
                         <Card key={line.productId} className="p-4">
                           <div className="space-y-4">
-                            <div className="flex items-start justify-between">
-                              <div>
+                            <div className="flex items-start justify-between flex-wrap gap-2">
+                              <div className="min-w-0 break-words">
                                 <p className="font-medium">{line.productName}</p>
                                 <p className="text-sm text-muted-foreground">Ordered: {line.quantityOrdered + line.alreadyReceived} units{line.alreadyReceived > 0 ? ` (already received ${line.alreadyReceived}, remaining ${line.quantityOrdered})` : ''}</p>
                               </div>
@@ -717,7 +717,7 @@ export function GoodsReceiptModule() {
 
                             {/* Warehouse Allocation Section */}
                             <div className="space-y-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between flex-wrap gap-2">
                                 <Label className="flex items-center gap-2 font-medium">
                                   <Warehouse className="w-4 h-4" />
                                   Warehouse Allocation
@@ -807,6 +807,7 @@ export function GoodsReceiptModule() {
                                       type="button"
                                       variant="ghost"
                                       size="sm"
+                                      aria-label={t("action.remove")}
                                       onClick={() => {
                                         setReceiptLines(prev => prev.map((l, i) =>
                                           i === globalIndex ? {
@@ -815,7 +816,7 @@ export function GoodsReceiptModule() {
                                           } : l
                                         ))
                                       }}
-                                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                                      className="h-8 w-8 p-0 text-red-700 hover:text-red-700"
                                     >
                                       <X className="w-4 h-4" />
                                     </Button>
@@ -827,13 +828,13 @@ export function GoodsReceiptModule() {
                                 const totalAllocated = line.warehouseAllocations.reduce((sum, a) => sum + a.quantity, 0)
                                 const remaining = line.quantityReceived - totalAllocated
                                 return remaining !== 0 ? (
-                                  <p className={`text-xs ${remaining > 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                                  <p className={`text-xs ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
                                     {remaining > 0
                                       ? `${remaining} units not yet allocated to a warehouse`
                                       : `Over-allocated by ${Math.abs(remaining)} units`}
                                   </p>
                                 ) : (
-                                  <p className="text-xs text-green-600">All {totalAllocated} units allocated</p>
+                                  <p className="text-xs text-green-700">All {totalAllocated} units allocated</p>
                                 )
                               })()}
                             </div>
@@ -851,7 +852,8 @@ export function GoodsReceiptModule() {
                                     {!itemPhotos.find(p => p.productId === line.productId)?.uploaded && (
                                       <button
                                         onClick={() => removePhoto(line.productId)}
-                                        className="absolute -top-1 -end-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
+                                        aria-label={t("a11y.inventory.remove-photo")}
+                                        className="absolute -top-1 -end-1 bg-red-700 text-white rounded-full p-0.5 hover:bg-red-800 max-md:min-h-11 max-md:min-w-11 max-md:inline-flex max-md:items-center max-md:justify-center"
                                       >
                                         <X className="w-3 h-3" />
                                       </button>
@@ -895,7 +897,7 @@ export function GoodsReceiptModule() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t">
+            <div className="flex flex-wrap justify-end gap-2 pt-4 border-t">
               <Button
                 variant="outline"
                 onClick={() => {

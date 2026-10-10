@@ -259,7 +259,7 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
                     </span>
                   </div>
                   {pricing.price < landedCostPerUnit && (
-                    <div className="text-sm text-red-600 font-semibold">⚠️ {t("pricing.below-cost")}</div>
+                    <div className="text-sm text-red-700 font-semibold">⚠️ {t("pricing.below-cost")}</div>
                   )}
                 </div>
               </CardContent>

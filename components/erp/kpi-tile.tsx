@@ -21,7 +21,7 @@ export function KpiTile({ label, value, sub, strong, onClick, className }: KpiTi
       type={onClick ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "@container flex min-h-[104px] min-w-0 flex-col gap-1 rounded-xl border bg-card p-4",
+        "@container flex min-h-[72px] md:min-h-[104px] min-w-0 flex-col gap-1 rounded-xl border bg-card p-3 md:p-4",
         onClick && "text-start cursor-pointer transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         strong && "border-transparent bg-strong text-strong-foreground",
         className,
