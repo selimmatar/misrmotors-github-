@@ -1391,7 +1391,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                 </div>
               )}
             </div>
-            <div className="space-y-2 w-full md:w-auto md:min-w-[300px]">
+            <div className="space-y-2 w-full lg:w-auto lg:min-w-[300px]">
               <div className="flex justify-between py-2 border-b">
                 <span className="font-medium">Subtotal:</span>
                 <span><Money value={subtotal} /> EGP</span>

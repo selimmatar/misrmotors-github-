@@ -43,8 +43,22 @@ export function ListCard({ id, amount, party, status, note, actions, onClick, cl
   return (
     <div
       data-slot="list-card"
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
-      className={cn("flex flex-col gap-2 rounded-xl border bg-card p-3", onClick && "cursor-pointer hover:border-primary", className)}
+      // Enter/Space open the card like a click; keys pressed inside `actions` keep their own meaning.
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.target !== e.currentTarget) return
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                onClick()
+              }
+            }
+          : undefined
+      }
+      className={cn("flex flex-col gap-2 rounded-xl border bg-card p-3", onClick && "cursor-pointer hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", className)}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 break-words font-semibold text-link">{id}</div>

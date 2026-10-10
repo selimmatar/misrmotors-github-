@@ -381,9 +381,9 @@ export function WarehouseDeliveryModule() {
                       <div className="flex flex-wrap gap-2">
                         <Button
                           onClick={() => openAllocationDialog(permit)}
-                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          className="flex-1 min-w-0 h-auto whitespace-normal bg-blue-600 hover:bg-blue-700"
                         >
-                          <Warehouse className="w-4 h-4 me-2" />
+                          <Warehouse className="w-4 h-4 me-2 shrink-0" />
                           Allocate Warehouses & Prepare
                         </Button>
                         <Button variant="outline" onClick={() => handleViewPermit(permit)}>
@@ -714,7 +714,7 @@ export function WarehouseDeliveryModule() {
                         </p>
                       )}
                       <Button
-                        className="w-full mt-4 bg-orange-600 hover:bg-orange-700"
+                        className="w-full mt-4 h-auto whitespace-normal bg-orange-600 hover:bg-orange-700"
                         onClick={() => {
                           setSelectedReturn(returnReq)
                           // Initialize warehouse selections for each item
