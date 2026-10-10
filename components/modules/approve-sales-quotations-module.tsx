@@ -7,7 +7,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Eye, CheckCircle, XCircle, FileText, Loader2, AlertCircle, Printer, Search } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { useI18n } from "@/lib/i18n-context"
+import { formatDate } from "@/lib/format"
+import { PageHeader } from "@/components/erp/page-header"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { Money } from "@/components/erp/money"
 import { Input } from "@/components/ui/input"
 import { useAppContext } from "@/lib/app-context"
 import { QuotationPreviewDialog } from "@/components/quotation/quotation-preview-dialog"
@@ -64,9 +68,11 @@ interface QuotationDetails extends Quotation {
 
 interface ApproveSalesQuotationsModuleProps {
   userRole: UserRole
+  embedded?: boolean
 }
 
-export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotationsModuleProps) {
+export function ApproveSalesQuotationsModule({ userRole, embedded = false }: ApproveSalesQuotationsModuleProps) {
+  const { t, language } = useI18n()
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationDetails | null>(null)
   const [loading, setLoading] = useState(true)
@@ -238,31 +244,6 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  }
-
-  const formatCurrency = (amount: number) => {
-    return `${amount.toFixed(2)} EGP`
-  }
-
-  const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-      draft: { label: "Draft", variant: "secondary" },
-      sent: { label: "Sent to Customer", variant: "default" },
-      accepted: { label: "Accepted", variant: "default" },
-      rejected: { label: "Rejected", variant: "destructive" },
-      expired: { label: "Expired", variant: "outline" },
-    }
-
-    const config = statusMap[status] || { label: status, variant: "outline" as const }
-    return <Badge variant={config.variant}>{config.label}</Badge>
-  }
-
   const filteredQuotations = quotations.filter((quotation) => {
     const query = searchQuery.trim().toLowerCase()
     if (!query) return true
@@ -284,12 +265,13 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Approve Sales Quotations</h1>
-        <p className="text-muted-foreground mt-2">
-          Review and approve pending quotations to convert them into Sales Orders
-        </p>
-      </div>
+      {!embedded && (
+        <PageHeader
+          group={t("group.sales")}
+          title={t("module.approve-sales-quotations")}
+          subtitle="Review and approve pending quotations to convert them into Sales Orders"
+        />
+      )}
 
       <Card>
         <CardHeader>
@@ -298,13 +280,13 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
             Quotations awaiting approval will appear here
           </CardDescription>
           <div className="relative mt-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Search by quotation number, customer name, phone, or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
+              className="ps-9"
               aria-label="Search pending quotations"
             />
           </div>
@@ -336,15 +318,15 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Total Amount</p>
-                      <p className="font-semibold">{formatCurrency(quotation.total)}</p>
+                      <p className="font-semibold"><Money value={quotation.total} /> EGP</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Created Date</p>
-                      <p className="font-semibold">{formatDate(quotation.created_at)}</p>
+                      <p className="font-semibold">{formatDate(quotation.created_at, language)}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Status</p>
-                      {getStatusBadge(quotation.status)}
+                      <StatusBadge status={quotation.status} label={quotation.status === "sent" ? "Sent to Customer" : undefined} />
                     </div>
                   </div>
                   <div className="flex gap-2 mt-4">
@@ -406,7 +388,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Status</p>
-                  {getStatusBadge(selectedQuotation.status)}
+                  <StatusBadge status={selectedQuotation.status} label={selectedQuotation.status === "sent" ? "Sent to Customer" : undefined} />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Customer Name</p>
@@ -433,11 +415,11 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
                 <table className="w-full">
                     <thead className="bg-muted">
                       <tr>
-                        <th className="text-left p-3 text-sm font-medium">#</th>
-                        <th className="text-left p-3 text-sm font-medium">Product Name</th>
-                        <th className="text-right p-3 text-sm font-medium">Quantity</th>
-                        <th className="text-right p-3 text-sm font-medium">Unit Price</th>
-                        <th className="text-right p-3 text-sm font-medium">Total</th>
+                        <th className="text-start p-3 text-sm font-medium">#</th>
+                        <th className="text-start p-3 text-sm font-medium">Product Name</th>
+                        <th className="text-end p-3 text-sm font-medium">Quantity</th>
+                        <th className="text-end p-3 text-sm font-medium">Unit Price (EGP)</th>
+                        <th className="text-end p-3 text-sm font-medium">Total (EGP)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -445,10 +427,10 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
                         <tr key={item.id} className="border-t">
                           <td className="p-3 text-sm">{item.line_no}</td>
                           <td className="p-3 text-sm font-medium">{item.product_name}</td>
-                          <td className="p-3 text-sm text-right">{item.quantity}</td>
-                          <td className="p-3 text-sm text-right">{formatCurrency(item.unit_price)}</td>
-                          <td className="p-3 text-sm text-right font-semibold">
-                            {formatCurrency(item.total)}
+                          <td className="p-3 text-sm text-end">{item.quantity}</td>
+                          <td className="p-3 text-sm text-end"><Money value={item.unit_price} /></td>
+                          <td className="p-3 text-sm text-end font-semibold">
+                            <Money value={item.total} />
                           </td>
                         </tr>
                       ))}
@@ -469,15 +451,15 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
                     <>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal:</span>
-                        <span className="font-semibold">{formatCurrency(subtotal)}</span>
+                        <span className="font-semibold"><Money value={subtotal} /> EGP</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">VAT (14%):</span>
-                        <span className="font-semibold">{formatCurrency(calculatedTax)}</span>
+                        <span className="font-semibold"><Money value={calculatedTax} /> EGP</span>
                       </div>
                       <div className="flex justify-between text-lg">
                         <span className="font-bold">Total:</span>
-                        <span className="font-bold">{formatCurrency(calculatedTotal)}</span>
+                        <span className="font-bold"><Money value={calculatedTotal} /> EGP</span>
                       </div>
                     </>
                   )
@@ -538,7 +520,7 @@ export function ApproveSalesQuotationsModule({ userRole }: ApproveSalesQuotation
               >
                 {actionLoading ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    <Loader2 className="w-4 h-4 animate-spin me-2" />
                     Rejecting...
                   </>
                 ) : (

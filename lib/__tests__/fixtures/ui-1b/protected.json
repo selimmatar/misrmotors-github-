@@ -1,0 +1,316 @@
+{
+  "components/modules/sales-order-module.tsx": {
+    "api": [
+      "\"/api/delivery-permits",
+      "\"/api/delivery-permits",
+      "\"/api/maintenance/reports",
+      "`/api/delivery-permits?soId=${soIdValue}",
+      "`/api/invoices/ar/${invoiceId}/pdf"
+    ],
+    "handlers": [
+      "handleAddEquipmentItem",
+      "handleAddItem",
+      "handleAddMaintenanceItem",
+      "handleApprove",
+      "handleApproveQuotation",
+      "handleCountryChange",
+      "handleCreateCustomer",
+      "handleCreateDpFromDialog",
+      "handleCreateDpFromDialog_alias",
+      "handleCustomerChange",
+      "handleOpenCreateDpDialog",
+      "handlePaymentDetailChange",
+      "handlePaymentTypeChange",
+      "handlePrintInvoice",
+      "handlePrintMissingItems",
+      "handlePrintSalesOrder",
+      "handleQRUploadComplete",
+      "handleRemoveEquipmentItem",
+      "handleRemoveItem",
+      "handleRemoveMaintenanceItem",
+      "handleSubmit"
+    ],
+    "ids": [
+      "id=\"dp-delivery-address\"",
+      "id=\"dp-recipient-name\"",
+      "id=\"dp-recipient-phone\"",
+      "name=\"${inputName}\"",
+      "name={`dp-quantity-${index}`}"
+    ],
+    "fetch": 4,
+    "iso": 10,
+    "t": 53,
+    "onClick": 20
+  },
+  "components/modules/sales-quotation-module.tsx": {
+    "api": [
+      "\"/api/quotation-drafts",
+      "\"/api/sales-quotations",
+      "`/api/quotation-drafts?id=${encodeURIComponent(draftIdToClear)}",
+      "`/api/quotation-drafts?id=${encodeURIComponent(id)}",
+      "`/api/quotation-drafts?owner_key=${encodeURIComponent(key)}",
+      "`/api/quotations/generate?${queryString}"
+    ],
+    "handlers": [
+      "handleCountryChange",
+      "handleCreateCustomer",
+      "handleCustomerChange",
+      "handleExcelUpload",
+      "handleInventorySelection",
+      "handlePaymentDetailChange",
+      "handleSaveAndGeneratePDF"
+    ],
+    "ids": [
+      "id=\"customerAddress\"",
+      "id=\"customerEmail\"",
+      "id=\"customerName\"",
+      "id=\"customerPhone\"",
+      "id=\"deliveryAddress\"",
+      "id=\"deliveryContactName\"",
+      "id=\"deliveryContactPhone\"",
+      "id=\"deliveryDate\"",
+      "id=\"departmentName\"",
+      "id=\"notes\"",
+      "id=\"orderDate\"",
+      "id=\"quotationRequestNumber\"",
+      "id=\"receiverName\"",
+      "id=\"validityDays\"",
+      "id={`markup-${item.id}`}",
+      "id={`price-${item.id}`}",
+      "id={`product-${item.id}`}",
+      "id={`quantity-${item.id}`}",
+      "id={`supplier-${item.id}`}"
+    ],
+    "fetch": 5,
+    "iso": 7,
+    "t": 0,
+    "onClick": 10
+  },
+  "components/modules/sales-quotations-hub-module.tsx": {
+    "api": [],
+    "handlers": [],
+    "ids": [],
+    "fetch": 0,
+    "iso": 0,
+    "t": 0,
+    "onClick": 0
+  },
+  "components/modules/approve-sales-orders-module.tsx": {
+    "api": [],
+    "handlers": [
+      "handleAction"
+    ],
+    "ids": [
+      "id=\"comment\""
+    ],
+    "fetch": 0,
+    "iso": 0,
+    "t": 23,
+    "onClick": 5
+  },
+  "components/modules/approve-sales-quotations-module.tsx": {
+    "api": [
+      "\"/api/sales-quotations",
+      "\"/api/sales-quotations/reject",
+      "`/api/sales-quotations?id=${id}",
+      "`/api/sales-quotations?id=${quotation.id}",
+      "`/api/sales-quotations?id=${quotation.id}"
+    ],
+    "handlers": [
+      "handlePrintPreview",
+      "handleQuotationApproved",
+      "handleReject"
+    ],
+    "ids": [
+      "id=\"rejection-reason\""
+    ],
+    "fetch": 5,
+    "iso": 0,
+    "t": 0,
+    "onClick": 5
+  },
+  "components/modules/delivery-permits-module.tsx": {
+    "api": [
+      "\"/api/delivery-permits"
+    ],
+    "handlers": [
+      "handleOpenReviewDialog",
+      "handlePrintPDF",
+      "handlePrintSignedDP",
+      "handleViewDetails"
+    ],
+    "ids": [],
+    "fetch": 1,
+    "iso": 0,
+    "t": 45,
+    "onClick": 11
+  },
+  "components/modules/customer-module.tsx": {
+    "api": [
+      "\"/api/accounts-receivable",
+      "\"/api/customer-payments"
+    ],
+    "handlers": [
+      "handleAddCustomer",
+      "handleCountryChange"
+    ],
+    "ids": [],
+    "fetch": 2,
+    "iso": 1,
+    "t": 49,
+    "onClick": 5
+  },
+  "components/modules/lost-sales-module.tsx": {
+    "api": [
+      "\"/api/lost-sales",
+      "\"/api/lost-sales-summary"
+    ],
+    "handlers": [
+      "handleAddLostSale",
+      "handleDelete"
+    ],
+    "ids": [],
+    "fetch": 2,
+    "iso": 0,
+    "t": 31,
+    "onClick": 4
+  },
+  "components/modules/accounts-receivable-module.tsx": {
+    "api": [
+      "\"/api/accounts-receivable",
+      "\"/api/accounts-receivable",
+      "\"/api/accounts-receivable/create-from-dps",
+      "\"/api/accounts-receivable/payments",
+      "\"/api/delivery-permits",
+      "\"/api/sales-orders",
+      "\"/api/upload",
+      "\"/api/upload",
+      "'/api/accounts-receivable",
+      "'/api/upload",
+      "`/api/delivery-permits?so_id=${soId}",
+      "`/api/invoices/ar/${invoiceId}/pdf",
+      "`/api/payment-schedules?invoiceId=${invoiceId}",
+      "`/api/payment-schedules?soId=${soId}"
+    ],
+    "handlers": [
+      "handleCreateFromDPs",
+      "handleCreateFromSO",
+      "handleDownloadInvoicePDF",
+      "handleRecordPayment",
+      "handleRecordSchedulePayment",
+      "handleVATInvoiceUpload",
+      "handleViewSchedule",
+      "handleWidgetClick"
+    ],
+    "ids": [
+      "id={`vat-invoice-upload-${invoice.id}`}"
+    ],
+    "fetch": 13,
+    "iso": 10,
+    "t": 143,
+    "onClick": 34
+  },
+  "components/modules/accounts-payable-module.tsx": {
+    "api": [
+      "\"/api/accounts-payable/payments",
+      "\"/api/payment-schedules",
+      "\"/api/supplier-payments",
+      "\"/api/upload",
+      "`/api/invoices/ap/${invoiceId}/pdf",
+      "`/api/payment-schedules?invoiceId=${invoiceId}",
+      "`/api/payment-schedules?invoiceId=${invoiceId}",
+      "`/api/payment-schedules?poId=${poId}",
+      "`/api/payment-schedules?poId=${poId}"
+    ],
+    "handlers": [
+      "handleDownloadInvoicePDF",
+      "handleRecordPayment",
+      "handleRecordSchedulePayment",
+      "handleUploadInvoice",
+      "handleViewPaymentDetails",
+      "handleViewSchedule"
+    ],
+    "ids": [
+      "id=\"ap-allow-overpayment\"",
+      "id=\"ap-allow-overpayment\""
+    ],
+    "fetch": 8,
+    "iso": 6,
+    "t": 106,
+    "onClick": 28
+  },
+  "components/modules/payment-schedule-module.tsx": {
+    "api": [
+      "\"/api/reschedule-requests",
+      "`/api/payment-schedules?soId=${soId}"
+    ],
+    "handlers": [
+      "handleSubmitReschedule"
+    ],
+    "ids": [],
+    "fetch": 3,
+    "iso": 1,
+    "t": 0,
+    "onClick": 4
+  },
+  "components/modules/balance-module.tsx": {
+    "api": [
+      "\"/api/balance"
+    ],
+    "handlers": [],
+    "ids": [],
+    "fetch": 1,
+    "iso": 0,
+    "t": 38,
+    "onClick": 0
+  },
+  "components/modules/maintenance-invoices-module.tsx": {
+    "api": [],
+    "handlers": [],
+    "ids": [],
+    "fetch": 0,
+    "iso": 0,
+    "t": 0,
+    "onClick": 0
+  },
+  "components/modules/accountant-module.tsx": {
+    "api": [
+      "\"/api/accounts-receivable/payments",
+      "\"/api/customer-payments",
+      "\"/api/maintenance/work-orders/ready-for-invoice",
+      "\"/api/reschedule-requests",
+      "\"/api/upload"
+    ],
+    "handlers": [
+      "handleApproveSalesOrder",
+      "handleFileUpload",
+      "handleMarkCustomerReceived"
+    ],
+    "ids": [
+      "id={`file-${order.id}`}"
+    ],
+    "fetch": 5,
+    "iso": 1,
+    "t": 157,
+    "onClick": 17
+  },
+  "components/accounting/maintenance-invoice-tab.tsx": {
+    "api": [
+      "\"/api/maintenance/invoices",
+      "\"/api/maintenance/work-orders/ready-for-invoice"
+    ],
+    "handlers": [
+      "handleCreateInvoice"
+    ],
+    "ids": [
+      "id=\"custom-days\"",
+      "id=\"invoice-amount\"",
+      "id=\"invoice-notes\"",
+      "id=\"payment-terms\""
+    ],
+    "fetch": 2,
+    "iso": 0,
+    "t": 0,
+    "onClick": 4
+  }
+}

@@ -28,6 +28,10 @@ import { OrderSummaryCard } from "@/components/order-summary-card"
 import { getOrCreateClientId } from "@/lib/client-id"
 import * as XLSX from "xlsx"
 import { normalizeQuotationPaymentDetails } from "@/lib/payment-type"
+import { useI18n } from "@/lib/i18n-context"
+import { formatDate } from "@/lib/format"
+import { PageHeader } from "@/components/erp/page-header"
+import { Money } from "@/components/erp/money"
 
 interface QuotationItem {
   id: string
@@ -42,9 +46,11 @@ interface QuotationItem {
 
 interface SalesQuotationModuleProps {
   userRole: UserRole
+  embedded?: boolean
 }
 
-export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
+export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotationModuleProps) {
+  const { t, language } = useI18n()
   const { products, customers, addCustomer, suppliers, inventory } = useAppContext()
 
   // Aggregate available (non-returned) stock per product across all warehouses
@@ -379,7 +385,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
     if (diffMinutes < 60) return `${diffMinutes}m ago`
     const diffHours = Math.round(diffMinutes / 60)
     if (diffHours < 24) return `${diffHours}h ago`
-    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    return formatDate(isoString, language)
   }
 
   const handlePaymentDetailChange = (field: string, value: string | number) => {
@@ -828,40 +834,40 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
 
   const { subtotal, tax, total } = calculateTotal()
 
+  const headerActions = (
+    <>
+      {activeDraftId && (
+        <Badge variant="secondary" className="font-normal">
+          Editing saved draft
+        </Badge>
+      )}
+      {isSavingDraft && <span className="text-xs text-muted-foreground">Saving draft…</span>}
+      <Button type="button" variant="outline" size="sm" onClick={() => setShowDraftsPanel((v) => !v)}>
+        <FileClock className="h-4 w-4 me-1" />
+        Drafts{drafts.length > 0 ? ` (${drafts.length})` : ""}
+      </Button>
+      <Button type="button" variant="outline" size="sm" onClick={startNewDraft}>
+        <Plus className="h-4 w-4 me-1" />
+        New Quotation
+      </Button>
+    </>
+  )
+
   return (
   <div className="space-y-6">
-  <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-6 w-6" />
-                Sales Quotations
-                {activeDraftId && (
-                  <Badge variant="secondary" className="font-normal">
-                    Editing saved draft
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                Create and print sales quotations for customers with inventory items or custom products
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              {isSavingDraft && <span className="text-xs text-muted-foreground">Saving draft…</span>}
-              <Button type="button" variant="outline" size="sm" onClick={() => setShowDraftsPanel((v) => !v)}>
-                <FileClock className="h-4 w-4 mr-1" />
-                Drafts{drafts.length > 0 ? ` (${drafts.length})` : ""}
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={startNewDraft}>
-                <Plus className="h-4 w-4 mr-1" />
-                New Quotation
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
+      {embedded ? (
+        <div className="flex flex-wrap justify-end gap-2">{headerActions}</div>
+      ) : (
+        <PageHeader
+          group={t("group.sales")}
+          title={t("module.sales-quotations")}
+          subtitle="Create and print sales quotations for customers with inventory items or custom products"
+          actions={headerActions}
+        />
+      )}
         {showDraftsPanel && (
-          <CardContent className="border-t pt-4">
+          <Card>
+            <CardContent>
             {drafts.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No saved drafts yet. Quotations you leave in progress are saved here automatically.
@@ -906,9 +912,9 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 })}
               </div>
             )}
-          </CardContent>
+            </CardContent>
+          </Card>
         )}
-      </Card>
 
       <Card>
         <CardHeader>
@@ -1093,15 +1099,15 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                 className="hidden"
               />
               <Button onClick={() => fileInputRef.current?.click()} size="sm" variant="outline">
-                <Upload className="h-4 w-4 mr-2" />
+                <Upload className="h-4 w-4 me-2" />
                 Import Excel
               </Button>
               <Button onClick={() => addItem("inventory")} size="sm" variant="outline">
-                <Package className="h-4 w-4 mr-2" />
+                <Package className="h-4 w-4 me-2" />
                 Add from Inventory
               </Button>
               <Button onClick={() => addItem("outsourced")} size="sm" variant="outline">
-                <UserPlus className="h-4 w-4 mr-2" />
+                <UserPlus className="h-4 w-4 me-2" />
                 Add Outsourced Item
               </Button>
             </div>
@@ -1228,7 +1234,7 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
                   </div>
                   <div className="col-span-1 space-y-2">
                     <Label>Total</Label>
-                    <div className="text-sm font-medium pt-2">{(item.quantity * getItemFinalPrice(item)).toFixed(2)} EGP</div>
+                    <div className="text-sm font-medium pt-2"><Money value={item.quantity * getItemFinalPrice(item)} /> EGP</div>
                     {(item.markup || 0) > 0 && (
                       <div className="text-xs text-muted-foreground">@ {getItemFinalPrice(item).toFixed(2)}</div>
                     )}
@@ -1388,15 +1394,15 @@ export function SalesQuotationModule({ userRole }: SalesQuotationModuleProps) {
             <div className="space-y-2 min-w-[300px]">
               <div className="flex justify-between py-2 border-b">
                 <span className="font-medium">Subtotal:</span>
-                <span>{subtotal.toFixed(2)} EGP</span>
+                <span><Money value={subtotal} /> EGP</span>
               </div>
               <div className="flex justify-between py-2 border-b">
                 <span className="font-medium">VAT (14%):</span>
-                <span>{tax.toFixed(2)} EGP</span>
+                <span><Money value={tax} /> EGP</span>
               </div>
               <div className="flex justify-between py-2 text-lg font-bold">
                 <span>Total:</span>
-                <span>{total.toFixed(2)} EGP</span>
+                <span><Money value={total} /> EGP</span>
               </div>
             </div>
           </div>

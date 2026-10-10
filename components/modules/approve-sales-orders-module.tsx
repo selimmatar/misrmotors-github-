@@ -6,6 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { PageHeader } from "@/components/erp/page-header"
+import { Money } from "@/components/erp/money"
+import { formatDate, formatMoney } from "@/lib/format"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import type { SalesOrder } from "@/lib/types"
@@ -13,7 +16,7 @@ import { Eye, CheckCircle, XCircle, Loader2 } from "lucide-react"
 
 export function ApproveSalesOrdersModule() {
   const { salesOrders, updateSalesOrder, customers } = useAppContext()
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
 
   const [selectedSalesOrder, setSelectedSalesOrder] = useState<SalesOrder | null>(null)
   const [actionDialog, setActionDialog] = useState<{ order: SalesOrder; action: "approve" | "reject" } | null>(null)
@@ -24,10 +27,6 @@ export function ApproveSalesOrdersModule() {
 
   const getCustomerName = (customerId: string) => {
     return customers.find((c) => c.id === customerId)?.name || t("customer.unknown")
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(language === "ar" ? "ar-EG" : "en-US")
   }
 
   const handleAction = async () => {
@@ -58,10 +57,7 @@ export function ApproveSalesOrdersModule() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">{t("approve.title")}</h1>
-        <p className="text-muted-foreground mt-2">{t("approve.description")}</p>
-      </div>
+      <PageHeader group={t("group.sales")} title={t("module.approve-sales-orders")} />
 
       <Card>
         <CardHeader>
@@ -88,8 +84,8 @@ export function ApproveSalesOrdersModule() {
                       <p className="font-semibold">{getCustomerName(order.customerId)}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.amount")}</p>
-                      <p className="font-semibold">{formatCurrency(order.total)}</p>
+                      <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                      <p className="font-semibold"><Money value={order.total} /></p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">{t("so.payment-terms")}</p>
@@ -140,7 +136,7 @@ export function ApproveSalesOrdersModule() {
             </DialogTitle>
             <DialogDescription>
               {actionDialog?.action === "approve"
-                ? `Approve ${actionDialog?.order.soNumber} for ${formatCurrency(actionDialog?.order.total || 0)}?`
+                ? `Approve ${actionDialog?.order.soNumber} for ${formatMoney(actionDialog?.order.total || 0, language)} EGP?`
                 : `Reject ${actionDialog?.order.soNumber}? Please provide a reason.`}
             </DialogDescription>
           </DialogHeader>
@@ -210,7 +206,7 @@ export function ApproveSalesOrdersModule() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("so.order-date")}</p>
-                  <p className="font-semibold">{formatDate(selectedSalesOrder.orderDate)}</p>
+                  <p className="font-semibold">{formatDate(selectedSalesOrder.orderDate, language)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("so.payment-terms")}</p>
@@ -225,15 +221,15 @@ export function ApproveSalesOrdersModule() {
                       <span>
                         {item.productName} ({t("field.quantity")}: {formatNumber(item.quantity)})
                       </span>
-                      <span className="font-semibold">{formatCurrency(item.total)}</span>
+                      <span className="font-semibold"><Money value={item.total} /> EGP</span>
                     </div>
                   ))}
                 </div>
               </div>
               <div className="border-t pt-4">
                 <div className="flex justify-between">
-                  <span className="font-semibold">{t("field.total-amount")}</span>
-                  <span className="text-lg font-bold">{formatCurrency(selectedSalesOrder.total)}</span>
+                  <span className="font-semibold">{t("field.total-amount")} (EGP)</span>
+                  <span className="text-lg font-bold"><Money value={selectedSalesOrder.total} /></span>
                 </div>
               </div>
             </div>
