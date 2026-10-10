@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { TableBody, TableCell, TableHeader, TableHead, TableRow } from "@/components/ui/table"
 import { RefreshCw, CheckCircle, AlertTriangle, Code } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { formatDateTime, formatMoney } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
@@ -67,11 +68,11 @@ export default function MetricsValidationModule() {
       <PageHeader
         group={t("group.admin")}
         title={t("module.metrics-validation")}
-        subtitle="Developer tool to verify dashboard metrics match database totals"
+        subtitle={t("metrics.developer-tool-to-verify-dashboard")}
         actions={
           <Button onClick={fetchValidation} disabled={loading}>
             <RefreshCw className={`h-4 w-4 me-2 ${loading ? "animate-spin" : ""}`} />
-            Revalidate
+            {t("metrics.revalidate")}
           </Button>
         }
       />
@@ -83,24 +84,24 @@ export default function MetricsValidationModule() {
             {data?.allValid ? (
               <>
                 <CheckCircle className="h-5 w-5 text-emerald-700" />
-                All Metrics Valid
+                {t("metrics.all-metrics-valid")}
               </>
             ) : (
               <>
                 <AlertTriangle className="h-5 w-5 text-amber-700" />
-                Validation Issues Detected
+                {t("metrics.validation-issues-detected")}
               </>
             )}
           </CardTitle>
           <CardDescription>
-            Last validated: {data?.validatedAt ? formatDateTime(data.validatedAt, language) : "Never"}
+            {t("metrics.last-validated")} {data?.validatedAt ? formatDateTime(data.validatedAt, language) : t("metrics.never")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <KpiGrid>
-            <KpiTile label="Total KPIs" value={data?.results?.length || 0} />
-            <KpiTile label="Valid" value={data?.results?.filter((r) => r.match).length || 0} />
-            <KpiTile label="Mismatches" value={data?.results?.filter((r) => !r.match).length || 0} />
+            <KpiTile label={t("metrics.total-kpis")} value={data?.results?.length || 0} />
+            <KpiTile label={t("metrics.valid")} value={data?.results?.filter((r) => r.match).length || 0} />
+            <KpiTile label={t("metrics.mismatches")} value={data?.results?.filter((r) => !r.match).length || 0} />
           </KpiGrid>
         </CardContent>
       </Card>
@@ -108,9 +109,9 @@ export default function MetricsValidationModule() {
       {/* Detailed Results */}
       <Card>
         <CardHeader>
-          <CardTitle>KPI Validation Details</CardTitle>
+          <CardTitle>{t("metrics.kpi-validation-details")}</CardTitle>
           <CardDescription>
-            Each KPI shows the expected value (from raw query) vs actual value (from metrics layer)
+            {t("metrics.each-kpi-shows-the-expected")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -125,12 +126,12 @@ export default function MetricsValidationModule() {
                 <ErpTable>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>KPI Name</TableHead>
-                      <NumHead>Expected (Raw)</NumHead>
-                      <NumHead>Actual (Metrics)</NumHead>
-                      <NumHead>Difference</NumHead>
-                      <TableHead>Status</TableHead>
-                      <ActionsHead>Query</ActionsHead>
+                      <TableHead>{t("metrics.kpi-name")}</TableHead>
+                      <NumHead>{t("metrics.expected-raw")}</NumHead>
+                      <NumHead>{t("metrics.actual-metrics")}</NumHead>
+                      <NumHead>{t("payment.difference")}</NumHead>
+                      <TableHead>{t("status")}</TableHead>
+                      <ActionsHead>{t("metrics.query")}</ActionsHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -159,9 +160,9 @@ export default function MetricsValidationModule() {
                 <ListCard
                   id={result.kpi}
                   amount={formatMoney(result.actual, language)}
-                  party={`Expected ${formatMoney(result.expected, language)}`}
+                  party={fill(t("metrics.expected-amount"), { amount: formatMoney(result.expected, language) })}
                   status={<StatusBadge status={result.match ? "valid" : "mismatch"} />}
-                  note={`Difference ${formatMoney(Math.abs(result.expected - result.actual), language)}`}
+                  note={fill(t("metrics.difference-amount"), { amount: formatMoney(Math.abs(result.expected - result.actual), language) })}
                   actions={renderRowActions(result)}
                 />
               )}
@@ -176,7 +177,7 @@ export default function MetricsValidationModule() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Code className="h-5 w-5" />
-              SQL Query: {expandedQuery}
+              {t("metrics.sql-query")} {expandedQuery}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -190,44 +191,44 @@ export default function MetricsValidationModule() {
       {/* KPI Formulas Reference */}
       <Card>
         <CardHeader>
-          <CardTitle>KPI Formula Reference</CardTitle>
-          <CardDescription>Documentation of how each KPI is calculated</CardDescription>
+          <CardTitle>{t("metrics.kpi-formula-reference")}</CardTitle>
+          <CardDescription>{t("metrics.documentation-of-how-each-kpi")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="p-4 border rounded-lg">
-            <h4 className="font-medium">Total Sales Revenue</h4>
+            <h4 className="font-medium">{t("financial.total-sales-revenue")}</h4>
             <code className="text-sm text-muted-foreground">
               = SUM(COALESCE(net_total, total)) FROM sales_orders WHERE status IN ('accountant_approved',
               'ready_for_delivery', 'shipped', 'delivered')
             </code>
           </div>
           <div className="p-4 border rounded-lg">
-            <h4 className="font-medium">Inventory Value</h4>
+            <h4 className="font-medium">{t("financial.inventory-value")}</h4>
             <code className="text-sm text-muted-foreground">
               = SUM(quantity * unit_cost) FROM inventory JOIN products
             </code>
           </div>
           <div className="p-4 border rounded-lg">
-            <h4 className="font-medium">AR Outstanding</h4>
+            <h4 className="font-medium">{t("metrics.ar-outstanding")}</h4>
             <code className="text-sm text-muted-foreground">
               = SUM(balance) FROM accounts_receivable WHERE status != 'paid'
             </code>
           </div>
           <div className="p-4 border rounded-lg">
-            <h4 className="font-medium">AP Outstanding</h4>
+            <h4 className="font-medium">{t("metrics.ap-outstanding")}</h4>
             <code className="text-sm text-muted-foreground">
               = SUM(balance) FROM accounts_payable WHERE status != 'paid'
             </code>
           </div>
           <div className="p-4 border rounded-lg">
-            <h4 className="font-medium">Gross Profit</h4>
+            <h4 className="font-medium">{t("financial.gross-profit")}</h4>
             <code className="text-sm text-muted-foreground">
-              = Total Revenue - Total Costs (from approved purchase orders)
+              {t("metrics.total-revenue-total-costs-from")}
             </code>
           </div>
           <div className="p-4 border rounded-lg">
-            <h4 className="font-medium">Cash Position</h4>
-            <code className="text-sm text-muted-foreground">= AR Outstanding - AP Outstanding</code>
+            <h4 className="font-medium">{t("metrics.cash-position")}</h4>
+            <code className="text-sm text-muted-foreground">{t("metrics.ar-outstanding-ap-outstanding")}</code>
           </div>
         </CardContent>
       </Card>
