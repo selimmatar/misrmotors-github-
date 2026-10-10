@@ -192,7 +192,8 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
     const totalMonths = Math.max(0, ...invoices.map((inv: any) => Number(inv.installmentMonths) || 0)) || 1
     const amountPaid = invoices.reduce((sum: number, inv: any) => sum + (Number(inv.paidAmount) || 0), 0)
     const invoiced = invoices.reduce((sum: number, inv: any) => sum + (Number(inv.amount) || 0), 0)
-    const totalAmount = Math.max(Number(order.total) || 0, invoiced)
+    // the order total, not the invoiced sum: historical duplicate AP rows each carry the full total
+    const totalAmount = Number(order.total) || invoiced
     const paidC = Math.round(amountPaid * 100)
     const totalC = Math.round(totalAmount * 100)
     const amountDue = Math.max(0, (totalC - paidC) / 100)

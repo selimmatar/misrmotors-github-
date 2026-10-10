@@ -279,6 +279,7 @@ export function WarehouseDeliveryModule() {
       case "OUT_FOR_DELIVERY":
         return t("permit.status.out-for-delivery")
       case "SUBMITTED_SIGNED":
+        return t("permit.status.submitted-signed")
       case "APPROVED":
         return t("permit.status.completed")
       default:
