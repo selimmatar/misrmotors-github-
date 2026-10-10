@@ -22,7 +22,7 @@ const used = (): Map<string, string[]> => {
 const defs = (block: string, key: string) => [...block.matchAll(new RegExp(`^\\s*"${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}":\\s*(.*?),?\\s*$`, "gm"))].map((m) => m[1])
 const allDefined = (block: string) => [...block.matchAll(/^\s*"(a11y\.[^"]+)":/gm)].map((m) => m[1])
 
-test("every a11y key used is defined in EN and AR", { todo: "Task 8" }, () => {
+test("every a11y key used is defined in EN and AR", () => {
   const problems: string[] = []
   for (const [k, files] of used()) {
     if (defs(EN, k).length === 0) problems.push(`${k}: missing in EN (${files[0]})`)
@@ -33,12 +33,12 @@ test("every a11y key used is defined in EN and AR", { todo: "Task 8" }, () => {
   assert.deepEqual(problems, [])
 })
 
-test("no dynamic a11y keys", { todo: "Task 8" }, () => {
+test("no dynamic a11y keys", () => {
   const bad = allTsx().filter((f) => !f.startsWith("app/api/") && /\bt\(\s*`a11y\./.test(read(f)))
   assert.deepEqual(bad, [])
 })
 
-test("each a11y key is defined once per language", { todo: "Task 8" }, () => {
+test("each a11y key is defined once per language", () => {
   const dup: string[] = []
   for (const [lang, block] of [["EN", EN], ["AR", AR]] as const) {
     const keys = allDefined(block)
