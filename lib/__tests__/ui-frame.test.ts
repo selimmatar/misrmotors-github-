@@ -49,7 +49,7 @@ test("login keeps every role, name and handler", () => {
     assert.ok(src.includes(`name: "${name}"`), name)
   }
   assert.ok(src.includes("onLogin(user)"))
-  assert.ok(src.includes("Select your role to access the system"))
+  assert.ok(src.includes('t("login.select-role")'))
 })
 
 test("login cards are neutral: no gradient, no scale, no solid role colours", () => {

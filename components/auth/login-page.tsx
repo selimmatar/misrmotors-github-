@@ -100,7 +100,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <img src="/images/image.png" alt={t("frame.logo-alt")} className="h-24 w-auto" />
           </div>
           <CardTitle className="text-3xl">{t("misr-motors")}</CardTitle>
-          <CardDescription className="text-lg">Select your role to access the system</CardDescription>
+          <CardDescription className="text-lg">{t("login.select-role")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

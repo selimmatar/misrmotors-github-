@@ -20,6 +20,8 @@ interface Message {
   role: "user" | "assistant"
   content: string
   action?: any
+  // Local-only notices (confirmations, errors) are display-only and never sent back as history
+  local?: boolean
 }
 
 export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
@@ -73,7 +75,7 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
             },
           }
         : {
-            messages: [...messages, userMessage],
+            messages: [...messages, userMessage].filter((m) => !m.local),
             suppliers,
             products,
           }
@@ -131,6 +133,7 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
             {
               role: "assistant",
               content: fill(t("ai.po-created"), { number: newPO.poNumber }),
+              local: true,
             },
           ])
         }
@@ -142,6 +145,7 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
         {
           role: "assistant",
           content: fill(t("ai.sorry-error"), { message: error.message }),
+          local: true,
         },
       ])
     } finally {

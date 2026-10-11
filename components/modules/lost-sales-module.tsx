@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { PackageX, Plus, AlertTriangle, Loader2, Trash2 } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
-import { useI18n } from "@/lib/i18n-context"
+import { useI18n, type TranslationKey } from "@/lib/i18n-context"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { ErpTable, NumHead, NumCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
@@ -62,7 +62,7 @@ export function LostSalesModule() {
     customerPhone: "",
   })
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<TranslationKey | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
 
   const fetchData = async () => {
@@ -101,7 +101,7 @@ export function LostSalesModule() {
       setSummary(summaryData)
     } catch (err) {
       console.error("Error fetching lost sales:", err)
-      setError(t("lost-sales.load-failed"))
+      setError("lost-sales.load-failed")
     } finally {
       setLoading(false)
     }
@@ -123,7 +123,7 @@ export function LostSalesModule() {
 
   const handleAddLostSale = async () => {
     if (!newLostSale.requestedItemName.trim()) {
-      setError(t("lost-sales.product-required"))
+      setError("lost-sales.product-required")
       return
     }
 
@@ -150,7 +150,7 @@ export function LostSalesModule() {
       await fetchData()
     } catch (err) {
       console.error("Error adding lost sale:", err)
-      setError(t("lost-sales.add-failed"))
+      setError("lost-sales.add-failed")
     } finally {
       setLoading(false)
     }
@@ -168,7 +168,7 @@ export function LostSalesModule() {
       await fetchData()
     } catch (err) {
       console.error("Error deleting lost sale:", err)
-      setError(t("lost-sales.delete-failed"))
+      setError("lost-sales.delete-failed")
     } finally {
       setLoading(false)
     }
@@ -208,7 +208,7 @@ export function LostSalesModule() {
         <div className="flex items-center justify-center">
           <Alert variant="destructive">
             <AlertTriangle className="w-4 h-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{t(error)}</AlertDescription>
           </Alert>
         </div>
       )}

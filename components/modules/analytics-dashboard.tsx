@@ -347,12 +347,11 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
             </div>
             <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
               <p className="text-sm">
-                {fill(t("analytics.profit-margin-is"), {
+                {fill(t("analytics.margin-sentence"), {
                   status:
                     kpiData?.grossProfit?.margin > 20 ? t("analytics.status-healthy") : t("analytics.status-below-target"),
+                  advice: kpiData?.grossProfit?.margin < 20 ? ` ${t("analytics.margin-review-pricing")}` : "",
                 })}
-                {kpiData?.grossProfit?.margin < 20 && " "}
-                {kpiData?.grossProfit?.margin < 20 && t("analytics.margin-review-pricing")}
               </p>
             </div>
           </div>

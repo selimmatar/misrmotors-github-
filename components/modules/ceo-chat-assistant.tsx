@@ -20,7 +20,7 @@ import {
   Clock,
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { useI18n } from "@/lib/i18n-context"
+import { useI18n, type TranslationKey } from "@/lib/i18n-context"
 import { PageHeader } from "@/components/erp/page-header"
 
 interface Message {
@@ -35,9 +35,10 @@ export function CEOChatAssistant() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [chatError, setChatError] = useState<string | null>(null)
+  const [chatError, setChatError] = useState<{ key: TranslationKey } | { text: string } | null>(null)
   const [aiNotConfigured, setAiNotConfigured] = useState(false)
   const [serviceUnavailable, setServiceUnavailable] = useState(false)
+  const chatErrorText = chatError ? ("key" in chatError ? t(chatError.key) : chatError.text) : null
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -53,24 +54,28 @@ export function CEOChatAssistant() {
     {
       icon: DollarSign,
       text: "Financial position",
+      questionKey: "ceo.q.financial-position",
       labelKey: "ceo.financial-position",
       color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
     },
     {
       icon: TrendingUp,
       text: "Cash flow projection",
+      questionKey: "ceo.q.cash-flow",
       labelKey: "ceo.cash-flow-projection",
       color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
     },
     {
       icon: Package,
       text: "Low stock alerts",
+      questionKey: "ceo.q.low-stock",
       labelKey: "ceo.low-stock-alerts",
       color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
     },
     {
       icon: Users,
       text: "Top customers",
+      questionKey: "ceo.q.top-customers",
       labelKey: "ceo.top-customers",
       color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
     },
@@ -121,14 +126,14 @@ export function CEOChatAssistant() {
 
         if (errorMessage.includes("API key") || response.status === 401) {
           setAiNotConfigured(true)
-          setChatError(t("ceo.err-api-key"))
+          setChatError({ key: "ceo.err-api-key" })
         } else if (response.status >= 500 || errorMessage.includes("temporarily unavailable")) {
           setServiceUnavailable(true)
-          setChatError(t("ceo.err-service-unavailable"))
+          setChatError({ key: "ceo.err-service-unavailable" })
         } else if (response.status === 429) {
-          setChatError(t("ceo.err-rate-limit"))
+          setChatError({ key: "ceo.err-rate-limit" })
         } else {
-          setChatError(errorMessage)
+          setChatError({ text: errorMessage })
         }
 
         setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
@@ -138,7 +143,7 @@ export function CEOChatAssistant() {
 
       const reader = response.body?.getReader()
       if (!reader) {
-        setChatError(t("ceo.err-read-stream"))
+        setChatError({ key: "ceo.err-read-stream" })
         setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
         setIsLoading(false)
         return
@@ -172,27 +177,22 @@ export function CEOChatAssistant() {
       }
 
       if (!fullContent.trim()) {
-        setChatError(t("ceo.err-no-response"))
+        setChatError({ key: "ceo.err-no-response" })
         setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
       }
     } catch (err) {
       console.error("Chat error:", err)
       setServiceUnavailable(true)
-      setChatError(t("ceo.err-connect"))
+      setChatError({ key: "ceo.err-connect" })
       setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleSuggestedQuestion = (text: string) => {
-    const fullQuestions: Record<string, string> = {
-      "Financial position": "What's our current financial position?",
-      "Cash flow projection": "Project our cash flow for the next 3 months",
-      "Low stock alerts": "Show me low stock alerts and inventory warnings",
-      "Top customers": "Who are our top 5 customers by revenue?",
-    }
-    sendMessage(fullQuestions[text] || text)
+  // The chip label and the question sent are both in the user's current language (the AI endpoint takes free text).
+  const handleSuggestedQuestion = (questionKey: TranslationKey) => {
+    sendMessage(t(questionKey))
   }
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -250,7 +250,7 @@ export function CEOChatAssistant() {
               <Clock className="h-4 w-4 text-blue-600" />
               <AlertTitle className="text-blue-800 dark:text-blue-400 text-sm">{t("ceo.service-unavailable")}</AlertTitle>
               <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
-                {chatError}
+                {chatErrorText}
                 <Button variant="ghost" size="sm" className="ms-2 h-6 text-xs" onClick={handleRetry}>
                   <RefreshCw className="h-3 w-3 me-1" /> {t("common.retry")}
                 </Button>
@@ -261,7 +261,7 @@ export function CEOChatAssistant() {
             <Alert variant="destructive" className="py-2">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="text-xs flex items-center justify-between">
-                <span>{chatError}</span>
+                <span>{chatErrorText}</span>
                 <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={handleRetry}>
                   <RefreshCw className="h-3 w-3 me-1" /> {t("common.retry")}
                 </Button>
@@ -286,7 +286,7 @@ export function CEOChatAssistant() {
               {suggestedQuestions.map((q, idx) => (
                 <button
                   key={idx}
-                  onClick={() => handleSuggestedQuestion(q.text)}
+                  onClick={() => handleSuggestedQuestion(q.questionKey)}
                   disabled={isLoading || aiNotConfigured}
                   className={`inline-flex items-center gap-1.5 max-md:min-h-11 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 ${q.color}`}
                 >
