@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -140,7 +141,7 @@ export function WarehouseDeliveryModule() {
           // We'll store the supplier name in warehouseName and use a special ID format
           // API returns: supplierName (from suppliers table join), outsourcedName (item name)
           // If no supplier linked, show "External Supplier" instead of product name
-          const supplierName = item.supplierName || "External Supplier"
+          const supplierName = item.supplierName || t("wd.external-supplier")
           const supplierId = item.supplierId || "outsourced"
           
           
@@ -165,7 +166,7 @@ export function WarehouseDeliveryModule() {
           allocations: item.warehouseId ? [{
             warehouseId: String(item.warehouseId),
             warehouseName: item.isOutsourced 
-              ? (item.supplierName || "External Supplier")
+              ? (item.supplierName || t("wd.external-supplier"))
               : (warehouses.find(w => w.id === item.warehouseId)?.name || ""),
             quantity: item.allocatedQuantity || item.quantity
           }] : defaultWh ? [{
@@ -182,7 +183,7 @@ export function WarehouseDeliveryModule() {
       setShowAllocationDialog(true)
     } catch (error) {
       console.error("Error fetching inventory:", error)
-      alert("Failed to load inventory data")
+      alert(t("wd.load-inventory-failed"))
     }
   }
 
@@ -193,7 +194,7 @@ export function WarehouseDeliveryModule() {
     for (const item of itemAllocations) {
       const totalAllocated = item.allocations.reduce((sum, a) => sum + a.quantity, 0)
       if (totalAllocated !== item.totalQuantity) {
-        alert(`${item.productName}: Allocated ${totalAllocated} but need ${item.totalQuantity}`)
+        alert(fill(t("wd.allocated-but-need"), { product: item.productName, allocated: totalAllocated, needed: item.totalQuantity }))
         return
       }
     }
@@ -222,14 +223,14 @@ export function WarehouseDeliveryModule() {
         await fetchPermits()
         setShowAllocationDialog(false)
         setSelectedPermitForAllocation(null)
-        alert("Warehouse allocations saved and marked ready for shipment!")
+        alert(t("wd.allocations-saved"))
       } else {
         const error = await response.json()
-        alert(error.error || "Failed to save allocations")
+        alert(error.error || t("wd.save-allocations-failed"))
       }
     } catch (error) {
       console.error("Error saving allocations:", error)
-      alert("Failed to save allocations")
+      alert(t("wd.save-allocations-failed"))
     } finally {
       setSavingAllocation(false)
     }
@@ -304,16 +305,16 @@ export function WarehouseDeliveryModule() {
       <Tabs defaultValue="pending" className="space-y-4">
         <TabsList className="h-auto flex-wrap w-full justify-start">
           <TabsTrigger value="pending">
-            Pending Allocation ({formatNumber(draftPermits.length)})
+            {fill(t("wd.pending-allocation-count"), { n: formatNumber(draftPermits.length) })}
           </TabsTrigger>
           <TabsTrigger value="ready-shipment">
-            Ready for Shipment ({formatNumber(readyForShipmentPermits.length)})
+            {fill(t("wd.ready-for-shipment-count"), { n: formatNumber(readyForShipmentPermits.length) })}
           </TabsTrigger>
           <TabsTrigger value="ready">
             {t("warehouse.ready-for-pickup")} ({formatNumber(readyPermits.length)})
           </TabsTrigger>
           <TabsTrigger value="returns" className="text-orange-700">
-            Returns ({formatNumber(pendingReturns.length)})
+            {fill(t("wd.returns-count"), { n: formatNumber(pendingReturns.length) })}
           </TabsTrigger>
           <TabsTrigger value="completed">
             {t("warehouse.completed")} ({formatNumber(completedPermits.length)})
@@ -372,7 +373,7 @@ export function WarehouseDeliveryModule() {
                           ))}
                           {(permit.items?.length || 0) > 3 && (
                             <li className="text-sm text-muted-foreground">
-                              +{(permit.items?.length || 0) - 3} more items...
+                              {fill(t("wd.more-items"), { n: (permit.items?.length || 0) - 3 })}
                             </li>
                           )}
                         </ul>
@@ -384,7 +385,7 @@ export function WarehouseDeliveryModule() {
                           className="flex-1 min-w-0 h-auto whitespace-normal bg-blue-600 hover:bg-blue-700"
                         >
                           <Warehouse className="w-4 h-4 me-2 shrink-0" />
-                          Allocate Warehouses & Prepare
+                          {t("wd.allocate-prepare")}
                         </Button>
                         <Button variant="outline" onClick={() => handleViewPermit(permit)}>
                           <Eye className="w-4 h-4 me-2" />
@@ -413,7 +414,7 @@ export function WarehouseDeliveryModule() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Truck className="w-12 h-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No permits ready for shipment</p>
+                <p className="text-muted-foreground">{t("wd.no-permits-ready-shipment")}</p>
               </CardContent>
             </Card>
           ) : (
@@ -444,22 +445,22 @@ export function WarehouseDeliveryModule() {
                       <div className="bg-white border rounded-lg p-4 space-y-3">
                         <h4 className="font-semibold text-sm flex items-center gap-2">
                           <Truck className="w-4 h-4" />
-                          Collection Details
+                          {t("wd.collection-details")}
                         </h4>
                         
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div className="flex items-start gap-2">
                             <User className="w-4 h-4 text-muted-foreground mt-0.5" />
                             <div>
-                              <p className="text-muted-foreground">Recipient</p>
-                              <p className="font-medium">{permit.recipientName || permit.customerName || "Not specified"}</p>
+                              <p className="text-muted-foreground">{t("permit.recipient")}</p>
+                              <p className="font-medium">{permit.recipientName || permit.customerName || t("wd.not-specified")}</p>
                             </div>
                           </div>
                           <div className="flex items-start gap-2">
                             <Phone className="w-4 h-4 text-muted-foreground mt-0.5" />
                             <div>
-                              <p className="text-muted-foreground">Contact</p>
-                              <p className="font-medium">{permit.recipientPhone || permit.customerPhone || "Not specified"}</p>
+                              <p className="text-muted-foreground">{t("wd.contact")}</p>
+                              <p className="font-medium">{permit.recipientPhone || permit.customerPhone || t("wd.not-specified")}</p>
                             </div>
                           </div>
                         </div>
@@ -467,12 +468,12 @@ export function WarehouseDeliveryModule() {
                         <div className="flex items-start gap-2 text-sm">
                           <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
                           <div>
-                            <p className="text-muted-foreground">Delivery Address</p>
+                            <p className="text-muted-foreground">{t("so.delivery-address")}</p>
                             <p className="font-medium">
                               {permit.deliveryAddress || 
                                (permit.customerAddress ? 
                                  `${permit.customerAddress}${permit.customerCity ? ', ' + permit.customerCity : ''}${permit.customerCountry ? ', ' + permit.customerCountry : ''}` 
-                                 : "Not specified")}
+                                 : t("wd.not-specified"))}
                             </p>
                           </div>
                         </div>
@@ -482,7 +483,7 @@ export function WarehouseDeliveryModule() {
                       <div className="border rounded-lg p-3 bg-muted/30">
                         <p className="text-sm font-medium mb-2 flex items-center gap-2">
                           <Package className="w-4 h-4" />
-                          Items to Collect:
+                          {t("wd.items-to-collect")}
                         </p>
                         <div className="space-y-2">
                           {(() => {
@@ -511,7 +512,7 @@ export function WarehouseDeliveryModule() {
                                       )}
                                       {isOutsourced && (
                                         <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
-                                          Outsourced
+                                          {t("common.outsourced-2")}
                                         </Badge>
                                       )}
                                     </div>
@@ -528,9 +529,9 @@ export function WarehouseDeliveryModule() {
                                           <Badge key={wIdx} variant="outline" className={`text-xs ${isOutsourced ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-blue-50'}`}>
                                             {isOutsourced ? (
                                               <>
-                                                <span className="me-1">Supplier:</span>
+                                                <span className="me-1">{t("common.supplier")}</span>
                                                 {whId.startsWith('supplier_') 
-                                                  ? (item.supplierName || "External Supplier")
+                                                  ? (item.supplierName || t("wd.external-supplier"))
                                                   : (warehouses.find(w => w.id === item.warehouseId)?.name || `WH-${item.warehouseId}`)
                                                 }
                                               </>
@@ -553,9 +554,9 @@ export function WarehouseDeliveryModule() {
                                           <Badge variant="outline" className={`text-xs ${isOutsourced ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-blue-50'}`}>
                                             {isOutsourced ? (
                                               <>
-                                                <span className="me-1">Supplier:</span>
+                                                <span className="me-1">{t("common.supplier")}</span>
                                                 {whId.startsWith('supplier_') 
-                                                  ? (itemGroup[0].supplierName || "External Supplier")
+                                                  ? (itemGroup[0].supplierName || t("wd.external-supplier"))
                                                   : (warehouses.find(w => w.id === itemGroup[0].warehouseId)?.name || `WH-${itemGroup[0].warehouseId}`)
                                                 }
                                               </>
@@ -583,7 +584,7 @@ export function WarehouseDeliveryModule() {
                           className="flex-1 bg-green-600 hover:bg-green-700"
                         >
                           <CheckCircle className="w-4 h-4 me-2" />
-                          Mark as Picked Up / Ready for Delivery
+                          {t("wd.mark-picked-up")}
                         </Button>
                         <Button variant="outline" onClick={() => handleViewPermit(permit)}>
                           <Eye className="w-4 h-4 me-2" />
@@ -660,8 +661,8 @@ export function WarehouseDeliveryModule() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <RotateCcw className="w-12 h-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No pending returns to process</p>
-                <p className="text-sm text-muted-foreground mt-1">Returns from deliveries will appear here for warehouse assignment</p>
+                <p className="text-muted-foreground">{t("wd.no-pending-returns")}</p>
+                <p className="text-sm text-muted-foreground mt-1">{t("wd.returns-appear-hint")}</p>
               </CardContent>
             </Card>
           ) : (
@@ -672,31 +673,31 @@ export function WarehouseDeliveryModule() {
                     <div className="flex items-start justify-between flex-wrap gap-2">
                       <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
-                          Return #{returnReq.id}
+                          {fill(t("ship.return-number"), { id: returnReq.id })}
                           <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
-                            Pending Warehouse Assignment
+                            {t("wd.pending-warehouse-assignment")}
                           </Badge>
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
-                          SO: {returnReq.soNumber || "N/A"} | Customer: {returnReq.customerName || "Unknown"}
+                          {fill(t("ship.so-customer"), { so: returnReq.soNumber || "N/A", customer: returnReq.customerName || t("common.unknown") })}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Courier: {returnReq.courierName || "N/A"} | Initiated by: {returnReq.initiatedBy || returnReq.returnedBy || "shipping"} on {returnReq.createdAt ? formatDate(returnReq.createdAt, language) : "N/A"}
+                          {fill(t("wd.return-courier-line"), { courier: returnReq.courierName || "N/A", by: returnReq.initiatedBy || returnReq.returnedBy || t("wd.initiated-by-shipping"), date: returnReq.createdAt ? formatDate(returnReq.createdAt, language) : "N/A" })}
                         </p>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      <p className="text-sm font-medium">Items to restock:</p>
+                      <p className="text-sm font-medium">{t("wd.items-to-restock")}</p>
                       {returnReq.items?.map((item: any, idx: number) => (
                         <div key={idx} className="flex justify-between items-center text-sm bg-white rounded p-3 border">
                           <div>
-                            <span className="font-medium">{item.productName || "Unknown Item"}</span>
+                            <span className="font-medium">{item.productName || t("common.unknown-item")}</span>
                             <span className="text-muted-foreground ms-2">x{item.quantityReturned}</span>
                             {item.isOutsourced && (
                               <Badge variant="outline" className="ms-2 bg-purple-50 text-purple-700 border-purple-300">
-                                Outsourced
+                                {t("common.outsourced-2")}
                               </Badge>
                             )}
                           </div>
@@ -710,7 +711,7 @@ export function WarehouseDeliveryModule() {
                       ))}
                       {returnReq.notes && (
                         <p className="text-sm text-muted-foreground mt-2 p-2 bg-gray-50 rounded">
-                          Notes: {returnReq.notes}
+                          {fill(t("ship.notes-value"), { notes: returnReq.notes })}
                         </p>
                       )}
                       <Button
@@ -727,7 +728,7 @@ export function WarehouseDeliveryModule() {
                         }}
                       >
                         <Warehouse className="w-4 h-4 me-2" />
-                        Assign Warehouses & Process Return
+                        {t("wd.assign-process-return")}
                       </Button>
                     </div>
                   </CardContent>
@@ -827,7 +828,7 @@ export function WarehouseDeliveryModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Warehouse className="w-5 h-5" />
-              Allocate Warehouses - {selectedPermitForAllocation?.permitNo}
+              {fill(t("wd.allocate-warehouses-title"), { permit: selectedPermitForAllocation?.permitNo ?? "" })}
             </DialogTitle>
           </DialogHeader>
 
@@ -835,7 +836,7 @@ export function WarehouseDeliveryModule() {
             <div className="space-y-6">
               <div className="bg-muted/30 p-4 rounded-lg">
                 <p className="text-sm text-muted-foreground">
-                  Assign which warehouse(s) each item should be collected from. You can only select warehouses that have the product in stock, and quantities are limited to available stock.
+                  {t("wd.allocate-hint")}
                 </p>
               </div>
 
@@ -852,8 +853,8 @@ export function WarehouseDeliveryModule() {
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <div className="min-w-0 break-words">
                             <CardTitle className="text-base">{item.productName}</CardTitle>
-                            {item.sku && <p className="text-sm text-muted-foreground">SKU: {item.sku}</p>}
-                            {item.isOutsourced && <p className="text-sm text-amber-700 font-medium">Outsourced Item</p>}
+                            {item.sku && <p className="text-sm text-muted-foreground">{t("common.sku-2")} {item.sku}</p>}
+                            {item.isOutsourced && <p className="text-sm text-amber-700 font-medium">{t("wd.outsourced-item")}</p>}
                           </div>
                           <Badge variant="outline" className="text-base">
                             {item.totalQuantity} {item.unit}
@@ -862,14 +863,14 @@ export function WarehouseDeliveryModule() {
                         <div className="mt-2 flex flex-wrap gap-1">
                           {item.isOutsourced ? (
                             <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-300">
-                              {item.availableWarehouses[0]?.warehouseName || "Outsourced"}
+                              {item.availableWarehouses[0]?.warehouseName || t("common.outsourced-2")}
                             </Badge>
                           ) : item.availableWarehouses.length === 0 ? (
-                            <Badge variant="destructive" className="text-xs">No stock available</Badge>
+                            <Badge variant="destructive" className="text-xs">{t("wd.no-stock-available")}</Badge>
                           ) : (
                             item.availableWarehouses.map(wh => (
                               <Badge key={wh.warehouseId} variant="secondary" className="text-xs">
-                                {wh.warehouseName}: {wh.availableQuantity} available
+                                {fill(t("wd.warehouse-available"), { name: wh.warehouseName, qty: wh.availableQuantity })}
                               </Badge>
                             ))
                           )}
@@ -882,8 +883,8 @@ export function WarehouseDeliveryModule() {
                             {item.allocations.map((alloc, allocIndex) => (
                               <div key={allocIndex} className="flex items-center gap-3 p-3 bg-amber-50 rounded border border-amber-200">
                                 <div className="flex-1">
-                                  <p className="text-sm font-medium text-amber-900">Supplier: {alloc.warehouseName}</p>
-                                  <p className="text-xs text-amber-700">Item will be sourced from this supplier</p>
+                                  <p className="text-sm font-medium text-amber-900">{t("common.supplier")} {alloc.warehouseName}</p>
+                                  <p className="text-xs text-amber-700">{t("wd.sourced-from-supplier")}</p>
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <Input
@@ -903,7 +904,7 @@ export function WarehouseDeliveryModule() {
                                       ))
                                     }}
                                     className="w-20"
-                                    placeholder="Qty"
+                                    placeholder={t("common.qty")}
                                   />
                                   <span className="text-xs text-muted-foreground">/ {item.totalQuantity}</span>
                                 </div>
@@ -916,17 +917,17 @@ export function WarehouseDeliveryModule() {
                               return remaining !== 0 ? (
                                 <p className={`text-xs ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
                                   {remaining > 0 
-                                    ? `${remaining} units not yet allocated`
-                                    : `Over-allocated by ${Math.abs(remaining)} units`
+                                    ? fill(t("wd.units-not-allocated"), { n: remaining })
+                                    : fill(t("wd.over-allocated"), { n: Math.abs(remaining) })
                                   }
                                 </p>
                               ) : (
-                                <p className="text-xs text-green-700">All {totalAllocated} units allocated</p>
+                                <p className="text-xs text-green-700">{fill(t("wd.all-units-allocated"), { n: totalAllocated })}</p>
                               )
                             })()}
                           </>
                         ) : item.availableWarehouses.length === 0 ? (
-                          <p className="text-sm text-red-700">This product is not available in any warehouse. Please check inventory.</p>
+                          <p className="text-sm text-red-700">{t("wd.product-unavailable")}</p>
                         ) : (
                           <>
                             {item.allocations.map((alloc, allocIndex) => {
@@ -955,12 +956,12 @@ export function WarehouseDeliveryModule() {
                                     }}
                                   >
                                     <SelectTrigger className="flex-1">
-                                      <SelectValue placeholder="Select warehouse" />
+                                      <SelectValue placeholder={t("common.select-warehouse")} />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {item.availableWarehouses.map((wh) => (
                                         <SelectItem key={wh.warehouseId} value={wh.warehouseId}>
-                                          {wh.warehouseName} ({wh.availableQuantity} available)
+                                          {fill(t("wd.warehouse-option"), { name: wh.warehouseName, qty: wh.availableQuantity })}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
@@ -983,7 +984,7 @@ export function WarehouseDeliveryModule() {
                                         ))
                                       }}
                                       className="w-20"
-                                      placeholder="Qty"
+                                      placeholder={t("common.qty")}
                                     />
                                     <span className="text-xs text-muted-foreground">/ {maxQty}</span>
                                   </div>
@@ -1034,10 +1035,10 @@ export function WarehouseDeliveryModule() {
                                   className="h-7 text-xs"
                                 >
                                   <Plus className="w-3 h-3 me-1" />
-                                  Split to Another Warehouse ({availableForSplit.length} available)
+                                  {fill(t("wd.split-warehouse"), { n: availableForSplit.length })}
                                 </Button>
                               ) : (
-                                <span className="text-xs text-muted-foreground">No other warehouses have this product</span>
+                                <span className="text-xs text-muted-foreground">{t("wd.no-other-warehouses")}</span>
                               )}
                               
                               {(() => {
@@ -1046,12 +1047,12 @@ export function WarehouseDeliveryModule() {
                                 return remaining !== 0 ? (
                                   <p className={`text-xs ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
                                     {remaining > 0 
-                                      ? `${remaining} units not yet allocated`
-                                      : `Over-allocated by ${Math.abs(remaining)} units`
+                                      ? fill(t("wd.units-not-allocated"), { n: remaining })
+                                      : fill(t("wd.over-allocated"), { n: Math.abs(remaining) })
                                     }
                                   </p>
                                 ) : (
-                                  <p className="text-xs text-green-700">All {totalAllocated} units allocated</p>
+                                  <p className="text-xs text-green-700">{fill(t("wd.all-units-allocated"), { n: totalAllocated })}</p>
                                 )
                               })()}
                             </div>
@@ -1064,9 +1065,9 @@ export function WarehouseDeliveryModule() {
               </div>
 
               <div className="space-y-2">
-                <Label>Notes (optional)</Label>
+                <Label>{t("wd.notes-optional")}</Label>
                 <Textarea
-                  placeholder="Any special instructions for the shipping team..."
+                  placeholder={t("wd.special-instructions-placeholder")}
                   value={allocationNotes}
                   onChange={(e) => setAllocationNotes(e.target.value)}
                   rows={2}
@@ -1075,7 +1076,7 @@ export function WarehouseDeliveryModule() {
 
               <div className="flex flex-wrap justify-end gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowAllocationDialog(false)}>
-                  Cancel
+                  {t("cancel")}
                 </Button>
                 <Button 
                   onClick={handleSaveAllocations}
@@ -1083,7 +1084,7 @@ export function WarehouseDeliveryModule() {
                   className="bg-green-600 hover:bg-green-700"
                 >
                   <CheckCircle className="w-4 h-4 me-2" />
-                  {savingAllocation ? "Saving..." : "Save & Mark Ready for Shipment"}
+                  {savingAllocation ? t("common.saving") : t("wd.save-mark-ready")}
                 </Button>
               </div>
             </div>
@@ -1097,34 +1098,34 @@ export function WarehouseDeliveryModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RotateCcw className="w-5 h-5 text-orange-700" />
-              Process Return - Assign Warehouses
+              {t("wd.process-return-title")}
             </DialogTitle>
           </DialogHeader>
           
           {selectedReturn && (
             <div className="space-y-4">
               <div className="bg-muted/30 p-4 rounded-lg">
-                <p className="font-medium">SO: {selectedReturn.soNumber}</p>
-                <p className="text-sm text-muted-foreground">Customer: {selectedReturn.customerName}</p>
+                <p className="font-medium">{t("common.so")} {selectedReturn.soNumber}</p>
+                <p className="text-sm text-muted-foreground">{t("common.customer")} {selectedReturn.customerName}</p>
               </div>
               
               <div className="space-y-4">
-                <p className="text-sm font-medium">Select warehouse for each returned item:</p>
+                <p className="text-sm font-medium">{t("wd.select-warehouse-each-item")}</p>
                 {selectedReturn.items?.map((item: any, idx: number) => (
                   <Card key={idx} className={item.condition === "good" ? "border-green-200" : "border-red-200"}>
                     <CardContent className="pt-4">
                       <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
                         <div className="min-w-0 break-words">
                           <p className="font-semibold">{item.productName}</p>
-                          <p className="text-sm text-muted-foreground">Quantity: {item.quantityReturned}</p>
+                          <p className="text-sm text-muted-foreground">{t("common.quantity")} {item.quantityReturned}</p>
                           <div className="flex gap-2 mt-1 flex-wrap">
                             <Badge variant="secondary">{item.reason}</Badge>
                             <Badge variant={item.condition === "good" ? "outline" : "destructive"}>
-                              {item.condition === "good" ? "Can be restocked" : item.condition}
+                              {item.condition === "good" ? t("wd.can-be-restocked") : item.condition}
                             </Badge>
                             {item.isOutsourced && (
                               <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
-                                Outsourced
+                                {t("common.outsourced-2")}
                               </Badge>
                             )}
                           </div>
@@ -1133,7 +1134,7 @@ export function WarehouseDeliveryModule() {
                       
                       {item.condition === "good" ? (
                         <div>
-                          <Label>Assign to Warehouse *</Label>
+                          <Label>{t("wd.assign-to-warehouse")}</Label>
                           <Select
                             value={returnWarehouseSelections[`${idx}`] || ""}
                             onValueChange={(value) => setReturnWarehouseSelections(prev => ({
@@ -1142,7 +1143,7 @@ export function WarehouseDeliveryModule() {
                             }))}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder="Select warehouse" />
+                              <SelectValue placeholder={t("common.select-warehouse")} />
                             </SelectTrigger>
                             <SelectContent>
                               {warehouses.map((wh) => (
@@ -1155,8 +1156,7 @@ export function WarehouseDeliveryModule() {
                         </div>
                       ) : (
                         <p className="text-sm text-amber-700 bg-amber-50 p-2 rounded">
-                          This item is marked as {item.condition} and will not be restocked automatically.
-                          Manual inspection required.
+                          {fill(t("wd.item-not-restocked"), { condition: item.condition })}
                         </p>
                       )}
                     </CardContent>
@@ -1166,7 +1166,7 @@ export function WarehouseDeliveryModule() {
               
               <div className="flex flex-wrap justify-end gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowReturnProcessDialog(false)} className="bg-transparent">
-                  Cancel
+                  {t("cancel")}
                 </Button>
                 <Button
                   onClick={async () => {
@@ -1174,7 +1174,7 @@ export function WarehouseDeliveryModule() {
                     const goodItems = (selectedReturn.items || []).filter((item: any) => item.condition === "good")
                     const missing = goodItems.filter((_: any, idx: number) => !returnWarehouseSelections[`${idx}`])
                     if (missing.length > 0) {
-                      alert(`Please select a warehouse for all good-condition items before processing.`)
+                      alert(t("wd.select-warehouse-good-items"))
                       return
                     }
 
@@ -1206,7 +1206,7 @@ export function WarehouseDeliveryModule() {
                       })
                       
                       if (response.ok) {
-                        alert("Return processed successfully! Inventory has been updated.")
+                        alert(t("wd.return-processed"))
                         setShowReturnProcessDialog(false)
                         setSelectedReturn(null)
                         setReturnWarehouseSelections({})
@@ -1214,10 +1214,10 @@ export function WarehouseDeliveryModule() {
                         await refreshInventory()
                       } else {
                         const error = await response.json()
-                        alert(`Failed to process return: ${error.error || "Unknown error"}`)
+                        alert(fill(t("wd.process-return-failed-with-error"), { error: error.error || t("ship.unknown-error") }))
                       }
                     } catch (error) {
-                      alert("Failed to process return")
+                      alert(t("wd.process-return-failed"))
                     } finally {
                       setProcessingReturn(false)
                     }
@@ -1226,7 +1226,7 @@ export function WarehouseDeliveryModule() {
                   className="bg-green-600 hover:bg-green-700"
                 >
                   <CheckCircle className="w-4 h-4 me-2" />
-                  {processingReturn ? "Processing..." : "Process Return & Update Inventory"}
+                  {processingReturn ? t("common.processing") : t("wd.process-return-update")}
                 </Button>
               </div>
             </div>
