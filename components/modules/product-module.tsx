@@ -306,7 +306,7 @@ export function ProductModule() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">{t("inventory.reorder-point")}</p>
-                    <p className="font-semibold">{product.moq || "N/A"}</p>
+                    <p className="font-semibold">{product.moq || t("label.na")}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">{t("product.desired-excess")}</p>

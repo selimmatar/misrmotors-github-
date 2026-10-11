@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
-import { formatDate } from "@/lib/format"
+import { formatDate, returnReasonLabel } from "@/lib/format"
 import type { DeliveryPermit } from "@/lib/types"
 
 interface WarehouseAvailability {
@@ -679,10 +679,10 @@ export function WarehouseDeliveryModule() {
                           </Badge>
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {fill(t("ship.so-customer"), { so: returnReq.soNumber || "N/A", customer: returnReq.customerName || t("common.unknown") })}
+                          {fill(t("ship.so-customer"), { so: returnReq.soNumber || t("label.na"), customer: returnReq.customerName || t("common.unknown") })}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {fill(t("wd.return-courier-line"), { courier: returnReq.courierName || "N/A", by: returnReq.initiatedBy || returnReq.returnedBy || t("wd.initiated-by-shipping"), date: returnReq.createdAt ? formatDate(returnReq.createdAt, language) : "N/A" })}
+                          {fill(t("wd.return-courier-line"), { courier: returnReq.courierName || t("label.na"), by: returnReq.initiatedBy || returnReq.returnedBy || t("wd.initiated-by-shipping"), date: returnReq.createdAt ? formatDate(returnReq.createdAt, language) : t("label.na") })}
                         </p>
                       </div>
                     </div>
@@ -702,7 +702,7 @@ export function WarehouseDeliveryModule() {
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge variant="secondary">{item.reason}</Badge>
+                            <Badge variant="secondary">{returnReasonLabel(item.reason, t)}</Badge>
                             <Badge variant={item.condition === "good" ? "outline" : "destructive"}>
                               {item.condition}
                             </Badge>
@@ -1119,7 +1119,7 @@ export function WarehouseDeliveryModule() {
                           <p className="font-semibold">{item.productName}</p>
                           <p className="text-sm text-muted-foreground">{t("common.quantity")} {item.quantityReturned}</p>
                           <div className="flex gap-2 mt-1 flex-wrap">
-                            <Badge variant="secondary">{item.reason}</Badge>
+                            <Badge variant="secondary">{returnReasonLabel(item.reason, t)}</Badge>
                             <Badge variant={item.condition === "good" ? "outline" : "destructive"}>
                               {item.condition === "good" ? t("wd.can-be-restocked") : item.condition}
                             </Badge>

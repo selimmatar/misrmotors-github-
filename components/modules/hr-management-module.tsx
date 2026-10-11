@@ -588,6 +588,31 @@ interface SalaryPayment {
   notes: string | null
 }
 
+// Display labels for the stored employment type / status / pay-frequency codes (the codes themselves never change).
+const HR_EMPLOYMENT_TYPE_KEYS: Record<string, string> = {
+  full_time: "hr.full-time",
+  part_time: "hr.part-time",
+  contract: "hr.document-contract",
+  intern: "hr.intern",
+}
+const HR_EMPLOYMENT_STATUS_KEYS: Record<string, string> = {
+  active: "status.active",
+  on_leave: "hr.status-on-leave",
+  suspended: "hr.suspended",
+  terminated: "hr.status-terminated",
+  resigned: "hr.resigned",
+}
+const HR_FREQUENCY_KEYS: Record<string, string> = {
+  weekly: "hr.cycle-weekly",
+  bi_weekly: "hr.bi-weekly",
+  monthly: "hr.cycle-monthly",
+  quarterly: "hr.quarterly",
+}
+function hrLabel(map: Record<string, string>, value: string | null | undefined, t: (key: string) => string): string {
+  if (!value) return t("label.na")
+  return map[value] ? t(map[value]) : value.replace(/_/g, " ")
+}
+
 // Employee Details View Component
 function EmployeeDetailsView({ employee, compensation }: { employee: Employee; compensation: Compensation[] }) {
   const { t, language } = useI18n()
@@ -633,11 +658,11 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
           </div>
           <div>
             <Label className="text-muted-foreground">{t("phone")}</Label>
-            <p className="font-medium">{employee.phone || "N/A"}</p>
+            <p className="font-medium">{employee.phone || t("label.na")}</p>
           </div>
           <div>
             <Label className="text-muted-foreground">{t("hr.national-id")}</Label>
-            <p className="font-medium">{employee.national_id || "N/A"}</p>
+            <p className="font-medium">{employee.national_id || t("label.na")}</p>
           </div>
           <div>
             <Label className="text-muted-foreground">{t("hr.hire-date")}</Label>
@@ -645,19 +670,19 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
           </div>
           <div>
             <Label className="text-muted-foreground">{t("hr.department")}</Label>
-            <p className="font-medium">{employee.department?.department_name || "N/A"}</p>
+            <p className="font-medium">{employee.department?.department_name || t("label.na")}</p>
           </div>
           <div>
             <Label className="text-muted-foreground">{t("common.position")}</Label>
-            <p className="font-medium">{employee.position?.position_title || "N/A"}</p>
+            <p className="font-medium">{employee.position?.position_title || t("label.na")}</p>
           </div>
           <div>
             <Label className="text-muted-foreground">{t("hr.employment-type")}</Label>
-            <p className="font-medium capitalize">{employee.employment_type.replace("_", " ")}</p>
+            <p className="font-medium capitalize">{hrLabel(HR_EMPLOYMENT_TYPE_KEYS, employee.employment_type, t)}</p>
           </div>
           <div>
             <Label className="text-muted-foreground">{t("status")}</Label>
-            <p className="font-medium capitalize">{employee.employment_status.replace("_", " ")}</p>
+            <p className="font-medium capitalize">{hrLabel(HR_EMPLOYMENT_STATUS_KEYS, employee.employment_status, t)}</p>
           </div>
         </div>
       </TabsContent>
@@ -726,7 +751,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                   <Label className="text-lg">{t("hr.net-salary")}</Label>
                   <p className="text-2xl font-bold text-primary"><Money value={activeCompensation.net_salary} /> {t("common.egp-2")}</p>
                 </div>
-                <p className="text-sm text-muted-foreground mt-1">{fill(t("hr.paid-frequency"), { frequency: activeCompensation.payment_frequency })}</p>
+                <p className="text-sm text-muted-foreground mt-1">{fill(t("hr.paid-frequency"), { frequency: hrLabel(HR_FREQUENCY_KEYS, activeCompensation.payment_frequency, t).toLowerCase() })}</p>
               </div>
             </CardContent>
           </Card>

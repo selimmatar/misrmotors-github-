@@ -1246,7 +1246,7 @@ export function AccountsPayableModule() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.payment-type")}</p>
-                          <p className="font-medium capitalize">{bankDetails.paymentType}</p>
+                          <p className="font-medium capitalize">{bankDetails.paymentType ? t(`payment.${bankDetails.paymentType}`) : t("label.na")}</p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.supplier")}</p>

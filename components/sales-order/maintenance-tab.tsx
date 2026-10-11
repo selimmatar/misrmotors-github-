@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Wrench, UserPlus, Upload, CheckCircle, XCircle, DollarSign, FileText } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
+import { statusLabel } from "@/lib/format"
 
 interface SalesOrder {
   id: string  // This is the SO ID from the parent component
@@ -180,7 +181,7 @@ export function SalesOrderMaintenanceTab({
       completed: "bg-green-100 text-green-800",
       cancelled: "bg-red-100 text-red-800",
     }
-    return <Badge className={colors[status] || ""}>{status.replace("_", " ").toUpperCase()}</Badge>
+    return <Badge className={colors[status] || ""}>{statusLabel(status, t).toUpperCase()}</Badge>
   }
 
   if (!salesOrder.requiresMaintenance && !workOrder && !showCreateForm) {
@@ -327,7 +328,7 @@ export function SalesOrderMaintenanceTab({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t("common.priority")}</p>
-                <Badge>{workOrder.priority.toUpperCase()}</Badge>
+                <Badge>{statusLabel(workOrder.priority, t).toUpperCase()}</Badge>
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">{t("created")}</p>

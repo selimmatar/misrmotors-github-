@@ -1893,7 +1893,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                                   <div>
                                     <p className="font-medium">{dp.permitNo || `DP-${dp.id}`}</p>
                                     <p className="text-xs text-muted-foreground">
-                                      {dp.printedAt ? formatDate(dp.printedAt, language) : dp.createdAt ? formatDate(dp.createdAt, language) : "N/A"}
+                                      {dp.printedAt ? formatDate(dp.printedAt, language) : dp.createdAt ? formatDate(dp.createdAt, language) : t("label.na")}
                                     </p>
                                   </div>
                                 </div>
@@ -1993,7 +1993,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
               // Get customer and SO info
               const customerName = dp.customerName || getCustomerName(customerId) || "Unknown Customer"
-              const soNumber = dp.soNumber || getSONumber(salesOrderId) || "N/A"
+              const soNumber = dp.soNumber || getSONumber(salesOrderId) || t("label.na")
               const paymentType = getSOPaymentType(salesOrderId) || "Unknown"
 
               return (

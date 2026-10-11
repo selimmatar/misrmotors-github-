@@ -368,7 +368,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">{t("common.sales-order")}</p>
-                  <p className="font-semibold">{viewingReport.work_order?.sales_order?.so_number || "N/A"}</p>
+                  <p className="font-semibold">{viewingReport.work_order?.sales_order?.so_number || t("label.na")}</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">{t("status")}</p>
@@ -376,11 +376,11 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">{t("common.submitted")}</p>
-                  <p>{viewingReport.submitted_at ? new Date(viewingReport.submitted_at).toLocaleString() : "N/A"}</p>
+                  <p>{viewingReport.submitted_at ? new Date(viewingReport.submitted_at).toLocaleString() : t("label.na")}</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">{t("so.customer")}</p>
-                  <p>{viewingReport.customer_name || "N/A"}</p>
+                  <p>{viewingReport.customer_name || t("label.na")}</p>
                 </div>
               </div>
 

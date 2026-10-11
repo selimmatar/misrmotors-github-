@@ -126,7 +126,7 @@ export default function UsersPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Badge variant="outline">{user.role}</Badge>
+                    <Badge variant="outline">{t(`role.${user.role}`)}</Badge>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button

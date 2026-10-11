@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { Money } from "@/components/erp/money"
 import { StatusBadge } from "@/components/erp/status-badge"
-import { formatDate } from "@/lib/format"
+import { formatDate, statusLabel } from "@/lib/format"
 
 const BarChart = dynamic(() => import("recharts").then((mod) => mod.BarChart), { ssr: false })
 const Bar = dynamic(() => import("recharts").then((mod) => mod.Bar), { ssr: false })
@@ -469,7 +469,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
     {
       id: "most-sold",
       label: t("financial.top-selling-product"),
-      value: mostSoldProducts[0]?.productName || "N/A",
+      value: mostSoldProducts[0]?.productName || t("label.na"),
       change: mostSoldProducts[0]
         ? `${mostSoldProducts[0].totalQuantity} ${t("financial.units-sold")}`
         : t("financial.no-sales-data"),
@@ -596,7 +596,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
         <KpiTile
           label={fill(t("financial.label-egp"), { label: t("financial.gross-profit") })}
           value={<Money value={grossProfit} />}
-          sub={`${t("financial.margin")}: ${formatNumber(profitMargin)}%`}
+          sub={`${t("financial.margin")}: ${profitMargin === "N/A" ? t("label.na") : formatNumber(profitMargin)}%`}
         />
         <KpiTile
           label={fill(t("financial.label-egp"), { label: t("financial.inventory-value") })}
@@ -664,7 +664,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
               </div>
               <StatusBadge
                 status={aiAnalysis.financialHealth.status}
-                label={`${aiAnalysis.financialHealth.status.toUpperCase()} - ${t("financial.score")}: ${aiAnalysis.financialHealth.score}/100`}
+                label={`${statusLabel(aiAnalysis.financialHealth.status, t).toUpperCase()} - ${t("financial.score")}: ${aiAnalysis.financialHealth.score}/100`}
               />
             </div>
             <CardDescription>{aiAnalysis.financialHealth.insights}</CardDescription>
@@ -834,7 +834,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <p className="font-semibold text-lg">{displayCustomerName}</p>
-                          <p className="text-sm text-muted-foreground">{t("common.so")} {request.soNumber || "N/A"}</p>
+                          <p className="text-sm text-muted-foreground">{t("common.so")} {request.soNumber || t("label.na")}</p>
                           <p className="text-sm text-muted-foreground">{t("common.invoice")} {request.invoiceNumber}</p>
                         </div>
                         <StatusBadge status="pending" label={t("status.pending")} />

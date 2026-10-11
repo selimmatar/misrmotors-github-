@@ -194,10 +194,10 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
                     </ul>
                   ) : (
                     <ul className="space-y-1 ms-4">
-                      <li>• {t("ai.ex-suppliers")}</li>
-                      <li>• {t("ai.ex-products")}</li>
-                      <li>• {t("ai.ex-order-pumps")}</li>
-                      <li>• {t("ai.ex-installments")}</li>
+                      <li>• <bdi dir="ltr">{t("ai.ex-suppliers")}</bdi></li>
+                      <li>• <bdi dir="ltr">{t("ai.ex-products")}</bdi></li>
+                      <li>• <bdi dir="ltr">{t("ai.ex-order-pumps")}</bdi></li>
+                      <li>• <bdi dir="ltr">{t("ai.ex-installments")}</bdi></li>
                     </ul>
                   )}
                 </div>

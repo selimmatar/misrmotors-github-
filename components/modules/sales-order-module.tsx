@@ -2227,7 +2227,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                     <div>
                       <p className="font-medium">{item.productName || item.product_name || item.outsourced_name || t("common.unknown-item")}</p>
                       <p className="text-sm text-muted-foreground">
-                        {item.sku ? `SKU: ${item.sku}` : item.outsourced_name ? t("common.outsourced") : ""}
+                        {item.sku ? `${t("common.sku-2")} ${item.sku}` : item.outsourced_name ? t("common.outsourced") : ""}
                       </p>
                     </div>
                     <div className="text-end">

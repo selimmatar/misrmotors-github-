@@ -98,7 +98,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
   }
 
   const getPONumber = (poId: string) => {
-    return purchaseOrders.find((po) => po.id === poId)?.poNumber || "N/A"
+    return purchaseOrders.find((po) => po.id === poId)?.poNumber || t("label.na")
   }
 
   const getInstallmentMonths = (poId: string) => {
@@ -473,7 +473,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
-                          <p className="font-semibold capitalize">{order.paymentTerms}</p>
+                          <p className="font-semibold capitalize">{order.paymentTerms ? t(`payment.${order.paymentTerms}`) : t("label.na")}</p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.invoice_status")}</p>
@@ -583,7 +583,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
-                            <p className="font-semibold capitalize">{order.paymentTerms}</p>
+                            <p className="font-semibold capitalize">{order.paymentTerms ? t(`payment.${order.paymentTerms}`) : t("label.na")}</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.status")}</p>
@@ -642,7 +642,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
-                            <p className="font-semibold capitalize">{order.paymentTerms}</p>
+                            <p className="font-semibold capitalize">{order.paymentTerms ? t(`payment.${order.paymentTerms}`) : t("label.na")}</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.shipping_invoice")}</p>
@@ -1143,7 +1143,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                               </div>
                               <div>
                                 <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
-                                <p className="font-semibold capitalize">{po.paymentTerms}</p>
+                                <p className="font-semibold capitalize">{po.paymentTerms ? t(`payment.${po.paymentTerms}`) : t("label.na")}</p>
                               </div>
                               <div>
                                 <p className="text-sm text-muted-foreground">{t("field.status")}</p>
@@ -1264,7 +1264,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
-                  <p className="font-semibold capitalize">{selectedSalesOrder.paymentTerms}</p>
+                  <p className="font-semibold capitalize">{selectedSalesOrder.paymentTerms ? t(`payment.${selectedSalesOrder.paymentTerms}`) : t("label.na")}</p>
                 </div>
               </div>
               <div>

@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { PermitPreviewDialog } from "@/components/delivery-permit/permit-preview-dialog"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
-import { formatDate } from "@/lib/format"
+import { formatDate, returnReasonLabel } from "@/lib/format"
 import { fill } from "@/lib/i18n-format"
 import type { DeliveryPermit } from "@/lib/types"
 import { ShippingMaintenanceTab } from "@/components/shipping/maintenance-tab"
@@ -756,7 +756,7 @@ export function ShippingModule() {
                       {returnReq.items?.map((item: any, idx: number) => (
                         <div key={idx} className="flex justify-between items-center text-sm bg-white rounded p-2">
                           <span>{item.productName} (x{item.quantityReturned})</span>
-                          <Badge variant="secondary">{item.reason}</Badge>
+                          <Badge variant="secondary">{returnReasonLabel(item.reason, t)}</Badge>
                         </div>
                       ))}
                       {returnReq.notes && (
@@ -802,7 +802,7 @@ export function ShippingModule() {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground">{t("common.sku-2")} {item.sku || "N/A"}</p>
+                      <p className="text-sm text-muted-foreground">{t("common.sku-2")} {item.sku || t("label.na")}</p>
                       <p className="text-sm">{fill(t("ship.max-available"), { max: item.maxQuantity })}</p>
                     </div>
                     <div className="flex items-center gap-2">

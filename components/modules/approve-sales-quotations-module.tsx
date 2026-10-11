@@ -397,11 +397,11 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("phone")}</p>
-                  <p className="font-semibold">{selectedQuotation.customer_phone || "N/A"}</p>
+                  <p className="font-semibold">{selectedQuotation.customer_phone || t("label.na")}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("email")}</p>
-                  <p className="font-semibold">{selectedQuotation.customer_email || "N/A"}</p>
+                  <p className="font-semibold">{selectedQuotation.customer_email || t("label.na")}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("quote.validity-days")}</p>

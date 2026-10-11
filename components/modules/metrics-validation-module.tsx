@@ -182,7 +182,7 @@ export default function MetricsValidationModule() {
           </CardHeader>
           <CardContent>
             <pre className="p-4 bg-muted rounded-lg overflow-x-auto text-sm font-mono">
-              {data?.results?.find((r) => r.kpi === expandedQuery)?.query || "N/A"}
+              {data?.results?.find((r) => r.kpi === expandedQuery)?.query || t("label.na")}
             </pre>
           </CardContent>
         </Card>

@@ -288,14 +288,14 @@ export function OperationsManagementModule() {
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-xs text-muted-foreground">{t("phone")}</p>
-                    <p className="font-medium text-sm">{selectedEmployee.phone || "N/A"}</p>
+                    <p className="font-medium text-sm">{selectedEmployee.phone || t("label.na")}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-xs text-muted-foreground">{t("email")}</p>
-                    <p className="font-medium text-sm truncate">{selectedEmployee.email || "N/A"}</p>
+                    <p className="font-medium text-sm truncate">{selectedEmployee.email || t("label.na")}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -305,7 +305,7 @@ export function OperationsManagementModule() {
                     <p className="font-medium text-sm">
                       {selectedEmployee.hire_date
                         ? formatDate(selectedEmployee.hire_date, language)
-                        : "N/A"}
+                        : t("label.na")}
                     </p>
                   </div>
                 </div>
@@ -410,12 +410,12 @@ export function OperationsManagementModule() {
                             <TableCell className="font-medium">{wo.title}</TableCell>
                             <TableCell>{wo.customer_display}</TableCell>
                             <TableCell>
-                              <Badge variant="secondary">{wo.category || "N/A"}</Badge>
+                              <Badge variant="secondary">{wo.category || t("label.na")}</Badge>
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {wo.completed_at
                                 ? formatDate(wo.completed_at, language)
-                                : "N/A"}
+                                : t("label.na")}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -444,12 +444,12 @@ export function OperationsManagementModule() {
                           <TableRow key={dp.permit_id}>
                             <TableCell className="font-mono text-sm">{dp.permit_no}</TableCell>
                             <TableCell>{dp.customer_display}</TableCell>
-                            <TableCell>{dp.recipient_name || "N/A"}</TableCell>
+                            <TableCell>{dp.recipient_name || t("label.na")}</TableCell>
                             <TableCell>
                               <StatusBadge status={dp.status} />
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                              {dp.delivery_address || "N/A"}
+                              {dp.delivery_address || t("label.na")}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -478,14 +478,14 @@ export function OperationsManagementModule() {
                           <TableRow key={dp.permit_id}>
                             <TableCell className="font-mono text-sm">{dp.permit_no}</TableCell>
                             <TableCell>{dp.customer_display}</TableCell>
-                            <TableCell>{dp.recipient_name || "N/A"}</TableCell>
+                            <TableCell>{dp.recipient_name || t("label.na")}</TableCell>
                             <TableCell>
                               <StatusBadge status={dp.status} />
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {dp.created_at
                                 ? formatDate(dp.created_at, language)
-                                : "N/A"}
+                                : t("label.na")}
                             </TableCell>
                           </TableRow>
                         ))}

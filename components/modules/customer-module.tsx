@@ -250,7 +250,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("customer.address")}</p>
-                <p className="font-semibold">{selectedCustomer.address || "N/A"}</p>
+                <p className="font-semibold">{selectedCustomer.address || t("label.na")}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("customer.total-orders")}</p>

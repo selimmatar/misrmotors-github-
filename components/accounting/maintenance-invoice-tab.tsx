@@ -154,7 +154,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                 {pendingInvoice.map((order) => (
                   <TableRow key={order.work_order_id}>
                     <TableCell className="font-mono">{order.work_order_number}</TableCell>
-                    <TableCell className="font-mono">{order.sales_order_number || "N/A"}</TableCell>
+                    <TableCell className="font-mono">{order.sales_order_number || t("label.na")}</TableCell>
                     <TableCell>{order.customer_name}</TableCell>
                     <TableCell>{order.title}</TableCell>
                     <TableCell className="font-semibold"><Money value={order.actual_cost} /></TableCell>
@@ -204,7 +204,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">{t("common.sales-order")}</p>
-                      <p className="font-mono">{selectedOrder.sales_order_number || "N/A"}</p>
+                      <p className="font-mono">{selectedOrder.sales_order_number || t("label.na")}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">{t("description")}</p>
@@ -321,7 +321,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                         <p>{t("common.customer")} <span className="font-semibold">{selectedOrder.customer_name}</span></p>
                         <p>{t("mi.amount-colon")} <span className="font-semibold"><Money value={parseFloat(invoiceAmount) || selectedOrder.actual_cost} /> {t("common.egp-2")}</span></p>
                         <p>{t("mi.payment-terms-colon")} <span className="font-semibold">
-                          {paymentTerms === "custom" ? fill(t("mi.net-days"), { days: customDays }) : paymentTerms.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
+                          {paymentTerms === "custom" ? fill(t("mi.net-days"), { days: customDays }) : t(paymentTerms === "due_on_receipt" ? "mi.due-on-receipt" : `mi.net-${paymentTerms.split("_")[1]}`)}
                         </span></p>
                         <p>{t("mi.due-date-colon")} <span className="font-semibold">
                           {formatDate(new Date(Date.now() + (paymentTerms === "custom" ? parseInt(customDays || "0") : parseInt(paymentTerms.split("_")[1] || "0")) * 24 * 60 * 60 * 1000), language)}

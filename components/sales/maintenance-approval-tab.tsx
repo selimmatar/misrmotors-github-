@@ -188,7 +188,7 @@ export function MaintenanceApprovalTab({ userRole }: { userRole: string }) {
                   {pendingReports.map((report) => (
                     <TableRow key={report.report_id}>
                       <TableCell className="font-mono">{report.work_order_number}</TableCell>
-                      <TableCell className="font-mono">{report.sales_order_number || "N/A"}</TableCell>
+                      <TableCell className="font-mono">{report.sales_order_number || t("label.na")}</TableCell>
                       <TableCell>{report.customer_name}</TableCell>
                       <TableCell>{report.title}</TableCell>
                       <TableCell className="font-semibold">{t("common.egp-2")} {report.actual_cost?.toFixed(2) || "0.00"}</TableCell>
