@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import type { SupplierInvoice, CustomerInvoice, SalesOrder } from "@/lib/types"
 import { Eye, Upload, CheckCircle, Loader2, Wrench } from "lucide-react"
 import { ReportGenerator } from "@/components/report-generator"
@@ -126,7 +127,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     const so = salesOrders.find((s) => s.id === invoice.soId)
     const installmentMonths = resolveInstallmentCount(so?.paymentType || so?.paymentTerms, so?.installments) || 0
     if (installmentMonths <= 0) {
-      alert("This invoice has no installment plan on its sales order, so the instalment amount cannot be determined. Use the Accounts Receivable screen to record the payment.")
+      alert(t("acct.no-installment-plan"))
       return
     }
 
@@ -159,14 +160,14 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
           invoiceId: invoice.id,
           amount: paymentAmount,
           paymentMethod: "installment_payment",
-          label: `Month ${monthsPaidSoFar + 1}/${installmentMonths}`,
+          label: `Month ${monthsPaidSoFar + 1}/${installmentMonths}`, // sent to the server and stored in the payment description: keep English
           idempotencyKey: markReceivedAttemptRef.current.key,
         }),
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok || !data?.success) {
         if (response.status === 409 || data?.partialFailure) await loadData()
-        alert(`${t("message.error")}: ${data?.error || `Payment failed (HTTP ${response.status})`}`)
+        alert(`${t("message.error")}: ${data?.error || fill(t("acct.payment-failed-http"), { status: response.status })}`)
         return
       }
       markReceivedAttemptRef.current = null
@@ -233,14 +234,14 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
         status: order.status, // Keep existing status
       })
       
-      alert("Invoice uploaded successfully!")
+      alert(t("acct.invoice-uploaded"))
       
       // Force a page refresh to ensure UI shows updated data
       window.location.reload()
     } catch (error: any) {
       console.error("Error uploading file:", error)
-      const errorMessage = error?.message || "Failed to upload invoice. Please try again."
-      alert(`Upload failed: ${errorMessage}`)
+      const errorMessage = error?.message || t("acct.upload-failed-retry")
+      alert(fill(t("acct.upload-failed"), { error: errorMessage }))
     } finally {
       setUploadingOrderId(null)
     }
@@ -251,7 +252,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     if (!order) return
 
     if (!order.invoiceFileUrl) {
-      alert("Please upload an invoice before approving")
+      alert(t("acct.upload-before-approve"))
       return
     }
 
@@ -271,7 +272,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     // Accountant must manually create invoices through the Accounts Receivable module
     // after delivery permits are approved using "Create from DPs" button.
 
-    alert("Sales order approved!")
+    alert(t("acct.so-approved"))
   }
 
   const getCustomerName = (customerId: string) => {
@@ -299,7 +300,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
       <PageHeader
         group={t("group.finance")}
         title={t("module.accountant")}
-        subtitle="Manage invoices and approve sales orders"
+        subtitle={t("acct.subtitle")}
         actions={<ReportGenerator type="financial" userRole="accountant" />}
       />
 
@@ -313,7 +314,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="payment-schedule">Payment Schedule</TabsTrigger>
+          <TabsTrigger value="payment-schedule">{t("module.payment-schedule")}</TabsTrigger>
           <TabsTrigger value="pending-shipment">{t("tabs.pending_shipment")}</TabsTrigger>
           <TabsTrigger value="shipped">{t("tabs.shipped")}</TabsTrigger>
           <TabsTrigger value="ap">{t("tabs.ap")}</TabsTrigger>
@@ -322,7 +323,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
           <TabsTrigger value="suppliers">{t("tabs.suppliers")}</TabsTrigger>
           <TabsTrigger value="maintenance-invoices" className="relative">
                   <Wrench className="w-4 h-4 me-2" />
-                  Maintenance
+                  {t("common.maintenance")}
                   {pendingMaintenanceInvoices > 0 && (
                     <span className="absolute -top-1 -end-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-700 text-white text-xs font-bold px-1">
                       {pendingMaintenanceInvoices}
@@ -335,13 +336,13 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
         <TabsContent value="payment-schedule" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Payment Schedules</CardTitle>
-              <CardDescription>Manage installment payment plans for customers</CardDescription>
+              <CardTitle>{t("acct.payment-schedules")}</CardTitle>
+              <CardDescription>{t("acct.manage-installment-plans")}</CardDescription>
             </CardHeader>
             <CardContent>
               {customerInvoices.filter(inv => inv.installmentMonths > 0).length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  <p>No active payment schedules</p>
+                  <p>{t("common.no-active-payment-schedules")}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -356,28 +357,28 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                       <div key={invoice.id} className="border rounded-lg p-4 space-y-3">
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-semibold text-lg">{customer?.name || "Unknown Customer"}</p>
-                            <p className="text-sm text-muted-foreground">SO: {so?.soNumber || invoice.soNumber}</p>
-                            <p className="text-sm text-muted-foreground">Invoice: {invoice.invoiceNumber}</p>
+                            <p className="font-semibold text-lg">{customer?.name || t("acct.unknown-customer")}</p>
+                            <p className="text-sm text-muted-foreground">{t("common.so")} {so?.soNumber || invoice.soNumber}</p>
+                            <p className="text-sm text-muted-foreground">{t("common.invoice")} {invoice.invoiceNumber}</p>
                           </div>
                           <StatusBadge status={invoice.status} />
                         </div>
                         
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                           <div>
-                            <p className="text-muted-foreground">Total Amount (EGP)</p>
+                            <p className="text-muted-foreground">{t("common.total-amount-egp")}</p>
                             <p className="font-semibold"><Money value={invoice.amount} /></p>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">Monthly Payment (EGP)</p>
+                            <p className="text-muted-foreground">{t("acct.monthly-payment-egp")}</p>
                             <p className="font-semibold"><Money value={monthlyPayment} /></p>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">Progress</p>
-                            <p className="font-semibold">{invoice.monthsPaid || 0} / {invoice.installmentMonths} months</p>
+                            <p className="text-muted-foreground">{t("ar.progress")}</p>
+                            <p className="font-semibold">{invoice.monthsPaid || 0} / {invoice.installmentMonths} {t("ar.months")}</p>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">Remaining (EGP)</p>
+                            <p className="text-muted-foreground">{t("common.remaining-egp")}</p>
                             <p className="font-semibold text-orange-700"><Money value={remaining} /></p>
                           </div>
                         </div>
@@ -387,9 +388,9 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             size="sm"
                             variant="outline"
                             onClick={async () => {
-                              const newMonths = prompt(`Current plan: ${invoice.installmentMonths} months\nEnter new number of months:`, invoice.installmentMonths.toString())
+                              const newMonths = prompt(fill(t("acct.current-plan-prompt"), { months: invoice.installmentMonths }), invoice.installmentMonths.toString())
                               if (newMonths && Number.parseInt(newMonths) > 0) {
-                                const reason = prompt("Please provide a reason for the reschedule request:")
+                                const reason = prompt(t("acct.reschedule-reason-prompt"))
                                 if (reason) {
                                   try {
                                     const response = await fetch("/api/reschedule-requests", {
@@ -406,13 +407,13 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                                       }),
                                     })
                                     if (response.ok) {
-                                      alert("Reschedule request sent to CEO for approval. You will be notified once approved.")
+                                      alert(t("common.reschedule-request-sent-to-ceo"))
                                     } else {
                                       const error = await response.json()
-                                      alert(`Failed to submit request: ${error.error || "Unknown error"}`)
+                                      alert(fill(t("acct.submit-request-failed"), { error: error.error || t("acct.unknown-error") }))
                                     }
                                   } catch (error) {
-                                    alert("Failed to submit reschedule request")
+                                    alert(t("common.failed-to-submit-reschedule-request"))
                                   }
                                 }
                               }
@@ -420,7 +421,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             disabled={invoice.status === "paid"}
                           >
                             <Calendar className="w-4 h-4 me-2" />
-                            Reschedule Payment Plan
+                            {t("common.reschedule-payment-plan")}
                           </Button>
                           <Button
                             size="sm"
@@ -428,7 +429,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             disabled={invoice.status === "paid" || monthsRemaining <= 0}
                           >
                             <CheckCircle className="w-4 h-4 me-2" />
-                            Mark Payment Received
+                            {t("acct.mark-payment-received")}
                           </Button>
                         </div>
                       </div>
@@ -467,7 +468,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                           <p className="font-semibold">{getCustomerName(order.customerId)}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                          <p className="text-sm text-muted-foreground">{t("field.amount")} {t("common.egp")}</p>
                           <p className="font-semibold"><Money value={order.total} /></p>
                         </div>
                         <div>
@@ -577,7 +578,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="font-semibold">{getCustomerName(order.customerId)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={order.total} /></p>
                           </div>
                           <div>
@@ -636,7 +637,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="font-semibold">{getCustomerName(order.customerId)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={order.total} /></p>
                           </div>
                           <div>
@@ -712,11 +713,11 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="font-semibold">{getSupplierName(invoice.supplierId)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={invoice.amount} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.monthly")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.monthly")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={monthlyAmount} /></p>
                           </div>
                           <div className="col-span-2">
@@ -784,11 +785,11 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="font-semibold">{getCustomerName(invoice.customerId)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={invoice.amount} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.monthly")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.monthly")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={monthlyAmount} /></p>
                           </div>
                           <div className="col-span-2">
@@ -879,17 +880,17 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                       <p className="font-semibold text-lg">{getCustomerOrders(selectedCustomer).length}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.total_spent")} (EGP)</p>
+                      <p className="text-sm text-muted-foreground">{t("field.total_spent")} {t("common.egp")}</p>
                       <p className="font-semibold text-lg"><Money value={getCustomerTotalSpent(selectedCustomer)} /></p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.amount_paid")} (EGP)</p>
+                      <p className="text-sm text-muted-foreground">{t("field.amount_paid")} {t("common.egp")}</p>
                       <p className="font-semibold text-lg text-green-700">
                         <Money value={customerPaymentsByCustomer[selectedCustomer] || 0} />
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.balance_due")} (EGP)</p>
+                      <p className="text-sm text-muted-foreground">{t("field.balance_due")} {t("common.egp")}</p>
                       <p className="font-semibold text-lg text-orange-700">
                         <Money
                           value={getCustomerTotalSpent(selectedCustomer) - (customerPaymentsByCustomer[selectedCustomer] || 0)}
@@ -927,15 +928,15 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                                   <p className="font-semibold">{formatDate(order.orderDate, language)}</p>
                                 </div>
                                 <div>
-                                  <p className="text-sm text-muted-foreground">{t("field.total_amount")} (EGP)</p>
+                                  <p className="text-sm text-muted-foreground">{t("field.total_amount")} {t("common.egp")}</p>
                                   <p className="font-semibold"><Money value={order.total} /></p>
                                 </div>
                                 <div>
-                                  <p className="text-sm text-muted-foreground">{t("field.amount_paid")} (EGP)</p>
+                                  <p className="text-sm text-muted-foreground">{t("field.amount_paid")} {t("common.egp")}</p>
                                   <p className="font-semibold text-green-700"><Money value={amountPaid} /></p>
                                 </div>
                                 <div>
-                                  <p className="text-sm text-muted-foreground">{t("field.amount_due")} (EGP)</p>
+                                  <p className="text-sm text-muted-foreground">{t("field.amount_due")} {t("common.egp")}</p>
                                   <p className="font-semibold text-orange-700"><Money value={amountDue} /></p>
                                 </div>
                                 <div>
@@ -965,7 +966,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                                       <span>
                                         {item.productName} × {item.quantity}
                                       </span>
-                                      <span><Money value={item.total} /> EGP</span>
+                                      <span><Money value={item.total} /> {t("common.egp-2")}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -1040,7 +1041,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                               <p className="font-semibold">{orderCount}</p>
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">{t("field.total_spent")} (EGP)</p>
+                              <p className="text-sm text-muted-foreground">{t("field.total_spent")} {t("common.egp")}</p>
                               <p className="font-semibold text-lg"><Money value={totalSpent} /></p>
                             </div>
                           </div>
@@ -1113,7 +1114,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                       <p className="font-semibold text-lg">{getSupplierPOs(selectedSupplier).length}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.total_purchased")} (EGP)</p>
+                      <p className="text-sm text-muted-foreground">{t("field.total_purchased")} {t("common.egp")}</p>
                       <p className="font-semibold text-lg"><Money value={getSupplierTotalSpent(selectedSupplier)} /></p>
                     </div>
                   </div>
@@ -1137,7 +1138,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                                 <p className="font-semibold">{formatDate(po.orderDate, language)}</p>
                               </div>
                               <div>
-                                <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                                <p className="text-sm text-muted-foreground">{t("field.amount")} {t("common.egp")}</p>
                                 <p className="font-semibold"><Money value={po.total} /></p>
                               </div>
                               <div>
@@ -1157,7 +1158,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                                     <span>
                                       {item.productName} × {item.quantity}
                                     </span>
-                                    <span><Money value={item.total} /> EGP</span>
+                                    <span><Money value={item.total} /> {t("common.egp-2")}</span>
                                   </div>
                                 ))}
                               </div>
@@ -1220,7 +1221,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                               <p className="font-semibold">{poCount}</p>
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">{t("field.total_purchased")} (EGP)</p>
+                              <p className="text-sm text-muted-foreground">{t("field.total_purchased")} {t("common.egp")}</p>
                               <p className="font-semibold text-lg"><Money value={totalSpent} /></p>
                             </div>
                           </div>
@@ -1272,9 +1273,9 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                   {selectedSalesOrder.items.map((item) => (
                     <div key={item.productId} className="flex justify-between">
                       <span>
-                        {item.productName} (Qty: {item.quantity})
+                        {item.productName} ({t("common.qty-2")} {item.quantity})
                       </span>
-                      <span className="font-semibold"><Money value={item.total} /> EGP</span>
+                      <span className="font-semibold"><Money value={item.total} /> {t("common.egp-2")}</span>
                     </div>
                   ))}
                 </div>
@@ -1282,7 +1283,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
               <div className="border-t pt-4">
                 <div className="flex justify-between">
                   <span className="font-semibold">{t("field.total_amount")}</span>
-                  <span className="text-lg font-bold"><Money value={selectedSalesOrder.total} /> EGP</span>
+                  <span className="text-lg font-bold"><Money value={selectedSalesOrder.total} /> {t("common.egp-2")}</span>
                 </div>
               </div>
             </div>
