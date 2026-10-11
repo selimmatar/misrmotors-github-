@@ -556,18 +556,21 @@ export async function productPerformance(db: Db): Promise<Row[]> {
 }
 
 // 15. report_cash_flow
+// The original view counted entry_type 'credit' / 'debit', which the app never writes, so it always showed 0 in / 0 out.
+// The app writes customer payments as 'ar_payment' (positive amount) and supplier payments as 'ap_payment' (negative
+// amount). Money in = customer payments, money out = supplier payments (as a positive number), net = in - out.
+// Other entry types (e.g. 'purchase_order', an order placed rather than cash moved) and voided entries are left out.
+const CASH_IN = "ar_payment"
+const CASH_OUT = "ap_payment"
 export async function cashFlow(db: Db): Promise<Row[]> {
-  const entries = await readAll(db, "balance_entries", "entry_id, created_at, entry_type, amount", "entry_id")
-  const rows = [...groupBy(entries, (e) => monthOf(e.created_at))].map(([month, g]) => ({
-    month,
-    total_inflow: sum(g.map((e) => (e.entry_type === "credit" ? num(e.amount) : 0))),
-    total_outflow: sum(g.map((e) => (e.entry_type === "debit" ? num(e.amount) : 0))),
-    net_cash_flow: sum(g.map((e) => {
-      const a = num(e.amount)
-      return e.entry_type === "credit" ? a : a === null ? null : -a
-    })),
-    transaction_count: g.length,
-  }))
+  const entries = (await readAll(db, "balance_entries", "entry_id, created_at, entry_type, amount, status", "entry_id")).filter(
+    (e) => (e.entry_type === CASH_IN || e.entry_type === CASH_OUT) && e.status !== "voided",
+  )
+  const rows = [...groupBy(entries, (e) => monthOf(e.created_at))].map(([month, g]) => {
+    const inflow = sum(g.map((e) => (e.entry_type === CASH_IN ? Math.abs(num(e.amount) ?? 0) : 0))) ?? 0
+    const outflow = sum(g.map((e) => (e.entry_type === CASH_OUT ? Math.abs(num(e.amount) ?? 0) : 0))) ?? 0
+    return { month, total_inflow: inflow, total_outflow: outflow, net_cash_flow: inflow - outflow, transaction_count: g.length }
+  })
   return orderBy(rows, "month", "desc")
 }
 
