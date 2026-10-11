@@ -21,6 +21,7 @@ import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-htm
 import { useAppContext } from "@/lib/app-context"
 import { lineKey } from "@/lib/return-lines"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
 import { PaymentTypeSelector, InstallmentFields, ChequeFields } from "@/components/payment"
@@ -192,7 +193,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     if (row.id && itemPoStatus[row.id]) {
       const status = itemPoStatus[row.id]
       const confirmed = window.confirm(
-        `This item is already sourced in purchase order ${status.poNumber} (${status.status}). Removing it here will NOT cancel that purchase order. Continue anyway?`,
+        fill(t("so-edit.confirm-remove-sourced"), { po: status.poNumber, status: status.status }),
       )
       if (!confirmed) return
     }
@@ -226,11 +227,11 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
   // (Save, and Save & Print) can decide what to do next without duplicating this logic.
   const saveOrder = async (): Promise<boolean> => {
     if (!customerId) {
-      alert("Please select a customer")
+      alert(t("so-edit.select-customer-alert"))
       return false
     }
     if (items.length === 0) {
-      alert("Please add at least one item")
+      alert(t("common.please-add-at-least-one"))
       return false
     }
     const invalidItem = items.find((item) => {
@@ -242,8 +243,13 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     if (invalidItem) {
       alert(
         invalidItem.onDeliveryPermit && invalidItem.quantity < (invalidItem.minQuantity || 0)
-          ? `"${invalidItem.productName}": the customer keeps ${invalidItem.minQuantity} (delivered ${invalidItem.deliveredQuantity}, returned ${invalidItem.returnedQuantity}), so the quantity cannot be lower.`
-          : "Please fill in all item details (product, quantity, and price)",
+          ? fill(t("so-edit.qty-below-kept"), {
+              name: invalidItem.productName,
+              kept: invalidItem.minQuantity ?? 0,
+              delivered: invalidItem.deliveredQuantity ?? 0,
+              returned: invalidItem.returnedQuantity ?? 0,
+            })
+          : t("so-edit.fill-item-details"),
       )
       return false
     }
@@ -291,7 +297,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       return true
     } catch (error: any) {
       console.error("Failed to save order edits:", error)
-      alert(`Failed to save changes: ${error.message || "Unknown error"}`)
+      alert(fill(t("so-edit.save-failed"), { error: error.message || t("approve-so.unknown-error") }))
       return false
     } finally {
       setSaving(false)
@@ -575,24 +581,23 @@ ${renderTotalsBlock(printTotals)}
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Sales Order: {order.soNumber}</DialogTitle>
+          <DialogTitle>{t("so-edit.title")} {order.soNumber}</DialogTitle>
           <DialogDescription>
-            This order is already approved. Changes save immediately and the order stays approved.
-            {hasDeliveryHistory &&
-              " Delivery has started: delivered items stay on the order as history. A returned line can be lowered to what the customer keeps, or deleted when the customer keeps none of it; add any replacement as a new line."}
+            {t("so-edit.approved-note")}
+            {hasDeliveryHistory && <>{" "}{t("so-edit.delivery-started")}</>}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-2">
           {/* Customer & delivery info */}
           <div className="border rounded-lg p-4 space-y-4">
-            <h3 className="font-semibold text-sm">Customer &amp; Delivery</h3>
+            <h3 className="font-semibold text-sm">{t("so-edit.customer-delivery")}</h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t("field.customer")}</Label>
                 <Select value={customerId} onValueChange={setCustomerId} disabled={hasDeliveryHistory}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select customer" className="truncate" />
+                    <SelectValue placeholder={t("so-edit.select-customer")} className="truncate" />
                   </SelectTrigger>
                   <SelectContent>
                     {customers.map((c) => (
@@ -604,20 +609,20 @@ ${renderTotalsBlock(printTotals)}
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Delivery Contact Name</Label>
+                <Label>{t("field.delivery-contact-name")}</Label>
                 <Input value={deliveryContactName} onChange={(e) => setDeliveryContactName(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Delivery Contact Phone</Label>
+                <Label>{t("field.delivery-contact-phone")}</Label>
                 <Input value={deliveryContactPhone} onChange={(e) => setDeliveryContactPhone(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Delivery Address</Label>
+                <Label>{t("so.delivery-address")}</Label>
                 <Input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("notes")}</Label>
               <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
             </div>
           </div>
@@ -625,21 +630,21 @@ ${renderTotalsBlock(printTotals)}
           {/* Items */}
           <div className="border rounded-lg p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Items</h3>
+              <h3 className="font-semibold text-sm">{t("so.items")}</h3>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => addItem("stock")}>
                   <Package className="h-4 w-4 mr-2" />
-                  Add from Inventory
+                  {t("common.add-from-inventory")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => addItem("outsourced")}>
                   <UserPlus className="h-4 w-4 mr-2" />
-                  Add Outsourced Item
+                  {t("common.add-outsourced-item")}
                 </Button>
               </div>
             </div>
 
             {items.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No items. Add an item above.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">{t("so-edit.no-items")}</p>
             ) : (
               <div className="space-y-3">
                 {items.map((item) => {
@@ -648,16 +653,16 @@ ${renderTotalsBlock(printTotals)}
                   return (
                     <div key={item.key} className="grid grid-cols-12 gap-3 items-end p-3 border rounded-md">
                       <div className="col-span-1 text-center text-xs text-muted-foreground">
-                        {item.itemType === "stock" ? "Stock" : "Outsourced"}
+                        {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
                       </div>
                       {item.itemType === "stock" && item.onDeliveryPermit ? (
                         <div className="col-span-4 space-y-1">
-                          <Label className="text-xs">Product</Label>
+                          <Label className="text-xs">{t("field.product")}</Label>
                           <div className="text-sm font-medium pt-2">{item.productName}</div>
                         </div>
                       ) : item.itemType === "stock" ? (
                         <div className="col-span-4 space-y-1">
-                          <Label className="text-xs">Product</Label>
+                          <Label className="text-xs">{t("field.product")}</Label>
                           <ProductSearchCombobox
                             products={products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
                             inventory={aggregatedInventory}
@@ -666,13 +671,13 @@ ${renderTotalsBlock(printTotals)}
                             onSelect={(productId) => handleSelectStockProduct(item.key, productId)}
                           />
                           {stockLimit !== null && (
-                            <p className="text-xs text-muted-foreground">{stockLimit} in stock</p>
+                            <p className="text-xs text-muted-foreground">{stockLimit} {t("common.in-stock")}</p>
                           )}
                         </div>
                       ) : (
                         <>
                           <div className="col-span-2 space-y-1">
-                            <Label className="text-xs">Item Name</Label>
+                            <Label className="text-xs">{t("common.item-name")}</Label>
                             <Input
                               value={item.productName}
                               disabled={item.onDeliveryPermit}
@@ -680,7 +685,7 @@ ${renderTotalsBlock(printTotals)}
                             />
                           </div>
                           <div className="col-span-2 space-y-1">
-                            <Label className="text-xs">Supplier</Label>
+                            <Label className="text-xs">{t("field.supplier")}</Label>
                             <Select
                               value={item.supplierName || ""}
                               disabled={item.onDeliveryPermit}
@@ -690,7 +695,7 @@ ${renderTotalsBlock(printTotals)}
                               }}
                             >
                               <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select supplier" className="truncate" />
+                                <SelectValue placeholder={t("common.select-supplier")} className="truncate" />
                               </SelectTrigger>
                               <SelectContent>
                                 {suppliers.map((s) => (
@@ -704,7 +709,7 @@ ${renderTotalsBlock(printTotals)}
                         </>
                       )}
                       <div className="col-span-2 space-y-1">
-                        <Label className="text-xs">Quantity</Label>
+                        <Label className="text-xs">{t("quantity")}</Label>
                         <Input
                           type="number"
                           min={item.onDeliveryPermit ? item.minQuantity || 0 : 1}
@@ -713,7 +718,7 @@ ${renderTotalsBlock(printTotals)}
                         />
                       </div>
                       <div className="col-span-2 space-y-1">
-                        <Label className="text-xs">Unit Price</Label>
+                        <Label className="text-xs">{t("field.unit-price")}</Label>
                         <Input
                           type="number"
                           min="0"
@@ -723,7 +728,7 @@ ${renderTotalsBlock(printTotals)}
                         />
                       </div>
                       <div className="col-span-2 space-y-1">
-                        <Label className="text-xs">Total</Label>
+                        <Label className="text-xs">{t("total")}</Label>
                         <div className="text-sm font-medium pt-2 whitespace-nowrap">
                           {formatCurrency(item.quantity * item.unitPrice)}
                         </div>
@@ -738,8 +743,8 @@ ${renderTotalsBlock(printTotals)}
                           title={
                             item.onDeliveryPermit
                               ? keptOf(item) > 0
-                                ? `The customer keeps ${keptOf(item)}: lower the quantity instead of deleting`
-                                : "Everything delivered was returned: the line can be deleted (delivery and return records stay)"
+                                ? fill(t("so-edit.customer-keeps-hint"), { n: keptOf(item) })
+                                : t("so-edit.all-returned-hint")
                               : undefined
                           }
                         >
@@ -749,8 +754,11 @@ ${renderTotalsBlock(printTotals)}
                       {item.onDeliveryPermit && (
                         <div className="col-span-12">
                           <Badge variant="outline" className="gap-1 text-blue-700 border-blue-300 bg-blue-50">
-                            Delivered {item.deliveredQuantity || 0} · Returned {item.returnedQuantity || 0} · Customer keeps{" "}
-                            {item.minQuantity || 0}
+                            {fill(t("so-edit.delivery-summary"), {
+                              delivered: item.deliveredQuantity || 0,
+                              returned: item.returnedQuantity || 0,
+                              kept: item.minQuantity || 0,
+                            })}
                           </Badge>
                         </div>
                       )}
@@ -758,7 +766,7 @@ ${renderTotalsBlock(printTotals)}
                         <div className="col-span-12">
                           <Badge variant="outline" className="gap-1 text-amber-700 border-amber-300 bg-amber-50">
                             <AlertTriangle className="h-3 w-3" />
-                            Already sourced in {poStatus.poNumber} ({poStatus.status})
+                            {fill(t("so-edit.already-sourced"), { po: poStatus.poNumber, status: poStatus.status })}
                           </Badge>
                         </div>
                       )}
@@ -780,11 +788,10 @@ ${renderTotalsBlock(printTotals)}
 
           {/* Payment terms */}
           <div className="border rounded-lg p-4 space-y-4">
-            <h3 className="font-semibold text-sm">Payment Terms</h3>
+            <h3 className="font-semibold text-sm">{t("field.payment-terms")}</h3>
             {isHybrid ? (
               <p className="text-sm text-muted-foreground">
-                This order uses a hybrid (down payment + installments) plan, which cannot be edited here. Item,
-                customer, and delivery changes above are still saved.
+                {t("so-edit.hybrid-note")}
               </p>
             ) : (
               <>
@@ -818,32 +825,32 @@ ${renderTotalsBlock(printTotals)}
 
           <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 text-sm border-t pt-4">
             <div>
-              Subtotal: <span className="font-medium">{formatCurrency(subtotal)}</span>
+              {t("common.subtotal")} <span className="font-medium">{formatCurrency(subtotal)}</span>
             </div>
             {discountAmount > 0 && (
               <div>
-                Discount: <span className="font-medium">-{formatCurrency(discountAmount)}</span>
+                {t("so-edit.discount-label")} <span className="font-medium">-{formatCurrency(discountAmount)}</span>
               </div>
             )}
             <div>
-              VAT (14%): <span className="font-medium">{formatCurrency(vatAmount)}</span>
+              {t("common.vat-14")} <span className="font-medium">{formatCurrency(vatAmount)}</span>
             </div>
             <div>
-              Total: <span className="font-semibold">{formatCurrency(netTotal)}</span>
+              {t("common.total")} <span className="font-semibold">{formatCurrency(netTotal)}</span>
             </div>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button variant="outline" onClick={handleSaveAndPrint} disabled={saving} className="gap-2">
             <Printer className="h-4 w-4" />
-            {saving ? "Saving..." : "Save & Print"}
+            {saving ? t("common.saving") : t("so-edit.save-print")}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save Changes"}
+            {saving ? t("common.saving") : t("common.save-changes")}
           </Button>
         </DialogFooter>
       </DialogContent>
