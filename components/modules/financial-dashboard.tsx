@@ -828,7 +828,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
               <div className="space-y-4">
                 {rescheduleRequests.map((request) => {
                   const customer = customers.find((c) => c.id === request.customerId)
-                  const displayCustomerName = request.customerName || customer?.name || "Unknown Customer"
+                  const displayCustomerName = request.customerName || customer?.name || t("acct.unknown-customer")
                   return (
                     <div key={request.id} className="border rounded-lg p-4 bg-white">
                       <div className="flex justify-between items-start mb-3">

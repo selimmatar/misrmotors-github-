@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { Manrope, Almarai } from "next/font/google"
 import "./globals.css"
 import { I18nProvider } from "@/lib/i18n-context"
+import { Toaster } from "@/components/ui/toaster"
 
 const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope", display: "swap" })
 const almarai = Almarai({
@@ -35,7 +36,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${manrope.variable} ${almarai.variable} font-sans antialiased`}>
-        <I18nProvider>{children}</I18nProvider>
+        <I18nProvider>
+          {children}
+          <Toaster />
+        </I18nProvider>
       </body>
     </html>
   )
