@@ -13,7 +13,12 @@
 //   Net delivered  max(0, Delivered - Returned)
 //   Missing        max(0, Ordered - Net delivered - Out for delivery)   <- the customer-fulfilment view, nothing else
 //   PO ordered     sum of quantities of this line's PO lines whose purchase order is not rejected
-//   Received       sum of goods_receipt_lines.quantity_received for this line
+//   Received       sum of goods_receipt_lines.quantity_received for this line. For a STOCK line it is at least the
+//                  stock cover (below): goods already in our warehouse count as received, not missing.
+//   In stock       stock cover of a stock line: min(still to deliver, what the warehouse can give this order), where
+//                  that is on-hand (non-returned rows) minus what OTHER holding orders hold (lib/stock-hold.ts), shared
+//                  between this order's lines of one product in so_item_id order. Missing = still to deliver - In stock.
+//                  On hold = the order is in a holding status (accountant approved onwards) and some stock covers it.
 //   In progress    informational: quantity on other live permits (e.g. READY_FOR_PICKUP, PRINTED); not subtracted
 //   Unit cost      1) PO landed cost per unit, quantity-weighted over the line's non-rejected PO lines
 //                     = sum(landed_cost of the lines) / sum(quantity of those lines)   (purchase_order_items.landed_cost
@@ -26,6 +31,7 @@
 //                     over the line's non-rejected PO lines and labelled "PO Price" on the report
 //                  5) null -> printed as n/a. The selling price is never used.
 import { DP_DELIVERED_STATUSES } from "./delivery-status"
+import { HOLDING_SO_STATUSES, loadHeldByProduct } from "./stock-hold"
 
 /** The one permit status that means "left the warehouse, not yet signed for". */
 export const DP_OUT_FOR_DELIVERY_STATUS = "OUT_FOR_DELIVERY"
@@ -95,6 +101,10 @@ export interface MissingItemRow {
   inProgress: number
   poOrdered: number
   received: number
+  /** stock cover of a stock line (0 for outsourced lines) */
+  inStock: number
+  /** the order holds this line's stock (accountant approved onwards) */
+  onHold: boolean
   poLabels: string[]
   rejectedPoLabels: string[]
   procurementStatus: string
@@ -114,6 +124,10 @@ export interface MissingItemsInput {
   poLines: MissingPoLine[]
   pos: Map<number, MissingPo>
   grnLines: MissingGrnLine[]
+  /** what the warehouse can give this order per product: on-hand minus other holding orders' holds (absent = none) */
+  stockAvailable?: Map<number, number>
+  /** this order's status holds stock (HOLDING_SO_STATUSES) */
+  holding?: boolean
 }
 
 const keyOfSoLine = (l: MissingSoLine) => lineKey(l.product_id, l.outsourced_name)
@@ -202,6 +216,7 @@ export function buildMissingItems(input: MissingItemsInput): MissingItemRow[] {
     receivedBySo.set(soItem, (receivedBySo.get(soItem) || 0) + num(g.quantity_received))
   }
 
+  const stockLeft = new Map(input.stockAvailable || [])
   return lines.map((line) => {
     const isOutsourced = line.item_type === "outsourced"
     const product = line.product_id ? input.products.get(line.product_id) : undefined
@@ -249,9 +264,22 @@ export function buildMissingItems(input: MissingItemsInput): MissingItemRow[] {
       }
     }
 
-    const received = receivedBySo.get(line.so_item_id) || 0
+    const toDeliver = Math.max(0, ordered - netDelivered - outQty)
+    let inStock = 0
+    if (!isOutsourced && line.product_id) {
+      const have = Math.max(0, stockLeft.get(line.product_id) || 0)
+      inStock = Math.min(have, toDeliver)
+      stockLeft.set(line.product_id, have - inStock)
+    }
+    const onHold = Boolean(input.holding) && inStock > 0
+    const received = Math.max(receivedBySo.get(line.so_item_id) || 0, inStock)
     let procurementStatus: string
-    if (!isOutsourced && allPoLines.length === 0) procurementStatus = "Stock Item — No PO Needed"
+    if (!isOutsourced && allPoLines.length === 0) {
+      const short = toDeliver - inStock
+      if (inStock > 0 && short <= 0) procurementStatus = onHold ? "On Hold — In Stock" : "In Stock — No PO Needed"
+      else if (inStock > 0) procurementStatus = `${onHold ? "On Hold" : "In stock"} ${inStock}/${toDeliver} — Needs PO for ${short}`
+      else procurementStatus = "Stock Item — No PO Needed"
+    }
     else if (activePoLines.length > 0) {
       const cover = poOrdered >= ordered ? "Ordered" : "Partially ordered"
       procurementStatus = `${cover} ${poOrdered}/${ordered} — ${activePoLines.map(label).join(", ")}`
@@ -273,10 +301,12 @@ export function buildMissingItems(input: MissingItemsInput): MissingItemRow[] {
       delivered: deliveredQty,
       returned: returnedQty,
       netDelivered,
-      missing: Math.max(0, ordered - netDelivered - outQty),
+      missing: toDeliver - inStock,
       inProgress: inProgress.get(line.so_item_id) || 0,
       poOrdered,
       received,
+      inStock,
+      onHold,
       poLabels: activePoLines.map(label),
       rejectedPoLabels: rejectedPoLines.map(label),
       procurementStatus,
@@ -347,9 +377,19 @@ export async function loadMissingItems(db: Db, soId: number): Promise<MissingIte
     if (poItemIds.length > 0) grnLines.push(...(must(await db.from("goods_receipt_lines").select("line_id, po_item_id, source_so_item_id, quantity_received").in("po_item_id", poItemIds), "load goods receipts by po item") as MissingGrnLine[]))
   }
 
+  // stock this order can draw on: on-hand minus what other holding orders already hold
+  const stockAvailable = new Map<number, number>()
+  if (productIds.length > 0) {
+    const heldElsewhere = await loadHeldByProduct(db, { excludeSoId: soId })
+    for (const id of productIds) {
+      const onHand = (inventory.get(id) || []).reduce((sum, r) => sum + num(r.quantity), 0)
+      stockAvailable.set(id, Math.max(0, onHand - (heldElsewhere.get(id) || 0)))
+    }
+  }
+
   return {
     so: { so_id: so.so_id, so_number: so.so_number, order_date: so.order_date, delivery_date: so.delivery_date, status: so.status, customerName },
     permitCount: permits.length,
-    rows: buildMissingItems({ soLines, products, inventory, permits, dpItems, returns, poLines, pos, grnLines }),
+    rows: buildMissingItems({ soLines, products, inventory, permits, dpItems, returns, poLines, pos, grnLines, stockAvailable, holding: HOLDING_SO_STATUSES.includes(so.status) }),
   }
 }

@@ -207,3 +207,34 @@ test("REJECT of one of two delivered permits: SO falls back to PARTIALLY_DELIVER
   await put(1, "REJECT", { rejectionReason: "x" })
   assert.equal(db.tables.sales_orders[0].fulfillment_status, "PARTIALLY_DELIVERED")
 })
+
+// Customers tab: an order invoiced per delivery permit is only paid when the collected sum covers the ORDER total,
+// and an order with some (not all) lines delivered shows "partially delivered".
+test("customer order payment sums every invoice and measures against the order total", async () => {
+  const { orderPayment } = await import("../customer-order-status")
+  const p = orderPayment({ total: 2418232.83 }, [{ amount: 1524944.28, collectedAmount: 1524944.28 }])
+  assert.equal(p.status, "partially_paid"); assert.equal(p.amountDue, 893288.55); assert.equal(p.totalAmount, 2418232.83)
+  const two = orderPayment({ total: 300 }, [{ amount: 100, collectedAmount: 100 }, { amount: 200, collectedAmount: 200 }])
+  assert.equal(two.status, "paid"); assert.equal(two.amountDue, 0)
+  assert.equal(orderPayment({ total: 300 }, [{ amount: 100, collectedAmount: 0 }]).status, "unpaid")
+  assert.equal(orderPayment({ total: 300 }, []).status, "no_invoice")
+  assert.equal(orderPayment({ total: 0.3 }, [{ amount: 0.3, collectedAmount: 0.1 }, { amount: 0, collectedAmount: 0.2 }]).status, "paid")
+})
+
+test("customer order shows partially delivered when only some lines are delivered", async () => {
+  const { orderDisplayStatus } = await import("../customer-order-status")
+  const items = (...s: (string | null)[]) => s.map((deliveryState) => ({ deliveryState }))
+  assert.equal(orderDisplayStatus({ status: "ready_for_delivery", items: items("delivered", "not_delivered") }), "partially_delivered")
+  assert.equal(orderDisplayStatus({ status: "ready_for_delivery", items: items("partial") }), "partially_delivered")
+  assert.equal(orderDisplayStatus({ status: "ready_for_delivery", items: items("not_delivered", null) }), "ready_for_delivery")
+  assert.equal(orderDisplayStatus({ status: "delivered", items: items("delivered") }), "delivered")
+  assert.equal(orderDisplayStatus({ status: "approved", items: [] }), "approved")
+})
+
+test("customers tab uses every invoice per order and the derived order status", () => {
+  const fs = require("node:fs") as typeof import("node:fs")
+  const src = fs.readFileSync(require("node:path").join(process.env.REPO_ROOT || "", "components/modules/customer-module.tsx"), "utf8")
+  assert.match(src, /orderPayment\(order, orderInvoices\[order\.id\] \|\| \[\]\)/)
+  assert.match(src, /\(invoiceMap\[inv\.soId\] \|\|= \[\]\)\.push\(inv\)/)
+  assert.match(src, /orderDisplayStatus\(order\)/)
+})
