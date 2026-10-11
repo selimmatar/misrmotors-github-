@@ -16,6 +16,7 @@ import { Money } from "@/components/erp/money"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { useI18n } from "@/lib/i18n-context"
 import { formatDate } from "@/lib/format"
+import { fill } from "@/lib/i18n-format"
 
 interface ApprovedWorkOrder {
   work_order_id: number
@@ -41,7 +42,7 @@ interface ApprovedWorkOrder {
 const fetcher = (url: string) => fetch(url).then(r => r.ok ? r.json() : Promise.reject(r))
 
 export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: boolean }) {
-  const { language } = useI18n()
+  const { language, t } = useI18n()
   const { data: workOrders = [], mutate } = useSWR<ApprovedWorkOrder[]>(
     "/api/maintenance/work-orders/ready-for-invoice",
     fetcher,
@@ -76,7 +77,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
       })
 
       if (response.ok) {
-        alert("Invoice created successfully!")
+        alert(t("mi.invoice-created"))
         setSelectedOrder(null)
         setInvoiceNotes("")
         setPaymentTerms("net_30")
@@ -85,11 +86,11 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
         mutate()
       } else {
         const error = await response.json()
-        alert(`Error: ${error.error}`)
+        alert(fill(t("mi.error-with-message"), { error: error.error }))
       }
     } catch (error) {
       console.error("Error creating invoice:", error)
-      alert("Failed to create invoice")
+      alert(t("mi.failed-to-create-invoice"))
     } finally {
       setLoading(false)
     }
@@ -103,50 +104,50 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
       {showHeading && (
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">Maintenance Invoices</h2>
-            <p className="text-muted-foreground">Create invoices for approved maintenance work orders</p>
+            <h2 className="text-2xl font-bold">{t("module.maintenance-invoices")}</h2>
+            <p className="text-muted-foreground">{t("mi.subtitle")}</p>
           </div>
         </div>
       )}
 
       <KpiGrid className="lg:grid-cols-2">
         <KpiTile
-          label="Ready for Invoice"
+          label={t("wo-flow.ready-for-invoice")}
           value={pendingInvoice.length}
-          sub={<>Total: <Money value={pendingInvoice.reduce((sum, wo) => sum + wo.actual_cost, 0)} /> EGP</>}
+          sub={<>{t("common.total")} <Money value={pendingInvoice.reduce((sum, wo) => sum + wo.actual_cost, 0)} /> {t("common.egp-2")}</>}
         />
         <KpiTile
-          label="Invoiced"
+          label={t("wo-flow.invoiced")}
           value={invoiced.length}
-          sub={<>Total: <Money value={invoiced.reduce((sum, wo) => sum + (wo.invoice_amount || wo.actual_cost), 0)} /> EGP</>}
+          sub={<>{t("common.total")} <Money value={invoiced.reduce((sum, wo) => sum + (wo.invoice_amount || wo.actual_cost), 0)} /> {t("common.egp-2")}</>}
         />
       </KpiGrid>
 
       <Card>
         <CardHeader>
-          <CardTitle>Pending Invoice Creation</CardTitle>
-          <CardDescription>Approved maintenance work orders ready for billing</CardDescription>
+          <CardTitle>{t("mi.pending-invoice-creation")}</CardTitle>
+          <CardDescription>{t("mi.approved-ready-for-billing")}</CardDescription>
         </CardHeader>
         <CardContent>
           {pendingInvoice.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <DollarSign className="w-12 h-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No work orders ready for invoice</p>
+              <p className="text-muted-foreground">{t("mi.no-work-orders-ready")}</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Work orders will appear here after sales approval
+                {t("mi.appear-after-approval")}
               </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Work Order</TableHead>
-                  <TableHead>Sales Order</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Amount (EGP)</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>{t("common.work-order")}</TableHead>
+                  <TableHead>{t("common.sales-order")}</TableHead>
+                  <TableHead>{t("so.customer")}</TableHead>
+                  <TableHead>{t("common.title")}</TableHead>
+                  <TableHead>{t("common.amount-egp")}</TableHead>
+                  <TableHead>{t("status")}</TableHead>
+                  <TableHead>{t("actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -166,7 +167,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                         onClick={() => setSelectedOrder(order)}
                       >
                         <FileText className="w-4 h-4 me-2" />
-                        Create Invoice
+                        {t("ar.create-invoice")}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -181,7 +182,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create Maintenance Invoice</DialogTitle>
+            <DialogTitle>{t("mi.create-maintenance-invoice")}</DialogTitle>
             <DialogDescription>
               {selectedOrder?.work_order_number} - {selectedOrder?.customer_name}
             </DialogDescription>
@@ -193,46 +194,46 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Work Order Summary</CardTitle>
+                  <CardTitle>{t("mi.work-order-summary")}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-sm text-muted-foreground">Work Order</p>
+                      <p className="text-sm text-muted-foreground">{t("common.work-order")}</p>
                       <p className="font-mono font-semibold">{selectedOrder.work_order_number}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Sales Order</p>
+                      <p className="text-sm text-muted-foreground">{t("common.sales-order")}</p>
                       <p className="font-mono">{selectedOrder.sales_order_number || "N/A"}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Description</p>
+                      <p className="text-sm text-muted-foreground">{t("description")}</p>
                       <p className="font-semibold">{selectedOrder.description}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Actual Hours</p>
-                      <p className="font-semibold">{selectedOrder.actual_hours || 0} hrs</p>
+                      <p className="text-sm text-muted-foreground">{t("mi.actual-hours")}</p>
+                      <p className="font-semibold">{selectedOrder.actual_hours || 0} {t("mi.hrs")}</p>
                     </div>
                   </div>
 
                   {/* Cost Breakdown */}
                   <div className="grid grid-cols-3 gap-4 pt-3 border-t">
                     <div className="p-3 bg-muted rounded-md text-center">
-                      <p className="text-xs text-muted-foreground">Labor Cost (EGP)</p>
+                      <p className="text-xs text-muted-foreground">{t("common.labor-cost-egp")}</p>
                       <p className="text-lg font-bold"><Money value={selectedOrder.labor_cost || 0} /></p>
                     </div>
                     <div className="p-3 bg-muted rounded-md text-center">
-                      <p className="text-xs text-muted-foreground">Parts Cost (EGP)</p>
+                      <p className="text-xs text-muted-foreground">{t("mi.parts-cost-egp")}</p>
                       <p className="text-lg font-bold"><Money value={selectedOrder.parts_cost || 0} /></p>
                     </div>
                     <div className="p-3 bg-primary/10 rounded-md text-center">
-                      <p className="text-xs text-muted-foreground">Total Cost (EGP)</p>
+                      <p className="text-xs text-muted-foreground">{t("mi.total-cost-egp")}</p>
                       <p className="text-lg font-bold"><Money value={selectedOrder.actual_cost || 0} /></p>
                     </div>
                   </div>
 
                   <div>
-                    <p className="text-sm text-muted-foreground">Report Summary</p>
+                    <p className="text-sm text-muted-foreground">{t("mi.report-summary")}</p>
                     <p className="text-sm">{selectedOrder.report_summary}</p>
                   </div>
                   
@@ -244,7 +245,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                         onClick={() => window.open(selectedOrder.uploaded_pdf_url, '_blank')}
                       >
                         <FileText className="w-4 h-4 me-2" />
-                        View Completed Work Order PDF
+                        {t("mi.view-completed-pdf")}
                       </Button>
                     </div>
                   )}
@@ -254,7 +255,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="invoice-amount">Invoice Amount (EGP)</Label>
+                    <Label htmlFor="invoice-amount">{t("mi.invoice-amount-egp")}</Label>
                     <Input
                       id="invoice-amount"
                       type="number"
@@ -264,36 +265,36 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                       onChange={(e) => setInvoiceAmount(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Suggested: <Money value={selectedOrder.actual_cost} /> EGP
+                      {t("mi.suggested")} <Money value={selectedOrder.actual_cost} /> {t("common.egp-2")}
                     </p>
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="payment-terms">Payment Terms</Label>
+                    <Label htmlFor="payment-terms">{t("field.payment-terms")}</Label>
                     <select
                       id="payment-terms"
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       value={paymentTerms}
                       onChange={(e) => setPaymentTerms(e.target.value)}
                     >
-                      <option value="due_on_receipt">Due on Receipt</option>
-                      <option value="net_15">Net 15 Days</option>
-                      <option value="net_30">Net 30 Days</option>
-                      <option value="net_45">Net 45 Days</option>
-                      <option value="net_60">Net 60 Days</option>
-                      <option value="net_90">Net 90 Days</option>
-                      <option value="custom">Custom</option>
+                      <option value="due_on_receipt">{t("mi.due-on-receipt")}</option>
+                      <option value="net_15">{t("mi.net-15")}</option>
+                      <option value="net_30">{t("mi.net-30")}</option>
+                      <option value="net_45">{t("mi.net-45")}</option>
+                      <option value="net_60">{t("mi.net-60")}</option>
+                      <option value="net_90">{t("mi.net-90")}</option>
+                      <option value="custom">{t("mi.custom")}</option>
                     </select>
                   </div>
                 </div>
 
                 {paymentTerms === "custom" && (
                   <div className="space-y-2">
-                    <Label htmlFor="custom-days">Custom Payment Days</Label>
+                    <Label htmlFor="custom-days">{t("mi.custom-payment-days")}</Label>
                     <Input
                       id="custom-days"
                       type="number"
-                      placeholder="Enter number of days"
+                      placeholder={t("mi.enter-number-of-days")}
                       value={customDays}
                       onChange={(e) => setCustomDays(e.target.value)}
                     />
@@ -301,10 +302,10 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                 )}
                 
                 <div className="space-y-2">
-                  <Label htmlFor="invoice-notes">Invoice Notes (Optional)</Label>
+                  <Label htmlFor="invoice-notes">{t("mi.invoice-notes-optional")}</Label>
                   <Textarea
                     id="invoice-notes"
-                    placeholder="Add any additional notes for the invoice..."
+                    placeholder={t("mi.add-notes-placeholder")}
                     value={invoiceNotes}
                     onChange={(e) => setInvoiceNotes(e.target.value)}
                     rows={3}
@@ -315,14 +316,14 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                   <div className="flex items-start gap-3">
                     <FileText className="w-5 h-5 text-blue-600 mt-0.5" />
                     <div className="flex-1">
-                      <h4 className="font-semibold text-blue-900 mb-1">Invoice Preview</h4>
+                      <h4 className="font-semibold text-blue-900 mb-1">{t("ar.invoice-will-be-created")}</h4>
                       <div className="space-y-1 text-sm text-blue-700">
-                        <p>Customer: <span className="font-semibold">{selectedOrder.customer_name}</span></p>
-                        <p>Amount: <span className="font-semibold"><Money value={parseFloat(invoiceAmount) || selectedOrder.actual_cost} /> EGP</span></p>
-                        <p>Payment Terms: <span className="font-semibold">
-                          {paymentTerms === "custom" ? `Net ${customDays} Days` : paymentTerms.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
+                        <p>{t("common.customer")} <span className="font-semibold">{selectedOrder.customer_name}</span></p>
+                        <p>{t("mi.amount-colon")} <span className="font-semibold"><Money value={parseFloat(invoiceAmount) || selectedOrder.actual_cost} /> {t("common.egp-2")}</span></p>
+                        <p>{t("mi.payment-terms-colon")} <span className="font-semibold">
+                          {paymentTerms === "custom" ? fill(t("mi.net-days"), { days: customDays }) : paymentTerms.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
                         </span></p>
-                        <p>Due Date: <span className="font-semibold">
+                        <p>{t("mi.due-date-colon")} <span className="font-semibold">
                           {formatDate(new Date(Date.now() + (paymentTerms === "custom" ? parseInt(customDays || "0") : parseInt(paymentTerms.split("_")[1] || "0")) * 24 * 60 * 60 * 1000), language)}
                         </span></p>
                       </div>
@@ -337,14 +338,14 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                   onClick={() => setSelectedOrder(null)}
                   disabled={loading}
                 >
-                  Cancel
+                  {t("cancel")}
                 </Button>
                 <Button
                   onClick={handleCreateInvoice}
                   disabled={loading}
                 >
                   <FileText className="w-4 h-4 me-2" />
-                  Create Invoice
+                  {t("ar.create-invoice")}
                 </Button>
               </DialogFooter>
             </div>
