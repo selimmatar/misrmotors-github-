@@ -10,8 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { MaintenanceWorkOrder, MaintenanceReport } from "@/types/maintenance-workflow"
 import { MaintenanceWorkerReportForm } from "./maintenance-worker-report-form"
+import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
+import { statusLabel } from "@/lib/format"
 
 export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
+  const { t } = useI18n()
   const [workOrders, setWorkOrders] = useState<MaintenanceWorkOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<MaintenanceWorkOrder | null>(null)
@@ -62,15 +66,15 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-      pending: { label: "Pending", variant: "secondary" },
-      assigned: { label: "Assigned", variant: "default" },
-      in_progress: { label: "In Progress", variant: "outline" },
-      on_hold: { label: "On Hold", variant: "secondary" },
-      completed: { label: "Completed", variant: "default" },
-      cancelled: { label: "Cancelled", variant: "destructive" },
+      pending: { label: "status.pending", variant: "secondary" },
+      assigned: { label: "maint.status-assigned", variant: "default" },
+      in_progress: { label: "common.in-progress", variant: "outline" },
+      on_hold: { label: "inventory.on-hold", variant: "secondary" },
+      completed: { label: "status.completed", variant: "default" },
+      cancelled: { label: "status.cancelled", variant: "destructive" },
     }
-    const config = statusConfig[status] || { label: status, variant: "outline" }
-    return <Badge variant={config.variant}>{config.label}</Badge>
+    const config = statusConfig[status]
+    return <Badge variant={config ? config.variant : "outline"}>{config ? t(config.label) : status}</Badge>
   }
 
   const getPriorityBadge = (priority: string) => {
@@ -80,7 +84,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
       high: "bg-orange-100 text-orange-800",
       urgent: "bg-red-100 text-red-800",
     }
-    return <Badge className={colors[priority] || colors.medium}>{priority.toUpperCase()}</Badge>
+    return <Badge className={colors[priority] || colors.medium}>{statusLabel(priority, t).toUpperCase()}</Badge>
   }
 
   const assignedWorkOrders = workOrders.filter((wo) => 
@@ -97,8 +101,8 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="min-w-0 break-words">
-          <h2 className="text-2xl font-bold">Maintenance Work Orders</h2>
-          <p className="text-muted-foreground">View and manage maintenance tasks</p>
+          <h2 className="text-2xl font-bold">{t("maint.work-orders-title")}</h2>
+          <p className="text-muted-foreground">{t("maint.view-manage")}</p>
         </div>
       </div>
 
@@ -106,15 +110,15 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
         <TabsList className="h-auto flex-wrap w-full justify-start">
           <TabsTrigger value="assigned">
             <Clock className="w-4 h-4 me-2" />
-            My Tasks ({assignedWorkOrders.length})
+            {fill(t("maint.my-tasks-count"), { n: assignedWorkOrders.length })}
           </TabsTrigger>
           <TabsTrigger value="submitted">
             <Upload className="w-4 h-4 me-2" />
-            Submitted Reports ({reportSubmittedWorkOrders.length})
+            {fill(t("maint.submitted-reports-count"), { n: reportSubmittedWorkOrders.length })}
           </TabsTrigger>
           <TabsTrigger value="completed">
             <CheckCircle className="w-4 h-4 me-2" />
-            Completed ({completedWorkOrders.length})
+            {fill(t("maint.completed-count"), { n: completedWorkOrders.length })}
           </TabsTrigger>
         </TabsList>
 
@@ -122,13 +126,13 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
           {loading ? (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
-                Loading work orders...
+                {t("maint.loading-work-orders")}
               </CardContent>
             </Card>
           ) : assignedWorkOrders.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
-                No assigned work orders
+                {t("maint.no-assigned")}
               </CardContent>
             </Card>
           ) : (
@@ -153,16 +157,16 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                   <p className="text-sm text-muted-foreground">{wo.description}</p>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="font-medium">Category:</span> {wo.category}
+                      <span className="font-medium">{t("maint.category-label")}</span> {wo.category}
                     </div>
                     {wo.location && (
                       <div>
-                        <span className="font-medium">Location:</span> {wo.location}
+                        <span className="font-medium">{t("maint.location-label")}</span> {wo.location}
                       </div>
                     )}
                     {wo.scheduled_date && (
                       <div>
-                        <span className="font-medium">Scheduled:</span>{" "}
+                        <span className="font-medium">{t("maint.scheduled-label")}</span>{" "}
                         {new Date(wo.scheduled_date).toLocaleDateString()}
                       </div>
                     )}
@@ -175,7 +179,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                       }}
                     >
                       <Upload className="w-4 h-4 me-2" />
-                      Submit Report
+                      {t("maint.submit-report")}
                     </Button>
                     <Button
                       variant="outline"
@@ -185,14 +189,14 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                       }}
                     >
                       <Eye className="w-4 h-4 me-2" />
-                      View Details
+                      {t("action.view-details")}
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => window.open(`/api/maintenance/work-orders/${wo.work_order_id}/pdf`, '_blank')}
                     >
                       <Printer className="w-4 h-4 me-2" />
-                      Print Template
+                      {t("maint.print-template")}
                     </Button>
                   </div>
                 </CardContent>
@@ -205,7 +209,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
           {reportSubmittedWorkOrders.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
-                No submitted reports
+                {t("maint.no-submitted-reports")}
               </CardContent>
             </Card>
           ) : (
@@ -225,7 +229,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Report submitted - awaiting review from sales department
+                    {t("maint.report-awaiting-review")}
                   </p>
                   <Button
                     variant="outline"
@@ -233,7 +237,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                     onClick={() => fetchReportForWorkOrder(wo.work_order_id)}
                   >
                     <Eye className="w-4 h-4 me-2" />
-                    {loadingReport ? "Loading..." : "View Report"}
+                    {loadingReport ? t("loading") : t("maint.view-report")}
                   </Button>
                 </CardContent>
               </Card>
@@ -245,7 +249,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
           {completedWorkOrders.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
-                No completed work orders
+                {t("ops.no-completed-wos")}
               </CardContent>
             </Card>
           ) : (
@@ -271,7 +275,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                     onClick={() => fetchReportForWorkOrder(wo.work_order_id)}
                   >
                     <Eye className="w-4 h-4 me-2" />
-                    View Report
+                    {t("maint.view-report")}
                   </Button>
                 </CardContent>
               </Card>
@@ -286,47 +290,47 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wrench className="w-5 h-5" />
-              {detailsWorkOrder?.work_order_number} - Details
+              {fill(t("maint.wo-details-title"), { number: detailsWorkOrder?.work_order_number ?? "" })}
             </DialogTitle>
           </DialogHeader>
           {detailsWorkOrder && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Title</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("common.title")}</p>
                   <p className="font-semibold">{detailsWorkOrder.title}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Status</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("status")}</p>
                   {getStatusBadge(detailsWorkOrder.status)}
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Priority</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("common.priority")}</p>
                   {getPriorityBadge(detailsWorkOrder.priority)}
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Category</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("maint.category")}</p>
                   <p>{detailsWorkOrder.category}</p>
                 </div>
                 {detailsWorkOrder.location && (
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Location</p>
+                    <p className="text-sm font-medium text-muted-foreground">{t("warehouse.location")}</p>
                     <p>{detailsWorkOrder.location}</p>
                   </div>
                 )}
                 {detailsWorkOrder.scheduled_date && (
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Scheduled Date</p>
+                    <p className="text-sm font-medium text-muted-foreground">{t("maint.scheduled-date")}</p>
                     <p>{new Date(detailsWorkOrder.scheduled_date).toLocaleDateString()}</p>
                   </div>
                 )}
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Created</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("created")}</p>
                   <p>{new Date(detailsWorkOrder.created_at).toLocaleDateString()}</p>
                 </div>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Description</p>
+                <p className="text-sm font-medium text-muted-foreground">{t("description")}</p>
                 <p className="mt-1">{detailsWorkOrder.description}</p>
               </div>
               <div className="flex gap-2 pt-4 border-t">
@@ -334,10 +338,10 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                   onClick={() => window.open(`/api/maintenance/work-orders/${detailsWorkOrder.work_order_id}/pdf`, '_blank')}
                 >
                   <Printer className="w-4 h-4 me-2" />
-                  Print Work Order Template
+                  {t("maint.print-wo-template")}
                 </Button>
                 <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>
-                  Close
+                  {t("close")}
                 </Button>
               </div>
             </div>
@@ -351,7 +355,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
-              Submitted Report - {viewingReport?.work_order_number}
+              {fill(t("maint.submitted-report-title"), { number: viewingReport?.work_order_number ?? "" })}
             </DialogTitle>
           </DialogHeader>
           {viewingReport && (
@@ -359,61 +363,61 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
               {/* Report Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Work Order</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("common.work-order")}</p>
                   <p className="font-semibold">{viewingReport.work_order_number}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Sales Order</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("common.sales-order")}</p>
                   <p className="font-semibold">{viewingReport.work_order?.sales_order?.so_number || "N/A"}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Status</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("status")}</p>
                   {getStatusBadge(viewingReport.status)}
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Submitted</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("common.submitted")}</p>
                   <p>{viewingReport.submitted_at ? new Date(viewingReport.submitted_at).toLocaleString() : "N/A"}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Customer</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t("so.customer")}</p>
                   <p>{viewingReport.customer_name || "N/A"}</p>
                 </div>
               </div>
 
               {/* Findings */}
               <div>
-                <p className="text-sm font-medium text-muted-foreground mb-1">Findings</p>
-                <div className="p-3 bg-muted rounded-md text-sm">{viewingReport.findings || "No findings recorded"}</div>
+                <p className="text-sm font-medium text-muted-foreground mb-1">{t("common.findings")}</p>
+                <div className="p-3 bg-muted rounded-md text-sm">{viewingReport.findings || t("maint.no-findings")}</div>
               </div>
 
               {/* Cost Summary */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="p-3 border rounded-md text-center">
-                  <p className="text-sm text-muted-foreground">Labor Hours</p>
+                  <p className="text-sm text-muted-foreground">{t("common.labor-hours")}</p>
                   <p className="text-lg font-bold">{viewingReport.labor_hours || viewingReport.actual_hours || 0}</p>
                 </div>
                 <div className="p-3 border rounded-md text-center">
-                  <p className="text-sm text-muted-foreground">Labor Cost</p>
-                  <p className="text-lg font-bold">EGP {(viewingReport.labor_cost || 0).toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground">{t("maint.labor-cost")}</p>
+                  <p className="text-lg font-bold">{t("common.egp-2")} {(viewingReport.labor_cost || 0).toLocaleString()}</p>
                 </div>
                 <div className="p-3 border rounded-md text-center">
-                  <p className="text-sm text-muted-foreground">Total Cost</p>
-                  <p className="text-lg font-bold">EGP {(viewingReport.actual_cost || 0).toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground">{t("common.total-cost")}</p>
+                  <p className="text-lg font-bold">{t("common.egp-2")} {(viewingReport.actual_cost || 0).toLocaleString()}</p>
                 </div>
               </div>
 
               {/* Materials Used */}
               {viewingReport.parts_used && viewingReport.parts_used.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">Materials & Parts Used</p>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">{t("common.materials-parts-used")}</p>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Item</TableHead>
-                        <TableHead className="text-end">Qty</TableHead>
-                        <TableHead className="text-end">Unit Cost</TableHead>
-                        <TableHead className="text-end">Total</TableHead>
+                        <TableHead>{t("common.source")}</TableHead>
+                        <TableHead>{t("common.item")}</TableHead>
+                        <TableHead className="text-end">{t("common.qty")}</TableHead>
+                        <TableHead className="text-end">{t("common.unit-cost")}</TableHead>
+                        <TableHead className="text-end">{t("total")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -421,13 +425,13 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                         <TableRow key={idx}>
                           <TableCell>
                             <Badge variant={item.type === "inventory" ? "default" : "secondary"}>
-                              {item.type === "inventory" ? "Inventory" : "Outsourced"}
+                              {item.type === "inventory" ? t("group.inventory") : t("common.outsourced-2")}
                             </Badge>
                           </TableCell>
                           <TableCell className="font-medium">{item.productName}</TableCell>
                           <TableCell className="text-end">{item.quantity}</TableCell>
-                          <TableCell className="text-end">EGP {(item.unitCost || 0).toLocaleString()}</TableCell>
-                          <TableCell className="text-end font-semibold">EGP {(item.totalCost || 0).toLocaleString()}</TableCell>
+                          <TableCell className="text-end">{t("common.egp-2")} {(item.unitCost || 0).toLocaleString()}</TableCell>
+                          <TableCell className="text-end font-semibold">{t("common.egp-2")} {(item.totalCost || 0).toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -438,8 +442,8 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
               {/* Follow-up */}
               {viewingReport.follow_up_required && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
-                  <p className="text-sm font-medium text-amber-800">Follow-up Required</p>
-                  <p className="text-sm text-amber-700">{viewingReport.follow_up_notes || "Additional work needed"}</p>
+                  <p className="text-sm font-medium text-amber-800">{t("maint.follow-up-required")}</p>
+                  <p className="text-sm text-amber-700">{viewingReport.follow_up_notes || t("maint.additional-work-needed")}</p>
                 </div>
               )}
 
@@ -450,7 +454,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
                   onClick={() => window.open(viewingReport.uploaded_pdf_url, "_blank")}
                 >
                   <FileText className="w-4 h-4 me-2" />
-                  View Uploaded PDF
+                  {t("maint.view-uploaded-pdf")}
                 </Button>
               )}
             </div>
@@ -462,7 +466,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
       <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Submit Maintenance Report</DialogTitle>
+            <DialogTitle>{t("maint.submit-maintenance-report")}</DialogTitle>
           </DialogHeader>
           {selectedWorkOrder && (
             <MaintenanceWorkerReportForm

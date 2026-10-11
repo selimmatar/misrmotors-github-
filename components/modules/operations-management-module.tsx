@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
@@ -125,27 +126,27 @@ export function OperationsManagementModule() {
       <PageHeader
         group={t("group.operations")}
         title={t("module.operations-management")}
-        subtitle="Monitor operations employees, work orders, and delivery assignments"
+        subtitle={t("ops.subtitle")}
         actions={
           <Button variant="outline" onClick={fetchEmployees}>
-            Refresh
+            {t("refresh")}
           </Button>
         }
       />
 
       {/* Summary Cards */}
       <KpiGrid>
-        <KpiTile label="Operations Team" value={employees.length} sub="Active employees" />
-        <KpiTile label="Active Work Orders" value={totalStats.activeWOs} sub={`${totalStats.completedWOs} completed`} />
-        <KpiTile label="Active Deliveries" value={totalStats.activeDeliveries} sub={`${totalStats.completedDeliveries} completed`} />
+        <KpiTile label={t("ops.operations-team")} value={employees.length} sub={t("ops.active-employees-sub")} />
+        <KpiTile label={t("ops.active-work-orders")} value={totalStats.activeWOs} sub={fill(t("ops.n-completed"), { n: totalStats.completedWOs })} />
+        <KpiTile label={t("courier.active-deliveries")} value={totalStats.activeDeliveries} sub={fill(t("ops.n-completed"), { n: totalStats.completedDeliveries })} />
         <KpiTile
-          label="Workload"
+          label={t("ops.workload")}
           value={
             employees.length > 0
               ? ((totalStats.activeWOs + totalStats.activeDeliveries) / employees.length).toFixed(1)
               : 0
           }
-          sub="Avg tasks per employee"
+          sub={t("ops.avg-tasks")}
         />
       </KpiGrid>
 
@@ -153,7 +154,7 @@ export function OperationsManagementModule() {
       <div className="relative max-w-sm">
         <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search employees..."
+          placeholder={t("hr.search-employees")}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="ps-9"
@@ -163,21 +164,21 @@ export function OperationsManagementModule() {
       {/* Employee List */}
       <Card>
         <CardHeader>
-          <CardTitle>Operations Employees</CardTitle>
-          <CardDescription>Click on an employee to view their assignments and history</CardDescription>
+          <CardTitle>{t("ops.operations-employees")}</CardTitle>
+          <CardDescription>{t("ops.click-employee-hint")}</CardDescription>
         </CardHeader>
         <CardContent>
           <ResponsiveList
             rows={loading ? [] : filteredEmployees}
             empty={
               loading ? (
-                <div className="flex items-center justify-center py-12 text-muted-foreground">Loading...</div>
+                <div className="flex items-center justify-center py-12 text-muted-foreground">{t("loading")}</div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <Users className="w-12 h-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No operations employees found</p>
+                  <p className="text-muted-foreground">{t("ops.no-employees")}</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Employees with an "Operations" position will appear here
+                    {t("ops.position-hint")}
                   </p>
                 </div>
               )
@@ -186,13 +187,13 @@ export function OperationsManagementModule() {
               <ErpTable>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Position</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <NumHead>Active WOs</NumHead>
-                    <NumHead>Active Deliveries</NumHead>
-                    <NumHead>Completed</NumHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{t("ops.employee")}</TableHead>
+                    <TableHead>{t("common.position")}</TableHead>
+                    <TableHead>{t("wd.contact")}</TableHead>
+                    <NumHead>{t("ops.active-wos")}</NumHead>
+                    <NumHead>{t("courier.active-deliveries")}</NumHead>
+                    <NumHead>{t("status.completed")}</NumHead>
+                    <TableHead>{t("status")}</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -253,7 +254,7 @@ export function OperationsManagementModule() {
                   id={emp.full_name}
                   party={emp.position_title}
                   status={<StatusBadge status={totalActive > 0 ? "busy" : "available"} />}
-                  note={`Active WOs: ${emp.stats.active_work_orders} · Active Deliveries: ${emp.stats.active_deliveries} · Completed: ${emp.stats.completed_work_orders + emp.stats.completed_deliveries}`}
+                  note={fill(t("ops.card-note"), { wos: emp.stats.active_work_orders, deliveries: emp.stats.active_deliveries, completed: emp.stats.completed_work_orders + emp.stats.completed_deliveries })}
                   onClick={() => setSelectedEmployee(emp)}
                 />
               )
@@ -279,28 +280,28 @@ export function OperationsManagementModule() {
                 <div className="flex items-center gap-2">
                   <Wrench className="h-4 w-4 text-muted-foreground" />
                   <div>
-                    <p className="text-xs text-muted-foreground">Position</p>
+                    <p className="text-xs text-muted-foreground">{t("common.position")}</p>
                     <p className="font-medium text-sm">{selectedEmployee.position_title}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <div>
-                    <p className="text-xs text-muted-foreground">Phone</p>
+                    <p className="text-xs text-muted-foreground">{t("phone")}</p>
                     <p className="font-medium text-sm">{selectedEmployee.phone || "N/A"}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <div>
-                    <p className="text-xs text-muted-foreground">Email</p>
+                    <p className="text-xs text-muted-foreground">{t("email")}</p>
                     <p className="font-medium text-sm truncate">{selectedEmployee.email || "N/A"}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <div>
-                    <p className="text-xs text-muted-foreground">Hire Date</p>
+                    <p className="text-xs text-muted-foreground">{t("hr.hire-date")}</p>
                     <p className="font-medium text-sm">
                       {selectedEmployee.hire_date
                         ? formatDate(selectedEmployee.hire_date, language)
@@ -314,19 +315,19 @@ export function OperationsManagementModule() {
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="p-3 rounded-md bg-amber-50 text-center border border-amber-200">
                   <p className="text-2xl font-bold text-amber-700">{selectedEmployee.stats.active_work_orders}</p>
-                  <p className="text-xs text-amber-700">Active WOs</p>
+                  <p className="text-xs text-amber-700">{t("ops.active-wos")}</p>
                 </div>
                 <div className="p-3 rounded-md bg-blue-50 text-center border border-blue-200">
                   <p className="text-2xl font-bold text-blue-700">{selectedEmployee.stats.active_deliveries}</p>
-                  <p className="text-xs text-blue-600">Active Deliveries</p>
+                  <p className="text-xs text-blue-600">{t("courier.active-deliveries")}</p>
                 </div>
                 <div className="p-3 rounded-md bg-green-50 text-center border border-green-200">
                   <p className="text-2xl font-bold text-green-700">{selectedEmployee.stats.completed_work_orders}</p>
-                  <p className="text-xs text-green-700">Completed WOs</p>
+                  <p className="text-xs text-green-700">{t("ops.completed-wos")}</p>
                 </div>
                 <div className="p-3 rounded-md bg-purple-50 text-center border border-purple-200">
                   <p className="text-2xl font-bold text-purple-700">{selectedEmployee.stats.completed_deliveries}</p>
-                  <p className="text-xs text-purple-600">Completed Deliveries</p>
+                  <p className="text-xs text-purple-600">{t("courier.completed-deliveries")}</p>
                 </div>
               </div>
 
@@ -334,33 +335,33 @@ export function OperationsManagementModule() {
               <Tabs defaultValue="current-wo" className="w-full">
                 <TabsList className="h-auto flex-wrap w-full justify-start">
                   <TabsTrigger value="current-wo">
-                    Active WOs ({selectedEmployee.current_work_orders.length})
+                    {fill(t("ops.active-wos-count"), { n: selectedEmployee.current_work_orders.length })}
                   </TabsTrigger>
                   <TabsTrigger value="past-wo">
-                    Past WOs ({selectedEmployee.past_work_orders.length})
+                    {fill(t("ops.past-wos-count"), { n: selectedEmployee.past_work_orders.length })}
                   </TabsTrigger>
                   <TabsTrigger value="current-dp">
-                    Active Deliveries ({selectedEmployee.current_delivery_orders.length})
+                    {fill(t("ops.active-deliveries-count"), { n: selectedEmployee.current_delivery_orders.length })}
                   </TabsTrigger>
                   <TabsTrigger value="past-dp">
-                    Past Deliveries ({selectedEmployee.past_delivery_orders.length})
+                    {fill(t("ops.past-deliveries-count"), { n: selectedEmployee.past_delivery_orders.length })}
                   </TabsTrigger>
                 </TabsList>
 
                 {/* Current Work Orders */}
                 <TabsContent value="current-wo" className="mt-4">
                   {selectedEmployee.current_work_orders.length === 0 ? (
-                    <EmptyState icon={Wrench} message="No active work orders" />
+                    <EmptyState icon={Wrench} message={t("ops.no-active-wos")} />
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>WO Number</TableHead>
-                          <TableHead>Title</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Priority</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Scheduled</TableHead>
+                          <TableHead>{t("ops.wo-number")}</TableHead>
+                          <TableHead>{t("common.title")}</TableHead>
+                          <TableHead>{t("so.customer")}</TableHead>
+                          <TableHead>{t("common.priority")}</TableHead>
+                          <TableHead>{t("status")}</TableHead>
+                          <TableHead>{t("ops.scheduled")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -378,7 +379,7 @@ export function OperationsManagementModule() {
                             <TableCell className="text-sm text-muted-foreground">
                               {wo.scheduled_date
                                 ? formatDate(wo.scheduled_date, language)
-                                : "Not scheduled"}
+                                : t("ops.not-scheduled")}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -390,16 +391,16 @@ export function OperationsManagementModule() {
                 {/* Past Work Orders */}
                 <TabsContent value="past-wo" className="mt-4">
                   {selectedEmployee.past_work_orders.length === 0 ? (
-                    <EmptyState icon={CheckCircle} message="No completed work orders" />
+                    <EmptyState icon={CheckCircle} message={t("ops.no-completed-wos")} />
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>WO Number</TableHead>
-                          <TableHead>Title</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Category</TableHead>
-                          <TableHead>Completed</TableHead>
+                          <TableHead>{t("ops.wo-number")}</TableHead>
+                          <TableHead>{t("common.title")}</TableHead>
+                          <TableHead>{t("so.customer")}</TableHead>
+                          <TableHead>{t("ops.category")}</TableHead>
+                          <TableHead>{t("status.completed")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -426,16 +427,16 @@ export function OperationsManagementModule() {
                 {/* Current Delivery Orders */}
                 <TabsContent value="current-dp" className="mt-4">
                   {selectedEmployee.current_delivery_orders.length === 0 ? (
-                    <EmptyState icon={Truck} message="No active delivery orders" />
+                    <EmptyState icon={Truck} message={t("ops.no-active-deliveries")} />
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Permit No</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Recipient</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Address</TableHead>
+                          <TableHead>{t("field.permit-no")}</TableHead>
+                          <TableHead>{t("so.customer")}</TableHead>
+                          <TableHead>{t("permit.recipient")}</TableHead>
+                          <TableHead>{t("status")}</TableHead>
+                          <TableHead>{t("address")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -460,16 +461,16 @@ export function OperationsManagementModule() {
                 {/* Past Delivery Orders */}
                 <TabsContent value="past-dp" className="mt-4">
                   {selectedEmployee.past_delivery_orders.length === 0 ? (
-                    <EmptyState icon={Package} message="No completed deliveries" />
+                    <EmptyState icon={Package} message={t("ops.no-completed-deliveries")} />
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Permit No</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Recipient</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Date</TableHead>
+                          <TableHead>{t("field.permit-no")}</TableHead>
+                          <TableHead>{t("so.customer")}</TableHead>
+                          <TableHead>{t("permit.recipient")}</TableHead>
+                          <TableHead>{t("status")}</TableHead>
+                          <TableHead>{t("date")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
