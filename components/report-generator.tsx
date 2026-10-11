@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { FileDown, Loader2, Printer, Download, Package, TrendingDown, AlertTriangle, FileText } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import type { UserRole } from "@/lib/types"
+import { PRINT_CSS, docTitle } from "@/lib/print/print-theme"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 
 type ReportType = "sales" | "purchase" | "inventory" | "financial" | "customers" | "suppliers" | "lost-sales"
@@ -925,11 +926,11 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
               }
               return "" // Return empty string if no numeric values found
             })
-            totalRow = `<tr class="total-row"><td>${totals.join("</td><td>")}</td></tr>`
+            totalRow = `<tr class="pm-total-final"><td>${totals.join("</td><td>")}</td></tr>`
           }
 
           return `
-        <table>
+        <table class="pm-table">
           <thead>
             <tr><th>${headers}</th></tr>
           </thead>
@@ -1002,35 +1003,11 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
           <meta charset="UTF-8">
           <title>${title}</title>
           <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
+            ${PRINT_CSS}
             body {
-              font-family: Arial, sans-serif;
-              padding: 30px;
+              padding: 15px;
               font-size: 12px;
               line-height: 1.4;
-              color: #000;
-              background: #fff;
-            }
-            .header {
-              border-bottom: 2px solid #000;
-              padding-bottom: 15px;
-              margin-bottom: 25px;
-            }
-            h1 {
-              font-size: 20px;
-              font-weight: bold;
-              margin-bottom: 5px;
-            }
-            .date {
-              font-size: 11px;
-              color: #666;
-            }
-            .content-wrapper {
-              /* Simple wrapper, no styling */
             }
             h2 {
               font-size: 16px;
@@ -1048,66 +1025,33 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
               font-weight: bold;
               margin-top: 18px;
               margin-bottom: 10px;
-              margin-left: 15px;
+              margin-inline-start: 15px;
             }
             h4 {
               font-size: 13px;
               font-weight: bold;
               margin-top: 15px;
               margin-bottom: 8px;
-              margin-left: 30px;
+              margin-inline-start: 30px;
             }
-            table {
-              width: 100%;
-              border-collapse: collapse;
+            .pm-table {
               margin-bottom: 20px;
-              border: 1px solid #000;
-            }
-            th {
-              background: #f0f0f0;
-              padding: 8px;
-              text-align: left;
-              font-weight: bold;
-              font-size: 11px;
-              border: 1px solid #000;
-            }
-            td {
-              padding: 6px 8px;
-              border: 1px solid #ccc;
-              font-size: 11px;
-            }
-            .total-row {
-              background: #f5f5f5;
-              border-top: 2px solid #000;
-            }
-            .total-row td {
-              padding: 8px;
-              font-weight: bold;
             }
             .no-data {
               padding: 20px;
               text-align: center;
-              color: #999;
+              color: #555;
               font-style: italic;
               border: 1px dashed #ccc;
               margin: 15px 0;
             }
             @media print {
-              body { 
-                padding: 15px;
-              }
-              @page { 
-                margin: 1.5cm;
-              }
               table {
                 page-break-inside: auto;
               }
               tr {
                 page-break-inside: avoid;
                 page-break-after: auto;
-              }
-              thead {
-                display: table-header-group;
               }
               h2, h3, h4 {
                 page-break-after: avoid;
@@ -1116,10 +1060,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>${title}</h1>
-            <div class="date">Generated: ${new Date().toLocaleDateString()}</div>
-          </div>
+          ${docTitle({ titleAr: `${title}`, noteHtml: `Generated: ${new Date().toLocaleDateString()}` })}
           <div class="content-wrapper">
             ${renderContent()}
           </div>

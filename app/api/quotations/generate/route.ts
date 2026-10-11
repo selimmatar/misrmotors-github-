@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
+import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
 
@@ -80,67 +81,50 @@ export async function GET(request: NextRequest) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>عرض سعر - ${escapeHtml(quotationNumber)}</title>
   <style>
-    @media print { body { margin: 0; } }
-    body { font-family: Arial, sans-serif; direction: rtl; margin: 20px; }
-    .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-    .logo { max-height: 80px; margin-bottom: 10px; }
-    .company-name { font-size: 24px; font-weight: bold; margin: 10px 0; }
-    .company-details { font-size: 12px; line-height: 1.6; }
-    .quotation-info { margin: 20px 0; }
-    .quotation-info table { width: 100%; border-collapse: collapse; }
-    .quotation-info td { padding: 8px; border: 1px solid #000; }
-    .items-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    .items-table th, .items-table td { border: 1px solid #000; padding: 10px; text-align: center; }
-    .items-table th { background-color: #f0f0f0; font-weight: bold; }
-    .totals { margin-top: 20px; }
-    .totals table { width: 50%; margin-right: auto; border-collapse: collapse; }
-    .totals td { padding: 10px; border: 1px solid #000; }
-    .totals .total-row { font-weight: bold; background-color: #f0f0f0; }
-    .footer { margin-top: 40px; font-size: 12px; text-align: center; border-top: 1px solid #000; padding-top: 10px; }
+    ${PRINT_CSS}
     .print-btn { position: fixed; top: 10px; left: 10px; padding: 10px 20px; background: #0066cc; color: white; border: none; border-radius: 5px; cursor: pointer; }
     @media print { .print-btn { display: none; } }
   </style>
 </head>
 <body>
   <button class="print-btn" onclick="window.print()">طباعة / Print</button>
-  <div class="header">
-    ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Logo" class="logo">` : `<div style="font-size: 24px; font-weight: bold; color: #1a56db;">مصر موتورز</div>`}
-    <div class="company-name">${COMPANY_SETTINGS.company_name_ar}</div>
-    <div class="company-name" style="font-size: 18px;">${COMPANY_SETTINGS.company_name_en}</div>
-    <div class="company-details">${COMPANY_SETTINGS.address_ar}<br>
+  ${printHeader({
+    logoHtml: `${logoDataUrl ? `<img src="${logoDataUrl}" alt="Logo" class="logo">` : `<div style="font-size: 24px; font-weight: bold; color: #1a56db;">مصر موتورز</div>`}`,
+    company: {
+      nameAr: `${COMPANY_SETTINGS.company_name_ar}`,
+      nameEn: `${COMPANY_SETTINGS.company_name_en}`,
+      detailsHtml: `${COMPANY_SETTINGS.address_ar}<br>
       تليفون: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax}<br>
-      البريد الإلكتروني: ${COMPANY_SETTINGS.email}
+      البريد الإلكتروني: ${COMPANY_SETTINGS.email}`,
+    },
+  })}
+  ${docTitle({ titleAr: `عرض سعر / Sales Quotation` })}
+  <section class="pm-info">
+    <div class="pm-fields">
+      <div class="pm-field"><div class="pm-label">رقم العرض:</div><div class="pm-value">${escapeHtml(quotationNumber)}</div></div>
+      <div class="pm-field"><div class="pm-label">التاريخ:</div><div class="pm-value">${quotationDate}</div></div>
+      <div class="pm-field pm-field-wide"><div class="pm-label">العميل:</div><div class="pm-value">${escapeHtml(customer_name)}</div></div>
+      ${customer_email ? `<div class="pm-field pm-field-wide"><div class="pm-label">البريد:</div><div class="pm-value">${escapeHtml(customer_email)}</div></div>` : ""}
+      ${customer_phone ? `<div class="pm-field pm-field-wide"><div class="pm-label">الهاتف:</div><div class="pm-value">${escapeHtml(customer_phone)}</div></div>` : ""}
+      <div class="pm-field pm-field-wide"><div class="pm-label">صالح حتى:</div><div class="pm-value">${validUntil}</div></div>
     </div>
-  </div>
-  <h2 style="text-align: center; margin: 20px 0;">عرض سعر / Sales Quotation</h2>
-  <div class="quotation-info">
-    <table>
-      <tr><td style="width: 25%;"><strong>رقم العرض:</strong></td><td style="width: 25%;">${escapeHtml(quotationNumber)}</td>
-        <td style="width: 25%;"><strong>التاريخ:</strong></td><td style="width: 25%;">${quotationDate}</td></tr>
-      <tr><td><strong>العميل:</strong></td><td colspan="3">${escapeHtml(customer_name)}</td></tr>
-      ${customer_email ? `<tr><td><strong>البريد:</strong></td><td colspan="3">${escapeHtml(customer_email)}</td></tr>` : ""}
-      ${customer_phone ? `<tr><td><strong>الهاتف:</strong></td><td colspan="3">${escapeHtml(customer_phone)}</td></tr>` : ""}
-      <tr><td><strong>صالح حتى:</strong></td><td colspan="3">${validUntil}</td></tr>
-    </table>
-  </div>
-  <table class="items-table">
-    <thead><tr><th>م</th><th>اسم الصنف</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
+  </section>
+  <table class="pm-table items-table">
+    <thead><tr><th class="pm-center">م</th><th>اسم الصنف</th><th class="pm-center">الكمية</th><th class="pm-num">سعر الوحدة</th><th class="pm-num">الإجمالي</th></tr></thead>
     <tbody>${quotationItems
       .map(
-        (item, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(item.product_name)}</td><td>${escapeHtml(item.quantity.toLocaleString('en-US'))}</td>
-      <td>${escapeHtml(item.unit_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} جنيه</td><td>${item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>`,
+        (item, i) => `<tr><td class="pm-center">${i + 1}</td><td>${escapeHtml(item.product_name)}</td><td class="pm-center">${escapeHtml(item.quantity.toLocaleString('en-US'))}</td>
+      <td class="pm-num">${escapeHtml(item.unit_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} جنيه</td><td class="pm-num">${item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>`,
       )
       .join("")}</tbody>
   </table>
-  <div class="totals">
-    <table>
-      <tr><td><strong>المجموع الفرعي:</strong></td><td>${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>
-      <tr><td><strong>ضريبة القيمة المضافة (14%):</strong></td><td>${tax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>
-      <tr class="total-row"><td><strong>الإجمالي الكلي:</strong></td><td><strong>${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</strong></td></tr>
-    </table>
-  </div>
-  ${notes ? `<div style="margin-top: 30px; padding: 10px; border: 1px solid #000;"><strong>ملاحظات:</strong><br>${escapeHtml(notes)}</div>` : ""}
-  <div class="footer"><p>هذا العرض صالح لمدة ${escapeHtml(validity_days)} يوم من تاريخ الإصدار</p>
+  <table class="pm-totals">
+    <tr><td><strong>المجموع الفرعي:</strong></td><td class="pm-num">${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>
+    <tr><td><strong>ضريبة القيمة المضافة (14%):</strong></td><td class="pm-num">${tax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>
+    <tr class="pm-total-final"><td><strong>الإجمالي الكلي:</strong></td><td class="pm-num"><strong>${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</strong></td></tr>
+  </table>
+  ${notes ? `<div class="pm-note"><strong>ملاحظات:</strong><br>${escapeHtml(notes)}</div>` : ""}
+  <div class="pm-footer"><p>هذا العرض صالح لمدة ${escapeHtml(validity_days)} يوم من تاريخ الإصدار</p>
     <p>نشكركم على ثقتكم في شركة مصر للمحركات</p></div>
 </body>
 </html>`

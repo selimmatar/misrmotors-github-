@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAppContext } from "@/lib/app-context"
 import { itemDeliveryChip, permitChip } from "@/lib/customer-dp-chip"
+import { orderDisplayStatus, orderPayment } from "@/lib/customer-order-status"
 import { useI18n } from "@/lib/i18n-context"
 import { COUNTRIES, getCitiesForCountry } from "@/lib/countries-data"
 import { ReportGenerator } from "@/components/report-generator"
@@ -42,7 +43,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
     city: "",
   })
   const [availableCities, setAvailableCities] = useState<string[]>(getCitiesForCountry("Egypt"))
-  const [orderInvoices, setOrderInvoices] = useState<Record<string, any>>({})
+  const [orderInvoices, setOrderInvoices] = useState<Record<string, any[]>>({})
   const [searchQuery, setSearchQuery] = useState("")
 
   const filteredCustomers = customers.filter(
@@ -84,9 +85,10 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
         const response = await fetch("/api/accounts-receivable")
         if (response.ok) {
           const invoices = await response.json()
-          const invoiceMap: Record<string, any> = {}
+          // Invoices are raised per delivery permit, so an order can have several: keep them all.
+          const invoiceMap: Record<string, any[]> = {}
           invoices.forEach((inv: any) => {
-            invoiceMap[inv.soId] = inv
+            (invoiceMap[inv.soId] ||= []).push(inv)
           })
           setOrderInvoices(invoiceMap)
         }
@@ -165,48 +167,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
     return invoices.reduce((sum, inv) => sum + (inv.collectedAmount || 0), 0)
   }
 
-  const getOrderPaymentStatus = (order: SalesOrder) => {
-    const invoice = orderInvoices[order.id]
-
-    if (!invoice) {
-      return {
-        status: "no_invoice",
-        monthsPaid: 0,
-        totalMonths: order.installments || 1,
-        amountPaid: 0,
-        totalAmount: order.total,
-        amountDue: order.total,
-      }
-    }
-
-    const monthsPaid = invoice.monthsPaid || 0
-    // Use order.installments as the source of truth, not invoice.installmentMonths
-    const totalMonths = order.installments || invoice.installmentMonths || 1
-    const amountPaid = invoice.collectedAmount || 0
-    const totalAmount = invoice.amount || order.total
-    const amountDue = totalAmount - amountPaid
-
-    let status = "unpaid"
-
-    // Payment status is based on AMOUNT paid, not months
-    if (amountPaid === 0) {
-      status = "unpaid"
-    } else if (amountPaid > 0 && amountPaid < totalAmount) {
-      status = "partially_paid"
-    } else if (amountPaid >= totalAmount) {
-      status = "paid"
-    }
-
-
-    return {
-      status,
-      monthsPaid,
-      totalMonths,
-      amountPaid,
-      totalAmount,
-      amountDue,
-    }
-  }
+  const getOrderPaymentStatus = (order: SalesOrder) => orderPayment(order, orderInvoices[order.id] || [])
 
   const canAddCustomer = userRole === "ceo" || userRole === "sales-rep"
 
@@ -313,7 +274,10 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.order-status")}</p>
-                            <StatusBadge status={order.status} label={t(`status.${order.status}`)} />
+                            {(() => {
+                              const shown = orderDisplayStatus(order)
+                              return <StatusBadge status={shown} label={t(shown === "partially_delivered" ? "so.status.partially_delivered" : `status.${shown}`)} />
+                            })()}
                             {/* Show delivery permit fulfillment status */}
                             {order.deliveryPermits && order.deliveryPermits.length > 0 && (
                               <div className="mt-2 space-y-1">

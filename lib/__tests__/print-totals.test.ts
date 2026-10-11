@@ -2,7 +2,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { computeTotals, computeSoPrintTotals, round2 } from "../print-totals"
-import { escapeHtml, moneyCells, renderSoTotalsBlock, renderTotalsBlock, splitMoney } from "../print-html"
+import { escapeHtml, formatMoney, moneyCell, moneyCells, renderSoTotalsBlock, renderTotalsBlock, splitMoney } from "../print-html"
 
 test("T1. the spec example: 100,000 - 10% = 90,000; VAT 12,600; total 102,600", () => {
   const t = computeTotals({ subtotal: 100000, discountType: "percentage", discountValue: 10 })
@@ -76,13 +76,28 @@ test("T8. SO totals after a return: Batch 2 net total (80,000 of 100,000 -> 91,2
   assert.match(html, /صافي الإجمالي الحالي/)
 })
 
-test("T9. SO totals: a null net_total falls back to the stored total; an inconsistent breakdown is not printed", () => {
+test("T9. SO totals: a null net_total falls back to the stored total; an inconsistent breakdown still shows VAT, taken from the stored total", () => {
   const t = computeSoPrintTotals({ subtotal: 100, storedTotal: 999, storedNetTotal: null })
   assert.equal(t.currentNetTotal, 999)
   assert.equal(t.breakdownConsistent, false)
+  // the stored total includes 14% VAT: 999 = 876.32 + 122.68
+  assert.equal(t.storedPreVat, 876.32)
+  assert.equal(t.storedVat, 122.68)
   const html = renderSoTotalsBlock(t)
-  assert.doesNotMatch(html, /ضريبة القيمة المضافة/) // only the stored figure is shown
-  assert.match(html, /999/)
+  assert.match(html, /الإجمالي قبل الضريبة<\/td><td class="currency-col">876\.32</)
+  assert.match(html, /ضريبة القيمة المضافة \(14%\)<\/td><td class="currency-col">122\.68</)
+  assert.match(html, />999</)
+  assert.doesNotMatch(html, /المجموع الفرعي/) // the line-derived figures are not printed when they disagree
+})
+
+test("T22. SO totals: VAT shows after a return too, and pre-VAT + VAT always equals the printed total", () => {
+  for (const total of [114000, 31008, 45714, 0.07, 2418232.83]) {
+    const t = computeSoPrintTotals({ subtotal: 1, storedTotal: total, storedNetTotal: null })
+    assert.equal(Math.round((t.storedPreVat + t.storedVat) * 100), Math.round(total * 100), String(total))
+  }
+  const html = renderSoTotalsBlock(computeSoPrintTotals({ subtotal: 5, storedTotal: 114000, storedNetTotal: 91200 }))
+  assert.match(html, /ضريبة القيمة المضافة \(14%\)/)
+  assert.match(html, /صافي الإجمالي الحالي/)
 })
 
 test("T10. splitMoney / moneyCells are exact on cents", () => {
@@ -110,4 +125,20 @@ test("T12. the totals block is a table AFTER the items, never a <tfoot>, and pri
   assert.match(html, />90,000</) // net subtotal
   assert.match(html, />12,600</) // VAT
   assert.match(html, />102,600</) // total
+})
+
+test("T20. one money column: whole pounds print without .00, fractions keep two decimals, nothing is lost", () => {
+  assert.equal(formatMoney(5750), "5,750")
+  assert.equal(formatMoney(2943.333), "2,943.33")
+  assert.equal(formatMoney(0.5), "0.50")
+  assert.equal(formatMoney(-1000), "-1,000")
+  assert.equal(formatMoney(1038725.19), "1,038,725.19")
+  assert.equal(moneyCell(5750), '<td class="currency-col">5,750</td>')
+})
+
+test("T21. the totals block has one money cell per row (no piastre column)", () => {
+  const html = renderTotalsBlock(computeTotals({ subtotal: 100000, discountType: "percentage", discountValue: 10 }))
+  for (const row of html.match(/<tr>[\s\S]*?<\/tr>/g) || []) assert.equal((row.match(/<td/g) || []).length, 2)
+  const so = renderSoTotalsBlock(computeSoPrintTotals({ subtotal: 100, discountType: null, discountValue: 0, storedTotal: 114, storedNetTotal: 100 } as any))
+  for (const row of so.match(/<tr>[\s\S]*?<\/tr>/g) || []) assert.equal((row.match(/<td/g) || []).length, 2)
 })

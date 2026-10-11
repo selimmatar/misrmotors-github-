@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { escapeHtml } from "@/lib/html-escape"
+import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
 
@@ -102,100 +103,56 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AR Invoice ${escapeHtml(invoice.invoice_number)}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
-    .page { max-width: 800px; margin: 0 auto; padding: 40px; }
-
-    /* Header */
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 2px solid #1a1a1a; }
-    .company-info h1 { font-size: 22px; font-weight: 700; color: #1a1a1a; }
-    .company-info p { font-size: 12px; color: #555; margin-top: 2px; }
+    ${PRINT_CSS}
     .logo { max-height: 64px; max-width: 180px; object-fit: contain; }
-    .invoice-title { text-align: right; }
-    .invoice-title h2 { font-size: 28px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.5px; }
-    .invoice-title .invoice-number { font-size: 14px; color: #555; margin-top: 4px; }
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; margin-top: 6px; }
-    .badge-pending { background: #fef3c7; color: #92400e; }
-    .badge-paid { background: #d1fae5; color: #065f46; }
-    .badge-overdue { background: #fee2e2; color: #991b1b; }
-    .badge-partial { background: #dbeafe; color: #1e40af; }
-
-    /* Meta grid */
-    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
-    .meta-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
-    .meta-box h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b7280; margin-bottom: 10px; letter-spacing: 0.05em; }
-    .meta-box p { font-size: 13px; color: #1a1a1a; line-height: 1.6; }
-    .meta-box p span { color: #6b7280; font-size: 12px; }
-
-    /* Details row */
-    .details-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
-    .detail-cell { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px; }
-    .detail-cell .label { font-size: 11px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
-    .detail-cell .value { font-size: 13px; font-weight: 600; color: #1a1a1a; }
-
-    /* Items table */
-    .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 10px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-    thead th { background: #1a1a1a; color: #fff; padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-    thead th:last-child { text-align: right; }
-    tbody tr { border-bottom: 1px solid #e5e7eb; }
-    tbody tr:last-child { border-bottom: none; }
-    tbody td { padding: 10px 12px; font-size: 13px; color: #1a1a1a; vertical-align: top; }
-    tbody td:last-child { text-align: right; }
-    tbody tr:nth-child(even) { background: #f9fafb; }
+    .badge { text-transform: uppercase; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-block: 14px 18px; padding-block-start: 10px; border-block-start: 1.5px solid #000; }
+    .pm-info h3 { text-transform: uppercase; }
+    .pm-info p { line-height: 1.6; overflow-wrap: anywhere; }
+    .pm-info p span { font-size: 12px; color: #555; }
+    .pm-field .pm-label { text-transform: uppercase; }
+    .section-title { text-transform: uppercase; }
+    .pm-table thead th { text-transform: uppercase; }
     .item-name { font-weight: 500; }
-    .item-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
-
-    /* Totals */
-    .totals-wrap { display: flex; justify-content: flex-end; margin-bottom: 28px; }
-    .totals-box { width: 280px; }
-    .totals-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
-    .totals-row:last-child { border-bottom: none; }
-    .totals-row.total { font-weight: 700; font-size: 14px; }
-    .totals-row.balance { font-weight: 700; font-size: 15px; color: #dc2626; }
-    .totals-row.paid { color: #059669; }
-
-    /* Footer */
-    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; text-align: center; font-size: 11px; color: #9ca3af; }
-
-    @media print {
-      body { font-size: 12px; }
-      .page { padding: 20px; }
-      @page { margin: 10mm; }
-    }
+    .item-sub { font-size: 11px; color: #555; margin-top: 2px; }
+    .totals-row { display: flex; justify-content: space-between; gap: 16px; padding: 4px 6px; }
+    .totals-row.total { font-weight: 700; }
+    .pm-total-final { padding-block-start: 6px; }
   </style>
 </head>
 <body>
 <div class="page">
 
   <!-- Header -->
-  <div class="header">
-    <div class="company-info">
-      ${companyLogo ? `<img src="${escapeHtml(companyLogo)}" class="logo" alt="Logo" />` : `<h1>${escapeHtml(companyName)}</h1>`}
-      ${companyLogo ? `<p style="margin-top:6px;font-weight:600;">${escapeHtml(companyName)}</p>` : ""}
-      ${companyAddress ? `<p>${escapeHtml(companyAddress)}</p>` : ""}
-      ${companyPhone ? `<p>${escapeHtml(companyPhone)}</p>` : ""}
-      ${companyEmail ? `<p>${escapeHtml(companyEmail)}</p>` : ""}
-    </div>
-    <div class="invoice-title">
-      <h2>SALES INVOICE</h2>
-      <div class="invoice-number">${escapeHtml(invoice.invoice_number || "—")}</div>
+  ${printHeader({
+    logoHtml: `${companyLogo ? `<img src="${escapeHtml(companyLogo)}" class="logo" alt="Logo" />` : `<h1>${escapeHtml(companyName)}</h1>`}`,
+    company: {
+      nameEn: `${companyLogo ? `<p>${escapeHtml(companyName)}</p>` : ""}`,
+      detailsHtml: `
+        ${companyAddress ? `<p>${escapeHtml(companyAddress)}</p>` : ""}
+        ${companyPhone ? `<p>${escapeHtml(companyPhone)}</p>` : ""}
+        ${companyEmail ? `<p>${escapeHtml(companyEmail)}</p>` : ""}
+      `,
+    },
+  })}
+  ${docTitle({
+    titleAr: `SALES INVOICE`,
+    noteHtml: `<div class="invoice-number">${escapeHtml(invoice.invoice_number || "—")}</div>
       <span class="badge badge-${invoice.status === "paid" ? "paid" : invoice.status === "overdue" ? "overdue" : invoice.status === "partially_paid" ? "partial" : "pending"}">
         ${escapeHtml(invoice.status?.replace("_", " ") || "Pending")}
-      </span>
-    </div>
-  </div>
+      </span>`,
+  })}
 
   <!-- Meta: From / To -->
   <div class="meta-grid">
-    <div class="meta-box">
+    <div class="pm-info">
       <h3>From (Seller)</h3>
       <p style="font-weight:600;font-size:14px;">${escapeHtml(companyName)}</p>
       ${companyAddress ? `<p>${escapeHtml(companyAddress)}</p>` : ""}
       ${companyPhone ? `<p>${escapeHtml(companyPhone)}</p>` : ""}
       ${companyEmail ? `<p>${escapeHtml(companyEmail)}</p>` : ""}
     </div>
-    <div class="meta-box">
+    <div class="pm-info">
       <h3>Billed To (Customer)</h3>
       <p style="font-weight:600;font-size:14px;">${escapeHtml(customer?.customer_name || "—")}</p>
       ${customer?.email ? `<p><span>Email: </span>${escapeHtml(customer.email)}</p>` : ""}
@@ -206,36 +163,36 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
   </div>
 
   <!-- Details row -->
-  <div class="details-row">
-    <div class="detail-cell">
-      <div class="label">Invoice Date</div>
-      <div class="value">${formatDate(invoice.invoice_date)}</div>
+  <div class="pm-fields">
+    <div class="pm-field">
+      <div class="pm-label">Invoice Date</div>
+      <div class="pm-value">${formatDate(invoice.invoice_date)}</div>
     </div>
-    <div class="detail-cell">
-      <div class="label">Due Date</div>
-      <div class="value">${formatDate(invoice.due_date)}</div>
+    <div class="pm-field">
+      <div class="pm-label">Due Date</div>
+      <div class="pm-value">${formatDate(invoice.due_date)}</div>
     </div>
-    <div class="detail-cell">
-      <div class="label">SO Number</div>
-      <div class="value">${escapeHtml(so?.so_number || "—")}</div>
+    <div class="pm-field">
+      <div class="pm-label">SO Number</div>
+      <div class="pm-value">${escapeHtml(so?.so_number || "—")}</div>
     </div>
-    <div class="detail-cell">
-      <div class="label">Payment Type</div>
-      <div class="value">${escapeHtml((invoice.payment_terms || so?.payment_type || "—").replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()))}</div>
+    <div class="pm-field">
+      <div class="pm-label">Payment Type</div>
+      <div class="pm-value">${escapeHtml((invoice.payment_terms || so?.payment_type || "—").replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()))}</div>
     </div>
   </div>
 
   <!-- Line Items -->
-  <div class="section-title">Items</div>
-  <table>
+  <div class="section-title pm-section-title">Items</div>
+  <table class="pm-table">
     <thead>
       <tr>
         <th>#</th>
         <th>Item</th>
         <th>Type</th>
-        <th>Qty</th>
-        <th>Unit Price</th>
-        <th>Total</th>
+        <th class="pm-num">Qty</th>
+        <th class="pm-num">Unit Price</th>
+        <th class="pm-num">Total</th>
       </tr>
     </thead>
     <tbody>
@@ -256,19 +213,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
                 ${sku ? `<div class="item-sub">SKU: ${escapeHtml(sku)}</div>` : ""}
               </td>
               <td>${isOutsourced ? "Outsourced" : "Product"}</td>
-              <td>${qty}</td>
-              <td>${formatCurrency(unitPrice)}</td>
-              <td>${formatCurrency(total)}</td>
+              <td class="pm-num">${qty}</td>
+              <td class="pm-num">${formatCurrency(unitPrice)}</td>
+              <td class="pm-num">${formatCurrency(total)}</td>
             </tr>`
           }).join("")
-        : `<tr><td colspan="6" style="text-align:center;color:#6b7280;padding:20px;">No items found</td></tr>`
+        : `<tr><td colspan="6" class="pm-center" style="padding:20px;">No items found</td></tr>`
       }
     </tbody>
   </table>
 
   <!-- Totals -->
-  <div class="totals-wrap">
-    <div class="totals-box">
+  <div class="pm-totals">
       <div class="totals-row total">
         <span>Invoice Total</span>
         <span>${formatCurrency(totalAmount)}</span>
@@ -277,29 +233,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
         <span>Amount Collected</span>
         <span>${formatCurrency(collectedAmount)}</span>
       </div>
-      <div class="totals-row balance">
+      <div class="totals-row balance pm-total-final">
         <span>Balance Due</span>
         <span>${formatCurrency(balance)}</span>
       </div>
-    </div>
   </div>
 
   <!-- Payment Terms Note -->
   ${(invoice.payment_terms === "installments" || so?.payment_type === "installments") ? `
-  <div class="meta-box" style="margin-bottom:24px;">
-    <h3>Payment Schedule</h3>
-    <p>
+  <table class="pm-table">
+    <thead><tr><th>Payment Schedule</th></tr></thead>
+    <tbody><tr><td><p>
       ${escapeHtml(so?.installments || invoice.installment_months || "—")} monthly installments
       ${invoice.monthly_amount || so?.monthly_amount ? `of ${formatCurrency(Number(invoice.monthly_amount || so?.monthly_amount))} / month` : ""}
       ${invoice.payment_start_date ? `starting ${formatDate(invoice.payment_start_date)}` : ""}
       ${so?.down_payment_amount && Number(so.down_payment_amount) > 0
         ? `| Down payment: ${formatCurrency(Number(so.down_payment_amount))} due ${formatDate(so.down_payment_due_date)}`
         : ""}
-    </p>
-  </div>` : ""}
+    </p></td></tr></tbody>
+  </table>` : ""}
 
   <!-- Footer -->
-  <div class="footer">
+  <div class="pm-footer">
     <p>Generated on ${new Date().toLocaleString("en-GB")} &bull; ${escapeHtml(companyName)}</p>
   </div>
 
