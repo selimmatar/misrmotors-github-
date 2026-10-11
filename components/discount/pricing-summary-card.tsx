@@ -1,6 +1,7 @@
 "use client"
 
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Receipt } from "lucide-react"
 import type { DiscountType } from "./discount-fields"
@@ -67,7 +68,7 @@ export function PricingSummaryCard({
 
         {vatEnabled && vatAmount > 0 && (
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">VAT ({formatNumber(vatRate * 100)}%)</span>
+            <span className="text-muted-foreground">{fill(t("discount.vat-rate"), { rate: formatNumber(vatRate * 100) })}</span>
             <span>+ {formatCurrency(vatAmount)}</span>
           </div>
         )}
