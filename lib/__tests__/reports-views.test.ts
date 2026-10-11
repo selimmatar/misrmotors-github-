@@ -71,9 +71,12 @@ const seed = (): Record<string, Row[]> => ({
     { invoice_id: 3, invoice_number: "AP-3", invoice_date: d(-200), due_date: d(-120), amount: 70, paid_amount: 70, status: "paid", payment_terms: "prepaid", installment_months: null, months_paid: 1, supplier_id: 1 },
   ],
   balance_entries: [
-    { entry_id: 1, created_at: "2026-08-03T10:00:00Z", entry_type: "credit", amount: 500 },
-    { entry_id: 2, created_at: "2026-08-28T23:00:00Z", entry_type: "debit", amount: 200 },
-    { entry_id: 3, created_at: "2026-09-10T00:00:00Z", entry_type: "ar_payment", amount: 75 },
+    { entry_id: 1, created_at: "2026-08-03T10:00:00Z", entry_type: "ar_payment", amount: 500, status: "active" },
+    { entry_id: 2, created_at: "2026-08-28T23:00:00Z", entry_type: "ap_payment", amount: -200, status: "active" },
+    { entry_id: 3, created_at: "2026-09-10T00:00:00Z", entry_type: "ap_payment", amount: -75, status: "active" },
+    { entry_id: 4, created_at: "2026-09-12T00:00:00Z", entry_type: "purchase_order", amount: 900, status: "voided" },
+    { entry_id: 5, created_at: "2026-10-01T00:00:00Z", entry_type: "purchase_order", amount: 300, status: "active" },
+    { entry_id: 6, created_at: "2026-09-20T00:00:00Z", entry_type: "ar_payment", amount: 40, status: "voided" },
   ],
 })
 
@@ -151,7 +154,9 @@ const AP_AGING = () => [
   { invoice_id: 2, invoice_number: "AP-2", invoice_date: d(-1), due_date: d(30), total_amount: 200, paid_amount: null, balance_due: 200, status: "pending", payment_terms: "prepaid", installment_months: null, months_paid: 0, supplier_id: 2, supplier_name: "Bolt", supplier_email: "bolt@x.cn", supplier_phone: "444", days_overdue: -30, aging_bucket: "Current" },
 ]
 const CASH_FLOW = [
-  { month: "2026-09-01", total_inflow: 0, total_outflow: 0, net_cash_flow: -75, transaction_count: 1 },
+  // Money in = customer payments (ar_payment), money out = supplier payments (ap_payment, stored negative).
+  // Purchase-order entries and voided entries are not cash movements and are left out.
+  { month: "2026-09-01", total_inflow: 0, total_outflow: 75, net_cash_flow: -75, transaction_count: 1 },
   { month: "2026-08-01", total_inflow: 500, total_outflow: 200, net_cash_flow: 300, transaction_count: 2 },
 ]
 
