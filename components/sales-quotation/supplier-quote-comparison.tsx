@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAppContext } from "@/lib/app-context"
+import { useI18n } from "@/lib/i18n-context"
 
 interface SupplierQuoteComparisonProps {
   salesQuotationId: number
@@ -30,6 +31,7 @@ interface SupplierQuoteComparisonProps {
 
 export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: SupplierQuoteComparisonProps) {
   const { suppliers } = useAppContext()
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState(1)
   const [uploads, setUploads] = useState<any[]>([])
@@ -50,7 +52,7 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
 
   const handleUpload = async () => {
     if (!currentUpload.file || !currentUpload.supplierName) {
-      alert("Please fill all required fields")
+      alert(t("message.fill-required"))
       return
     }
 
@@ -79,13 +81,13 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
           currency: "EGP",
           file: null,
         })
-        alert("Uploaded successfully!")
+        alert(t("quote-compare.uploaded-successfully"))
       } else {
-        alert("Upload failed")
+        alert(t("quote-compare.upload-failed"))
       }
     } catch (error) {
       console.error(error)
-      alert("Upload error")
+      alert(t("quote-compare.upload-error"))
     } finally {
       setLoading(false)
     }
@@ -96,24 +98,24 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
       <DialogTrigger asChild>
         <Button variant="outline" className="gap-2 bg-transparent">
           <FileCompare className="h-4 w-4" />
-          Compare Supplier Quotations
+          {t("quote-compare.title")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Compare Supplier Quotations</DialogTitle>
+          <DialogTitle>{t("quote-compare.title")}</DialogTitle>
           <DialogDescription>
-            Upload supplier PDFs, extract items, and get recommendations for the best prices
+            {t("quote-compare.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
           {/* Step 1: Upload PDFs */}
           <div className="space-y-4">
-            <h3 className="font-semibold">Step 1: Upload Supplier Quotations</h3>
+            <h3 className="font-semibold">{t("quote-compare.step-1")}</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Supplier Name *</Label>
+                <Label>{t("quote-compare.supplier-name")}</Label>
                 <Input
                   value={currentUpload.supplierName}
                   onChange={(e) =>
@@ -122,17 +124,17 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
                       supplierName: e.target.value,
                     })
                   }
-                  placeholder="Enter supplier name"
+                  placeholder={t("common.enter-supplier-name")}
                 />
               </div>
               <div>
-                <Label>Existing Supplier (Optional)</Label>
+                <Label>{t("quote-compare.existing-supplier")}</Label>
                 <Select
                   value={currentUpload.supplierId}
                   onValueChange={(value) => setCurrentUpload({ ...currentUpload, supplierId: value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select supplier..." />
+                    <SelectValue placeholder={t("quote-compare.select-supplier")} />
                   </SelectTrigger>
                   <SelectContent>
                     {suppliers.map((s: any) => (
@@ -144,7 +146,7 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
                 </Select>
               </div>
               <div>
-                <Label>Currency</Label>
+                <Label>{t("field.currency")}</Label>
                 <Select
                   value={currentUpload.currency}
                   onValueChange={(value) => setCurrentUpload({ ...currentUpload, currency: value })}
@@ -153,25 +155,25 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="EGP">EGP</SelectItem>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="EGP">{t("common.egp-2")}</SelectItem>
+                    <SelectItem value="USD">{t("quote-compare.usd")}</SelectItem>
+                    <SelectItem value="EUR">{t("quote-compare.eur")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>PDF File *</Label>
+                <Label>{t("common.pdf-file")}</Label>
                 <Input type="file" accept=".pdf" onChange={handleFileChange} />
               </div>
             </div>
             <Button onClick={handleUpload} disabled={loading} className="gap-2">
               <Upload className="h-4 w-4" />
-              {loading ? "Uploading..." : "Upload PDF"}
+              {loading ? t("common.uploading") : t("quote-compare.upload-pdf")}
             </Button>
 
             {uploads.length > 0 && (
               <div className="mt-4">
-                <h4 className="font-medium mb-2">Uploaded Files:</h4>
+                <h4 className="font-medium mb-2">{t("quote-compare.uploaded-files")}</h4>
                 <ul className="space-y-1">
                   {uploads.map((u) => (
                     <li key={u.id} className="flex items-center gap-2 text-sm">
@@ -186,7 +188,7 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
 
           {/* TODO: Steps 2-5 will be implemented in next phases */}
           <div className="text-sm text-muted-foreground">
-            Steps 2-5 (Extract, Match, Recommend, Create PRs) will be implemented in the next phase.
+            {t("quote-compare.next-phase")}
           </div>
         </div>
       </DialogContent>
