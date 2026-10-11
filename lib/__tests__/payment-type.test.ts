@@ -6,6 +6,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   buildSalesOrderPaymentFields,
+  salesOrderPaymentMethod,
   getPaymentKind,
   isSinglePayment,
   normalizeQuotationPaymentDetails,
@@ -158,4 +159,15 @@ test("quotation payment_details are stored with the real payment type", () => {
   assert.equal(hyb.paymentType, "hybrid")
   assert.equal(hyb.remainingInstallmentMonths, 6)
   assert.equal(hyb.downPaymentAmount, 149436.9)
+})
+
+test("salesOrderPaymentMethod shows the real payment type, not the coarse payment_terms", () => {
+  // SO-2026-037059: payment_type cheque, payment_terms prepaid -> the popup said "Prepaid".
+  assert.equal(salesOrderPaymentMethod({ paymentType: "cheque", paymentTerms: "prepaid" }), "cheque")
+  assert.equal(salesOrderPaymentMethod({ paymentType: "hybrid", paymentTerms: "installment" }), "hybrid")
+  // Old orders with no payment_type: same fallback as GET /api/sales-orders.
+  assert.equal(salesOrderPaymentMethod({ paymentTerms: "prepaid" }), "cash")
+  assert.equal(salesOrderPaymentMethod({ paymentTerms: "installment" }), "installments")
+  assert.equal(salesOrderPaymentMethod({}), null)
+  assert.equal(salesOrderPaymentMethod(null), null)
 })

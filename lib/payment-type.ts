@@ -40,6 +40,17 @@ export function toSalesOrderPaymentTerms(paymentType?: string | null): "prepaid"
   return kind === "installment" || kind === "hybrid" ? "installment" : "prepaid"
 }
 
+// The payment method to SHOW for a sales order. payment_terms is only 'prepaid' | 'installment' (a cheque order
+// is stored as 'prepaid'), so screens must label payment_type. Old rows without payment_type fall back the same
+// way GET /api/sales-orders does. Returns a payment.* translation key suffix, or null when nothing is known.
+export function salesOrderPaymentMethod(order?: { paymentType?: string | null; paymentTerms?: string | null } | null): string | null {
+  if (!order) return null
+  if (order.paymentType) return order.paymentType
+  if (order.paymentTerms === "prepaid") return "cash"
+  if (order.paymentTerms === "installment" || order.paymentTerms === "installments") return "installments"
+  return order.paymentTerms || null
+}
+
 const toNull = (value: any) => (value === undefined || value === null || value === "" ? null : value)
 
 // The payment columns written on a sales order converted from a quotation, from the quotation's

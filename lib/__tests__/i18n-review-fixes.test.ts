@@ -40,7 +40,7 @@ const SITES: Array<{ file: string; must: RegExp[]; mustNot: RegExp[] }> = [
   },
   {
     file: "components/modules/accountant-module.tsx",
-    must: [/t\(`payment\.\$\{order\.paymentTerms/, /t\(`payment\.\$\{po\.paymentTerms/, /t\(`payment\.\$\{selectedSalesOrder\.paymentTerms/],
+    must: [/t\(`payment\.\$\{salesOrderPaymentMethod\(order\)/, /t\(`payment\.\$\{po\.paymentTerms/, /t\(`payment\.\$\{salesOrderPaymentMethod\(selectedSalesOrder\)/],
     mustNot: [/>\{order\.paymentTerms\}</, />\{po\.paymentTerms\}</, />\{selectedSalesOrder\.paymentTerms\}</],
   },
   {

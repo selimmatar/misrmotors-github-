@@ -24,6 +24,7 @@ import { Money } from "@/components/erp/money"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { formatDate } from "@/lib/format"
 import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
+import { salesOrderPaymentMethod } from "@/lib/payment-type"
 
 export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
   const { t, formatNumber, language } = useI18n()
@@ -474,7 +475,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
-                          <p className="font-semibold capitalize">{order.paymentTerms ? t(`payment.${order.paymentTerms}`) : t("label.na")}</p>
+                          <p className="font-semibold capitalize">{salesOrderPaymentMethod(order) ? t(`payment.${salesOrderPaymentMethod(order)}`) : t("label.na")}</p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.invoice_status")}</p>
@@ -584,7 +585,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
-                            <p className="font-semibold capitalize">{order.paymentTerms ? t(`payment.${order.paymentTerms}`) : t("label.na")}</p>
+                            <p className="font-semibold capitalize">{salesOrderPaymentMethod(order) ? t(`payment.${salesOrderPaymentMethod(order)}`) : t("label.na")}</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.status")}</p>
@@ -643,7 +644,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
-                            <p className="font-semibold capitalize">{order.paymentTerms ? t(`payment.${order.paymentTerms}`) : t("label.na")}</p>
+                            <p className="font-semibold capitalize">{salesOrderPaymentMethod(order) ? t(`payment.${salesOrderPaymentMethod(order)}`) : t("label.na")}</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.shipping_invoice")}</p>
@@ -1265,7 +1266,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
-                  <p className="font-semibold capitalize">{selectedSalesOrder.paymentTerms ? t(`payment.${selectedSalesOrder.paymentTerms}`) : t("label.na")}</p>
+                  <p className="font-semibold capitalize">{salesOrderPaymentMethod(selectedSalesOrder) ? t(`payment.${salesOrderPaymentMethod(selectedSalesOrder)}`) : t("label.na")}</p>
                 </div>
                 <ApprovalDocumentLink url={selectedSalesOrder.approvalDocumentUrl} className="col-span-full" />
               </div>
