@@ -210,7 +210,8 @@ test("LO9. schedule payment (idempotent path): AR update failure answers 500, no
   assert.equal(r.body.invoiceUpdated, false)
   assert.equal(r.body.message, undefined)
   assert.equal(db.tables.accounts_receivable[0].collected_amount, 0)
-  assert.equal(db.tables.idempotency_log[0].status, "failed")
+  // The schedule already holds the payment, so the key is closed: a retry must not pay it twice.
+  assert.equal(db.tables.idempotency_log[0].status, "completed")
 })
 
 test("LO10. schedule payment (plain path): AR read failure answers 500, not success", async () => {

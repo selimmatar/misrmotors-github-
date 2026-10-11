@@ -10,6 +10,9 @@ import { call, useDb } from "./route-harness"
 import * as auditRoute from "../../app/api/inventory/audit/route"
 import * as apRoute from "../../app/api/accounts-payable/route"
 import * as dpRoute from "../../app/api/delivery-permits/route"
+import * as finalizeRoute from "../../app/api/purchase-orders/finalize-cost/route"
+import * as grnRoute from "../../app/api/goods-receipts/route"
+import * as scheduleRoute from "../../app/api/payment-schedules/route"
 import { generateDPApprovalIdempotencyKey, generatePOReceiveIdempotencyKey } from "../idempotency"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
@@ -191,4 +194,62 @@ test("DP approve: if saving the permit fails, the approval is not marked done an
   assert.notEqual(retry.body.isDuplicate, true)
   assert.equal(db.tables.delivery_permits[0].status, "APPROVED")
   assert.equal(db.tables.inventory[0].quantity, 14)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// Review follow-ups: landed cost only on this PO's units still on hand; payment keys
+// ---------------------------------------------------------------------------------------------------------
+test("finalize: overhead goes only on this PO's units still on hand, not on stock received later from another PO", async () => {
+  const db = new FakeDb({
+    purchase_orders: [{ po_id: 1, po_number: "PO-T-1", supplier_id: 1, status: "approved", total: 1000, cost_finalized: false }],
+    purchase_order_items: [{ po_item_id: 1, po_id: 1, product_id: 7, quantity: 10, unit_price: 100, total: 1000, item_type: "stock" }],
+    goods_receipts: [], goods_receipt_lines: [], inventory: [], inventory_batches: [],
+    sales_orders: [], sales_order_items: [], idempotency_log: [],
+  })
+  useDb(db)
+  const got = await call(grnRoute.POST, "POST", {
+    poId: 1, receivedBy: 1, idempotencyKey: "lf-fifo-1", lines: [{ poItemId: 1, quantityReceived: 10, warehouseId: 1, unitCost: 100 }],
+  })
+  assert.equal(got.status, 200, JSON.stringify(got.body))
+  const row = db.tables.inventory.find((r) => r.product_id === 7 && r.warehouse_id === 1)!
+  // 9 of this PO's units were delivered (permit deduction lowers inventory only, never the batch) ...
+  row.quantity = 1
+  // ... then 10 more arrived from another PO at the same cost
+  db.tables.inventory_batches.push({ batch_id: 900, product_id: 7, po_id: 99, warehouse_id: 1, quantity_received: 10, quantity_available: 10, unit_cost: 100, landed_cost_per_unit: 100, batch_sequence: 99 })
+  row.quantity = 11
+  const r = await call(finalizeRoute.POST, "POST", { poId: 1, taxAmount: 140, otherCosts: 0 }) // 14 / unit
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  // one unit of PO-1 is left: (11*100 + 14*1) / 11 = 101.27 (not (1100 + 140) / 11 = 112.73)
+  assert.equal(row.unit_cost, 101.27)
+})
+
+const schedDb = () => {
+  const db = new FakeDb({
+    payment_schedules: [{ schedule_id: 1, invoice_id: 5, amount: 100, paid_amount: 0, status: "pending", schedule_type: "receivable" }],
+    accounts_receivable: [{ invoice_id: 5, amount: 300, collected_amount: 0, months_paid: 0, status: "pending" }],
+    idempotency_log: [],
+  })
+  useDb(db)
+  return db
+}
+
+test("payment: without a paymentDate the key uses today's date (not one key for every day)", async () => {
+  const db = schedDb()
+  const r = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 40, invoiceId: 5 })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const today = new Date().toISOString().split("T")[0]
+  const key = db.tables.idempotency_log.find((l) => l.operation_type === "payment")!.idempotency_key
+  assert.match(String(key), new RegExp(`_${new Date(today).getTime()}_`))
+})
+
+test("payment: a retry after 'schedule paid, invoice not updated' does not pay the schedule again", async () => {
+  const db = schedDb()
+  db.failOn["accounts_receivable:update"] = "db down"
+  const first = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 40, invoiceId: 5, paymentDate: "2026-10-01" })
+  assert.equal(first.status, 500)
+  assert.equal(first.body.schedulePaid, true)
+  delete db.failOn["accounts_receivable:update"]
+  const retry = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 40, invoiceId: 5, paymentDate: "2026-10-01" })
+  assert.equal(retry.body.isDuplicate, true, JSON.stringify(retry.body))
+  assert.equal(db.tables.payment_schedules[0].paid_amount, 40)
 })

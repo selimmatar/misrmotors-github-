@@ -496,7 +496,7 @@ export async function PUT(request: NextRequest) {
       const idempotencyKey = schedulePaymentKey(
         scheduleIdNum,
         clientIdempotencyKey,
-        `pay_${invoiceId || 0}_${scheduleIdNum}_${paymentDate ? new Date(paymentDate).getTime() : "nodate"}_${cents(amountToPay)}`,
+        `pay_${invoiceId || 0}_${scheduleIdNum}_${new Date(paymentDate || new Date().toISOString().split("T")[0]).getTime()}_${cents(amountToPay)}`,
       )
 
       const idempotencyCheck = await checkIdempotency("payment", idempotencyKey, "payment_schedules", scheduleIdNum, userId)
@@ -547,7 +547,9 @@ export async function PUT(request: NextRequest) {
         await completeIdempotency(
           "payment",
           idempotencyKey,
-          result.status === 200,
+          // Once the schedule row holds the payment the key is done, even if the invoice was not updated: a retry of the
+          // same payment must not add it to the schedule again.
+          result.status === 200 || result.body.schedulePaid === true,
           result.status === 200 ? undefined : result.body.detail || result.body.error,
         )
         return NextResponse.json(result.body, { status: result.status })
@@ -686,7 +688,9 @@ export async function PUT(request: NextRequest) {
       await completeIdempotency(
         "payment",
         idempotencyKey,
-        result.status === 200,
+        // Once the schedule row holds the payment the key is done, even if the invoice was not updated: a retry of the
+        // same payment must not add it to the schedule again.
+        result.status === 200 || result.body.schedulePaid === true,
         result.status === 200 ? undefined : result.body.detail || result.body.error,
       )
       return NextResponse.json(result.body, { status: result.status })

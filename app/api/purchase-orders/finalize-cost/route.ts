@@ -28,19 +28,24 @@ const MAX_CAS_ATTEMPTS = 6
 /**
  * Pushes the finalized landed cost into stock, for THIS PO's receipts only:
  *  - every inventory_batches row of this PO gets landed_cost_per_unit = its raw unit_cost + the overhead per unit;
- *  - inventory.unit_cost (the weighted average receiving maintains) gets the overhead of the units of those batches
- *    that are still on hand (quantity_available) added to its stock value: (q*c + overhead * units) / q.
+ *  - inventory.unit_cost (the weighted average receiving maintains) gets the overhead of this PO's units still on
+ *    hand added to its stock value: (q*c + overhead * onHand) / q. Deliveries and transfers lower inventory.quantity
+ *    but not the batches, so onHand is estimated first-in-first-out: the row's quantity minus the units received into
+ *    it later from other POs, capped at what this PO received there.
  * Units already sold keep their historical cost. Each write is pushed onto `restore` so a later failure can undo it.
  */
 async function applyLandedCostToStock(supabase: any, poId: number, perUnit: Map<number, number>, restore: Restore[]) {
   if (perUnit.size === 0) return
   const { data: batches, error: batchError } = await supabase
     .from("inventory_batches")
-    .select("batch_id, product_id, warehouse_id, unit_cost, landed_cost_per_unit, quantity_available")
+    .select("batch_id, product_id, warehouse_id, unit_cost, landed_cost_per_unit, quantity_received, batch_sequence")
     .eq("po_id", poId)
   if (batchError) throw new Error(`read batches: ${batchError.message}`)
 
-  const onHandExtra = new Map<string, { productId: number; warehouseId: number | null; units: number; perUnit: number }>()
+  const onHandExtra = new Map<
+    string,
+    { productId: number; warehouseId: number | null; units: number; lastSequence: number; perUnit: number }
+  >()
   for (const batch of batches || []) {
     const overhead = perUnit.get(Number(batch.product_id))
     if (!overhead) continue
@@ -58,15 +63,30 @@ async function applyLandedCostToStock(supabase: any, poId: number, perUnit: Map<
         if (e) throw new Error(`restore batch ${batch.batch_id}: ${e.message}`)
       })
     }
-    const units = Number(batch.quantity_available) || 0
+    const units = Number(batch.quantity_received) || 0
     if (units <= 0) continue
     const key = `${batch.product_id}:${batch.warehouse_id ?? "null"}`
-    const entry = onHandExtra.get(key) || { productId: Number(batch.product_id), warehouseId: batch.warehouse_id ?? null, units: 0, perUnit: overhead }
+    const entry = onHandExtra.get(key) || {
+      productId: Number(batch.product_id), warehouseId: batch.warehouse_id ?? null, units: 0, lastSequence: 0, perUnit: overhead,
+    }
     entry.units += units
+    entry.lastSequence = Math.max(entry.lastSequence, Number(batch.batch_sequence) || 0)
     onHandExtra.set(key, entry)
   }
 
-  for (const { productId, warehouseId, units, perUnit: overhead } of onHandExtra.values()) {
+  for (const { productId, warehouseId, units, lastSequence, perUnit: overhead } of onHandExtra.values()) {
+    // Units received into the same product + warehouse after this PO's last batch, from other POs.
+    let laterRead = supabase
+      .from("inventory_batches")
+      .select("quantity_received, po_id")
+      .eq("product_id", productId)
+      .gt("batch_sequence", lastSequence)
+    laterRead = warehouseId === null ? laterRead.is("warehouse_id", null) : laterRead.eq("warehouse_id", warehouseId)
+    const { data: laterBatches, error: laterError } = await laterRead
+    if (laterError) throw new Error(`read later batches: ${laterError.message}`)
+    const laterUnits = (laterBatches || [])
+      .filter((b: any) => Number(b.po_id) !== poId)
+      .reduce((sum: number, b: any) => sum + (Number(b.quantity_received) || 0), 0)
     let done = false
     for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS && !done; attempt++) {
       let read = supabase.from("inventory").select("inventory_id, quantity, unit_cost").eq("product_id", productId).eq("is_returned", false)
@@ -79,7 +99,12 @@ async function applyLandedCostToStock(supabase: any, poId: number, perUnit: Map<
         break
       }
       const oldCost = Number(row.unit_cost)
-      const newCost = Math.round(((q * oldCost + overhead * Math.min(units, q)) / q) * 100) / 100
+      const onHand = Math.min(units, Math.max(0, q - laterUnits))
+      if (onHand <= 0) {
+        done = true // all of this PO's units have left this row: no stock value to correct
+        break
+      }
+      const newCost = Math.round(((q * oldCost + overhead * onHand) / q) * 100) / 100
       if (newCost === oldCost) {
         done = true
         break
