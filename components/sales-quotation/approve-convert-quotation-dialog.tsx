@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { Loader2, Package, Printer, Trash2, UserPlus, Upload } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
 import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
@@ -262,7 +263,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   // matches what's stored.
   const handleSaveAndPrintQuotation = async () => {
     if (items.length === 0) {
-      alert("Please add at least one item")
+      alert(t("common.please-add-at-least-one"))
       return
     }
     const invalidItem = items.find((item) => {
@@ -270,7 +271,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       return !item.productName.trim() || item.quantity <= 0 || item.unitPrice < 0
     })
     if (invalidItem) {
-      alert("Please fill in all item details (product, quantity, and price)")
+      alert(t("so-edit.fill-item-details"))
       return
     }
 
@@ -598,7 +599,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
       printWindow.print()
     } catch (error) {
       console.error("Error saving quotation before printing:", error)
-      alert(error instanceof Error ? error.message : "Failed to save quotation changes")
+      alert(error instanceof Error ? error.message : t("quote-convert.save-failed"))
     } finally {
       setPrinting(false)
     }
@@ -607,15 +608,15 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
   const handleApproveAndConvert = async () => {
     if (approveInFlight.current) return
     if (hasUnsavedChanges) {
-      alert("You have unsaved changes. Please use \"Save & Print QT\" to save them before approving.")
+      alert(fill(t("quote-convert.unsaved-changes"), { button: `"${t("quote-convert.save-print")}"` }))
       return
     }
     if (!approvalDocument) {
-      alert("Please upload an approval document before approving")
+      alert(t("quote-convert.upload-required"))
       return
     }
     if (items.length === 0) {
-      alert("Please add at least one item")
+      alert(t("common.please-add-at-least-one"))
       return
     }
     const invalidItem = items.find((item) => {
@@ -623,7 +624,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
       return !item.productName.trim() || item.quantity <= 0 || item.unitPrice < 0
     })
     if (invalidItem) {
-      alert("Please fill in all item details (product, quantity, and price)")
+      alert(t("so-edit.fill-item-details"))
       return
     }
 
@@ -667,7 +668,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
       onApproved(sales_order.so_number)
     } catch (error) {
       console.error("Error approving quotation:", error)
-      alert(error instanceof Error ? error.message : "Failed to approve quotation")
+      alert(error instanceof Error ? error.message : t("common.failed-to-approve-quotation"))
     } finally {
       approveInFlight.current = false
       setSaving(false)
@@ -679,28 +680,27 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
     <Dialog open onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Approve &amp; Convert to Sales Order: {quotation.quotation_number}</DialogTitle>
+          <DialogTitle>{t("quote-convert.title")} {quotation.quotation_number}</DialogTitle>
           <DialogDescription>
-            Review and adjust the quotation before converting it into a sales order &mdash; useful when the customer
-            only approved some of the requested items. Changes must be saved (&ldquo;Save &amp; Print QT&rdquo;) before the quotation can be approved.
+            {t("quote-convert.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-2">
           {/* Customer & delivery info */}
           <div className="border rounded-lg p-4 space-y-4">
-            <h3 className="font-semibold text-sm">Customer &amp; Delivery</h3>
+            <h3 className="font-semibold text-sm">{t("so-edit.customer-delivery")}</h3>
             <p className="text-xs text-muted-foreground">
-              Quoted to: {quotation.customer_name}
+              {t("quote-convert.quoted-to")} {quotation.customer_name}
               {quotation.customer_phone ? ` • ${quotation.customer_phone}` : ""}
               {quotation.customer_email ? ` • ${quotation.customer_email}` : ""}
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Customer</Label>
+                <Label>{t("so.customer")}</Label>
                 <Select value={customerId} onValueChange={setCustomerId}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select customer" className="truncate" />
+                <SelectValue placeholder={t("so-edit.select-customer")} className="truncate" />
               </SelectTrigger>
                   <SelectContent>
                     {customers.map((c) => (
@@ -712,20 +712,20 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Delivery Contact Name</Label>
+                <Label>{t("field.delivery-contact-name")}</Label>
                 <Input value={deliveryContactName} onChange={(e) => setDeliveryContactName(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Delivery Contact Phone</Label>
+                <Label>{t("field.delivery-contact-phone")}</Label>
                 <Input value={deliveryContactPhone} onChange={(e) => setDeliveryContactPhone(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Delivery Address</Label>
+                <Label>{t("so.delivery-address")}</Label>
                 <Input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} />
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("notes")}</Label>
               <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
             </div>
           </div>
@@ -733,22 +733,22 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
           {/* Items */}
           <div className="border rounded-lg p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm">Items</h3>
+              <h3 className="font-semibold text-sm">{t("so.items")}</h3>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => addItem("stock")}>
                   <Package className="h-4 w-4 mr-2" />
-                  Add from Inventory
+                  {t("common.add-from-inventory")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => addItem("outsourced")}>
                   <UserPlus className="h-4 w-4 mr-2" />
-                  Add Outsourced Item
+                  {t("common.add-outsourced-item")}
                 </Button>
               </div>
             </div>
 
             {items.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">
-                No items. Remove the whole quotation with Reject instead, or add an item above.
+                {t("quote-convert.no-items")}
               </p>
             ) : (
               <div className="space-y-3">
@@ -757,11 +757,11 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                   return (
                     <div key={item.key} className="grid grid-cols-12 gap-3 items-end p-3 border rounded-md">
                       <div className="col-span-1 text-center text-xs text-muted-foreground">
-                        {item.itemType === "stock" ? "Stock" : "Outsourced"}
+                        {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
                       </div>
                       {item.itemType === "stock" ? (
                         <div className="col-span-4 space-y-1">
-                          <Label className="text-xs">Product</Label>
+                          <Label className="text-xs">{t("field.product")}</Label>
                           <ProductSearchCombobox
                             products={products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
                             inventory={aggregatedInventory}
@@ -770,20 +770,20 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                             onSelect={(productId) => handleSelectStockProduct(item.key, productId)}
                           />
                           {stockLimit !== null && (
-                            <p className="text-xs text-muted-foreground">{stockLimit} in stock</p>
+                            <p className="text-xs text-muted-foreground">{stockLimit} {t("common.in-stock")}</p>
                           )}
                         </div>
                       ) : (
                         <>
                           <div className="col-span-2 space-y-1">
-                            <Label className="text-xs">Item Name</Label>
+                            <Label className="text-xs">{t("common.item-name")}</Label>
                             <Input
                               value={item.productName}
                               onChange={(e) => updateItem(item.key, { productName: e.target.value })}
                             />
                           </div>
                           <div className="col-span-2 space-y-1">
-                            <Label className="text-xs">Supplier</Label>
+                            <Label className="text-xs">{t("field.supplier")}</Label>
                             <Select
                               value={item.supplierName || ""}
                               onValueChange={(value) => {
@@ -792,7 +792,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                               }}
                             >
                               <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select supplier" className="truncate" />
+                                <SelectValue placeholder={t("common.select-supplier")} className="truncate" />
                               </SelectTrigger>
                               <SelectContent>
                                 {suppliers.map((s) => (
@@ -806,7 +806,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                         </>
                       )}
                       <div className="col-span-2 space-y-1">
-                        <Label className="text-xs">Quantity</Label>
+                        <Label className="text-xs">{t("quantity")}</Label>
                         <Input
                           type="number"
                           min="1"
@@ -815,7 +815,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                         />
                       </div>
                       <div className="col-span-2 space-y-1">
-                        <Label className="text-xs">Unit Price</Label>
+                        <Label className="text-xs">{t("field.unit-price")}</Label>
                         <Input
                           type="number"
                           min="0"
@@ -825,7 +825,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                         />
                       </div>
                       <div className="col-span-2 space-y-1">
-                        <Label className="text-xs">Total</Label>
+                        <Label className="text-xs">{t("total")}</Label>
                         <div className="text-sm font-medium pt-2 whitespace-nowrap">
                           {formatCurrency(item.quantity * item.unitPrice)}
                         </div>
@@ -853,11 +853,10 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
 
           {/* Payment terms */}
           <div className="border rounded-lg p-4 space-y-4">
-            <h3 className="font-semibold text-sm">Payment Terms</h3>
+            <h3 className="font-semibold text-sm">{t("field.payment-terms")}</h3>
             {isHybrid ? (
               <p className="text-sm text-muted-foreground">
-                This quotation uses a hybrid (down payment + installments) plan, which cannot be edited here. Item,
-                customer, and delivery changes above are still applied to the sales order.
+                {t("quote-convert.hybrid-note")}
               </p>
             ) : (
               <>
@@ -888,7 +887,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
 
           {/* Approval document */}
           <div className="border rounded-lg p-4 space-y-2">
-            <Label htmlFor="approval-document">Approval Document *</Label>
+            <Label htmlFor="approval-document">{t("quote-convert.approval-document")}</Label>
             <Input
               id="approval-document"
               type="file"
@@ -898,33 +897,33 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                 if (file) setApprovalDocument(file)
               }}
             />
-            {approvalDocument && <p className="text-sm text-muted-foreground">Selected: {approvalDocument.name}</p>}
+            {approvalDocument && <p className="text-sm text-muted-foreground">{t("quote-convert.selected")} {approvalDocument.name}</p>}
             <p className="text-xs text-muted-foreground">
-              Upload the signed quotation or authorization letter confirming what the customer approved.
+              {t("quote-convert.upload-hint")}
             </p>
           </div>
 
           <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 text-sm border-t pt-4">
             <div>
-              Subtotal: <span className="font-medium">{formatCurrency(subtotal)}</span>
+              {t("common.subtotal")} <span className="font-medium">{formatCurrency(subtotal)}</span>
             </div>
             {discountAmount > 0 && (
               <div>
-                Discount: <span className="font-medium">-{formatCurrency(discountAmount)}</span>
+                {t("so-edit.discount-label")} <span className="font-medium">-{formatCurrency(discountAmount)}</span>
               </div>
             )}
             <div>
-              VAT (14%): <span className="font-medium">{formatCurrency(vatAmount)}</span>
+              {t("common.vat-14")} <span className="font-medium">{formatCurrency(vatAmount)}</span>
             </div>
             <div>
-              Total: <span className="font-semibold">{formatCurrency(netTotal)}</span>
+              {t("common.total")} <span className="font-semibold">{formatCurrency(netTotal)}</span>
             </div>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || printing}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             variant="outline"
@@ -933,14 +932,14 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
             className="gap-2"
           >
             {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-            Save &amp; Print QT
+            {t("quote-convert.save-print")}
           </Button>
           {hasUnsavedChanges && (
-            <span className="self-center text-sm text-amber-700 me-auto">Save changes before approving</span>
+            <span className="self-center text-sm text-amber-700 me-auto">{t("quote-convert.save-before-approving")}</span>
           )}
           <Button onClick={handleApproveAndConvert} disabled={saving || printing || !approvalDocument || hasUnsavedChanges}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Upload className="w-4 h-4 me-2" />}
-            {saving ? (uploadingDocument ? "Uploading..." : "Approving...") : "Approve & Convert to SO"}
+            {saving ? (uploadingDocument ? t("common.uploading") : t("quote-convert.approving")) : t("common.approve-convert-to-so")}
           </Button>
         </DialogFooter>
       </DialogContent>

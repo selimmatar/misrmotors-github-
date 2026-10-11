@@ -130,7 +130,7 @@ export function UserManagementModule() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">{t("field.email")}</Label>
+                <Label htmlFor="email">{t("email")}</Label>
                 <Input
                   id="email"
                   type="email"

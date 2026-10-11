@@ -40,6 +40,7 @@ import {
   TrendingDown,
 } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
@@ -194,10 +195,10 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-destructive" />
-            Access Denied
+            {t("hr.access-denied")}
           </CardTitle>
           <CardDescription>
-            You do not have permission to access the HR Management module. Only CEO and Admin roles can access this module.
+            {t("hr.you-do-not-have-permission")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -210,7 +211,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
         <CardContent className="p-12 text-center">
           <div className="flex flex-col items-center gap-4">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
-            <p className="text-muted-foreground">Loading HR data...</p>
+            <p className="text-muted-foreground">{t("hr.loading-hr-data")}</p>
           </div>
         </CardContent>
       </Card>
@@ -223,12 +224,12 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <AlertCircle className="w-5 h-5" />
-            Error Loading HR Data
+            {t("hr.error-loading-hr-data")}
           </CardTitle>
           <CardDescription>{error}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={fetchEmployees}>Retry</Button>
+          <Button onClick={fetchEmployees}>{t("common.retry")}</Button>
         </CardContent>
       </Card>
     )
@@ -239,19 +240,19 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
       <PageHeader
         group={t("group.admin")}
         title={t("module.hr-management")}
-        subtitle="Manage employees, compensation, documents, and organizational structure"
+        subtitle={t("hr.manage-employees-compensation-documents-and")}
         actions={
       <Dialog open={showAddEmployeeDialog} onOpenChange={setShowAddEmployeeDialog}>
         <DialogTrigger asChild>
           <Button className="gap-2">
             <UserPlus className="w-4 h-4" />
-            Add Employee
+            {t("hr.add-employee")}
           </Button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add New Employee</DialogTitle>
-            <DialogDescription>Create a new employee record in the system</DialogDescription>
+            <DialogTitle>{t("hr.add-new-employee")}</DialogTitle>
+            <DialogDescription>{t("hr.create-a-new-employee-record")}</DialogDescription>
           </DialogHeader>
           <AddEmployeeForm
             departments={departments}
@@ -272,15 +273,15 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
         <TabsList className="h-auto w-full flex-wrap justify-start">
           <TabsTrigger value="employees" className="gap-2">
             <Users className="w-4 h-4" />
-            Employees
+            {t("hr.employees")}
           </TabsTrigger>
           <TabsTrigger value="departments" className="gap-2">
             <Building2 className="w-4 h-4" />
-            Departments
+            {t("hr.departments")}
           </TabsTrigger>
           <TabsTrigger value="positions" className="gap-2">
             <Briefcase className="w-4 h-4" />
-            Positions
+            {t("hr.positions")}
           </TabsTrigger>
         </TabsList>
 
@@ -290,12 +291,12 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="search">Search</Label>
+                  <Label htmlFor="search">{t("search")}</Label>
                   <div className="relative">
                     <Search className="absolute start-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="search"
-                      placeholder="Name, email, or employee number..."
+                      placeholder={t("hr.name-email-or-employee-number")}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="ps-9"
@@ -303,29 +304,29 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Status</Label>
+                  <Label>{t("status")}</Label>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger>
-                      <SelectValue placeholder="All Statuses" />
+                      <SelectValue placeholder={t("hr.all-statuses")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="on_leave">On Leave</SelectItem>
-                      <SelectItem value="suspended">Suspended</SelectItem>
-                      <SelectItem value="terminated">Terminated</SelectItem>
-                      <SelectItem value="resigned">Resigned</SelectItem>
+                      <SelectItem value="all">{t("hr.all-statuses")}</SelectItem>
+                      <SelectItem value="active">{t("status.active")}</SelectItem>
+                      <SelectItem value="on_leave">{t("hr.status-on-leave")}</SelectItem>
+                      <SelectItem value="suspended">{t("hr.suspended")}</SelectItem>
+                      <SelectItem value="terminated">{t("hr.status-terminated")}</SelectItem>
+                      <SelectItem value="resigned">{t("hr.resigned")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Department</Label>
+                  <Label>{t("hr.department")}</Label>
                   <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
                     <SelectTrigger>
-                      <SelectValue placeholder="All Departments" />
+                      <SelectValue placeholder={t("hr.all-departments")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Departments</SelectItem>
+                      <SelectItem value="all">{t("hr.all-departments")}</SelectItem>
                       {departments.map((dept) => (
                         <SelectItem key={dept.department_id} value={dept.department_id.toString()}>
                           {dept.department_name}
@@ -342,7 +343,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
           <Card>
             <CardHeader>
               <CardTitle>
-                Employees ({filteredEmployees.length})
+                {fill(t("hr.employees-count"), { count: filteredEmployees.length })}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -350,7 +351,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                 {filteredEmployees.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
                     <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No employees found matching your criteria</p>
+                    <p>{t("hr.no-employees-found-matching-your")}</p>
                   </div>
                 ) : (
                   filteredEmployees.map((employee) => (
@@ -398,7 +399,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
 
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                               <Calendar className="w-4 h-4" />
-                              <span>Hired: {formatDate(employee.hire_date, language)}</span>
+                              <span>{t("hr.hired")} {formatDate(employee.hire_date, language)}</span>
                             </div>
                           </div>
 
@@ -410,7 +411,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                               fetchCompensation(employee.employee_id)
                             }}
                           >
-                            View Details
+                            {t("action.view-details")}
                           </Button>
                         </div>
                       </CardContent>
@@ -427,20 +428,20 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <CardTitle>Departments ({departments.length})</CardTitle>
-                  <CardDescription>Organizational departments and structure</CardDescription>
+                  <CardTitle>{fill(t("hr.departments-count"), { count: departments.length })}</CardTitle>
+                  <CardDescription>{t("hr.organizational-departments-and-structure")}</CardDescription>
                 </div>
                 <Dialog open={showAddDepartmentDialog} onOpenChange={setShowAddDepartmentDialog}>
                   <DialogTrigger asChild>
                     <Button className="gap-2">
                       <Plus className="w-4 h-4" />
-                      Add Department
+                      {t("hr.add-department")}
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Add New Department</DialogTitle>
-                      <DialogDescription>Create a new organizational department</DialogDescription>
+                      <DialogTitle>{t("hr.add-new-department")}</DialogTitle>
+                      <DialogDescription>{t("hr.create-a-new-organizational-department")}</DialogDescription>
                     </DialogHeader>
                     <AddDepartmentForm
                       onSuccess={() => {
@@ -470,7 +471,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                         </div>
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {employees.filter((e) => e.department?.department_id === dept.department_id && e.employment_status === "active").length} active employees
+                        {fill(t("hr.active-employees-count"), { count: employees.filter((e) => e.department?.department_id === dept.department_id && e.employment_status === "active").length })}
                       </div>
                     </CardContent>
                   </Card>
@@ -485,20 +486,20 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <CardTitle>Job Positions ({positions.length})</CardTitle>
-                  <CardDescription>Available job positions and titles</CardDescription>
+                  <CardTitle>{fill(t("hr.job-positions-count"), { count: positions.length })}</CardTitle>
+                  <CardDescription>{t("hr.available-job-positions-and-titles")}</CardDescription>
                 </div>
                 <Dialog open={showAddPositionDialog} onOpenChange={setShowAddPositionDialog}>
                   <DialogTrigger asChild>
                     <Button className="gap-2">
                       <Plus className="w-4 h-4" />
-                      Add Position
+                      {t("hr.add-position")}
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Add New Position</DialogTitle>
-                      <DialogDescription>Create a new job position</DialogDescription>
+                      <DialogTitle>{t("hr.add-new-position")}</DialogTitle>
+                      <DialogDescription>{t("hr.create-a-new-job-position")}</DialogDescription>
                     </DialogHeader>
                     <AddPositionForm
                       departments={departments}
@@ -587,9 +588,34 @@ interface SalaryPayment {
   notes: string | null
 }
 
+// Display labels for the stored employment type / status / pay-frequency codes (the codes themselves never change).
+const HR_EMPLOYMENT_TYPE_KEYS: Record<string, string> = {
+  full_time: "hr.full-time",
+  part_time: "hr.part-time",
+  contract: "hr.document-contract",
+  intern: "hr.intern",
+}
+const HR_EMPLOYMENT_STATUS_KEYS: Record<string, string> = {
+  active: "status.active",
+  on_leave: "hr.status-on-leave",
+  suspended: "hr.suspended",
+  terminated: "hr.status-terminated",
+  resigned: "hr.resigned",
+}
+const HR_FREQUENCY_KEYS: Record<string, string> = {
+  weekly: "hr.cycle-weekly",
+  bi_weekly: "hr.bi-weekly",
+  monthly: "hr.cycle-monthly",
+  quarterly: "hr.quarterly",
+}
+function hrLabel(map: Record<string, string>, value: string | null | undefined, t: (key: string) => string): string {
+  if (!value) return t("label.na")
+  return map[value] ? t(map[value]) : value.replace(/_/g, " ")
+}
+
 // Employee Details View Component
 function EmployeeDetailsView({ employee, compensation }: { employee: Employee; compensation: Compensation[] }) {
-  const { language } = useI18n()
+  const { t, language } = useI18n()
   const activeCompensation = compensation.find((c) => c.is_active)
   const [salaryPayments, setSalaryPayments] = useState<SalaryPayment[]>([])
   const [loadingPayments, setLoadingPayments] = useState(true)
@@ -618,45 +644,45 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
   return (
     <Tabs defaultValue="overview">
       <TabsList className="h-auto w-full flex-wrap justify-start">
-        <TabsTrigger value="overview">Overview</TabsTrigger>
-        <TabsTrigger value="compensation">Compensation</TabsTrigger>
-        <TabsTrigger value="salary">Salary Payments</TabsTrigger>
-        <TabsTrigger value="documents">Documents</TabsTrigger>
+        <TabsTrigger value="overview">{t("group.overview")}</TabsTrigger>
+        <TabsTrigger value="compensation">{t("hr.compensation")}</TabsTrigger>
+        <TabsTrigger value="salary">{t("hr.salary-payments")}</TabsTrigger>
+        <TabsTrigger value="documents">{t("hr.documents")}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview" className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label className="text-muted-foreground">Email</Label>
+            <Label className="text-muted-foreground">{t("email")}</Label>
             <p className="font-medium">{employee.email}</p>
           </div>
           <div>
-            <Label className="text-muted-foreground">Phone</Label>
-            <p className="font-medium">{employee.phone || "N/A"}</p>
+            <Label className="text-muted-foreground">{t("phone")}</Label>
+            <p className="font-medium">{employee.phone || t("label.na")}</p>
           </div>
           <div>
-            <Label className="text-muted-foreground">National ID</Label>
-            <p className="font-medium">{employee.national_id || "N/A"}</p>
+            <Label className="text-muted-foreground">{t("hr.national-id")}</Label>
+            <p className="font-medium">{employee.national_id || t("label.na")}</p>
           </div>
           <div>
-            <Label className="text-muted-foreground">Hire Date</Label>
+            <Label className="text-muted-foreground">{t("hr.hire-date")}</Label>
             <p className="font-medium">{formatDate(employee.hire_date, language)}</p>
           </div>
           <div>
-            <Label className="text-muted-foreground">Department</Label>
-            <p className="font-medium">{employee.department?.department_name || "N/A"}</p>
+            <Label className="text-muted-foreground">{t("hr.department")}</Label>
+            <p className="font-medium">{employee.department?.department_name || t("label.na")}</p>
           </div>
           <div>
-            <Label className="text-muted-foreground">Position</Label>
-            <p className="font-medium">{employee.position?.position_title || "N/A"}</p>
+            <Label className="text-muted-foreground">{t("common.position")}</Label>
+            <p className="font-medium">{employee.position?.position_title || t("label.na")}</p>
           </div>
           <div>
-            <Label className="text-muted-foreground">Employment Type</Label>
-            <p className="font-medium capitalize">{employee.employment_type.replace("_", " ")}</p>
+            <Label className="text-muted-foreground">{t("hr.employment-type")}</Label>
+            <p className="font-medium capitalize">{hrLabel(HR_EMPLOYMENT_TYPE_KEYS, employee.employment_type, t)}</p>
           </div>
           <div>
-            <Label className="text-muted-foreground">Status</Label>
-            <p className="font-medium capitalize">{employee.employment_status.replace("_", " ")}</p>
+            <Label className="text-muted-foreground">{t("status")}</Label>
+            <p className="font-medium capitalize">{hrLabel(HR_EMPLOYMENT_STATUS_KEYS, employee.employment_status, t)}</p>
           </div>
         </div>
       </TabsContent>
@@ -665,93 +691,93 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
         {activeCompensation ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Current Compensation</CardTitle>
-              <CardDescription>Effective from {formatDate(activeCompensation.effective_date, language)}</CardDescription>
+              <CardTitle className="text-lg">{t("hr.current-compensation")}</CardTitle>
+              <CardDescription>{fill(t("hr.effective-from"), { date: formatDate(activeCompensation.effective_date, language) })}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-muted-foreground">Base Salary</Label>
-                  <p className="text-lg font-semibold"><Money value={activeCompensation.base_salary} /> EGP</p>
+                  <Label className="text-muted-foreground">{t("hr.base-salary")}</Label>
+                  <p className="text-lg font-semibold"><Money value={activeCompensation.base_salary} /> {t("common.egp-2")}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Gross Salary</Label>
-                  <p className="text-lg font-semibold text-primary"><Money value={activeCompensation.gross_salary} /> EGP</p>
+                  <Label className="text-muted-foreground">{t("hr.gross-salary")}</Label>
+                  <p className="text-lg font-semibold text-primary"><Money value={activeCompensation.gross_salary} /> {t("common.egp-2")}</p>
                 </div>
               </div>
 
               <div>
-                <Label className="text-sm font-semibold mb-2">Allowances</Label>
+                <Label className="text-sm font-semibold mb-2">{t("hr.allowances")}</Label>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Housing:</span>
-                    <span className="font-medium"><Money value={activeCompensation.housing_allowance} /> EGP</span>
+                    <span className="text-muted-foreground">{t("hr.housing")}</span>
+                    <span className="font-medium"><Money value={activeCompensation.housing_allowance} /> {t("common.egp-2")}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Transportation:</span>
-                    <span className="font-medium"><Money value={activeCompensation.transportation_allowance} /> EGP</span>
+                    <span className="text-muted-foreground">{t("hr.transportation")}</span>
+                    <span className="font-medium"><Money value={activeCompensation.transportation_allowance} /> {t("common.egp-2")}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Meal:</span>
-                    <span className="font-medium"><Money value={activeCompensation.meal_allowance} /> EGP</span>
+                    <span className="text-muted-foreground">{t("hr.meal")}</span>
+                    <span className="font-medium"><Money value={activeCompensation.meal_allowance} /> {t("common.egp-2")}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Other:</span>
-                    <span className="font-medium"><Money value={activeCompensation.other_allowances} /> EGP</span>
+                    <span className="text-muted-foreground">{t("hr.other")}</span>
+                    <span className="font-medium"><Money value={activeCompensation.other_allowances} /> {t("common.egp-2")}</span>
                   </div>
                 </div>
               </div>
 
               <div>
-                <Label className="text-sm font-semibold mb-2">Deductions</Label>
+                <Label className="text-sm font-semibold mb-2">{t("hr.deductions")}</Label>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Social Insurance:</span>
-                    <span className="font-medium"><Money value={activeCompensation.social_insurance} /> EGP</span>
+                    <span className="text-muted-foreground">{t("hr.social-insurance")}</span>
+                    <span className="font-medium"><Money value={activeCompensation.social_insurance} /> {t("common.egp-2")}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Income Tax:</span>
-                    <span className="font-medium"><Money value={activeCompensation.income_tax} /> EGP</span>
+                    <span className="text-muted-foreground">{t("hr.income-tax")}</span>
+                    <span className="font-medium"><Money value={activeCompensation.income_tax} /> {t("common.egp-2")}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Other:</span>
-                    <span className="font-medium"><Money value={activeCompensation.other_deductions} /> EGP</span>
+                    <span className="text-muted-foreground">{t("hr.other")}</span>
+                    <span className="font-medium"><Money value={activeCompensation.other_deductions} /> {t("common.egp-2")}</span>
                   </div>
                 </div>
               </div>
 
               <div className="pt-4 border-t">
                 <div className="flex justify-between items-center">
-                  <Label className="text-lg">Net Salary</Label>
-                  <p className="text-2xl font-bold text-primary"><Money value={activeCompensation.net_salary} /> EGP</p>
+                  <Label className="text-lg">{t("hr.net-salary")}</Label>
+                  <p className="text-2xl font-bold text-primary"><Money value={activeCompensation.net_salary} /> {t("common.egp-2")}</p>
                 </div>
-                <p className="text-sm text-muted-foreground mt-1">Paid {activeCompensation.payment_frequency}</p>
+                <p className="text-sm text-muted-foreground mt-1">{fill(t("hr.paid-frequency"), { frequency: hrLabel(HR_FREQUENCY_KEYS, activeCompensation.payment_frequency, t).toLowerCase() })}</p>
               </div>
             </CardContent>
           </Card>
         ) : (
           <div className="text-center py-12 text-muted-foreground">
             <DollarSign className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>No compensation records found</p>
+            <p>{t("hr.no-compensation-records-found")}</p>
           </div>
         )}
 
         {compensation.length > 1 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Compensation History</CardTitle>
+              <CardTitle className="text-lg">{t("hr.compensation-history")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {compensation.slice(1).map((comp) => (
                   <div key={comp.compensation_id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div>
-                      <p className="font-medium"><Money value={comp.gross_salary} /> EGP (Gross)</p>
+                      <p className="font-medium"><Money value={comp.gross_salary} /> {t("hr.egp-gross")}</p>
                       <p className="text-sm text-muted-foreground">
-                        {formatDate(comp.effective_date, language)} {comp.is_active ? "(Current)" : ""}
+                        {formatDate(comp.effective_date, language)} {comp.is_active ? t("hr.current") : ""}
                       </p>
                     </div>
-                    <Badge variant="outline"><Money value={comp.net_salary} /> EGP Net</Badge>
+                    <Badge variant="outline"><Money value={comp.net_salary} /> {t("hr.egp-net")}</Badge>
                   </div>
                 ))}
               </div>
@@ -764,13 +790,13 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
           <DialogTrigger asChild>
             <Button variant="outline" className="w-full gap-2 bg-transparent">
               <Plus className="w-4 h-4" />
-              {activeCompensation ? "Update Compensation" : "Add Compensation"}
+              {activeCompensation ? t("hr.update-compensation") : t("hr.add-compensation")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Add Compensation Record</DialogTitle>
-              <DialogDescription>Set up salary and allowances for {employee.full_name}</DialogDescription>
+              <DialogTitle>{t("hr.add-compensation-record")}</DialogTitle>
+              <DialogDescription>{fill(t("hr.set-up-salary-and-allowances"), { name: employee.full_name })}</DialogDescription>
             </DialogHeader>
             <AddCompensationForm
               employee={employee}
@@ -786,18 +812,18 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
 
       <TabsContent value="salary" className="space-y-4">
         <div className="flex flex-wrap justify-between items-center gap-2">
-          <h3 className="text-lg font-semibold">Salary Payments</h3>
+          <h3 className="text-lg font-semibold">{t("hr.salary-payments")}</h3>
           <Dialog open={showAddPaymentDialog} onOpenChange={setShowAddPaymentDialog}>
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <Plus className="w-4 h-4" />
-                Record Payment
+                {t("ap.record-payment")}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Record Salary Payment</DialogTitle>
-                <DialogDescription>Add a salary payment record with bonus and adjustments</DialogDescription>
+                <DialogTitle>{t("hr.record-salary-payment")}</DialogTitle>
+                <DialogDescription>{t("hr.add-a-salary-payment-record")}</DialogDescription>
               </DialogHeader>
               <AddSalaryPaymentForm
                 employee={employee}
@@ -815,13 +841,13 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
         {loadingPayments ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-            <p className="text-muted-foreground mt-4">Loading payments...</p>
+            <p className="text-muted-foreground mt-4">{t("hr.loading-payments")}</p>
           </div>
         ) : salaryPayments.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground border rounded-lg">
             <DollarSign className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>No salary payments recorded yet</p>
-            <p className="text-sm">Record monthly salary payments with bonuses and adjustments</p>
+            <p>{t("hr.no-salary-payments-recorded-yet")}</p>
+            <p className="text-sm">{t("hr.record-monthly-salary-payments-with")}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -843,43 +869,43 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Payment Date: {formatDate(payment.payment_date, language)}
+                        {t("hr.payment-date")} {formatDate(payment.payment_date, language)}
                         {payment.payment_method && ` | ${payment.payment_method.replace("_", " ")}`}
                       </p>
                     </div>
                     <div className="text-end">
-                      <p className="text-xl font-bold text-primary"><Money value={payment.net_amount} /> EGP</p>
-                      <p className="text-sm text-muted-foreground">Net Amount</p>
+                      <p className="text-xl font-bold text-primary"><Money value={payment.net_amount} /> {t("common.egp-2")}</p>
+                      <p className="text-sm text-muted-foreground">{t("hr.net-amount")}</p>
                     </div>
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
-                      <p className="text-muted-foreground">Base Salary</p>
-                      <p className="font-medium"><Money value={payment.base_salary} /> EGP</p>
+                      <p className="text-muted-foreground">{t("hr.base-salary")}</p>
+                      <p className="font-medium"><Money value={payment.base_salary} /> {t("common.egp-2")}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Allowances</p>
-                      <p className="font-medium"><Money value={payment.total_allowances} /> EGP</p>
+                      <p className="text-muted-foreground">{t("hr.allowances")}</p>
+                      <p className="font-medium"><Money value={payment.total_allowances} /> {t("common.egp-2")}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Deductions</p>
-                      <p className="font-medium text-destructive">-<Money value={payment.total_deductions} /> EGP</p>
+                      <p className="text-muted-foreground">{t("hr.deductions")}</p>
+                      <p className="font-medium text-destructive">-<Money value={payment.total_deductions} /> {t("common.egp-2")}</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Gross Amount</p>
-                      <p className="font-medium"><Money value={payment.gross_amount} /> EGP</p>
+                      <p className="text-muted-foreground">{t("hr.gross-amount")}</p>
+                      <p className="font-medium"><Money value={payment.gross_amount} /> {t("common.egp-2")}</p>
                     </div>
                   </div>
 
                   {(payment.bonus_amount > 0 || payment.overtime_amount > 0 || payment.adjustments !== 0) && (
                     <div className="mt-4 pt-4 border-t">
-                      <p className="text-sm font-semibold mb-2">Additional Items</p>
+                      <p className="text-sm font-semibold mb-2">{t("hr.additional-items")}</p>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                         {payment.bonus_amount > 0 && (
                           <div>
-                            <p className="text-muted-foreground">Bonus</p>
-                            <p className="font-medium text-green-700">+<Money value={payment.bonus_amount} /> EGP</p>
+                            <p className="text-muted-foreground">{t("hr.bonus")}</p>
+                            <p className="font-medium text-green-700">+<Money value={payment.bonus_amount} /> {t("common.egp-2")}</p>
                             {payment.bonus_description && (
                               <p className="text-xs text-muted-foreground">{payment.bonus_description}</p>
                             )}
@@ -887,15 +913,15 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                         )}
                         {payment.overtime_amount > 0 && (
                           <div>
-                            <p className="text-muted-foreground">Overtime ({payment.overtime_hours}h)</p>
-                            <p className="font-medium text-green-700">+<Money value={payment.overtime_amount} /> EGP</p>
+                            <p className="text-muted-foreground">{fill(t("hr.overtime-hours-count"), { hours: payment.overtime_hours })}</p>
+                            <p className="font-medium text-green-700">+<Money value={payment.overtime_amount} /> {t("common.egp-2")}</p>
                           </div>
                         )}
                         {payment.adjustments !== 0 && (
                           <div>
-                            <p className="text-muted-foreground">Adjustments</p>
+                            <p className="text-muted-foreground">{t("hr.adjustments")}</p>
                             <p className={`font-medium ${payment.adjustments > 0 ? "text-green-700" : "text-destructive"}`}>
-                              {payment.adjustments > 0 ? "+" : ""}<Money value={payment.adjustments} /> EGP
+                              {payment.adjustments > 0 ? "+" : ""}<Money value={payment.adjustments} /> {t("common.egp-2")}
                             </p>
                             {payment.adjustment_notes && (
                               <p className="text-xs text-muted-foreground">{payment.adjustment_notes}</p>
@@ -933,6 +959,7 @@ function AddCompensationForm({
   onSuccess: () => void
   onCancel: () => void
 }) {
+  const { t } = useI18n()
   const [formData, setFormData] = useState({
     effective_date: new Date().toISOString().split("T")[0],
     base_salary: "",
@@ -999,7 +1026,7 @@ function AddCompensationForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Effective Date *</Label>
+          <Label>{t("hr.effective-date-2")}</Label>
           <Input
             type="date"
             required
@@ -1008,7 +1035,7 @@ function AddCompensationForm({
           />
         </div>
         <div className="space-y-2">
-          <Label>Base Salary (EGP) *</Label>
+          <Label>{t("hr.base-salary-egp")}</Label>
           <Input
             type="number"
             required
@@ -1020,10 +1047,10 @@ function AddCompensationForm({
       </div>
 
       <div className="space-y-2">
-        <Label className="font-semibold">Allowances</Label>
+        <Label className="font-semibold">{t("hr.allowances")}</Label>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label className="text-sm">Housing</Label>
+            <Label className="text-sm">{t("hr.housing-2")}</Label>
             <Input
               type="number"
               value={formData.housing_allowance}
@@ -1031,7 +1058,7 @@ function AddCompensationForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm">Transportation</Label>
+            <Label className="text-sm">{t("hr.transportation-2")}</Label>
             <Input
               type="number"
               value={formData.transportation_allowance}
@@ -1039,7 +1066,7 @@ function AddCompensationForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm">Meal</Label>
+            <Label className="text-sm">{t("hr.meal-2")}</Label>
             <Input
               type="number"
               value={formData.meal_allowance}
@@ -1047,7 +1074,7 @@ function AddCompensationForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm">Other</Label>
+            <Label className="text-sm">{t("hr.document-other")}</Label>
             <Input
               type="number"
               value={formData.other_allowances}
@@ -1058,10 +1085,10 @@ function AddCompensationForm({
       </div>
 
       <div className="space-y-2">
-        <Label className="font-semibold">Deductions</Label>
+        <Label className="font-semibold">{t("hr.deductions")}</Label>
         <div className="grid grid-cols-3 gap-4">
           <div className="space-y-2">
-            <Label className="text-sm">Social Insurance</Label>
+            <Label className="text-sm">{t("hr.social-insurance-2")}</Label>
             <Input
               type="number"
               value={formData.social_insurance}
@@ -1069,7 +1096,7 @@ function AddCompensationForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm">Income Tax</Label>
+            <Label className="text-sm">{t("hr.income-tax-2")}</Label>
             <Input
               type="number"
               value={formData.income_tax}
@@ -1077,7 +1104,7 @@ function AddCompensationForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm">Other</Label>
+            <Label className="text-sm">{t("hr.document-other")}</Label>
             <Input
               type="number"
               value={formData.other_deductions}
@@ -1089,29 +1116,29 @@ function AddCompensationForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Payment Frequency</Label>
+          <Label>{t("hr.payment-frequency")}</Label>
           <Select value={formData.payment_frequency} onValueChange={(value) => setFormData({ ...formData, payment_frequency: value })}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="weekly">Weekly</SelectItem>
-              <SelectItem value="bi_weekly">Bi-Weekly</SelectItem>
-              <SelectItem value="monthly">Monthly</SelectItem>
-              <SelectItem value="quarterly">Quarterly</SelectItem>
+              <SelectItem value="weekly">{t("hr.cycle-weekly")}</SelectItem>
+              <SelectItem value="bi_weekly">{t("hr.bi-weekly")}</SelectItem>
+              <SelectItem value="monthly">{t("hr.cycle-monthly")}</SelectItem>
+              <SelectItem value="quarterly">{t("hr.quarterly")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>Payment Method</Label>
+          <Label>{t("hr.payment-method")}</Label>
           <Select value={formData.payment_method} onValueChange={(value) => setFormData({ ...formData, payment_method: value })}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-              <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="cheque">Cheque</SelectItem>
+              <SelectItem value="bank_transfer">{t("payment.bank_transfer")}</SelectItem>
+              <SelectItem value="cash">{t("payment.cash")}</SelectItem>
+              <SelectItem value="cheque">{t("payment.cheque")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -1119,14 +1146,14 @@ function AddCompensationForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Bank Name</Label>
+          <Label>{t("field.bank-name")}</Label>
           <Input
             value={formData.bank_name}
             onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
           />
         </div>
         <div className="space-y-2">
-          <Label>Bank Account Number</Label>
+          <Label>{t("hr.bank-account-number")}</Label>
           <Input
             value={formData.bank_account_number}
             onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value })}
@@ -1135,20 +1162,20 @@ function AddCompensationForm({
       </div>
 
       <div className="space-y-2">
-        <Label>Change Reason</Label>
+        <Label>{t("hr.change-reason")}</Label>
         <Input
           value={formData.change_reason}
           onChange={(e) => setFormData({ ...formData, change_reason: e.target.value })}
-          placeholder="e.g., Annual raise, Promotion"
+          placeholder={t("hr.e-g-annual-raise-promotion")}
         />
       </div>
 
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting} className="bg-transparent">
-          Cancel
+          {t("cancel")}
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Saving..." : "Save Compensation"}
+          {submitting ? t("common.saving") : t("hr.save-compensation")}
         </Button>
       </div>
     </form>
@@ -1167,6 +1194,7 @@ function AddSalaryPaymentForm({
   onSuccess: () => void
   onCancel: () => void
 }) {
+  const { t } = useI18n()
   const today = new Date()
   const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]
   const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0]
@@ -1266,7 +1294,7 @@ function AddSalaryPaymentForm({
 
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label>Period Start *</Label>
+          <Label>{t("hr.period-start")}</Label>
           <Input
             type="date"
             required
@@ -1275,7 +1303,7 @@ function AddSalaryPaymentForm({
           />
         </div>
         <div className="space-y-2">
-          <Label>Period End *</Label>
+          <Label>{t("hr.period-end")}</Label>
           <Input
             type="date"
             required
@@ -1284,7 +1312,7 @@ function AddSalaryPaymentForm({
           />
         </div>
         <div className="space-y-2">
-          <Label>Payment Date *</Label>
+          <Label>{t("hr.payment-date-2")}</Label>
           <Input
             type="date"
             required
@@ -1296,7 +1324,7 @@ function AddSalaryPaymentForm({
 
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label>Base Salary (EGP)</Label>
+          <Label>{t("hr.base-salary-egp-2")}</Label>
           <Input
             type="number"
             value={formData.base_salary}
@@ -1304,7 +1332,7 @@ function AddSalaryPaymentForm({
           />
         </div>
         <div className="space-y-2">
-          <Label>Total Allowances (EGP)</Label>
+          <Label>{t("hr.total-allowances-egp")}</Label>
           <Input
             type="number"
             value={formData.total_allowances}
@@ -1312,7 +1340,7 @@ function AddSalaryPaymentForm({
           />
         </div>
         <div className="space-y-2">
-          <Label>Total Deductions (EGP)</Label>
+          <Label>{t("hr.total-deductions-egp")}</Label>
           <Input
             type="number"
             value={formData.total_deductions}
@@ -1322,10 +1350,10 @@ function AddSalaryPaymentForm({
       </div>
 
       <div className="space-y-2">
-        <Label className="font-semibold">Bonus</Label>
+        <Label className="font-semibold">{t("hr.bonus")}</Label>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label className="text-sm">Bonus Amount (EGP)</Label>
+            <Label className="text-sm">{t("hr.bonus-amount-egp")}</Label>
             <Input
               type="number"
               value={formData.bonus_amount}
@@ -1334,21 +1362,21 @@ function AddSalaryPaymentForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm">Bonus Description</Label>
+            <Label className="text-sm">{t("hr.bonus-description")}</Label>
             <Input
               value={formData.bonus_description}
               onChange={(e) => setFormData({ ...formData, bonus_description: e.target.value })}
-              placeholder="e.g., Performance bonus, Annual bonus"
+              placeholder={t("hr.e-g-performance-bonus-annual")}
             />
           </div>
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label className="font-semibold">Overtime</Label>
+        <Label className="font-semibold">{t("hr.overtime")}</Label>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label className="text-sm">Overtime Hours</Label>
+            <Label className="text-sm">{t("hr.overtime-hours")}</Label>
             <Input
               type="number"
               step="0.5"
@@ -1358,7 +1386,7 @@ function AddSalaryPaymentForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm">Overtime Amount (EGP)</Label>
+            <Label className="text-sm">{t("hr.overtime-amount-egp")}</Label>
             <Input
               type="number"
               value={formData.overtime_amount}
@@ -1370,10 +1398,10 @@ function AddSalaryPaymentForm({
       </div>
 
       <div className="space-y-2">
-        <Label className="font-semibold">Adjustments</Label>
+        <Label className="font-semibold">{t("hr.adjustments")}</Label>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label className="text-sm">Amount (EGP) - use negative for deductions</Label>
+            <Label className="text-sm">{t("hr.amount-egp-use-negative-for")}</Label>
             <Input
               type="number"
               value={formData.adjustments}
@@ -1382,11 +1410,11 @@ function AddSalaryPaymentForm({
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-sm">Adjustment Notes</Label>
+            <Label className="text-sm">{t("hr.adjustment-notes")}</Label>
             <Input
               value={formData.adjustment_notes}
               onChange={(e) => setFormData({ ...formData, adjustment_notes: e.target.value })}
-              placeholder="e.g., Late deduction, Advance repayment"
+              placeholder={t("hr.e-g-late-deduction-advance")}
             />
           </div>
         </div>
@@ -1394,62 +1422,62 @@ function AddSalaryPaymentForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Payment Method</Label>
+          <Label>{t("hr.payment-method")}</Label>
           <Select value={formData.payment_method} onValueChange={(value) => setFormData({ ...formData, payment_method: value })}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-              <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="cheque">Cheque</SelectItem>
+              <SelectItem value="bank_transfer">{t("payment.bank_transfer")}</SelectItem>
+              <SelectItem value="cash">{t("payment.cash")}</SelectItem>
+              <SelectItem value="cheque">{t("payment.cheque")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>Payment Status</Label>
+          <Label>{t("field.payment-status")}</Label>
           <Select value={formData.payment_status} onValueChange={(value) => setFormData({ ...formData, payment_status: value })}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="processed">Processed</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="pending">{t("status.pending")}</SelectItem>
+              <SelectItem value="processed">{t("hr.processed")}</SelectItem>
+              <SelectItem value="paid">{t("ar.paid")}</SelectItem>
+              <SelectItem value="cancelled">{t("status.cancelled")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label>Notes</Label>
+        <Label>{t("notes")}</Label>
         <Input
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Optional notes"
+          placeholder={t("hr.optional-notes")}
         />
       </div>
 
       <div className="pt-4 border-t">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Gross Amount:</span>
-            <span className="font-semibold"><Money value={calculateGross()} /> EGP</span>
+            <span className="text-muted-foreground">{t("hr.gross-amount-2")}</span>
+            <span className="font-semibold"><Money value={calculateGross()} /> {t("common.egp-2")}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Net Amount:</span>
-            <span className="font-bold text-primary"><Money value={calculateNet()} /> EGP</span>
+            <span className="text-muted-foreground">{t("hr.net-amount-2")}</span>
+            <span className="font-bold text-primary"><Money value={calculateNet()} /> {t("common.egp-2")}</span>
           </div>
         </div>
       </div>
 
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting} className="bg-transparent">
-          Cancel
+          {t("cancel")}
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Recording..." : "Record Payment"}
+          {submitting ? t("hr.recording") : t("ap.record-payment")}
         </Button>
       </div>
     </form>
@@ -1458,7 +1486,7 @@ function AddSalaryPaymentForm({
 
 // Employee Documents Tab Component
 function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
-  const { language } = useI18n()
+  const { t, language } = useI18n()
   const [documents, setDocuments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -1495,7 +1523,7 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
     if (!file) return
 
     if (file.type !== "application/pdf") {
-      alert("Only PDF files are allowed")
+      alert(t("hr.only-pdf-files-are-allowed"))
       return
     }
 
@@ -1545,7 +1573,7 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
       fetchDocuments()
     } catch (error) {
       console.error("Error uploading document:", error)
-      alert("Failed to upload document")
+      alert(t("hr.failed-to-upload-document"))
     } finally {
       setUploading(false)
     }
@@ -1555,7 +1583,7 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
     return (
       <div className="text-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-        <p className="text-muted-foreground mt-4">Loading documents...</p>
+        <p className="text-muted-foreground mt-4">{t("hr.loading-documents")}</p>
       </div>
     )
   }
@@ -1563,53 +1591,53 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap justify-between items-center gap-2">
-        <h3 className="text-lg font-semibold">Employee Documents</h3>
+        <h3 className="text-lg font-semibold">{t("hr.employee-documents")}</h3>
         <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <Plus className="w-4 h-4" />
-              Upload Document
+              {t("hr.upload-document")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Upload Document</DialogTitle>
-              <DialogDescription>Upload a PDF document for {employee.full_name}</DialogDescription>
+              <DialogTitle>{t("hr.upload-document")}</DialogTitle>
+              <DialogDescription>{fill(t("hr.upload-a-pdf-document-for"), { name: employee.full_name })}</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Document Type *</Label>
+                <Label>{t("hr.document-type-2")}</Label>
                 <Select value={uploadForm.document_type} onValueChange={(value) => setUploadForm({ ...uploadForm, document_type: value })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="contract">Employment Contract</SelectItem>
-                    <SelectItem value="national_id">National ID</SelectItem>
-                    <SelectItem value="passport">Passport</SelectItem>
-                    <SelectItem value="certificate">Certificate</SelectItem>
-                    <SelectItem value="diploma">Diploma</SelectItem>
-                    <SelectItem value="performance_review">Performance Review</SelectItem>
-                    <SelectItem value="warning">Warning Letter</SelectItem>
-                    <SelectItem value="resignation">Resignation</SelectItem>
-                    <SelectItem value="termination">Termination</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
+                    <SelectItem value="contract">{t("hr.employment-contract")}</SelectItem>
+                    <SelectItem value="national_id">{t("hr.national-id")}</SelectItem>
+                    <SelectItem value="passport">{t("hr.passport")}</SelectItem>
+                    <SelectItem value="certificate">{t("hr.document-certificate")}</SelectItem>
+                    <SelectItem value="diploma">{t("hr.diploma")}</SelectItem>
+                    <SelectItem value="performance_review">{t("hr.performance-review")}</SelectItem>
+                    <SelectItem value="warning">{t("hr.warning-letter")}</SelectItem>
+                    <SelectItem value="resignation">{t("hr.resignation")}</SelectItem>
+                    <SelectItem value="termination">{t("hr.termination")}</SelectItem>
+                    <SelectItem value="other">{t("hr.document-other")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label>Document Name</Label>
+                <Label>{t("hr.document-name")}</Label>
                 <Input
                   value={uploadForm.document_name}
                   onChange={(e) => setUploadForm({ ...uploadForm, document_name: e.target.value })}
-                  placeholder="e.g., Employment Contract 2024"
+                  placeholder={t("hr.e-g-employment-contract-2024")}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Document Date</Label>
+                  <Label>{t("hr.document-date")}</Label>
                   <Input
                     type="date"
                     value={uploadForm.document_date}
@@ -1617,7 +1645,7 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Expiry Date</Label>
+                  <Label>{t("field.expiry-date")}</Label>
                   <Input
                     type="date"
                     value={uploadForm.expiry_date}
@@ -1627,23 +1655,23 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
               </div>
 
               <div className="space-y-2">
-                <Label>Description</Label>
+                <Label>{t("description")}</Label>
                 <Input
                   value={uploadForm.description}
                   onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
-                  placeholder="Optional description"
+                  placeholder={t("hr.optional-description")}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>PDF File *</Label>
+                <Label>{t("common.pdf-file")}</Label>
                 <Input
                   type="file"
                   accept=".pdf"
                   onChange={handleFileUpload}
                   disabled={uploading}
                 />
-                {uploading && <p className="text-sm text-muted-foreground">Uploading...</p>}
+                {uploading && <p className="text-sm text-muted-foreground">{t("common.uploading")}</p>}
               </div>
             </div>
           </DialogContent>
@@ -1653,8 +1681,8 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
       {documents.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>No documents uploaded yet</p>
-          <p className="text-sm">Upload contracts, IDs, certificates, and other documents</p>
+          <p>{t("hr.no-documents-uploaded-yet")}</p>
+          <p className="text-sm">{t("hr.upload-contracts-ids-certificates-and")}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -1665,18 +1693,18 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
                 <div>
                   <p className="font-medium">{doc.document_name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {doc.document_type.replace("_", " ")} | {doc.file_size_kb} KB
+                    {doc.document_type.replace("_", " ")} | {doc.file_size_kb} {t("hr.kb")}
                     {doc.document_date && ` | ${formatDate(doc.document_date, language)}`}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 {doc.expiry_date && new Date(doc.expiry_date) < new Date() && (
-                  <Badge variant="destructive">Expired</Badge>
+                  <Badge variant="destructive">{t("hr.expired")}</Badge>
                 )}
                 <Button variant="outline" size="sm" asChild className="bg-transparent">
                   <a href={doc.file_url} target="_blank" rel="noopener noreferrer">
-                    View
+                    {t("view")}
                   </a>
                 </Button>
               </div>
@@ -1696,6 +1724,7 @@ function AddDepartmentForm({
   onSuccess: () => void
   onCancel: () => void
 }) {
+  const { t } = useI18n()
   const [formData, setFormData] = useState({
     department_name: "",
     department_code: "",
@@ -1739,43 +1768,43 @@ function AddDepartmentForm({
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="dept_name">Department Name *</Label>
+        <Label htmlFor="dept_name">{t("hr.department-name-2")}</Label>
         <Input
           id="dept_name"
           required
           value={formData.department_name}
           onChange={(e) => setFormData({ ...formData, department_name: e.target.value })}
-          placeholder="e.g., Marketing"
+          placeholder={t("hr.e-g-marketing")}
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="dept_code">Department Code *</Label>
+        <Label htmlFor="dept_code">{t("hr.department-code")}</Label>
         <Input
           id="dept_code"
           required
           value={formData.department_code}
           onChange={(e) => setFormData({ ...formData, department_code: e.target.value.toUpperCase() })}
-          placeholder="e.g., MKT"
+          placeholder={t("hr.e-g-mkt")}
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="dept_desc">Description</Label>
+        <Label htmlFor="dept_desc">{t("description")}</Label>
         <Input
           id="dept_desc"
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          placeholder="Brief description of the department"
+          placeholder={t("hr.brief-description-of-the-department")}
         />
       </div>
 
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting} className="bg-transparent">
-          Cancel
+          {t("cancel")}
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Creating..." : "Create Department"}
+          {submitting ? t("common.creating") : t("hr.create-department")}
         </Button>
       </div>
     </form>
@@ -1792,6 +1821,7 @@ function AddPositionForm({
   onSuccess: () => void
   onCancel: () => void
 }) {
+  const { t } = useI18n()
   const [formData, setFormData] = useState({
     position_title: "",
     position_code: "",
@@ -1845,33 +1875,33 @@ function AddPositionForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="pos_title">Position Title *</Label>
+          <Label htmlFor="pos_title">{t("hr.position-title-2")}</Label>
           <Input
             id="pos_title"
             required
             value={formData.position_title}
             onChange={(e) => setFormData({ ...formData, position_title: e.target.value })}
-            placeholder="e.g., Senior Developer"
+            placeholder={t("hr.e-g-senior-developer")}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="pos_code">Position Code *</Label>
+          <Label htmlFor="pos_code">{t("hr.position-code")}</Label>
           <Input
             id="pos_code"
             required
             value={formData.position_code}
             onChange={(e) => setFormData({ ...formData, position_code: e.target.value.toUpperCase() })}
-            placeholder="e.g., DEV-SR"
+            placeholder={t("hr.e-g-dev-sr")}
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="pos_dept">Department</Label>
+          <Label htmlFor="pos_dept">{t("hr.department")}</Label>
           <Select value={formData.department_id} onValueChange={(value) => setFormData({ ...formData, department_id: value })}>
             <SelectTrigger>
-              <SelectValue placeholder="Select department" />
+              <SelectValue placeholder={t("hr.select-department")} />
             </SelectTrigger>
             <SelectContent>
               {departments.map((dept) => (
@@ -1883,7 +1913,7 @@ function AddPositionForm({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="grade">Grade Level</Label>
+          <Label htmlFor="grade">{t("hr.grade-level")}</Label>
           <Input
             id="grade"
             value={formData.grade_level}
@@ -1895,7 +1925,7 @@ function AddPositionForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="sal_min">Salary Range Min (EGP)</Label>
+          <Label htmlFor="sal_min">{t("hr.salary-range-min-egp")}</Label>
           <Input
             id="sal_min"
             type="number"
@@ -1905,7 +1935,7 @@ function AddPositionForm({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="sal_max">Salary Range Max (EGP)</Label>
+          <Label htmlFor="sal_max">{t("hr.salary-range-max-egp")}</Label>
           <Input
             id="sal_max"
             type="number"
@@ -1917,21 +1947,21 @@ function AddPositionForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="pos_desc">Description</Label>
+        <Label htmlFor="pos_desc">{t("description")}</Label>
         <Input
           id="pos_desc"
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          placeholder="Brief description of the position"
+          placeholder={t("hr.brief-description-of-the-position")}
         />
       </div>
 
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting} className="bg-transparent">
-          Cancel
+          {t("cancel")}
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Creating..." : "Create Position"}
+          {submitting ? t("common.creating") : t("hr.create-position")}
         </Button>
       </div>
     </form>
@@ -1950,6 +1980,7 @@ function AddEmployeeForm({
   onSuccess: () => void
   onCancel: () => void
 }) {
+  const { t } = useI18n()
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
@@ -2004,17 +2035,17 @@ function AddEmployeeForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="emp_name">Full Name *</Label>
+          <Label htmlFor="emp_name">{t("hr.full-name")}</Label>
           <Input
             id="emp_name"
             required
             value={formData.full_name}
             onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-            placeholder="e.g., Ahmed Mohamed"
+            placeholder={t("hr.e-g-ahmed-mohamed")}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="emp_national_id">National ID *</Label>
+          <Label htmlFor="emp_national_id">{t("hr.national-id-2")}</Label>
           <Input
             id="emp_national_id"
             required
@@ -2027,17 +2058,17 @@ function AddEmployeeForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="emp_email">Email <span className="text-muted-foreground font-normal">(optional — must be unique)</span></Label>
+          <Label htmlFor="emp_email">{t("email")} <span className="text-muted-foreground font-normal">{t("hr.optional-must-be-unique")}</span></Label>
           <Input
             id="emp_email"
             type="email"
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            placeholder="e.g., ahmed@company.com"
+            placeholder={t("hr.e-g-ahmed-company-com")}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="emp_phone">Phone</Label>
+          <Label htmlFor="emp_phone">{t("phone")}</Label>
           <Input
             id="emp_phone"
             value={formData.phone}
@@ -2049,10 +2080,10 @@ function AddEmployeeForm({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="emp_dept">Department</Label>
+          <Label htmlFor="emp_dept">{t("hr.department")}</Label>
           <Select value={formData.department_id} onValueChange={(value) => setFormData({ ...formData, department_id: value })}>
             <SelectTrigger>
-              <SelectValue placeholder="Select department" />
+              <SelectValue placeholder={t("hr.select-department")} />
             </SelectTrigger>
             <SelectContent>
               {departments.map((dept) => (
@@ -2064,10 +2095,10 @@ function AddEmployeeForm({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="emp_pos">Position</Label>
+          <Label htmlFor="emp_pos">{t("common.position")}</Label>
           <Select value={formData.position_id} onValueChange={(value) => setFormData({ ...formData, position_id: value })}>
             <SelectTrigger>
-              <SelectValue placeholder="Select position" />
+              <SelectValue placeholder={t("hr.select-position")} />
             </SelectTrigger>
             <SelectContent>
               {positions.map((pos) => (
@@ -2082,7 +2113,7 @@ function AddEmployeeForm({
 
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="emp_hire">Hire Date *</Label>
+          <Label htmlFor="emp_hire">{t("hr.hire-date-2")}</Label>
           <Input
             id="emp_hire"
             type="date"
@@ -2092,30 +2123,30 @@ function AddEmployeeForm({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="emp_type">Employment Type</Label>
+          <Label htmlFor="emp_type">{t("hr.employment-type")}</Label>
           <Select value={formData.employment_type} onValueChange={(value) => setFormData({ ...formData, employment_type: value })}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="full_time">Full Time</SelectItem>
-              <SelectItem value="part_time">Part Time</SelectItem>
-              <SelectItem value="contract">Contract</SelectItem>
-              <SelectItem value="intern">Intern</SelectItem>
+              <SelectItem value="full_time">{t("hr.full-time")}</SelectItem>
+              <SelectItem value="part_time">{t("hr.part-time")}</SelectItem>
+              <SelectItem value="contract">{t("hr.document-contract")}</SelectItem>
+              <SelectItem value="intern">{t("hr.intern")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="emp_status">Status</Label>
+          <Label htmlFor="emp_status">{t("status")}</Label>
           <Select value={formData.employment_status} onValueChange={(value) => setFormData({ ...formData, employment_status: value })}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="on_leave">On Leave</SelectItem>
-              <SelectItem value="suspended">Suspended</SelectItem>
-              <SelectItem value="terminated">Terminated</SelectItem>
+              <SelectItem value="active">{t("status.active")}</SelectItem>
+              <SelectItem value="on_leave">{t("hr.status-on-leave")}</SelectItem>
+              <SelectItem value="suspended">{t("hr.suspended")}</SelectItem>
+              <SelectItem value="terminated">{t("hr.status-terminated")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -2123,10 +2154,10 @@ function AddEmployeeForm({
 
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting} className="bg-transparent">
-          Cancel
+          {t("cancel")}
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Creating..." : "Create Employee"}
+          {submitting ? t("common.creating") : t("hr.create-employee")}
         </Button>
       </div>
     </form>

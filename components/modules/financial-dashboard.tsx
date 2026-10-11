@@ -9,6 +9,7 @@ import dynamic from "next/dynamic"
 import { useAppContext } from "@/lib/app-context"
 import { analyzeFinancials } from "@/lib/ai-utils"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import type { User } from "@/lib/types"
 import { useState, useEffect } from "react"
 import { Sparkles, TrendingUp, AlertTriangle, CheckCircle2 } from "lucide-react"
@@ -16,7 +17,7 @@ import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { Money } from "@/components/erp/money"
 import { StatusBadge } from "@/components/erp/status-badge"
-import { formatDate } from "@/lib/format"
+import { formatDate, statusLabel } from "@/lib/format"
 
 const BarChart = dynamic(() => import("recharts").then((mod) => mod.BarChart), { ssr: false })
 const Bar = dynamic(() => import("recharts").then((mod) => mod.Bar), { ssr: false })
@@ -84,17 +85,17 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
       })
       if (response.ok) {
         setRescheduleRequests((prev) => prev.filter((r) => r.id !== requestId))
-        alert("Reschedule request approved!")
+        alert(t("financial.reschedule-approved"))
       }
     } catch (error) {
-      alert("Failed to approve request")
+      alert(t("financial.failed-to-approve-request"))
     } finally {
       setLoadingReschedule(false)
     }
   }
 
   const handleRejectReschedule = async (requestId: string) => {
-    const reason = prompt("Please provide a reason for rejection:")
+    const reason = prompt(t("financial.reason-for-rejection-prompt"))
     if (!reason) return
     
     setLoadingReschedule(true)
@@ -106,10 +107,10 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
       })
       if (response.ok) {
         setRescheduleRequests((prev) => prev.filter((r) => r.id !== requestId))
-        alert("Reschedule request rejected.")
+        alert(t("financial.reschedule-rejected"))
       }
     } catch (error) {
-      alert("Failed to reject request")
+      alert(t("financial.failed-to-reject-request"))
     } finally {
       setLoadingReschedule(false)
     }
@@ -468,7 +469,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
     {
       id: "most-sold",
       label: t("financial.top-selling-product"),
-      value: mostSoldProducts[0]?.productName || "N/A",
+      value: mostSoldProducts[0]?.productName || t("label.na"),
       change: mostSoldProducts[0]
         ? `${mostSoldProducts[0].totalQuantity} ${t("financial.units-sold")}`
         : t("financial.no-sales-data"),
@@ -553,7 +554,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
       value: overdueInvoices.length.toString(),
       change: (
         <>
-          <Money value={overdueInvoices.reduce((sum, inv) => sum + (inv.amount - (inv.collectedAmount || 0)), 0)} /> EGP
+          <Money value={overdueInvoices.reduce((sum, inv) => sum + (inv.amount - (inv.collectedAmount || 0)), 0)} /> {t("common.egp-2")}
         </>
       ),
       color: "bg-red-50 border-red-200 text-red-700",
@@ -568,14 +569,14 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
         subtitle={t("financial.description")}
         actions={
           <Button onClick={fetchAiInsights} disabled={isAnalyzing}>
-            {isAnalyzing ? t("message.loading") : t("financial.ai-analysis")}
+            {isAnalyzing ? t("loading") : t("financial.ai-analysis")}
           </Button>
         }
       />
 
       <KpiGrid>
         <KpiTile
-          label={`${t("financial.total-revenue")} (EGP)`}
+          label={fill(t("financial.label-egp"), { label: t("financial.total-revenue") })}
           value={<Money value={totalRevenue} />}
           sub={t("financial.from-sales")}
           onClick={
@@ -588,17 +589,17 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
           }
         />
         <KpiTile
-          label={`${t("financial.total-expenses")} (EGP)`}
+          label={fill(t("financial.label-egp"), { label: t("financial.total-expenses") })}
           value={<Money value={totalExpenses} />}
           sub={t("financial.from-purchases")}
         />
         <KpiTile
-          label={`${t("financial.gross-profit")} (EGP)`}
+          label={fill(t("financial.label-egp"), { label: t("financial.gross-profit") })}
           value={<Money value={grossProfit} />}
-          sub={`${t("financial.margin")}: ${formatNumber(profitMargin)}%`}
+          sub={`${t("financial.margin")}: ${profitMargin === "N/A" ? t("label.na") : formatNumber(profitMargin)}%`}
         />
         <KpiTile
-          label={`${t("financial.inventory-value")} (EGP)`}
+          label={fill(t("financial.label-egp"), { label: t("financial.inventory-value") })}
           value={<Money value={inventoryValue} />}
           sub={`${formatNumber(inventory.length)} ${t("financial.items")}`}
           onClick={user.role === "warehouse-rep" ? showInventoryDetails : undefined}
@@ -614,15 +615,15 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
           <CardContent>
             <div className="space-y-4">
               <div className="flex justify-between">
-                <span>{t("financial.total-invoiced")} (EGP)</span>
+                <span>{t("financial.total-invoiced")} {t("common.egp")}</span>
                 <span className="font-bold"><Money value={totalReceivable} /></span>
               </div>
               <div className="flex justify-between">
-                <span>{t("financial.collected")} (EGP)</span>
+                <span>{t("financial.collected")} {t("common.egp")}</span>
                 <span className="font-bold text-green-700"><Money value={totalCollected} /></span>
               </div>
               <div className="flex justify-between">
-                <span>{t("financial.outstanding")} (EGP)</span>
+                <span>{t("financial.outstanding")} {t("common.egp")}</span>
                 <span className="font-bold text-yellow-700"><Money value={totalOutstanding} /></span>
               </div>
             </div>
@@ -637,15 +638,15 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
           <CardContent>
             <div className="space-y-4">
               <div className="flex justify-between">
-                <span>{t("financial.total-invoiced")} (EGP)</span>
+                <span>{t("financial.total-invoiced")} {t("common.egp")}</span>
                 <span className="font-bold"><Money value={totalPayable} /></span>
               </div>
               <div className="flex justify-between">
-                <span>{t("financial.paid")} (EGP)</span>
+                <span>{t("financial.paid")} {t("common.egp")}</span>
                 <span className="font-bold text-green-700"><Money value={totalPaid} /></span>
               </div>
               <div className="flex justify-between">
-                <span>{t("financial.outstanding")} (EGP)</span>
+                <span>{t("financial.outstanding")} {t("common.egp")}</span>
                 <span className="font-bold text-yellow-700"><Money value={totalUnpaid} /></span>
               </div>
             </div>
@@ -663,7 +664,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
               </div>
               <StatusBadge
                 status={aiAnalysis.financialHealth.status}
-                label={`${aiAnalysis.financialHealth.status.toUpperCase()} - ${t("financial.score")}: ${aiAnalysis.financialHealth.score}/100`}
+                label={`${statusLabel(aiAnalysis.financialHealth.status, t).toUpperCase()} - ${t("financial.score")}: ${aiAnalysis.financialHealth.score}/100`}
               />
             </div>
             <CardDescription>{aiAnalysis.financialHealth.insights}</CardDescription>
@@ -682,7 +683,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                 </p>
               </div>
               <div className="p-4 rounded-lg bg-background border">
-                <p className="text-sm text-muted-foreground">{t("financial.working-capital")} (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("financial.working-capital")} {t("common.egp")}</p>
                 <p className="text-2xl font-bold">
                   <Money value={aiAnalysis.financialHealth.keyMetrics.workingCapital} />
                 </p>
@@ -700,11 +701,11 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
               </div>
               <div className="grid grid-cols-2 gap-4 mt-3">
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("financial.next-month")} (EGP)</p>
+                  <p className="text-sm text-muted-foreground">{t("financial.next-month")} {t("common.egp")}</p>
                   <p className="text-xl font-bold"><Money value={aiAnalysis.cashFlowPrediction.nextMonth} /></p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("financial.next-quarter")} (EGP)</p>
+                  <p className="text-sm text-muted-foreground">{t("financial.next-quarter")} {t("common.egp")}</p>
                   <p className="text-xl font-bold"><Money value={aiAnalysis.cashFlowPrediction.nextQuarter} /></p>
                 </div>
               </div>
@@ -731,7 +732,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                         <p className="text-sm text-muted-foreground mt-1">{risk.recommendation}</p>
                       </div>
                       <div className="text-end ms-4">
-                        <p className="font-semibold"><Money value={risk.amount} /> EGP</p>
+                        <p className="font-semibold"><Money value={risk.amount} /> {t("common.egp-2")}</p>
                         <p className="text-xs text-muted-foreground">
                           {risk.daysOverdue} {t("financial.days-overdue")}
                         </p>
@@ -803,14 +804,16 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-amber-700" />
-                  Payment Reschedule Requests
+                  {t("financial.payment-reschedule-requests")}
                 </CardTitle>
                 <CardDescription>
-                  {rescheduleRequests.length} pending request{rescheduleRequests.length !== 1 ? "s" : ""} awaiting your approval
+                  {rescheduleRequests.length !== 1
+                    ? fill(t("financial.pending-requests-awaiting"), { count: rescheduleRequests.length })
+                    : fill(t("financial.pending-request-awaiting"), { count: rescheduleRequests.length })}
                 </CardDescription>
               </div>
               <Badge variant="secondary" className="bg-amber-100 text-amber-700">
-                CEO Approval Required
+                {t("financial.ceo-approval-required")}
               </Badge>
             </div>
           </CardHeader>
@@ -818,8 +821,8 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
             {rescheduleRequests.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-700" />
-                <p className="font-medium">No pending reschedule requests</p>
-                <p className="text-sm">All payment reschedule requests have been processed</p>
+                <p className="font-medium">{t("financial.no-pending-reschedule-requests")}</p>
+                <p className="text-sm">{t("financial.all-reschedule-processed")}</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -831,32 +834,32 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <p className="font-semibold text-lg">{displayCustomerName}</p>
-                          <p className="text-sm text-muted-foreground">SO: {request.soNumber || "N/A"}</p>
-                          <p className="text-sm text-muted-foreground">Invoice: {request.invoiceNumber}</p>
+                          <p className="text-sm text-muted-foreground">{t("common.so")} {request.soNumber || t("label.na")}</p>
+                          <p className="text-sm text-muted-foreground">{t("common.invoice")} {request.invoiceNumber}</p>
                         </div>
-                        <StatusBadge status="pending" label="Pending" />
+                        <StatusBadge status="pending" label={t("status.pending")} />
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-3">
                         <div>
-                          <p className="text-muted-foreground">Current Plan</p>
-                          <p className="font-semibold">{request.currentMonths} months</p>
+                          <p className="text-muted-foreground">{t("financial.current-plan")}</p>
+                          <p className="font-semibold">{request.currentMonths} {t("months")}</p>
                         </div>
                         <div>
-                          <p className="text-muted-foreground">Requested Plan</p>
-                          <p className="font-semibold text-blue-600">{request.requestedMonths} months</p>
+                          <p className="text-muted-foreground">{t("financial.requested-plan")}</p>
+                          <p className="font-semibold text-blue-600">{request.requestedMonths} {t("months")}</p>
                         </div>
                         <div>
-                          <p className="text-muted-foreground">Requested By</p>
+                          <p className="text-muted-foreground">{t("financial.requested-by")}</p>
                           <p className="font-semibold">{request.requestedBy}</p>
                         </div>
                         {request.requestedAmount && request.requestedAmount !== request.currentAmount && (
                           <>
                             <div>
-                              <p className="text-muted-foreground">Current Amount (EGP)</p>
+                              <p className="text-muted-foreground">{t("financial.current-amount-egp")}</p>
                               <p className="font-semibold"><Money value={request.currentAmount} /></p>
                             </div>
                             <div>
-                              <p className="text-muted-foreground">Requested Amount (EGP)</p>
+                              <p className="text-muted-foreground">{t("financial.requested-amount-egp")}</p>
                               <p className="font-semibold text-blue-600"><Money value={request.requestedAmount} /></p>
                             </div>
                           </>
@@ -864,22 +867,22 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                         {request.requestedDueDate && request.requestedDueDate !== request.currentDueDate && (
                           <>
                             <div>
-                              <p className="text-muted-foreground">Current Due Date</p>
+                              <p className="text-muted-foreground">{t("financial.current-due-date")}</p>
                               <p className="font-semibold">{formatDate(request.currentDueDate, language)}</p>
                             </div>
                             <div>
-                              <p className="text-muted-foreground">Requested Due Date</p>
+                              <p className="text-muted-foreground">{t("financial.requested-due-date")}</p>
                               <p className="font-semibold text-blue-600">{formatDate(request.requestedDueDate, language)}</p>
                             </div>
                           </>
                         )}
                         <div>
-                          <p className="text-muted-foreground">Request Date</p>
+                          <p className="text-muted-foreground">{t("lost-sales.request-date")}</p>
                           <p className="font-semibold">{formatDate(request.createdAt, language)}</p>
                         </div>
                       </div>
                       <div className="mb-3">
-                        <p className="text-muted-foreground text-sm">Reason:</p>
+                        <p className="text-muted-foreground text-sm">{t("financial.reason")}</p>
                         <p className="text-sm">{request.reason}</p>
                       </div>
                       <div className="flex gap-2">
@@ -890,7 +893,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                           className="bg-green-600 hover:bg-green-700"
                         >
                           <CheckCircle2 className="w-4 h-4 me-2" />
-                          Approve
+                          {t("action.approve")}
                         </Button>
                         <Button
                           size="sm"
@@ -899,7 +902,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                           disabled={loadingReschedule}
                           className="border-red-300 text-red-700 hover:bg-red-50"
                         >
-                          Reject
+                          {t("action.reject")}
                         </Button>
                       </div>
                     </div>
@@ -924,8 +927,8 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                   <TableRow>
                     <TableHead>{t("financial.product")}</TableHead>
                     <TableHead className="text-end">{t("financial.quantity")}</TableHead>
-                    <TableHead className="text-end">{t("financial.unit-price")} (EGP)</TableHead>
-                    <TableHead className="text-end">{t("financial.total-value")} (EGP)</TableHead>
+                    <TableHead className="text-end">{t("financial.unit-price")} {t("common.egp")}</TableHead>
+                    <TableHead className="text-end">{t("financial.total-value")} {t("common.egp")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -948,7 +951,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                   <TableRow>
                     <TableHead>{t("financial.product")}</TableHead>
                     <TableHead className="text-end">{t("financial.units-sold")}</TableHead>
-                    <TableHead className="text-end">{t("financial.total-revenue")} (EGP)</TableHead>
+                    <TableHead className="text-end">{t("financial.total-revenue")} {t("common.egp")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -969,7 +972,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableHead>{t("financial.rank")}</TableHead>
                     <TableHead>{t("financial.product")}</TableHead>
                     <TableHead className="text-end">{t("financial.units-sold")}</TableHead>
-                    <TableHead className="text-end">{t("financial.total-revenue")} (EGP)</TableHead>
+                    <TableHead className="text-end">{t("financial.total-revenue")} {t("common.egp")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -991,7 +994,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableHead>{t("financial.invoice-number")}</TableHead>
                     <TableHead>{t("financial.supplier")}</TableHead>
                     <TableHead>{t("financial.due-date")}</TableHead>
-                    <TableHead className="text-end">{t("financial.amount")} (EGP)</TableHead>
+                    <TableHead className="text-end">{t("financial.amount")} {t("common.egp")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1015,7 +1018,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableHead>{t("financial.invoice-number")}</TableHead>
                     <TableHead>{t("financial.customer")}</TableHead>
                     <TableHead>{t("financial.due-date")}</TableHead>
-                    <TableHead className="text-end">{t("financial.amount")} (EGP)</TableHead>
+                    <TableHead className="text-end">{t("financial.amount")} {t("common.egp")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1039,7 +1042,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableHead>{t("field.so-number")}</TableHead>
                     <TableHead>{t("field.status")}</TableHead>
                     <TableHead>{t("field.order-date")}</TableHead>
-                    <TableHead className="text-end">{t("field.total")} (EGP)</TableHead>
+                    <TableHead className="text-end">{t("field.total")} {t("common.egp")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

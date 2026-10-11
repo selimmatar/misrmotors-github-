@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { Package, Plus, Trash2, Search, ShoppingCart } from "lucide-react"
 
 export interface MaterialItem {
@@ -144,7 +145,7 @@ export function MaintenanceMaterialsSelector({
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Package className="w-4 h-4" />
-          Materials Used
+          {t("maint.materials-used")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -160,7 +161,7 @@ export function MaintenanceMaterialsSelector({
             }}
           >
             <Package className="w-4 h-4 me-1" />
-            From Inventory
+            {t("maint.from-inventory")}
           </Button>
           <Button
             type="button"
@@ -172,7 +173,7 @@ export function MaintenanceMaterialsSelector({
             }}
           >
             <ShoppingCart className="w-4 h-4 me-1" />
-            Outsourced Item
+            {t("wd.outsourced-item")}
           </Button>
         </div>
 
@@ -182,7 +183,7 @@ export function MaintenanceMaterialsSelector({
             <div className="relative">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search products by name or SKU..."
+                placeholder={t("maint.search-products")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="ps-9"
@@ -191,7 +192,7 @@ export function MaintenanceMaterialsSelector({
             {searchTerm && (
               <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md bg-background">
                 {filteredProducts.length === 0 ? (
-                  <p className="text-sm text-muted-foreground p-3">No products found</p>
+                  <p className="text-sm text-muted-foreground p-3">{t("product.no-data")}</p>
                 ) : (
                   filteredProducts.slice(0, 10).map((product) => (
                     <button
@@ -207,7 +208,7 @@ export function MaintenanceMaterialsSelector({
                         )}
                       </div>
                       <span className="text-muted-foreground">
-                        EGP {product.unitPrice.toLocaleString()} / {product.unit || "unit"}
+                        {t("common.egp-2")} {product.unitPrice.toLocaleString()} / {product.unit || t("maint.unit-fallback")}
                       </span>
                     </button>
                   ))
@@ -221,16 +222,16 @@ export function MaintenanceMaterialsSelector({
         {showAddForm && addType === "outsourced" && (
           <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
             <div>
-              <Label className="text-xs">Item Name</Label>
+              <Label className="text-xs">{t("common.item-name")}</Label>
               <Input
-                placeholder="e.g., Special filter, External part..."
+                placeholder={t("maint.outsourced-name-placeholder")}
                 value={outsourcedName}
                 onChange={(e) => setOutsourcedName(e.target.value)}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Quantity</Label>
+                <Label className="text-xs">{t("quantity")}</Label>
                 <Input
                   type="number"
                   min="1"
@@ -239,7 +240,7 @@ export function MaintenanceMaterialsSelector({
                 />
               </div>
               <div>
-                <Label className="text-xs">Unit Cost (EGP)</Label>
+                <Label className="text-xs">{t("common.unit-cost-egp")}</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -256,7 +257,7 @@ export function MaintenanceMaterialsSelector({
               disabled={!outsourcedName || !outsourcedCost}
             >
               <Plus className="w-4 h-4 me-1" />
-              Add Outsourced Item
+              {t("common.add-outsourced-item")}
             </Button>
           </div>
         )}
@@ -265,7 +266,7 @@ export function MaintenanceMaterialsSelector({
         {materials.length > 0 && (
           <div className="space-y-2">
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Added Materials ({materials.length})
+              {fill(t("maint.added-materials-count"), { n: materials.length })}
             </Label>
             {materials.map((item, index) => (
               <div
@@ -276,11 +277,11 @@ export function MaintenanceMaterialsSelector({
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">{item.productName}</span>
                     <Badge variant={item.type === "inventory" ? "default" : "secondary"} className="text-xs shrink-0">
-                      {item.type === "inventory" ? "Inventory" : "Outsourced"}
+                      {item.type === "inventory" ? t("group.inventory") : t("common.outsourced-2")}
                     </Badge>
                   </div>
                   {item.sku && (
-                    <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
+                    <p className="text-xs text-muted-foreground">{t("common.sku-2")} {item.sku}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -291,9 +292,9 @@ export function MaintenanceMaterialsSelector({
                     onChange={(e) => updateQuantity(index, parseInt(e.target.value) || 1)}
                     className="w-16 h-8 text-center text-sm"
                   />
-                  <span className="text-xs text-muted-foreground w-8">{item.unit || "pcs"}</span>
+                  <span className="text-xs text-muted-foreground w-8">{item.unit || t("common.pcs")}</span>
                   <span className="text-sm font-semibold w-24 text-end">
-                    EGP {item.totalCost.toLocaleString()}
+                    {t("common.egp-2")} {item.totalCost.toLocaleString()}
                   </span>
                   <Button
                     type="button"
@@ -311,8 +312,8 @@ export function MaintenanceMaterialsSelector({
 
             {/* Total */}
             <div className="flex justify-between items-center pt-3 border-t font-semibold">
-              <span>Total Materials Cost:</span>
-              <span className="text-lg">EGP {totalMaterialsCost.toLocaleString()}</span>
+              <span>{t("maint.total-materials-cost")}</span>
+              <span className="text-lg">{t("common.egp-2")} {totalMaterialsCost.toLocaleString()}</span>
             </div>
           </div>
         )}

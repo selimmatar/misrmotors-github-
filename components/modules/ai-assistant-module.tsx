@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { PageHeader } from "@/components/erp/page-header"
 import type { UserRole } from "@/lib/types"
 import { Send, Loader2, Bot, UserIcon } from "lucide-react"
@@ -129,7 +130,7 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
             ...prev,
             {
               role: "assistant",
-              content: `✅ Purchase order ${newPO.poNumber} has been created and added to the system! It's now pending CEO approval.`,
+              content: fill(t("ai.po-created"), { number: newPO.poNumber }),
             },
           ])
         }
@@ -140,7 +141,7 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
         ...prev,
         {
           role: "assistant",
-          content: `Sorry, I encountered an error: ${error.message}. Please try again.`,
+          content: fill(t("ai.sorry-error"), { message: error.message }),
         },
       ])
     } finally {
@@ -155,18 +156,18 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
         title={t("module.ai-assistant")}
         subtitle={
           isCEO
-            ? "Ask me anything about your business - assets, debt, orders, receivables, and more!"
-            : "Create purchase orders using natural language. Just tell me what you need!"
+            ? t("ai.subtitle-ceo")
+            : t("ai.subtitle-po")
         }
       />
 
       <Card className="flex-1 flex flex-col">
         <CardHeader>
-          <CardTitle>Chat with AI Assistant</CardTitle>
+          <CardTitle>{t("ai.chat-title")}</CardTitle>
           <CardDescription>
             {isCEO
-              ? 'Try: "How much debt do we have?" or "What POs are in progress?" or "Show me late receivables"'
-              : 'Try: "Order 50 water pumps from ABC Supplier" or "Show me available suppliers"'}
+              ? t("ai.try-ceo")
+              : t("ai.try-po")}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex-1 flex flex-col">
@@ -174,29 +175,29 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
             {messages.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
                 <Bot className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium">Start a conversation</p>
+                <p className="text-lg font-medium">{t("ai.start-conversation")}</p>
                 <p className="text-sm mt-2">
                   {isCEO
-                    ? "Ask me about your business metrics, financial health, or operational status!"
-                    : "Ask me to create purchase orders and I'll help you!"}
+                    ? t("ai.hint-ceo")
+                    : t("ai.hint-po")}
                 </p>
                 <div className="mt-6 space-y-2 text-sm text-start max-w-md mx-auto">
-                  <p className="font-medium">Example requests:</p>
+                  <p className="font-medium">{t("ai.example-requests")}</p>
                   {isCEO ? (
                     <ul className="space-y-1 ms-4">
-                      <li>• "How much total assets do we have?"</li>
-                      <li>• "What's our current debt situation?"</li>
-                      <li>• "Show me all purchase orders in progress"</li>
-                      <li>• "Which accounts receivable are late?"</li>
-                      <li>• "What's our inventory value?"</li>
-                      <li>• "Give me a business overview"</li>
+                      <li>• {t("ai.ex-total-assets")}</li>
+                      <li>• {t("ai.ex-debt")}</li>
+                      <li>• {t("ai.ex-pos-in-progress")}</li>
+                      <li>• {t("ai.ex-late-receivables")}</li>
+                      <li>• {t("ai.ex-inventory-value")}</li>
+                      <li>• {t("ai.ex-overview")}</li>
                     </ul>
                   ) : (
                     <ul className="space-y-1 ms-4">
-                      <li>• "Show me available suppliers"</li>
-                      <li>• "Show me available products"</li>
-                      <li>• "Order 50 water pumps from [supplier name]"</li>
-                      <li>• "Purchase 100 units with 6 month installments"</li>
+                      <li>• <bdi dir="ltr">{t("ai.ex-suppliers")}</bdi></li>
+                      <li>• <bdi dir="ltr">{t("ai.ex-products")}</bdi></li>
+                      <li>• <bdi dir="ltr">{t("ai.ex-order-pumps")}</bdi></li>
+                      <li>• <bdi dir="ltr">{t("ai.ex-installments")}</bdi></li>
                     </ul>
                   )}
                 </div>
@@ -243,7 +244,7 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
             <Input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Type your message..."
+              placeholder={t("ai.type-message")}
               disabled={isLoading}
               className="flex-1"
             />
@@ -257,26 +258,26 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
       {!isCEO && (
         <Card>
           <CardHeader>
-            <CardTitle>Available Resources</CardTitle>
+            <CardTitle>{t("ai.available-resources")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="font-medium mb-2">Suppliers ({suppliers.length})</p>
+                <p className="font-medium mb-2">{fill(t("ai.suppliers-count"), { count: suppliers.length })}</p>
                 <ul className="space-y-1 text-muted-foreground">
                   {suppliers.slice(0, 5).map((s) => (
                     <li key={s.id}>• {s.name}</li>
                   ))}
-                  {suppliers.length > 5 && <li>• ... and {suppliers.length - 5} more</li>}
+                  {suppliers.length > 5 && <li>• {fill(t("ai.and-more"), { count: suppliers.length - 5 })}</li>}
                 </ul>
               </div>
               <div>
-                <p className="font-medium mb-2">Products ({products.length})</p>
+                <p className="font-medium mb-2">{fill(t("ai.products-count"), { count: products.length })}</p>
                 <ul className="space-y-1 text-muted-foreground">
                   {products.slice(0, 5).map((p) => (
                     <li key={p.id}>• {p.name}</li>
                   ))}
-                  {products.length > 5 && <li>• ... and {products.length - 5} more</li>}
+                  {products.length > 5 && <li>• {fill(t("ai.and-more"), { count: products.length - 5 })}</li>}
                 </ul>
               </div>
             </div>

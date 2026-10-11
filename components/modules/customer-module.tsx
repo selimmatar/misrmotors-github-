@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { useAppContext } from "@/lib/app-context"
 import { itemDeliveryChip, permitChip } from "@/lib/customer-dp-chip"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { COUNTRIES, getCitiesForCountry } from "@/lib/countries-data"
 import { ReportGenerator } from "@/components/report-generator"
 import { PageHeader } from "@/components/erp/page-header"
@@ -249,22 +250,22 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("customer.address")}</p>
-                <p className="font-semibold">{selectedCustomer.address || "N/A"}</p>
+                <p className="font-semibold">{selectedCustomer.address || t("label.na")}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("customer.total-orders")}</p>
                 <p className="font-semibold">{customerOrders.length}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("customer.total-spent")} (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("customer.total-spent")} {t("common.egp")}</p>
                 <p className="font-semibold text-lg"><Money value={totalSpent} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("customer.total-paid")} (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("customer.total-paid")} {t("common.egp")}</p>
                 <p className="font-semibold text-lg"><Money value={totalPaid} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("customer.balance-due")} (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("customer.balance-due")} {t("common.egp")}</p>
                 <p className="font-semibold text-lg"><Money value={totalSpent - totalPaid} /></p>
               </div>
             </div>
@@ -291,15 +292,15 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                             <p className="font-semibold">{formatDate(order.orderDate, language)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.total-amount")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.total-amount")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={order.total} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount-paid")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-paid")} {t("common.egp")}</p>
                             <p className="font-semibold text-green-700"><Money value={paymentStatus.amountPaid} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount-due")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-due")} {t("common.egp")}</p>
                             <p className="font-semibold text-orange-700"><Money value={paymentStatus.amountDue} /></p>
                           </div>
                           <div>
@@ -317,7 +318,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                             {/* Show delivery permit fulfillment status */}
                             {order.deliveryPermits && order.deliveryPermits.length > 0 && (
                               <div className="mt-2 space-y-1">
-                                <p className="text-xs text-muted-foreground">Delivery Status:</p>
+                                <p className="text-xs text-muted-foreground">{t("common.delivery-status")}</p>
                                 {order.deliveryPermits.map((dp: any) => (
                                   <div key={dp.permit_number || dp.permitNumber} className="text-xs flex items-center gap-1">
                                     <span className="font-mono">{dp.permit_number || dp.permitNumber}</span>
@@ -347,7 +348,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                                     {item.productName} × {item.quantity}
                                     {Number(item.returnedQuantity) > 0 && (
                                       <span className="ms-2 px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-700">
-                                        Returned ({item.returnedQuantity})
+                                        {fill(t("customer.returned-count"), { n: item.returnedQuantity })}
                                       </span>
                                     )}
                                     {(() => {
@@ -362,7 +363,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                                       return <span className={`ms-2 px-1.5 py-0.5 rounded text-xs ${tone}`}>{chip.label}</span>
                                     })()}
                                   </span>
-                                  <span className="font-semibold"><Money value={item.total} /> EGP</span>
+                                  <span className="font-semibold"><Money value={item.total} /> {t("common.egp-2")}</span>
                                 </div>
                               ))}
                             </div>

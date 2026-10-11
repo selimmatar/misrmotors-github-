@@ -29,6 +29,7 @@ import { getOrCreateClientId } from "@/lib/client-id"
 import * as XLSX from "xlsx"
 import { normalizeQuotationPaymentDetails } from "@/lib/payment-type"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { Money } from "@/components/erp/money"
@@ -483,7 +484,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
   const handleCreateCustomer = async () => {
     if (!customerFormData.name || !customerFormData.email || !customerFormData.phone) {
-      alert("Please fill in all required fields")
+      alert(t("common.please-fill-in-all-required"))
       return
     }
 
@@ -512,10 +513,10 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
         city: "",
       })
       setShowCustomerForm(false)
-      alert("Customer created successfully!")
+      alert(t("so.customer-created-successfully"))
     } catch (error) {
       console.error("Error creating customer:", error)
-      alert("Failed to create customer. Please try again.")
+      alert(t("so.failed-to-create-customer-please"))
     }
   }
 
@@ -627,7 +628,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
         }).filter(item => item.product_name && item.product_name.trim() !== "") // Filter out empty rows
 
         if (newItems.length === 0) {
-          alert("No valid items found in Excel file. Please ensure your file has columns like 'Product Name', 'Quantity', 'Unit Price', and optionally 'Supplier Name'.")
+          alert(t("sq.no-valid-items-found-in"))
           return
         }
 
@@ -637,10 +638,10 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
         // Add the imported items to existing items
         setItems(prev => [...prev, ...newItems])
-        alert(`Successfully imported ${newItems.length} items:\n- ${inventoryItems} matched from inventory\n- ${outsourcedItems} outsourced items`)
+        alert(fill(t("sq.successfully-imported-items-matched-from"), { count: newItems.length, matched: inventoryItems, outsourced: outsourcedItems }))
       } catch (error) {
         console.error("Excel parse error:", error)
-        alert("Failed to parse Excel file. Please ensure it's a valid .xlsx or .xls file.")
+        alert(t("sq.failed-to-parse-excel-file"))
       }
     }
     reader.readAsArrayBuffer(file)
@@ -701,11 +702,11 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
   const handleSaveAndGeneratePDF = async () => {
     if (!customerName.trim()) {
-      alert("Please enter customer name")
+      alert(t("sq.please-enter-customer-name"))
       return
     }
     if (items.length === 0) {
-      alert("Please add at least one item")
+      alert(t("common.please-add-at-least-one"))
       return
     }
 
@@ -720,7 +721,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     })
 
     if (invalidItems.length > 0) {
-      alert("Please fill all item details (name, quantity, and price)")
+      alert(t("sq.please-fill-all-item-details"))
       return
     }
 
@@ -732,7 +733,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
     if (outOfStockItem) {
       const stock = getAvailableStock(outOfStockItem.product_id)
-      alert(`"${outOfStockItem.product_name}" only has ${stock} in stock. Please reduce the quantity.`)
+      alert(fill(t("sq.only-has-in-stock-please"), { name: outOfStockItem.product_name, stock: String(stock) }))
       return
     }
 
@@ -826,7 +827,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       window.open(`/api/quotations/generate?${queryString}`, "_blank")
     } catch (error) {
       console.error("Save quotation error:", error)
-      alert("Failed to save quotation. Please try again.")
+      alert(t("sq.failed-to-save-quotation-please"))
     } finally {
       setIsCreatingQuotation(false)
     }
@@ -838,17 +839,17 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     <>
       {activeDraftId && (
         <Badge variant="secondary" className="font-normal">
-          Editing saved draft
+          {t("sq.editing-saved-draft")}
         </Badge>
       )}
-      {isSavingDraft && <span className="text-xs text-muted-foreground">Saving draft…</span>}
+      {isSavingDraft && <span className="text-xs text-muted-foreground">{t("sq.saving-draft")}</span>}
       <Button type="button" variant="outline" size="sm" onClick={() => setShowDraftsPanel((v) => !v)}>
         <FileClock className="h-4 w-4 me-1" />
-        Drafts{drafts.length > 0 ? ` (${drafts.length})` : ""}
+        {t("sq.drafts")}{drafts.length > 0 ? ` (${drafts.length})` : ""}
       </Button>
       <Button type="button" variant="outline" size="sm" onClick={startNewDraft}>
         <Plus className="h-4 w-4 me-1" />
-        New Quotation
+        {t("sq.new-quotation")}
       </Button>
     </>
   )
@@ -861,7 +862,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
         <PageHeader
           group={t("group.sales")}
           title={t("module.sales-quotations")}
-          subtitle="Create and print sales quotations for customers with inventory items or custom products"
+          subtitle={t("sq.create-and-print-sales-quotations")}
           actions={headerActions}
         />
       )}
@@ -870,7 +871,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
             <CardContent>
             {drafts.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No saved drafts yet. Quotations you leave in progress are saved here automatically.
+                {t("sq.no-saved-drafts-yet-quotations")}
               </p>
             ) : (
               <div className="space-y-2">
@@ -888,13 +889,13 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                         <p className="text-sm font-medium truncate">{formatDraftLabel(draft.form_data)}</p>
                         <p className="text-xs text-muted-foreground">
                           {formatDraftTimestamp(draft.updated_at)}
-                          {isActive ? " · Currently open" : ""}
+                          {isActive ? t("sq.currently-open") : ""}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {!isActive && (
                           <Button type="button" variant="secondary" size="sm" onClick={() => resumeDraft(draft)}>
-                            Resume
+                            {t("sq.resume")}
                           </Button>
                         )}
                         <Button
@@ -918,16 +919,16 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
       <Card>
         <CardHeader>
-          <CardTitle>Customer & Delivery Information</CardTitle>
+          <CardTitle>{t("sq.customer-delivery-information")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="customer">Select Customer</Label>
+              <Label htmlFor="customer">{t("select-customer")}</Label>
               <div className="flex gap-2">
                 <Select value={selectedCustomerId} onValueChange={handleCustomerChange}>
                   <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select a customer or enter manually" />
+                    <SelectValue placeholder={t("sq.select-a-customer-or-enter")} />
                   </SelectTrigger>
                   <SelectContent>
                     {customers.map((customer) => (
@@ -943,44 +944,44 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customerName">Customer Name *</Label>
+              <Label htmlFor="customerName">{t("sq.customer-name")}</Label>
               <Input
                 id="customerName"
-                placeholder="Enter customer name"
+                placeholder={t("sq.enter-customer-name")}
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customerPhone">Phone Number</Label>
+              <Label htmlFor="customerPhone">{t("sq.phone-number")}</Label>
               <Input
                 id="customerPhone"
-                placeholder="Enter phone number"
+                placeholder={t("so.enter-phone-number")}
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customerEmail">Email Address</Label>
+              <Label htmlFor="customerEmail">{t("sq.email-address")}</Label>
               <Input
                 id="customerEmail"
                 type="email"
-                placeholder="Enter email address"
+                placeholder={t("sq.enter-email-address")}
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customerAddress">Customer Address</Label>
+              <Label htmlFor="customerAddress">{t("sq.customer-address")}</Label>
               <Input
                 id="customerAddress"
-                placeholder="Enter delivery address"
+                placeholder={t("so.enter-delivery-address")}
                 value={customerAddress}
                 onChange={(e) => setCustomerAddress(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="validityDays">Validity (Days)</Label>
+              <Label htmlFor="validityDays">{t("quote.validity-days")}</Label>
               <Input
                 id="validityDays"
                 type="number"
@@ -990,48 +991,48 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="quotationRequestNumber">Quotation Request Number</Label>
+              <Label htmlFor="quotationRequestNumber">{t("sq.quotation-request-number")}</Label>
               <Input
                 id="quotationRequestNumber"
-                placeholder="Customer's quotation request reference"
+                placeholder={t("sq.customer-s-quotation-request-reference")}
                 value={quotationRequestNumber}
                 onChange={(e) => setQuotationRequestNumber(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="departmentName">Department Name</Label>
+              <Label htmlFor="departmentName">{t("hr.department-name")}</Label>
               <Input
                 id="departmentName"
-                placeholder="Department receiving the order"
+                placeholder={t("sq.department-receiving-the-order")}
                 value={departmentName}
                 onChange={(e) => setDepartmentName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="receiverName">Receiver Name</Label>
+              <Label htmlFor="receiverName">{t("sq.receiver-name")}</Label>
               <Input
                 id="receiverName"
-                placeholder="Person who will receive the order"
+                placeholder={t("sq.person-who-will-receive-the")}
                 value={receiverName}
                 onChange={(e) => setReceiverName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="soType">Quotation Type</Label>
+              <Label htmlFor="soType">{t("sq.quotation-type")}</Label>
               <Select value={soType} onValueChange={setSoType}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="EQUIPMENT">Equipment</SelectItem>
-                  <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
-                  <SelectItem value="SPARE_PARTS">Spare Parts</SelectItem>
-                  <SelectItem value="SERVICE">Service</SelectItem>
+                  <SelectItem value="EQUIPMENT">{t("so-type.equipment")}</SelectItem>
+                  <SelectItem value="MAINTENANCE">{t("common.maintenance")}</SelectItem>
+                  <SelectItem value="SPARE_PARTS">{t("sq.spare-parts")}</SelectItem>
+                  <SelectItem value="SERVICE">{t("sq.service")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="orderDate">Order Date</Label>
+              <Label htmlFor="orderDate">{t("order-date")}</Label>
               <Input
                 id="orderDate"
                 type="date"
@@ -1042,10 +1043,10 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
           </div>
 
           <div className="pt-2 border-t">
-            <h4 className="text-sm font-medium text-muted-foreground mb-3 mt-3">Delivery Details</h4>
+            <h4 className="text-sm font-medium text-muted-foreground mb-3 mt-3">{t("sq.delivery-details")}</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="deliveryDate">Delivery Date</Label>
+                <Label htmlFor="deliveryDate">{t("so.delivery-date")}</Label>
                 <Input
                   id="deliveryDate"
                   type="date"
@@ -1054,28 +1055,28 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="deliveryAddress">Delivery Address</Label>
+                <Label htmlFor="deliveryAddress">{t("so.delivery-address")}</Label>
                 <Input
                   id="deliveryAddress"
-                  placeholder="Enter delivery address"
+                  placeholder={t("so.enter-delivery-address")}
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="deliveryContactName">Contact Name</Label>
+                <Label htmlFor="deliveryContactName">{t("sq.contact-name")}</Label>
                 <Input
                   id="deliveryContactName"
-                  placeholder="Delivery contact person"
+                  placeholder={t("sq.delivery-contact-person")}
                   value={deliveryContactName}
                   onChange={(e) => setDeliveryContactName(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="deliveryContactPhone">Contact Phone</Label>
+                <Label htmlFor="deliveryContactPhone">{t("sq.contact-phone")}</Label>
                 <Input
                   id="deliveryContactPhone"
-                  placeholder="Delivery contact phone"
+                  placeholder={t("sq.delivery-contact-phone")}
                   value={deliveryContactPhone}
                   onChange={(e) => setDeliveryContactPhone(e.target.value)}
                 />
@@ -1089,7 +1090,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Quotation Items</CardTitle>
+            <CardTitle>{t("sq.quotation-items")}</CardTitle>
             <div className="flex flex-wrap gap-2">
               <input
                 type="file"
@@ -1100,27 +1101,27 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
               />
               <Button onClick={() => fileInputRef.current?.click()} size="sm" variant="outline">
                 <Upload className="h-4 w-4 me-2" />
-                Import Excel
+                {t("sq.import-excel")}
               </Button>
               <Button onClick={() => addItem("inventory")} size="sm" variant="outline">
                 <Package className="h-4 w-4 me-2" />
-                Add from Inventory
+                {t("common.add-from-inventory")}
               </Button>
               <Button onClick={() => addItem("outsourced")} size="sm" variant="outline">
                 <UserPlus className="h-4 w-4 me-2" />
-                Add Outsourced Item
+                {t("common.add-outsourced-item")}
               </Button>
             </div>
           </div>
           <CardDescription className="text-xs mt-2">
-            Excel columns: Product Name, Quantity, Unit Price, Outsourced (yes/no), Supplier Name
+            {t("sq.excel-columns-product-name-quantity")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {items.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No items added yet. Add items from inventory or create custom items.</p>
+              <p>{t("sq.no-items-added-yet-add")}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -1129,13 +1130,13 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                   <div className="col-span-1 text-center">
                     <div className="font-semibold">{index + 1}</div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      {item.item_type === "inventory" ? "Inventory" : "Outsourced"}
+                      {item.item_type === "inventory" ? t("group.inventory") : t("common.outsourced-2")}
                     </div>
                   </div>
                   {item.item_type === "inventory" ? (
                     <>
                       <div className="col-span-4 space-y-2">
-                        <Label htmlFor={`product-${item.id}`}>Select Product from Inventory</Label>
+                        <Label htmlFor={`product-${item.id}`}>{t("sq.select-product-from-inventory")}</Label>
                         <ProductSearchCombobox
                           products={products
                             .filter((product) => product.id != null)
@@ -1148,29 +1149,29 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                           warehouseId="all"
                           value={item.product_id ? item.product_id.toString() : undefined}
                           onSelect={(value) => handleInventorySelection(item.id, value)}
-                          placeholder="Search product by name or SKU..."
+                          placeholder={t("so.search-product-by-name-or")}
                         />
                       </div>
                     </>
                   ) : (
                     <>
                       <div className="col-span-2 space-y-2">
-                        <Label htmlFor={`product-${item.id}`}>Outsourced Product Name</Label>
+                        <Label htmlFor={`product-${item.id}`}>{t("sq.outsourced-product-name")}</Label>
                         <Input
                           id={`product-${item.id}`}
-                          placeholder="Enter product name"
+                          placeholder={t("sq.enter-product-name")}
                           value={item.product_name}
                           onChange={(e) => updateItem(item.id, "product_name", e.target.value)}
                         />
                       </div>
                       <div className="col-span-2 space-y-2">
-                        <Label htmlFor={`supplier-${item.id}`}>Supplier</Label>
+                        <Label htmlFor={`supplier-${item.id}`}>{t("field.supplier")}</Label>
                         <Select
                           value={item.supplier_name || ""}
                           onValueChange={(value) => updateItem(item.id, "supplier_name", value)}
                         >
                           <SelectTrigger id={`supplier-${item.id}`}>
-                            <SelectValue placeholder="Select supplier" />
+                            <SelectValue placeholder={t("common.select-supplier")} />
                           </SelectTrigger>
                           <SelectContent>
                             {suppliers.map((s) => (
@@ -1184,7 +1185,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                     </>
                   )}
                   <div className="col-span-2 space-y-2">
-                    <Label htmlFor={`quantity-${item.id}`}>Quantity</Label>
+                    <Label htmlFor={`quantity-${item.id}`}>{t("quantity")}</Label>
                     {(() => {
                       const stockLimit = item.item_type === "inventory" ? getAvailableStock(item.product_id) : null
                       return (
@@ -1204,14 +1205,14 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                             }}
                           />
                           {stockLimit !== null && (
-                            <p className="text-xs text-muted-foreground">{stockLimit} in stock</p>
+                            <p className="text-xs text-muted-foreground">{stockLimit} {t("common.in-stock")}</p>
                           )}
                         </>
                       )
                     })()}
                   </div>
                   <div className="col-span-2 space-y-2">
-                    <Label htmlFor={`price-${item.id}`}>Unit Cost (EGP)</Label>
+                    <Label htmlFor={`price-${item.id}`}>{t("common.unit-cost-egp")}</Label>
                     <Input
                       id={`price-${item.id}`}
                       type="number"
@@ -1222,7 +1223,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                     />
                   </div>
                   <div className="col-span-1 space-y-2">
-                    <Label htmlFor={`markup-${item.id}`}>Markup %</Label>
+                    <Label htmlFor={`markup-${item.id}`}>{t("so.markup")}</Label>
                     <Input
                       id={`markup-${item.id}`}
                       type="number"
@@ -1233,8 +1234,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                     />
                   </div>
                   <div className="col-span-1 space-y-2">
-                    <Label>Total</Label>
-                    <div className="text-sm font-medium pt-2"><Money value={item.quantity * getItemFinalPrice(item)} /> EGP</div>
+                    <Label>{t("total")}</Label>
+                    <div className="text-sm font-medium pt-2"><Money value={item.quantity * getItemFinalPrice(item)} /> {t("common.egp-2")}</div>
                     {(item.markup || 0) > 0 && (
                       <div className="text-xs text-muted-foreground">@ {getItemFinalPrice(item).toFixed(2)}</div>
                     )}
@@ -1254,7 +1255,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       {/* Discount & Pricing Card - Apply discount to subtotal BEFORE payment calculations */}
       <Card>
         <CardHeader>
-          <CardTitle>Discount & Pricing</CardTitle>
+          <CardTitle>{t("sq.discount-pricing")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <DiscountFields
@@ -1270,7 +1271,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       {/* Payment Terms Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Payment Terms</CardTitle>
+          <CardTitle>{t("field.payment-terms")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <PaymentTypeSelector value={paymentType} onChange={setPaymentType} />
@@ -1350,14 +1351,14 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
       <Card>
         <CardHeader>
-          <CardTitle>Additional Information</CardTitle>
+          <CardTitle>{t("sq.additional-information")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="notes">Notes / Terms & Conditions</Label>
+            <Label htmlFor="notes">{t("sq.notes-terms-conditions")}</Label>
             <Textarea
               id="notes"
-              placeholder="Enter any additional notes or terms and conditions..."
+              placeholder={t("sq.enter-any-additional-notes-or")}
               rows={4}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -1372,10 +1373,10 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
             <div className="space-y-2">
               <Button onClick={handleSaveAndGeneratePDF} size="lg" className="gap-2" disabled={isCreatingQuotation}>
                 <Printer className="h-5 w-5" />
-                {isCreatingQuotation ? "Saving..." : "Save & Generate PDF"}
+                {isCreatingQuotation ? t("common.saving") : t("sq.save-generate-pdf")}
               </Button>
-              <p className="text-sm text-muted-foreground">Saves quotation and opens PDF in new window</p>
-              {isSavingDraft && <p className="text-xs text-muted-foreground">Saving draft…</p>}
+              <p className="text-sm text-muted-foreground">{t("sq.saves-quotation-and-opens-pdf")}</p>
+              {isSavingDraft && <p className="text-xs text-muted-foreground">{t("sq.saving-draft")}</p>}
 
               {savedQuotation && (
                 <div className="mt-4 pt-4 border-t">
@@ -1393,16 +1394,16 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
             </div>
             <div className="space-y-2 w-full lg:w-auto lg:min-w-[300px]">
               <div className="flex justify-between py-2 border-b">
-                <span className="font-medium">Subtotal:</span>
-                <span><Money value={subtotal} /> EGP</span>
+                <span className="font-medium">{t("common.subtotal")}</span>
+                <span><Money value={subtotal} /> {t("common.egp-2")}</span>
               </div>
               <div className="flex justify-between py-2 border-b">
-                <span className="font-medium">VAT (14%):</span>
-                <span><Money value={tax} /> EGP</span>
+                <span className="font-medium">{t("common.vat-14")}</span>
+                <span><Money value={tax} /> {t("common.egp-2")}</span>
               </div>
               <div className="flex justify-between py-2 text-lg font-bold">
-                <span>Total:</span>
-                <span><Money value={total} /> EGP</span>
+                <span>{t("common.total")}</span>
+                <span><Money value={total} /> {t("common.egp-2")}</span>
               </div>
             </div>
           </div>

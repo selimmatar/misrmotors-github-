@@ -299,7 +299,7 @@ export function CourierManagementModule() {
                         <div className="text-end">
                           <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
                           <p className="text-lg font-bold mt-2">
-                            <Money value={permit.soTotal} /> EGP
+                            <Money value={permit.soTotal} /> {t("common.egp-2")}
                           </p>
                         </div>
                       </div>
@@ -330,7 +330,7 @@ export function CourierManagementModule() {
                         <TableHead>{t("field.delivery-address")}</TableHead>
                         <TableHead>{t("field.date")}</TableHead>
                         <TableHead>{t("field.status")}</TableHead>
-                        <NumHead>{t("field.total")} (EGP)</NumHead>
+                        <NumHead>{t("field.total")} {t("common.egp")}</NumHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>

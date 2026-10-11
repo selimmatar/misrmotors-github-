@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Loader2, Trash2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,9 +70,9 @@ export default function UsersPage() {
 
       // Remove user from local state
       setUsers(users.filter((u) => u.id !== userId))
-      alert(`User ${userEmail} has been deleted successfully`)
+      alert(fill(t("users.deleted-success"), { email: userEmail }))
     } catch (err) {
-      alert(`Error deleting user: ${err instanceof Error ? err.message : "Unknown error"}`)
+      alert(fill(t("users.delete-error"), { error: err instanceof Error ? err.message : t("users.unknown-error") }))
     } finally {
       setDeletingUserId(null)
     }
@@ -90,7 +91,7 @@ export default function UsersPage() {
       <div className="flex items-center justify-center min-h-screen">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle className="text-destructive">Error</CardTitle>
+            <CardTitle className="text-destructive">{t("error")}</CardTitle>
           </CardHeader>
           <CardContent>
             <p>{error}</p>
@@ -104,14 +105,16 @@ export default function UsersPage() {
     <div className="container mx-auto py-8">
       <Card>
         <CardHeader>
-          <CardTitle>Registered Users</CardTitle>
+          <CardTitle>{t("users.registered-users")}</CardTitle>
           <CardDescription>
-            {users.length} user{users.length !== 1 ? "s" : ""} registered in the system
+            {users.length !== 1
+              ? fill(t("users.count-many"), { count: users.length })
+              : fill(t("users.count-one"), { count: users.length })}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {users.length === 0 ? (
-            <p className="text-muted-foreground">No users have been created yet.</p>
+            <p className="text-muted-foreground">{t("users.no-users-have-been-created")}</p>
           ) : (
             <div className="space-y-4">
               {users.map((user) => (
@@ -119,11 +122,11 @@ export default function UsersPage() {
                   <div className="space-y-1">
                     <p className="font-medium">{user.email}</p>
                     <p className="text-sm text-muted-foreground">
-                      Created: {new Date(user.created_at).toLocaleDateString()}
+                      {t("users.created")} {new Date(user.created_at).toLocaleDateString()}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Badge variant="outline">{user.role}</Badge>
+                    <Badge variant="outline">{t(`role.${user.role}`)}</Badge>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
@@ -141,20 +144,19 @@ export default function UsersPage() {
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete User</AlertDialogTitle>
+                          <AlertDialogTitle>{t("user.delete")}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to delete user <strong>{user.email}</strong>? This action cannot be
-                            undone and will delete all data associated with this user including customers, suppliers,
-                            products, orders, and invoices.
+                            {t("users.delete-confirm-lead")} <strong>{user.email}</strong>
+                            {t("users.delete-confirm-tail")}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => deleteUser(user.id, user.email)}
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                           >
-                            Delete User
+                            {t("user.delete")}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>

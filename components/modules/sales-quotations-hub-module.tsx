@@ -29,15 +29,15 @@ export function SalesQuotationsHubModule({ userRole }: SalesQuotationsHubModuleP
           <TabsList className="h-auto w-full flex-wrap justify-start sm:w-auto">
             <TabsTrigger value="create-quotations" className="gap-2">
               <Plus className="w-4 h-4" />
-              Create Quotations
+              {t("quote.create-quotations")}
             </TabsTrigger>
             <TabsTrigger value="approve-quotations" className="gap-2">
               <CheckSquare className="w-4 h-4" />
-              Approve Quotations
+              {t("module.approve-sales-quotations")}
             </TabsTrigger>
             <TabsTrigger value="sales-quotations" className="gap-2">
               <FileText className="w-4 h-4" />
-              Sales Quotations
+              {t("quote.sales-quotations")}
             </TabsTrigger>
           </TabsList>
         </PageHeader>

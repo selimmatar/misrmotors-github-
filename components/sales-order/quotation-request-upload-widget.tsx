@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { Upload, FileText, X, Loader2, ExternalLink } from "lucide-react"
 
 interface QuotationRequestUploadWidgetProps {
@@ -71,10 +72,10 @@ export function QuotationRequestUploadWidget({
         fileInputRef.current.value = ""
       }
 
-      alert("Quotation request uploaded successfully!")
+      alert(t("so.quotation-request-uploaded-successfully"))
     } catch (error) {
       console.error("QR Upload error:", error)
-      alert(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+      alert(fill(t("so.upload-failed"), { message: error instanceof Error ? error.message : t("so.unknown-error") }))
     } finally {
       setIsUploading(false)
     }
@@ -99,7 +100,7 @@ export function QuotationRequestUploadWidget({
         {/* Existing File */}
         {existingFile && (
           <div className="space-y-2">
-            <Label className="text-sm text-muted-foreground">Uploaded Document</Label>
+            <Label className="text-sm text-muted-foreground">{t("so.uploaded-document")}</Label>
             <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
               <FileText className="h-5 w-5 text-green-700" />
               <div className="flex-1">
@@ -134,7 +135,7 @@ export function QuotationRequestUploadWidget({
                 <div className="space-y-2">
                   <FileText className="h-12 w-12 mx-auto text-primary" />
                   <p className="text-sm font-medium">{selectedFile.name}</p>
-                  <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                  <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} {t("common.mb")}</p>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -144,14 +145,14 @@ export function QuotationRequestUploadWidget({
                     }}
                   >
                     <X className="h-4 w-4 mr-1" />
-                    Remove
+                    {t("action.remove")}
                   </Button>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <Upload className="h-10 w-10 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Click to upload quotation request document</p>
-                  <p className="text-xs text-muted-foreground">PDF, Images (Max 10MB)</p>
+                  <p className="text-sm text-muted-foreground">{t("so.click-to-upload-quotation-request")}</p>
+                  <p className="text-xs text-muted-foreground">{t("so.pdf-images-max-10mb")}</p>
                 </div>
               )}
             </div>
@@ -166,7 +167,7 @@ export function QuotationRequestUploadWidget({
             {selectedFile && (
               <Button onClick={handleUpload} disabled={isUploading} className="w-full">
                 {isUploading ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Upload className="h-4 w-4 me-2" />}
-                {isUploading ? "Uploading..." : "Upload Quotation Request"}
+                {isUploading ? t("common.uploading") : t("so.upload-quotation-request")}
               </Button>
             )}
           </div>

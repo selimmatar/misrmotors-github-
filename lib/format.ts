@@ -65,6 +65,21 @@ export function statusLabel(value: string | null | undefined, t: (key: string) =
   return sentenceCase(value)
 }
 
+// Return-item reason codes (the values of the return-reason <Select>) mapped to the existing labels.
+const RETURN_REASON_KEYS: Record<string, string> = {
+  damaged: "common.damaged",
+  wrong_item: "common.wrong-item",
+  customer_refused: "ship.reason-customer-refused",
+  excess_quantity: "ship.reason-excess-quantity",
+  defective: "ship.reason-defective",
+  other: "hr.document-other",
+}
+export function returnReasonLabel(value: string | null | undefined, t: (key: string) => string): string {
+  if (!value) return EMPTY
+  const key = RETURN_REASON_KEYS[value]
+  return key ? t(key) : sentenceCase(value)
+}
+
 export function initials(name: string | null | undefined): string {
   const letters = (name ?? "")
     .trim()

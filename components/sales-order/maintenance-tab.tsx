@@ -8,6 +8,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Wrench, UserPlus, Upload, CheckCircle, XCircle, DollarSign, FileText } from "lucide-react"
+import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
+import { statusLabel } from "@/lib/format"
 
 interface SalesOrder {
   id: string  // This is the SO ID from the parent component
@@ -49,7 +52,7 @@ export function SalesOrderMaintenanceTab({
   salesOrder: SalesOrder
   userRole: string
   }) {
-  
+  const { t } = useI18n()
   const [workOrder, setWorkOrder] = useState<MaintenanceWorkOrder | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
@@ -101,7 +104,7 @@ export function SalesOrderMaintenanceTab({
 
   const handleCreateWorkOrder = async () => {
     if (!title || !description) {
-      alert("Please fill in all required fields")
+      alert(t("common.please-fill-in-all-required"))
       return
     }
 
@@ -131,15 +134,15 @@ export function SalesOrderMaintenanceTab({
         setTitle("")
         setDescription("")
         
-        alert(`Maintenance work order ${newWorkOrder.work_order_number} created successfully! The shipping team can print the work order template from their Maintenance tab.`)
+        alert(fill(t("so-maint.work-order-created"), { number: newWorkOrder.work_order_number }))
       } else {
         const error = await response.json()
         console.error("❌ Failed to create work order:", error)
-        alert(error.error || "Failed to create work order")
+        alert(error.error || t("so-maint.failed-to-create-work-order"))
       }
     } catch (error) {
       console.error("Error creating work order:", error)
-      alert("Failed to create work order")
+      alert(t("so-maint.failed-to-create-work-order"))
     } finally {
       setLoading(false)
     }
@@ -160,11 +163,11 @@ export function SalesOrderMaintenanceTab({
 
       if (response.ok) {
         fetchWorkOrder()
-        alert("Employee assigned successfully!")
+        alert(t("so-maint.employee-assigned"))
       }
     } catch (error) {
       console.error("Error assigning employee:", error)
-      alert("Failed to assign employee")
+      alert(t("so-maint.failed-to-assign-employee"))
     } finally {
       setLoading(false)
     }
@@ -178,7 +181,7 @@ export function SalesOrderMaintenanceTab({
       completed: "bg-green-100 text-green-800",
       cancelled: "bg-red-100 text-red-800",
     }
-    return <Badge className={colors[status] || ""}>{status.replace("_", " ").toUpperCase()}</Badge>
+    return <Badge className={colors[status] || ""}>{statusLabel(status, t).toUpperCase()}</Badge>
   }
 
   if (!salesOrder.requiresMaintenance && !workOrder && !showCreateForm) {
@@ -186,18 +189,18 @@ export function SalesOrderMaintenanceTab({
       <div className="space-y-4">
         <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 text-center">
           <Wrench className="w-16 h-16 mx-auto mb-4 text-blue-600" />
-          <h2 className="text-2xl font-bold mb-2 text-blue-900">Maintenance Management</h2>
+          <h2 className="text-2xl font-bold mb-2 text-blue-900">{t("so-maint.management")}</h2>
           <p className="text-blue-700 mb-6">
-            This is the maintenance workflow for Sales Order: {salesOrder.soNumber}
+            {t("so-maint.workflow-for-so")} {salesOrder.soNumber}
           </p>
           <Card className="max-w-2xl mx-auto">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <Wrench className="w-6 h-6" />
-                No Maintenance Work Order Yet
+                {t("so-maint.no-work-order-yet")}
               </CardTitle>
               <CardDescription className="text-base">
-                This sales order does not have any maintenance work orders. Click below to create one.
+                {t("so-maint.no-work-orders-hint")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -209,7 +212,7 @@ export function SalesOrderMaintenanceTab({
                 className="w-full"
               >
                 <UserPlus className="w-5 h-5 mr-2" />
-                Create Maintenance Work Order
+                {t("so-maint.create-work-order")}
               </Button>
             </CardContent>
           </Card>
@@ -222,63 +225,63 @@ export function SalesOrderMaintenanceTab({
     return (
       <div className="space-y-4">
         <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4 text-center">
-          <h2 className="text-xl font-bold text-green-900">Creating Maintenance Work Order for {salesOrder.soNumber}</h2>
+          <h2 className="text-xl font-bold text-green-900">{t("so-maint.creating-work-order-for")} {salesOrder.soNumber}</h2>
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>Create Maintenance Work Order</CardTitle>
-            <CardDescription>Describe the maintenance requirements for this sales order</CardDescription>
+            <CardTitle>{t("so-maint.create-work-order")}</CardTitle>
+            <CardDescription>{t("so-maint.describe-requirements")}</CardDescription>
           </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="title">Work Order Title *</Label>
+            <Label htmlFor="title">{t("so-maint.work-order-title")}</Label>
             <input
               id="title"
               type="text"
               className="w-full border rounded px-3 py-2"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Installation and Setup"
+              placeholder={t("so-maint.title-placeholder")}
             />
           </div>
 
           <div>
-            <Label htmlFor="description">Description *</Label>
+            <Label htmlFor="description">{t("so-maint.description-required")}</Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe the maintenance work required..."
+              placeholder={t("so-maint.description-placeholder")}
               rows={4}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="priority">Priority</Label>
+              <Label htmlFor="priority">{t("common.priority")}</Label>
               <Select value={priority} onValueChange={setPriority}>
                 <SelectTrigger id="priority">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
+                  <SelectItem value="low">{t("so-maint.priority-low")}</SelectItem>
+                  <SelectItem value="medium">{t("so-maint.priority-medium")}</SelectItem>
+                  <SelectItem value="high">{t("so-maint.priority-high")}</SelectItem>
+                  <SelectItem value="urgent">{t("so-maint.priority-urgent")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label htmlFor="employee">Assign Employee (Optional)</Label>
+              <Label htmlFor="employee">{t("so-maint.assign-employee-optional")}</Label>
               <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
                 <SelectTrigger id="employee">
-                  <SelectValue placeholder="Select employee..." />
+                  <SelectValue placeholder={t("common.select-employee")} />
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map((emp) => (
                     <SelectItem key={emp.employee_id} value={String(emp.employee_id)}>
-                      {emp.full_name} - {emp.position?.position_title || 'No Position'}
+                      {emp.full_name} - {emp.position?.position_title || t("so-maint.no-position")}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -288,11 +291,11 @@ export function SalesOrderMaintenanceTab({
 
           <div className="flex gap-2">
             <Button onClick={handleCreateWorkOrder} disabled={loading}>
-              {loading ? "Creating..." : "Create Work Order"}
+              {loading ? t("common.creating") : t("so-maint.create-work-order-button")}
             </Button>
             {showCreateForm && !salesOrder.requiresMaintenance && (
               <Button variant="outline" onClick={() => setShowCreateForm(false)}>
-                Cancel
+                {t("cancel")}
               </Button>
             )}
           </div>
@@ -318,33 +321,33 @@ export function SalesOrderMaintenanceTab({
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Description</p>
+              <p className="text-sm font-medium text-muted-foreground">{t("description")}</p>
               <p className="text-sm">{workOrder.description}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Priority</p>
-                <Badge>{workOrder.priority.toUpperCase()}</Badge>
+                <p className="text-sm font-medium text-muted-foreground">{t("common.priority")}</p>
+                <Badge>{statusLabel(workOrder.priority, t).toUpperCase()}</Badge>
               </div>
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Created</p>
+                <p className="text-sm font-medium text-muted-foreground">{t("created")}</p>
                 <p className="text-sm">{new Date(workOrder.created_at).toLocaleDateString()}</p>
               </div>
             </div>
 
             {workOrder.assigned_employee_name ? (
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Assigned To</p>
+                <p className="text-sm font-medium text-muted-foreground">{t("so-maint.assigned-to")}</p>
                 <p className="text-sm">{workOrder.assigned_employee_name}</p>
               </div>
             ) : (
               <div className="space-y-2">
-                <Label>Assign Employee</Label>
+                <Label>{t("so-maint.assign-employee")}</Label>
                 <div className="flex gap-2">
                   <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select employee..." />
+                      <SelectValue placeholder={t("common.select-employee")} />
                     </SelectTrigger>
                     <SelectContent>
                       {employees.map((emp) => (
@@ -356,7 +359,7 @@ export function SalesOrderMaintenanceTab({
                   </Select>
                   <Button onClick={handleAssignEmployee} disabled={!selectedEmployee || loading}>
                     <UserPlus className="w-4 h-4 mr-2" />
-                    Assign
+                    {t("so-maint.assign")}
                   </Button>
                 </div>
               </div>
@@ -367,22 +370,22 @@ export function SalesOrderMaintenanceTab({
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <FileText className="w-5 h-5" />
-                    Maintenance Report
+                    {t("so-maint.maintenance-report")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Findings</p>
+                    <p className="text-sm font-medium text-muted-foreground">{t("common.findings")}</p>
                     <p className="text-sm">{workOrder.maintenance_report.findings}</p>
                   </div>
 
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Status</p>
+                    <p className="text-sm font-medium text-muted-foreground">{t("status")}</p>
                     <Badge className={workOrder.maintenance_report.is_settled ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
                       {workOrder.maintenance_report.is_settled ? (
-                        <><CheckCircle className="w-3 h-3 mr-1" /> Settled</>
+                        <><CheckCircle className="w-3 h-3 mr-1" /> {t("so-maint.settled")}</>
                       ) : (
-                        <><XCircle className="w-3 h-3 mr-1" /> Not Settled</>
+                        <><XCircle className="w-3 h-3 mr-1" /> {t("so-maint.not-settled")}</>
                       )}
                     </Badge>
                   </div>
@@ -391,13 +394,13 @@ export function SalesOrderMaintenanceTab({
                     <>
                       {workOrder.maintenance_report.equipment_needed && (
                         <div>
-                          <p className="text-sm font-medium text-muted-foreground">Equipment Needed</p>
+                          <p className="text-sm font-medium text-muted-foreground">{t("so-maint.equipment-needed")}</p>
                           <p className="text-sm">{workOrder.maintenance_report.equipment_needed}</p>
                         </div>
                       )}
                       {workOrder.maintenance_report.estimated_cost && (
                         <div>
-                          <p className="text-sm font-medium text-muted-foreground">Estimated Cost</p>
+                          <p className="text-sm font-medium text-muted-foreground">{t("so-maint.estimated-cost")}</p>
                           <p className="text-sm font-semibold flex items-center gap-1">
                             <DollarSign className="w-4 h-4" />
                             {workOrder.maintenance_report.estimated_cost.toLocaleString()}
@@ -415,13 +418,13 @@ export function SalesOrderMaintenanceTab({
         {userRole === "ceo" && workOrder.status === "completed" && !workOrder.maintenance_report?.is_settled && (
           <Card>
             <CardHeader>
-              <CardTitle>Create Invoice</CardTitle>
-              <CardDescription>Work order completed - ready to bill customer</CardDescription>
+              <CardTitle>{t("ar.create-invoice")}</CardTitle>
+              <CardDescription>{t("so-maint.ready-to-bill")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button onClick={() => alert("Invoice creation coming soon!")}>
+              <Button onClick={() => alert(t("so-maint.invoice-coming-soon"))}>
                 <DollarSign className="w-4 h-4 mr-2" />
-                Create Invoice for Maintenance
+                {t("so-maint.create-invoice-for-maintenance")}
               </Button>
             </CardContent>
           </Card>

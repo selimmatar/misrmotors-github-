@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Eye, CheckCircle, XCircle, FileText, Loader2, AlertCircle, Printer, Search } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
@@ -137,7 +138,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
       setShowDetailsDialog(true)
     } catch (error) {
       console.error("Error fetching quotation details:", error)
-      alert("Failed to load quotation details")
+      alert(t("quote.failed-to-load-quotation-details"))
     }
   }
 
@@ -165,7 +166,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
       setShowPrintDialog(true)
     } catch (error) {
       console.error("Error loading quotation for preview:", error)
-      alert("Failed to load quotation for preview")
+      alert(t("quote.failed-to-load-quotation-for"))
     }
   }
 
@@ -191,7 +192,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
       setShowApproveDialog(true)
     } catch (error) {
       console.error("Error loading quotation for approval:", error)
-      alert("Failed to load quotation for approval")
+      alert(t("quote.failed-to-load-quotation-for-2"))
     } finally {
       setActionLoading(false)
     }
@@ -204,13 +205,13 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
     setShowApproveDialog(false)
     setSelectedQuotation(null)
     refreshSalesOrders()
-    alert(`Quotation approved! Sales Order ${soNumber} created.`)
+    alert(fill(t("quote.quotation-approved-sales-order-created"), { soNumber }))
   }
 
   const handleReject = async () => {
     if (!selectedQuotation) return
     if (!rejectionReason.trim()) {
-      alert("Please provide a rejection reason")
+      alert(t("permit.rejection-reason-required"))
       return
     }
 
@@ -235,10 +236,10 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
       setShowDetailsDialog(false)
       setShowRejectDialog(false)
       setRejectionReason("")
-      alert("Quotation rejected successfully.")
+      alert(t("quote.quotation-rejected-successfully"))
     } catch (error) {
       console.error("Error rejecting quotation:", error)
-      alert(error instanceof Error ? error.message : "Failed to reject quotation")
+      alert(error instanceof Error ? error.message : t("quote.failed-to-reject-quotation"))
     } finally {
       setActionLoading(false)
     }
@@ -269,21 +270,21 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
         <PageHeader
           group={t("group.sales")}
           title={t("module.approve-sales-quotations")}
-          subtitle="Review and approve pending quotations to convert them into Sales Orders"
+          subtitle={t("quote.review-and-approve-pending-quotations")}
         />
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle>Pending Quotations</CardTitle>
+          <CardTitle>{t("quote.pending-quotations")}</CardTitle>
           <CardDescription>
-            Quotations awaiting approval will appear here
+            {t("quote.quotations-awaiting-approval-will-appear")}
           </CardDescription>
           <div className="relative mt-2">
             <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search by quotation number, customer name, phone, or email..."
+              placeholder={t("quote.search-by-quotation-number-customer")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="ps-9"
@@ -295,13 +296,13 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
           {quotations.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No pending quotations found</p>
-              <p className="text-sm mt-2">Quotations in "Sent" status will appear here for approval</p>
+              <p>{t("quote.no-pending-quotations-found")}</p>
+              <p className="text-sm mt-2">{t("quote.quotations-in-sent-status-will")}</p>
             </div>
           ) : filteredQuotations.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No quotations match your search</p>
+              <p>{t("quote.no-quotations-match-your-search")}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -309,24 +310,24 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                 <div key={quotation.id} className="border rounded-lg p-4">
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
                     <div>
-                      <p className="text-sm text-muted-foreground">Quotation Number</p>
+                      <p className="text-sm text-muted-foreground">{t("quote.quotation-number")}</p>
                       <p className="font-semibold">{quotation.quotation_number}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Customer</p>
+                      <p className="text-sm text-muted-foreground">{t("so.customer")}</p>
                       <p className="font-semibold">{quotation.customer_name}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Total Amount</p>
-                      <p className="font-semibold"><Money value={quotation.total} /> EGP</p>
+                      <p className="text-sm text-muted-foreground">{t("so.total-amount")}</p>
+                      <p className="font-semibold"><Money value={quotation.total} /> {t("common.egp-2")}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Created Date</p>
+                      <p className="text-sm text-muted-foreground">{t("quote.created-date")}</p>
                       <p className="font-semibold">{formatDate(quotation.created_at, language)}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Status</p>
-                      <StatusBadge status={quotation.status} label={quotation.status === "sent" ? "Sent to Customer" : undefined} />
+                      <p className="text-sm text-muted-foreground">{t("status")}</p>
+                      <StatusBadge status={quotation.status} label={quotation.status === "sent" ? t("quote.sent-to-customer") : undefined} />
                     </div>
                   </div>
                   <div className="flex gap-2 mt-4">
@@ -337,7 +338,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                       onClick={() => handlePrintPreview(quotation)}
                     >
                       <Printer className="w-4 h-4" />
-                      Print/Preview
+                      {t("quote.print-preview")}
                     </Button>
                     <Button
                       size="sm"
@@ -350,7 +351,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                       disabled={actionLoading}
                     >
                       <XCircle className="w-4 h-4" />
-                      Reject
+                      {t("action.reject")}
                     </Button>
                     <Button
                       size="sm"
@@ -359,7 +360,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                       disabled={actionLoading}
                     >
                       <CheckCircle className="w-4 h-4" />
-                      Approve & Convert to SO
+                      {t("common.approve-convert-to-so")}
                     </Button>
                   </div>
                 </div>
@@ -373,9 +374,9 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Quotation Details</DialogTitle>
+            <DialogTitle>{t("quote.quotation-details")}</DialogTitle>
             <DialogDescription>
-              Review quotation details before approval
+              {t("quote.review-quotation-details-before-approval")}
             </DialogDescription>
           </DialogHeader>
           {selectedQuotation && (
@@ -383,43 +384,43 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
               {/* Customer Information */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Quotation Number</p>
+                  <p className="text-sm text-muted-foreground">{t("quote.quotation-number")}</p>
                   <p className="font-semibold">{selectedQuotation.quotation_number}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Status</p>
-                  <StatusBadge status={selectedQuotation.status} label={selectedQuotation.status === "sent" ? "Sent to Customer" : undefined} />
+                  <p className="text-sm text-muted-foreground">{t("status")}</p>
+                  <StatusBadge status={selectedQuotation.status} label={selectedQuotation.status === "sent" ? t("quote.sent-to-customer") : undefined} />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Customer Name</p>
+                  <p className="text-sm text-muted-foreground">{t("lost-sales.customer-name")}</p>
                   <p className="font-semibold">{selectedQuotation.customer_name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Phone</p>
-                  <p className="font-semibold">{selectedQuotation.customer_phone || "N/A"}</p>
+                  <p className="text-sm text-muted-foreground">{t("phone")}</p>
+                  <p className="font-semibold">{selectedQuotation.customer_phone || t("label.na")}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-semibold">{selectedQuotation.customer_email || "N/A"}</p>
+                  <p className="text-sm text-muted-foreground">{t("email")}</p>
+                  <p className="font-semibold">{selectedQuotation.customer_email || t("label.na")}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Validity (Days)</p>
-                  <p className="font-semibold">{selectedQuotation.validity_days} days</p>
+                  <p className="text-sm text-muted-foreground">{t("quote.validity-days")}</p>
+                  <p className="font-semibold">{selectedQuotation.validity_days} {t("common.days")}</p>
                 </div>
               </div>
 
               {/* Items Table */}
               <div>
-              <p className="text-sm text-muted-foreground mb-2 font-medium">Items</p>
+              <p className="text-sm text-muted-foreground mb-2 font-medium">{t("so.items")}</p>
               <div className="border rounded-lg overflow-x-auto">
                 <table className="w-full">
                     <thead className="bg-muted">
                       <tr>
                         <th className="text-start p-3 text-sm font-medium">#</th>
-                        <th className="text-start p-3 text-sm font-medium">Product Name</th>
-                        <th className="text-end p-3 text-sm font-medium">Quantity</th>
-                        <th className="text-end p-3 text-sm font-medium">Unit Price (EGP)</th>
-                        <th className="text-end p-3 text-sm font-medium">Total (EGP)</th>
+                        <th className="text-start p-3 text-sm font-medium">{t("product.name")}</th>
+                        <th className="text-end p-3 text-sm font-medium">{t("quantity")}</th>
+                        <th className="text-end p-3 text-sm font-medium">{t("common.unit-price-egp")}</th>
+                        <th className="text-end p-3 text-sm font-medium">{t("common.total-egp")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -450,16 +451,16 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                   return (
                     <>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Subtotal:</span>
-                        <span className="font-semibold"><Money value={subtotal} /> EGP</span>
+                        <span className="text-muted-foreground">{t("common.subtotal")}</span>
+                        <span className="font-semibold"><Money value={subtotal} /> {t("common.egp-2")}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">VAT (14%):</span>
-                        <span className="font-semibold"><Money value={calculatedTax} /> EGP</span>
+                        <span className="text-muted-foreground">{t("common.vat-14")}</span>
+                        <span className="font-semibold"><Money value={calculatedTax} /> {t("common.egp-2")}</span>
                       </div>
                       <div className="flex justify-between text-lg">
-                        <span className="font-bold">Total:</span>
-                        <span className="font-bold"><Money value={calculatedTotal} /> EGP</span>
+                        <span className="font-bold">{t("common.total")}</span>
+                        <span className="font-bold"><Money value={calculatedTotal} /> {t("common.egp-2")}</span>
                       </div>
                     </>
                   )
@@ -469,7 +470,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
               {/* Notes */}
               {selectedQuotation.notes && (
                 <div>
-                  <p className="text-sm text-muted-foreground mb-2">Notes</p>
+                  <p className="text-sm text-muted-foreground mb-2">{t("notes")}</p>
                   <div className="p-3 bg-muted rounded-lg text-sm">
                     {selectedQuotation.notes}
                   </div>
@@ -486,17 +487,17 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Quotation</DialogTitle>
+            <DialogTitle>{t("quote.reject-quotation")}</DialogTitle>
             <DialogDescription>
-              Please provide a reason for rejecting this quotation
+              {t("quote.please-provide-a-reason-for")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="rejection-reason">Rejection Reason *</Label>
+              <Label htmlFor="rejection-reason">{t("quote.rejection-reason")}</Label>
               <Textarea
                 id="rejection-reason"
-                placeholder="Enter reason for rejection..."
+                placeholder={t("quote.enter-reason-for-rejection")}
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
                 rows={4}
@@ -511,7 +512,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                 }}
                 className="bg-transparent"
               >
-                Cancel
+                {t("cancel")}
               </Button>
               <Button
                 variant="destructive"
@@ -521,10 +522,10 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                 {actionLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin me-2" />
-                    Rejecting...
+                    {t("quote.rejecting")}
                   </>
                 ) : (
-                  "Reject Quotation"
+                  t("quote.reject-quotation")
                 )}
               </Button>
             </div>

@@ -171,7 +171,7 @@ export function PaymentScheduleBuilder({
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
           <Calendar className="h-4 w-4" />
-          {t("payment.schedule-builder") || "Payment Schedule Builder"}
+          {t("payment.schedule-builder")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -183,7 +183,7 @@ export function PaymentScheduleBuilder({
             </div>
             <div className="space-y-2">
               <Label className="text-green-700 text-sm">
-                {t("payment.down-payment-due-date") || "Down Payment Due Date"}
+                {t("payment.down-payment-due-date")}
               </Label>
               <Input
                 type="date"
@@ -199,14 +199,14 @@ export function PaymentScheduleBuilder({
         {/* Mode Selection */}
         <Tabs value={scheduleMode} onValueChange={(v) => onScheduleModeChange(v as "AUTO" | "MANUAL")}>
           <TabsList className="h-auto w-full flex-wrap justify-start">
-            <TabsTrigger value="AUTO">{t("payment.auto-schedule") || "Auto (Equal Split)"}</TabsTrigger>
-            <TabsTrigger value="MANUAL">{t("payment.manual-schedule") || "Manual (Custom)"}</TabsTrigger>
+            <TabsTrigger value="AUTO">{t("payment.auto-schedule")}</TabsTrigger>
+            <TabsTrigger value="MANUAL">{t("payment.manual-schedule")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="AUTO" className="space-y-4 mt-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>{t("payment.installments-start-date") || "Installments Start Date"}</Label>
+                <Label>{t("payment.installments-start-date")}</Label>
                 <Input
                   type="date"
                   value={effectiveStartDate}
@@ -215,7 +215,7 @@ export function PaymentScheduleBuilder({
                 />
               </div>
               <div className="space-y-2">
-                <Label>{t("payment.number-of-installments") || "Number of Installments"}</Label>
+                <Label>{t("payment.number-of-installments")}</Label>
                 <Input
                   type="number"
                   value={installmentMonths}
@@ -231,11 +231,11 @@ export function PaymentScheduleBuilder({
             <div className="flex justify-between items-center">
               <Button type="button" variant="outline" size="sm" onClick={handleAddEntry}>
                 <Plus className="h-4 w-4 mr-1" />
-                {t("payment.add-payment") || "Add Payment"}
+                {t("payment.add-payment")}
               </Button>
               {scheduleEntries.filter((e) => !e.isDownPayment).length > 0 && (
                 <Button type="button" variant="ghost" size="sm" onClick={handleDistributeEqually}>
-                  {t("payment.distribute-equally") || "Distribute Equally"}
+                  {t("payment.distribute-equally")}
                 </Button>
               )}
             </div>
@@ -249,9 +249,9 @@ export function PaymentScheduleBuilder({
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   <TableHead className="w-10">#</TableHead>
-                  <TableHead>{t("payment.due-date") || "Due Date"}</TableHead>
-                  <TableHead>{t("payment.amount") || "Amount"}</TableHead>
-                  <TableHead>{t("common.note") || "Note"}</TableHead>
+                  <TableHead>{t("payment.due-date")}</TableHead>
+                  <TableHead>{t("payment.amount")}</TableHead>
+                  <TableHead>{t("common.note")}</TableHead>
                   {scheduleMode === "MANUAL" && <TableHead className="w-10"></TableHead>}
                 </TableRow>
               </TableHeader>
@@ -293,7 +293,7 @@ export function PaymentScheduleBuilder({
                           <Input
                             type="text"
                             value={entry.note || ""}
-                            placeholder={t("common.optional") || "Optional"}
+                            placeholder={t("common.optional")}
                             className="w-full"
                             onChange={(e) => handleUpdateEntry(entry.id, "note", e.target.value)}
                           />
@@ -332,16 +332,16 @@ export function PaymentScheduleBuilder({
           )}
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">
-              {t("payment.remaining-to-schedule") || "Remaining to Schedule"}:
+              {t("payment.remaining-to-schedule")}:
             </span>
             <span className="font-medium">{formatCurrency(payableAmount)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">{t("payment.total-scheduled") || "Total Scheduled"}:</span>
+            <span className="text-muted-foreground">{t("payment.total-scheduled")}:</span>
             <span className="font-medium">{formatCurrency(totalScheduled)}</span>
           </div>
           <div className="flex justify-between text-sm border-t pt-2">
-            <span className="text-muted-foreground">{t("payment.difference") || "Difference"}:</span>
+            <span className="text-muted-foreground">{t("payment.difference")}:</span>
             <div className="flex items-center gap-2">
               {isValid ? (
                 <>
@@ -359,7 +359,7 @@ export function PaymentScheduleBuilder({
           {!isValid && (
             <p className="text-xs text-red-700 flex items-center gap-1">
               <AlertCircle className="h-3 w-3" />
-              {t("payment.schedule-must-match") || "Schedule total must match payable amount to save"}
+              {t("payment.schedule-must-match")}
             </p>
           )}
         </div>

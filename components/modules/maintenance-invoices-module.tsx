@@ -11,7 +11,7 @@ export function MaintenanceInvoicesModule() {
       <PageHeader
         group={t("group.finance")}
         title={t("module.maintenance-invoices")}
-        subtitle="Create invoices for approved maintenance work orders"
+        subtitle={t("mi.subtitle")}
       />
 
       <MaintenanceInvoiceTab showHeading={false} />

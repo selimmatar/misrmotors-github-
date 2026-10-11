@@ -30,6 +30,7 @@ import {
 import { Plus, Trash2, Edit2, Package } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { useAppContext } from "@/lib/app-context"
 
 interface SupplierProduct {
@@ -86,8 +87,8 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
     } catch (error) {
       console.error("Error fetching supplier products:", error)
       toast({
-        title: "Error",
-        description: "Failed to load supplier products",
+        title: t("error"),
+        description: t("supplier.failed-to-load-products"),
         variant: "destructive",
       })
     } finally {
@@ -98,8 +99,8 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
   const handleAddProduct = async () => {
     if (!formData.productId) {
       toast({
-        title: "Validation Error",
-        description: "Please select a product",
+        title: t("supplier.validation-error"),
+        description: t("supplier.please-select-product"),
         variant: "destructive",
       })
       return
@@ -120,8 +121,8 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
 
       if (response.ok) {
         toast({
-          title: "Success",
-          description: "Product added to supplier",
+          title: t("success"),
+          description: t("supplier.product-added"),
         })
         setShowAddDialog(false)
         resetForm()
@@ -129,16 +130,16 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
       } else {
         const error = await response.json()
         toast({
-          title: "Error",
-          description: error.error || "Failed to add product",
+          title: t("error"),
+          description: error.error || t("supplier.failed-to-add-product"),
           variant: "destructive",
         })
       }
     } catch (error) {
       console.error("Error adding supplier product:", error)
       toast({
-        title: "Error",
-        description: "Failed to add product",
+        title: t("error"),
+        description: t("supplier.failed-to-add-product"),
         variant: "destructive",
       })
     }
@@ -162,8 +163,8 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
 
       if (response.ok) {
         toast({
-          title: "Success",
-          description: "Product relationship updated",
+          title: t("success"),
+          description: t("supplier.relationship-updated"),
         })
         setShowEditDialog(false)
         setSelectedProduct(null)
@@ -172,23 +173,23 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
       } else {
         const error = await response.json()
         toast({
-          title: "Error",
-          description: error.error || "Failed to update product",
+          title: t("error"),
+          description: error.error || t("supplier.failed-to-update-product"),
           variant: "destructive",
         })
       }
     } catch (error) {
       console.error("Error updating supplier product:", error)
       toast({
-        title: "Error",
-        description: "Failed to update product",
+        title: t("error"),
+        description: t("supplier.failed-to-update-product"),
         variant: "destructive",
       })
     }
   }
 
   const handleRemoveProduct = async (productId: number, productName: string) => {
-    if (!confirm(`Remove ${productName} from ${supplierName}?`)) return
+    if (!confirm(fill(t("supplier.confirm-remove-product"), { product: productName, supplier: supplierName }))) return
 
     try {
       const response = await fetch(
@@ -198,22 +199,22 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
 
       if (response.ok) {
         toast({
-          title: "Success",
-          description: "Product removed from supplier",
+          title: t("success"),
+          description: t("supplier.product-removed"),
         })
         fetchSupplierProducts()
       } else {
         toast({
-          title: "Error",
-          description: "Failed to remove product",
+          title: t("error"),
+          description: t("supplier.failed-to-remove-product"),
           variant: "destructive",
         })
       }
     } catch (error) {
       console.error("Error removing supplier product:", error)
       toast({
-        title: "Error",
-        description: "Failed to remove product",
+        title: t("error"),
+        description: t("supplier.failed-to-remove-product"),
         variant: "destructive",
       })
     }
@@ -251,31 +252,31 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Package className="w-5 h-5" />
-          <h3 className="text-lg font-semibold">Related Products</h3>
+          <h3 className="text-lg font-semibold">{t("supplier.related-products")}</h3>
           <span className="text-sm text-muted-foreground">
-            ({supplierProducts.length} products)
+            {fill(t("supplier.products-count"), { count: supplierProducts.length })}
           </span>
         </div>
         <Button onClick={() => setShowAddDialog(true)} className="gap-2">
           <Plus className="w-4 h-4" />
-          Add Product
+          {t("product.add")}
         </Button>
       </div>
 
       {loading ? (
         <div className="text-center py-8 text-muted-foreground">
-          Loading products...
+          {t("supplier.loading-products")}
         </div>
       ) : supplierProducts.length === 0 ? (
         <div className="text-center py-8 border-2 border-dashed rounded-lg">
           <Package className="w-12 h-12 mx-auto mb-2 text-muted-foreground" />
-          <p className="text-muted-foreground">No products linked yet</p>
+          <p className="text-muted-foreground">{t("supplier.no-products-linked")}</p>
           <Button
             variant="link"
             onClick={() => setShowAddDialog(true)}
             className="mt-2"
           >
-            Add your first product
+            {t("supplier.add-first-product")}
           </Button>
         </div>
       ) : (
@@ -283,13 +284,13 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Product Name</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead>Supplier SKU</TableHead>
-                <TableHead className="text-right">Unit Cost</TableHead>
-                <TableHead className="text-center">Lead Time</TableHead>
-                <TableHead className="text-center">Orders</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{t("product.name")}</TableHead>
+                <TableHead>{t("common.sku")}</TableHead>
+                <TableHead>{t("supplier.supplier-sku")}</TableHead>
+                <TableHead className="text-right">{t("common.unit-cost")}</TableHead>
+                <TableHead className="text-center">{t("supplier.lead-time")}</TableHead>
+                <TableHead className="text-center">{t("supplier.orders")}</TableHead>
+                <TableHead className="text-right">{t("actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -311,7 +312,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
                     {sp.unitCost ? `EGP ${sp.unitCost.toFixed(2)}` : "—"}
                   </TableCell>
                   <TableCell className="text-center">
-                    {sp.leadTimeDays} days
+                    {sp.leadTimeDays} {t("common.days")}
                   </TableCell>
                   <TableCell className="text-center">
                     <div className="text-sm">
@@ -354,14 +355,14 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add Product to {supplierName}</DialogTitle>
+            <DialogTitle>{fill(t("supplier.add-product-to"), { name: supplierName })}</DialogTitle>
             <DialogDescription>
-              Link a product to this supplier with pricing and delivery information
+              {t("supplier.link-product-description")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="product">Product *</Label>
+              <Label htmlFor="product">{t("common.product")}</Label>
               <Select
                 value={formData.productId}
                 onValueChange={(value) =>
@@ -369,7 +370,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
                 }
               >
                 <SelectTrigger id="product">
-                  <SelectValue placeholder="Select a product..." />
+                  <SelectValue placeholder={t("supplier.select-product")} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableProducts.map((product) => (
@@ -383,7 +384,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="unitCost">Unit Cost (EGP)</Label>
+                <Label htmlFor="unitCost">{t("common.unit-cost-egp")}</Label>
                 <Input
                   id="unitCost"
                   type="number"
@@ -396,7 +397,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
                 />
               </div>
               <div>
-                <Label htmlFor="supplierSku">Supplier SKU</Label>
+                <Label htmlFor="supplierSku">{t("supplier.supplier-sku")}</Label>
                 <Input
                   id="supplierSku"
                   placeholder="SUP-SKU-001"
@@ -409,7 +410,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
             </div>
 
             <div>
-              <Label htmlFor="leadTime">Lead Time (days)</Label>
+              <Label htmlFor="leadTime">{t("supplier.lead-time-days")}</Label>
               <Input
                 id="leadTime"
                 type="number"
@@ -421,10 +422,10 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
             </div>
 
             <div>
-              <Label htmlFor="notes">Notes</Label>
+              <Label htmlFor="notes">{t("notes")}</Label>
               <Textarea
                 id="notes"
-                placeholder="Any notes about this supplier-product relationship..."
+                placeholder={t("supplier.relationship-notes-placeholder")}
                 value={formData.notes}
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
@@ -441,9 +442,9 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
                   resetForm()
                 }}
               >
-                Cancel
+                {t("cancel")}
               </Button>
-              <Button onClick={handleAddProduct}>Add Product</Button>
+              <Button onClick={handleAddProduct}>{t("product.add")}</Button>
             </div>
           </div>
         </DialogContent>
@@ -453,15 +454,15 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit Product Relationship</DialogTitle>
+            <DialogTitle>{t("supplier.edit-product-relationship")}</DialogTitle>
             <DialogDescription>
-              Update pricing and delivery information for {selectedProduct?.productName}
+              {fill(t("supplier.update-pricing-for"), { name: selectedProduct?.productName ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="edit-unitCost">Unit Cost (EGP)</Label>
+                <Label htmlFor="edit-unitCost">{t("common.unit-cost-egp")}</Label>
                 <Input
                   id="edit-unitCost"
                   type="number"
@@ -474,7 +475,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
                 />
               </div>
               <div>
-                <Label htmlFor="edit-supplierSku">Supplier SKU</Label>
+                <Label htmlFor="edit-supplierSku">{t("supplier.supplier-sku")}</Label>
                 <Input
                   id="edit-supplierSku"
                   placeholder="SUP-SKU-001"
@@ -487,7 +488,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
             </div>
 
             <div>
-              <Label htmlFor="edit-leadTime">Lead Time (days)</Label>
+              <Label htmlFor="edit-leadTime">{t("supplier.lead-time-days")}</Label>
               <Input
                 id="edit-leadTime"
                 type="number"
@@ -499,10 +500,10 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
             </div>
 
             <div>
-              <Label htmlFor="edit-notes">Notes</Label>
+              <Label htmlFor="edit-notes">{t("notes")}</Label>
               <Textarea
                 id="edit-notes"
-                placeholder="Any notes about this supplier-product relationship..."
+                placeholder={t("supplier.relationship-notes-placeholder")}
                 value={formData.notes}
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
@@ -520,9 +521,9 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
                   resetForm()
                 }}
               >
-                Cancel
+                {t("cancel")}
               </Button>
-              <Button onClick={handleUpdateProduct}>Save Changes</Button>
+              <Button onClick={handleUpdateProduct}>{t("common.save-changes")}</Button>
             </div>
           </div>
         </DialogContent>
