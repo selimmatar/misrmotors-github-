@@ -15,6 +15,7 @@ import { fill } from "@/lib/i18n-format"
 import type { SalesOrder } from "@/lib/types"
 import { Eye, CheckCircle, XCircle, Loader2 } from "lucide-react"
 import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
+import { salesOrderPaymentMethod } from "@/lib/payment-type"
 
 export function ApproveSalesOrdersModule() {
   const { salesOrders, updateSalesOrder, customers } = useAppContext()
@@ -96,7 +97,7 @@ export function ApproveSalesOrdersModule() {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">{t("so.payment-terms")}</p>
-                      <p className="font-semibold">{t(`payment.${order.paymentType || order.paymentTerms || "cash"}`)}</p>
+                      <p className="font-semibold">{t(`payment.${salesOrderPaymentMethod(order) || "cash"}`)}</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-4">
@@ -213,7 +214,7 @@ export function ApproveSalesOrdersModule() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("so.payment-terms")}</p>
-                  <p className="font-semibold">{t(`payment.${selectedSalesOrder.paymentTerms}`)}</p>
+                  <p className="font-semibold">{t(`payment.${salesOrderPaymentMethod(selectedSalesOrder) || "cash"}`)}</p>
                 </div>
                 <ApprovalDocumentLink url={selectedSalesOrder.approvalDocumentUrl} className="col-span-full" />
               </div>
