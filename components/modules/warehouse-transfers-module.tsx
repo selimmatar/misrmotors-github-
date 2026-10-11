@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { useAppContext } from "@/lib/app-context"
 import { Plus, ArrowRight, Package, Trash2, CheckCircle, Eye, Loader2 } from "lucide-react"
@@ -107,7 +108,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
     // Check if already added
     if (transferItems.find((item) => item.inventoryId?.toString() === selectedProductId)) {
-      alert("Item already added to transfer")
+      alert(t("transfer.item-already-added"))
       return
     }
 
@@ -133,7 +134,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
   const handleCreateTransfer = async () => {
     if (!fromWarehouseId || !toWarehouseId || transferItems.length === 0) {
-      alert("Please select warehouses and add items")
+      alert(t("transfer.select-warehouses-items"))
       return
     }
 
@@ -162,7 +163,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
       }
 
       const result = await response.json()
-      alert(`Transfer ${result.transfer.transferNumber} created successfully!`)
+      alert(fill(t("transfer.created"), { number: result.transfer.transferNumber }))
 
       // Reset form
       setFromWarehouseId("")
@@ -172,14 +173,14 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
       setShowCreateDialog(false)
       fetchTransfers()
     } catch (error: any) {
-      alert(error.message || "Failed to create transfer")
+      alert(error.message || t("transfer.create-failed"))
     } finally {
       setActionLoading(false)
     }
   }
 
   const handleCompleteTransfer = async (transferId: number) => {
-    if (!confirm("Complete this transfer? This will move inventory between warehouses.")) return
+    if (!confirm(t("transfer.confirm-complete"))) return
 
     
     try {
@@ -199,13 +200,13 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
       const result = await response.json()
       
-      alert("Transfer completed successfully!")
+      alert(t("transfer.completed"))
       await fetchTransfers()
       await refreshInventory()
       setShowDetailsDialog(false)
     } catch (error: any) {
       console.error("Transfer completion failed:", error)
-      alert(error.message || "Failed to complete transfer")
+      alert(error.message || t("transfer.complete-failed"))
     } finally {
       setActionLoading(false)
     }
@@ -219,7 +220,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
         actions={
           <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="w-4 h-4 me-2" />
-            New Transfer
+            {t("transfer.new")}
           </Button>
         }
       />
@@ -232,7 +233,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
         <Card>
           <CardContent className="flex flex-col items-center justify-center p-8">
             <Package className="w-12 h-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No transfers found</p>
+            <p className="text-muted-foreground">{t("transfer.none-found")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -252,7 +253,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                       <span>{transfer.toWarehouseName}</span>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {transfer.items.length} item(s) | Created: {formatDate(transfer.createdAt, language)}
+                      {fill(t("transfer.items-created"), { count: transfer.items.length, date: formatDate(transfer.createdAt, language) })}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -275,7 +276,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                         disabled={actionLoading}
                       >
                         <CheckCircle className="w-4 h-4 me-1" />
-                        Complete
+                        {t("transfer.complete")}
                       </Button>
                     )}
                   </div>
@@ -290,16 +291,16 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create Warehouse Transfer</DialogTitle>
+            <DialogTitle>{t("transfer.create-title")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>From Warehouse</Label>
+                <Label>{t("transfer.from-warehouse")}</Label>
                 <Select value={fromWarehouseId} onValueChange={setFromWarehouseId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select source warehouse" />
+                    <SelectValue placeholder={t("transfer.select-source")} />
                   </SelectTrigger>
                   <SelectContent>
                     {(warehouses || []).filter((wh: any) => wh.id && wh.id.toString().trim() !== "").map((wh: any) => (
@@ -311,10 +312,10 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                 </Select>
               </div>
               <div>
-                <Label>To Warehouse</Label>
+                <Label>{t("transfer.to-warehouse")}</Label>
                 <Select value={toWarehouseId} onValueChange={setToWarehouseId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select destination warehouse" />
+                    <SelectValue placeholder={t("transfer.select-destination")} />
                   </SelectTrigger>
                   <SelectContent>
                     {(warehouses || [])
@@ -331,17 +332,17 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
             {fromWarehouseId && (
               <div className="border rounded-lg p-4 space-y-3">
-                <Label>Add Products to Transfer</Label>
+                <Label>{t("transfer.add-products")}</Label>
                 <div className="flex gap-2">
                   <Select value={selectedProductId} onValueChange={setSelectedProductId}>
                     <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select product" />
+                      <SelectValue placeholder={t("transfer.select-product")} />
                     </SelectTrigger>
                     <SelectContent>
                       {getAvailableProducts().filter((product: any) => product.inventoryId != null).map((product: any) => (
                         <SelectItem key={product.inventoryId} value={product.inventoryId.toString()}>
                           {product.isOutsourced ? (product.outsourcedName || product.productName) : product.productName}
-                          {product.isOutsourced ? " (Outsourced)" : ""} (Avail: {product.quantity})
+                          {product.isOutsourced ? ` ${t("common.outsourced")}` : ""} {fill(t("transfer.avail"), { qty: product.quantity })}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -352,7 +353,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                     value={transferQty}
                     onChange={(e) => setTransferQty(parseInt(e.target.value) || 1)}
                     className="w-24"
-                    placeholder="Qty"
+                    placeholder={t("common.qty")}
                   />
                   <Button onClick={handleAddItem} disabled={!selectedProductId} aria-label={t("action.add-item")}>
                     <Plus className="w-4 h-4" />
@@ -366,10 +367,10 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                         <div className="min-w-0 break-words">
                           <p className="font-medium">
                             {item.productName}
-                            {item.isOutsourced ? <span className="ms-2 text-xs text-amber-700">(Outsourced)</span> : null}
+                            {item.isOutsourced ? <span className="ms-2 text-xs text-amber-700">{t("common.outsourced")}</span> : null}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            {item.sku ? `SKU: ${item.sku} | ` : ""}Qty: {item.quantity} (Avail: {item.availableQty})
+                            {item.sku ? `${t("common.sku-2")} ${item.sku} | ` : ""}{t("common.qty-2")} {item.quantity} {fill(t("transfer.avail"), { qty: item.availableQty })}
                           </p>
                         </div>
                         <Button
@@ -388,25 +389,25 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
             )}
 
             <div>
-              <Label>Notes (Optional)</Label>
+              <Label>{t("transfer.notes-optional")}</Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Transfer notes..."
+                placeholder={t("transfer.notes-placeholder")}
               />
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               onClick={handleCreateTransfer}
               disabled={actionLoading || !fromWarehouseId || !toWarehouseId || transferItems.length === 0}
             >
               {actionLoading ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
-              Create Transfer
+              {t("transfer.create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -416,7 +417,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Transfer Details</DialogTitle>
+            <DialogTitle>{t("transfer.details")}</DialogTitle>
           </DialogHeader>
 
           {selectedTransfer && (
@@ -428,33 +429,33 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground">From</p>
+                  <p className="text-muted-foreground">{t("transfer.from")}</p>
                   <p className="font-medium">{selectedTransfer.fromWarehouseName}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">To</p>
+                  <p className="text-muted-foreground">{t("transfer.to")}</p>
                   <p className="font-medium">{selectedTransfer.toWarehouseName}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Created</p>
+                  <p className="text-muted-foreground">{t("created")}</p>
                   <p>{formatDate(selectedTransfer.createdAt, language)}</p>
                 </div>
                 {selectedTransfer.completedAt && (
                   <div>
-                    <p className="text-muted-foreground">Completed</p>
+                    <p className="text-muted-foreground">{t("status.completed")}</p>
                     <p>{formatDate(selectedTransfer.completedAt, language)}</p>
                   </div>
                 )}
               </div>
 
               <div>
-                <p className="text-muted-foreground mb-2">Items</p>
+                <p className="text-muted-foreground mb-2">{t("so.items")}</p>
                 <div className="border rounded-lg divide-y">
                   {selectedTransfer.items.map((item) => (
                     <div key={item.id} className="flex justify-between items-center p-3 flex-wrap gap-2">
                       <div className="min-w-0 break-words">
                         <p className="font-medium">{item.productName}</p>
-                        <p className="text-sm text-muted-foreground">SKU: {item.sku}</p>
+                        <p className="text-sm text-muted-foreground">{t("common.sku-2")} {item.sku}</p>
                       </div>
                       <span className="font-semibold">x{item.quantity}</span>
                     </div>
@@ -464,7 +465,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
               {selectedTransfer.notes && (
                 <div>
-                  <p className="text-muted-foreground">Notes</p>
+                  <p className="text-muted-foreground">{t("notes")}</p>
                   <p>{selectedTransfer.notes}</p>
                 </div>
               )}
@@ -477,7 +478,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                 >
                   {actionLoading ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
                   <CheckCircle className="w-4 h-4 me-2" />
-                  Complete Transfer
+                  {t("transfer.complete-transfer")}
                 </Button>
               )}
             </div>
