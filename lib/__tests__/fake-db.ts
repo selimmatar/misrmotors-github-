@@ -138,6 +138,9 @@ class Query {
   }
   order(col: string, opts: { ascending?: boolean } = {}) { this.sortBy = { col, asc: opts.ascending !== false }; return this }
   limit(n: number) { this.max = n; return this }
+  /** PostgREST `.range(from, to)` (inclusive): slices the ordered result */
+  window: { from: number; to: number } | null = null
+  range(from: number, to: number) { this.window = { from, to }; return this }
   single() { this.one = "single"; return this }
   maybeSingle() { this.one = "maybe"; return this }
   then<T = any, U = never>(
@@ -173,6 +176,7 @@ class Query {
       out = [...out].sort((a, b) => (a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0) * (asc ? 1 : -1))
     }
     if (this.max !== null) out = out.slice(0, this.max)
+    if (this.window) out = out.slice(this.window.from, this.window.to + 1)
     if (this.one === "none") return { data: out.map((r) => ({ ...r })), error: null }
     if (this.one === "maybe") return { data: out[0] ? { ...out[0] } : null, error: null }
     return out[0] ? { data: { ...out[0] }, error: null } : { data: null, error: { message: "no rows", code: "PGRST116" } }

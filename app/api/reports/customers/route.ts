@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/supabase/admin"
+import { arAging, salesByCustomer, whereNot } from "@/lib/reports/views"
 
 export const dynamic = "force-dynamic"
 
@@ -13,19 +14,13 @@ export async function GET(request: Request) {
 
     switch (reportType) {
       case "sales":
-        // Customers with sales data
-        const { data: salesData, error: salesError } = await supabase.from("report_sales_by_customer").select("*")
-        if (salesError) throw salesError
-        data = salesData || []
+        // Customers with sales data (was the report_sales_by_customer view)
+        data = await salesByCustomer(supabase)
         break
 
       case "ar_aging":
-        // Customer AR aging
-        const { data: arData, error: arError } = await supabase
-          .from("report_ar_aging")
-          .select("*")
-          .neq("status", "paid")
-        if (arError) throw arError
+        // Customer AR aging (was the report_ar_aging view)
+        const arData = whereNot(await arAging(supabase), "status", "paid")
 
         // Group by customer
         const customerAR: Record<string, any> = {}

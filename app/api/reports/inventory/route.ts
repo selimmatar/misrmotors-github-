@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/supabase/admin"
+import { inventoryByCategory, inventoryValuation, productPerformance, whereEq, whereIn } from "@/lib/reports/views"
 
 export const dynamic = "force-dynamic"
 
@@ -15,39 +16,26 @@ export async function GET(request: Request) {
 
     switch (reportType) {
       case "valuation":
-        // Full inventory valuation
-        let valuationQuery = supabase.from("report_inventory_valuation").select("*")
-        if (category) valuationQuery = valuationQuery.eq("category", category)
-        if (stockStatus) valuationQuery = valuationQuery.eq("stock_status", stockStatus)
-        const { data: valuationData, error: valuationError } = await valuationQuery
-        if (valuationError) throw valuationError
-        data = valuationData || []
+        // Full inventory valuation (was the report_inventory_valuation view)
+        let valuationData = await inventoryValuation(supabase)
+        if (category) valuationData = whereEq(valuationData, "category", category)
+        if (stockStatus) valuationData = whereEq(valuationData, "stock_status", stockStatus)
+        data = valuationData
         break
 
       case "by_category":
-        // Inventory summary by category
-        const { data: categoryData, error: categoryError } = await supabase
-          .from("report_inventory_by_category")
-          .select("*")
-        if (categoryError) throw categoryError
-        data = categoryData || []
+        // Inventory summary by category (was the report_inventory_by_category view)
+        data = await inventoryByCategory(supabase)
         break
 
       case "low_stock":
         // Low stock items only
-        const { data: lowStockData, error: lowStockError } = await supabase
-          .from("report_inventory_valuation")
-          .select("*")
-          .in("stock_status", ["Low Stock", "Out of Stock"])
-        if (lowStockError) throw lowStockError
-        data = lowStockData || []
+        data = whereIn(await inventoryValuation(supabase), "stock_status", ["Low Stock", "Out of Stock"])
         break
 
       case "product_performance":
-        // Products with sales performance
-        const { data: perfData, error: perfError } = await supabase.from("report_product_performance").select("*")
-        if (perfError) throw perfError
-        data = perfData || []
+        // Products with sales performance (was the report_product_performance view)
+        data = await productPerformance(supabase)
         break
 
       default:

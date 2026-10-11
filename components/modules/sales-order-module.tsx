@@ -81,6 +81,7 @@ import { StatusBadge } from "@/components/erp/status-badge"
 import { ApprovalSteps } from "@/components/erp/approval-steps"
 import { Money } from "@/components/erp/money"
 import { formatDate, formatMoney } from "@/lib/format"
+import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
 
 // Declare SalesOrderModuleProps type
 type SalesOrderModuleProps = {
@@ -2022,20 +2023,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                       </div>
                     )}
                   </div>
-                  {selectedOrder.approvalDocumentUrl && (
-                    <div className="col-span-2">
-                      <p className="text-sm text-muted-foreground mb-1">{t("so.approval-document")}</p>
-                      <a 
-                        href={selectedOrder.approvalDocumentUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline text-sm flex items-center gap-1"
-                      >
-                        <FileText className="w-4 h-4" />
-                        {t("so.view-approval-document")}
-                      </a>
-                    </div>
-                  )}
+                  <ApprovalDocumentLink url={selectedOrder.approvalDocumentUrl} className="col-span-full" />
                 </div>
 
                 <OrderSummaryCard

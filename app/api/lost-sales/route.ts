@@ -1,5 +1,6 @@
 import { getAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { lostSalesByMonth, topLostItems } from "@/lib/lost-sales/aggregate"
 
 export const dynamic = "force-dynamic"
 
@@ -48,15 +49,11 @@ export async function GET(request: Request) {
       const supabase = getAdminClient()
       let query
 
-      if (view === "summary") {
-        query = supabase.from("report_lost_sales_summary").select("*")
+      if (view === "summary" || view === "top-items") {
+        // The report views were dropped from the database: read lost_sales and group the rows here.
+        query = supabase.from("lost_sales").select("*").order("request_date", { ascending: false })
         if (startDate) query = query.gte("request_date", startDate)
         if (endDate) query = query.lte("request_date", endDate)
-      } else if (view === "top-items") {
-        query = supabase.from("report_top_lost_items").select("*")
-        if (startDate) query = query.gte("first_request_date", startDate)
-        if (endDate) query = query.lte("last_request_date", endDate)
-        query = query.limit(50)
       } else {
         query = supabase.from("lost_sales").select("*").order("request_date", { ascending: false })
         if (status) query = query.eq("status", status)
@@ -67,6 +64,8 @@ export async function GET(request: Request) {
       const result = await query
       data = result.data
       error = result.error
+      if (!error && data && view === "summary") data = lostSalesByMonth(data)
+      if (!error && data && view === "top-items") data = topLostItems(data, 50)
     } catch (supabaseError: any) {
       const errorMessage = supabaseError?.message || String(supabaseError)
       console.error("Lost Sales GET: Supabase exception:", errorMessage)
