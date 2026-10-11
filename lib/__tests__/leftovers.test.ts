@@ -34,13 +34,14 @@ test("LO1. a same-status approve does not overwrite total or payment_type", asyn
   assert.equal(db.tables.accounts_payable.length, 1)
 })
 
-test("LO2. the first approve (pending -> approved) still applies the sent total", async () => {
+test("LO2. the first approve (pending -> approved) ignores a client total: the stored total is approved and invoiced", async () => {
+  // Changed by logic-fixes-b: PUT never takes the total from the client (it is recomputed from the items).
   const db = new FakeDb({ purchase_orders: [po(1, "pending")], purchase_order_items: [], accounts_payable: [] })
   useDb(db)
   const r = await putPo({ id: 1, status: "approved", total: 650 })
   assert.equal(r.status, 200)
-  assert.equal(getPo(db, 1).total, 650)
-  assert.equal(db.tables.accounts_payable[0].amount, 650)
+  assert.equal(getPo(db, 1).total, 500)
+  assert.equal(db.tables.accounts_payable[0].amount, 500)
 })
 
 test("LO3. a reverted approval restores approved_by, approved_at, rejection_reason and the changed columns", async () => {
@@ -94,7 +95,7 @@ test("LO4. resending an unchanged legacy over-ordered line passes (unrelated edi
   const r = await putPo({ id: 1, total: 520, items: [it(12, 10)] })
   assert.equal(r.status, 200, JSON.stringify(r.body))
   assert.equal(db.tables.purchase_order_items.length, 1)
-  assert.equal(getPo(db, 1).total, 520)
+  assert.equal(getPo(db, 1).total, 12) // logic-fixes-b: recomputed from the items (12 x 1), the client's 520 is ignored
 })
 
 test("LO5. lowering the legacy over-ordered line passes; raising it is blocked", async () => {
