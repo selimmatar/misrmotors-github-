@@ -185,16 +185,36 @@ test("B2. a receipt AFTER finalize (partially received PO) uses the finalized la
   assert.equal(inv7(db).unit_cost, 114)
 })
 
-test("B3. a finalize that fails after the batches were updated puts batches and inventory back", async () => {
+test("B3. a finalize that fails after the batches were updated puts the batches back and releases the claim", async () => {
   const db = costDb()
   assert.equal((await receive(10)).status, 200)
-  const before = JSON.stringify({ b: db.tables.inventory_batches, i: db.tables.inventory })
-  db.failOn["purchase_orders:update"] = "header down"
-  db.failAfter["purchase_orders:update"] = 1 // the claim succeeds, the header write fails
+  const stockState = () => JSON.stringify({ b: db.tables.inventory_batches, i: db.tables.inventory.map(({ last_updated, ...r }) => r) })
+  const before = stockState()
+  db.failOn["inventory:update"] = "inventory down" // the items and the batch are written, then the stock-value update fails
+  db.failAfter["inventory:update"] = db.calls["inventory:update"] || 0
   const r = await finalizeCost({ taxAmount: 140 })
   assert.equal(r.status, 500)
-  assert.equal(JSON.stringify({ b: db.tables.inventory_batches, i: db.tables.inventory }), before)
+  assert.match(r.body.error, /inventory down/)
+  assert.equal(db.calls["inventory_batches:update"], 2) // written, then restored
+  assert.equal(stockState(), before)
+  assert.deepEqual(db.tables.purchase_order_items.map((i) => i.landed_cost ?? null), [null])
   assert.equal(db.tables.purchase_orders[0].cost_finalized, false)
+  // and the retry then applies the landed cost once
+  delete db.failOn["inventory:update"]
+  assert.equal((await finalizeCost({ taxAmount: 140 })).status, 200)
+  assert.equal(db.tables.inventory_batches[0].landed_cost_per_unit, 114)
+  assert.equal(inv7(db).unit_cost, 114)
+})
+
+test("B4. finalize waits for / is serialised with receiving: it takes the same per-PO lock", async () => {
+  const db = costDb()
+  assert.equal((await receive(10)).status, 200)
+  db.tables.idempotency_log.push({ id: 900, operation_type: "po_receive", idempotency_key: "po_receive_lock_1", status: "processing", created_at: new Date().toISOString() })
+  setTimeout(() => { db.tables.idempotency_log = db.tables.idempotency_log.filter((l) => l.id !== 900) }, 60)
+  const r = await finalizeCost({ taxAmount: 140 })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.inventory_batches[0].landed_cost_per_unit, 114)
+  assert.equal(db.tables.idempotency_log.some((l) => l.idempotency_key === "po_receive_lock_1"), false) // released
 })
 
 // =============================================================================================== C. quotation -> SO
