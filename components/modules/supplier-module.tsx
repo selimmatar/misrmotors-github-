@@ -450,11 +450,11 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                             <p className="font-semibold"><Money value={order.total} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("supplier.total-paid")} {t("common.egp")}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-paid")} {t("common.egp")}</p>
                             <p className="font-semibold text-green-700"><Money value={paymentStatus.amountPaid} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("supplier.balance-due")} {t("common.egp")}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-due")} {t("common.egp")}</p>
                             <p className="font-semibold text-orange-700"><Money value={paymentStatus.amountDue} /></p>
                           </div>
                           <div>
@@ -467,7 +467,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                             )}
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.status")}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.order-status")}</p>
                             <StatusBadge status={order.status} />
                           </div>
                         </div>
