@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { checkIdempotency, completeIdempotency } from "@/lib/idempotency"
+import { acquirePoLock, releasePoLock, landedOverheadPerUnitByProduct, landedUnitCost } from "@/lib/goods-receiving"
 
 // Batch 4E: costs can only be finalized for a PO that has been received (at least partly), once.
 const RECEIVED_STATUSES = ["received", "partially_received", "received_with_issues"]
@@ -19,6 +20,94 @@ function allocateProportionally(amount: number, totals: number[]): number[] {
     shares[shares.length - 1] = money(amount - others)
   }
   return shares
+}
+
+type Restore = () => Promise<void>
+const MAX_CAS_ATTEMPTS = 6
+
+/**
+ * Pushes the finalized landed cost into stock, for THIS PO's receipts only:
+ *  - every inventory_batches row of this PO gets landed_cost_per_unit = its raw unit_cost + the overhead per unit;
+ *  - inventory.unit_cost (the weighted average receiving maintains) gets the overhead of the units of those batches
+ *    that are still on hand (quantity_available) added to its stock value: (q*c + overhead * units) / q.
+ * Units already sold keep their historical cost. Each write is pushed onto `restore` so a later failure can undo it.
+ */
+async function applyLandedCostToStock(supabase: any, poId: number, perUnit: Map<number, number>, restore: Restore[]) {
+  if (perUnit.size === 0) return
+  const { data: batches, error: batchError } = await supabase
+    .from("inventory_batches")
+    .select("batch_id, product_id, warehouse_id, unit_cost, landed_cost_per_unit, quantity_available")
+    .eq("po_id", poId)
+  if (batchError) throw new Error(`read batches: ${batchError.message}`)
+
+  const onHandExtra = new Map<string, { productId: number; warehouseId: number | null; units: number; perUnit: number }>()
+  for (const batch of batches || []) {
+    const overhead = perUnit.get(Number(batch.product_id))
+    if (!overhead) continue
+    const landed = landedUnitCost(Number(batch.unit_cost) || 0, overhead)
+    const before = batch.landed_cost_per_unit ?? null
+    if (Number(before) !== landed) {
+      const { error } = await supabase.from("inventory_batches").update({ landed_cost_per_unit: landed }).eq("batch_id", batch.batch_id)
+      if (error) throw new Error(`batch ${batch.batch_id}: ${error.message}`)
+      restore.push(async () => {
+        const { error: e } = await supabase
+          .from("inventory_batches")
+          .update({ landed_cost_per_unit: before })
+          .eq("batch_id", batch.batch_id)
+          .eq("landed_cost_per_unit", landed)
+        if (e) throw new Error(`restore batch ${batch.batch_id}: ${e.message}`)
+      })
+    }
+    const units = Number(batch.quantity_available) || 0
+    if (units <= 0) continue
+    const key = `${batch.product_id}:${batch.warehouse_id ?? "null"}`
+    const entry = onHandExtra.get(key) || { productId: Number(batch.product_id), warehouseId: batch.warehouse_id ?? null, units: 0, perUnit: overhead }
+    entry.units += units
+    onHandExtra.set(key, entry)
+  }
+
+  for (const { productId, warehouseId, units, perUnit: overhead } of onHandExtra.values()) {
+    let done = false
+    for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS && !done; attempt++) {
+      let read = supabase.from("inventory").select("inventory_id, quantity, unit_cost").eq("product_id", productId).eq("is_returned", false)
+      read = warehouseId === null ? read.is("warehouse_id", null) : read.eq("warehouse_id", warehouseId)
+      const { data: row, error: readError } = await read.maybeSingle()
+      if (readError) throw new Error(`read inventory: ${readError.message}`)
+      const q = Number(row?.quantity) || 0
+      if (!row || q <= 0 || row.unit_cost === null || row.unit_cost === undefined) {
+        done = true // nothing of this PO left on hand: no stock value to correct
+        break
+      }
+      const oldCost = Number(row.unit_cost)
+      const newCost = Math.round(((q * oldCost + overhead * Math.min(units, q)) / q) * 100) / 100
+      if (newCost === oldCost) {
+        done = true
+        break
+      }
+      // compare-and-set on the values the new cost was computed from
+      const { data: updated, error: updateError } = await supabase
+        .from("inventory")
+        .update({ unit_cost: newCost, last_updated: new Date().toISOString() })
+        .eq("inventory_id", row.inventory_id)
+        .eq("quantity", row.quantity)
+        .eq("unit_cost", row.unit_cost)
+        .select("inventory_id")
+      if (updateError) throw new Error(`inventory ${row.inventory_id}: ${updateError.message}`)
+      if (updated && updated.length === 1) {
+        done = true
+        restore.push(async () => {
+          // put the previous cost back only if nobody changed it since (same rule as the receiving undo)
+          const { error: e } = await supabase
+            .from("inventory")
+            .update({ unit_cost: row.unit_cost })
+            .eq("inventory_id", row.inventory_id)
+            .eq("unit_cost", newCost)
+          if (e) throw new Error(`restore inventory ${row.inventory_id}: ${e.message}`)
+        })
+      }
+    }
+    if (!done) throw new Error("inventory is being changed by other requests; try again")
+  }
 }
 
 export async function POST(request: Request) {
@@ -54,7 +143,20 @@ export async function POST(request: Request) {
 
     let claimed = false
     let originalItems: any[] = []
+    const restoreStock: Restore[] = []
+    let lockId: number | null = null
     try {
+      // Same per-PO lock as goods receiving: no receipt can land between the claim and the stock update, so every
+      // receipt is costed either before (and corrected here) or after (and costed at the landed cost by receiving).
+      lockId = await acquirePoLock(supabase, poId)
+      if (lockId === null) {
+        await completeIdempotency("po_finalize_cost", finalizeCostKey, false, "PO busy")
+        return NextResponse.json(
+          { error: "Goods are being received for this purchase order right now; please try again in a moment." },
+          { status: 409 },
+        )
+      }
+
       const { data: po, error: poError } = await supabase
         .from("purchase_orders")
         .select("*, purchase_order_items(*)")
@@ -170,6 +272,16 @@ export async function POST(request: Request) {
         }
       }
 
+      // Landed cost into this PO's batches and the stock value (inventory.unit_cost)
+      await applyLandedCostToStock(
+        supabase,
+        poId,
+        landedOverheadPerUnitByProduct(
+          itemUpdates.map((u) => ({ product_id: u.product_id, quantity: u.quantity, allocated_overhead: u.allocated_overhead })),
+        ),
+        restoreStock,
+      )
+
       // Header figures
       const { data: updatedPO, error: updateError } = await supabase
         .from("purchase_orders")
@@ -197,6 +309,13 @@ export async function POST(request: Request) {
     } catch (error: any) {
       // Release the claim we took (guarded: only while still finalized) and put the item figures back, best effort.
       let released = !claimed
+      for (const step of [...restoreStock].reverse()) {
+        try {
+          await step()
+        } catch (restoreError: any) {
+          console.error("PO Cost Finalization: could not restore stock cost", restoreError?.message)
+        }
+      }
       if (claimed) {
         for (const o of originalItems) {
           const { error: restoreError } = await supabase
@@ -223,6 +342,8 @@ export async function POST(request: Request) {
         },
         { status: 500 },
       )
+    } finally {
+      if (lockId !== null) await releasePoLock(supabase, lockId)
     }
   } catch (error) {
     console.error("PO Cost Finalization: Error", error)

@@ -35,8 +35,9 @@ function mapPoItem(item: any, poId: number, existingItems: any[] = []) {
     // Keep the display name so free-text items (no product_id) still print on invoices
     item_name_snapshot: item.productName || item.product_name || null,
     quantity: Number(item.quantity) || 0,
-    unit_price: Number(item.unitPrice ?? item.unit_price ?? 0),
-    total: Number(item.total ?? 0),
+    unit_price: Number(item.unitPrice ?? item.unit_price ?? 0) || 0,
+    // Never trust the client's line total: it is always quantity x unit price.
+    total: poMoney((Number(item.quantity) || 0) * (Number(item.unitPrice ?? item.unit_price ?? 0) || 0)),
     item_type: itemType,
     outsourced_name: item.outsourcedName || item.outsourced_name || null,
     outsourced_description: item.outsourcedDescription || item.outsourced_description || null,
@@ -45,6 +46,42 @@ function mapPoItem(item: any, poId: number, existingItems: any[] = []) {
     source_so_id: Number.parseInt(item.sourceSoId || item.source_so_id) || null,
     source_so_item_id: Number.parseInt(item.sourceSoItemId || item.source_so_item_id) || null,
   }
+}
+
+// VAT the purchase-order form adds on top of the items ("Add VAT", 14%; components/modules/purchase-order-module.tsx).
+const PO_VAT_RATE = 0.14
+const poMoney = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+/**
+ * Server-side PO total, the same formula the PO form uses: sum(qty x unit price) + VAT, where VAT is 14% of that
+ * subtotal when VAT is on (the form sends a positive tax_amount) and 0 when it is off. The client's own total and
+ * tax figure are never stored as such.
+ */
+function computePoTotals(lines: { total: number }[], vatOn: boolean) {
+  const subtotal = poMoney(lines.reduce((s, l) => s + (Number(l.total) || 0), 0))
+  const tax = vatOn ? poMoney(subtotal * PO_VAT_RATE) : 0
+  return { subtotal, tax, total: poMoney(subtotal + tax) }
+}
+
+// The only columns PUT may write, keyed by every spelling a caller may send. The UI sends status, payment_type,
+// total (ignored: recomputed from the items) and rejectionReason; the approve / reject metadata and the payment
+// schedule are kept for the existing callers. Anything else (po_number, supplier, cost-finalize fields, tax,
+// approved_at, ...) is ignored.
+const PO_PUT_COLUMNS: Record<string, string> = {
+  status: "status",
+  payment_type: "payment_type",
+  paymentType: "payment_type",
+  payment_terms: "payment_terms",
+  paymentTerms: "payment_terms",
+  rejection_reason: "rejection_reason",
+  rejectionReason: "rejection_reason",
+  rejected_by: "rejected_by",
+  rejectedBy: "rejected_by",
+  rejected_at: "rejected_at",
+  rejectedAt: "rejected_at",
+  approved_by: "approved_by",
+  approvedBy: "approved_by",
+  schedule_entries: "schedule_entries",
 }
 
 export const dynamic = "force-dynamic"
@@ -222,6 +259,9 @@ export async function POST(request: Request) {
           : JSON.stringify(orderData.schedule_entries)
     }
 
+    const mappedItems = (Array.isArray(items) ? items : []).map((item: any) => mapPoItem(item, 0))
+    const poTotals = computePoTotals(mappedItems, Number(orderData.tax_amount ?? orderData.taxAmount) > 0)
+
     // Always generate the PO number server-side (obfuscated, atomic) — never trust a
     // client-supplied value, which was previously a predictable, guessable counter.
     const { data: generatedPoNumber, error: poNumberError } = await supabase.rpc("generate_po_number")
@@ -237,22 +277,25 @@ export async function POST(request: Request) {
       delivery_date: orderData.delivery_date || orderData.deliveryDate,
       payment_terms: orderData.payment_terms || orderData.paymentTerms,
       installments: orderData.installments,
-      status: orderData.status,
-      total: orderData.total,
+      // A new PO always starts in the normal initial state (the form sends "pending"); a client can never create
+      // it already approved/received, which would skip the approval and the AP invoice.
+      status: String(orderData.status || "").trim().toLowerCase() === "draft" ? "draft" : "pending",
+      total: poTotals.total,
       currency: orderData.currency || "EGP",
       po_type: orderData.po_type || orderData.poType || "local",
       invoice_file_url: orderData.invoice_file_url || orderData.invoiceFileUrl || orderData.poInvoiceUrl || null,
-      rejection_reason: orderData.rejection_reason || orderData.rejectionReason || null,
-      rejected_by: orderData.rejected_by || orderData.rejectedBy || null,
-      rejected_at: orderData.rejected_at || orderData.rejectedAt || null,
-      approved_by: orderData.approved_by || orderData.approvedBy || null,
-      approved_at: orderData.approved_at || orderData.approvedAt || null,
+      // Approval / rejection / cost-finalize fields are written only by their own workflows, never at creation.
+      rejection_reason: null,
+      rejected_by: null,
+      rejected_at: null,
+      approved_by: null,
+      approved_at: null,
       created_by: orderData.created_by || orderData.createdBy || null,
-      tax_amount: orderData.tax_amount || orderData.taxAmount || null,
-      other_costs: orderData.other_costs || orderData.otherCosts || null,
-      cost_finalized: orderData.cost_finalized || orderData.costFinalized || null,
-      cost_finalized_at: orderData.cost_finalized_at || orderData.costFinalizedAt || null,
-      cost_finalized_by: orderData.cost_finalized_by || orderData.costFinalizedBy || null,
+      tax_amount: poTotals.tax || null,
+      other_costs: null,
+      cost_finalized: null,
+      cost_finalized_at: null,
+      cost_finalized_by: null,
       payment_type:
         orderData.payment_type || orderData.paymentType || orderData.payment_terms || orderData.paymentTerms,
       down_payment_amount: orderData.down_payment_amount || orderData.downPaymentAmount || null,
@@ -302,13 +345,19 @@ export async function POST(request: Request) {
 
 
     // Insert items if provided
-    if (items && items.length > 0) {
-      const itemsWithPoId = items.map((item: any) => mapPoItem(item, order.po_id))
+    if (mappedItems.length > 0) {
+      const itemsWithPoId = mappedItems.map((item: any) => ({ ...item, po_id: order.po_id }))
 
       const { error: itemsInsertError } = await supabase.from("purchase_order_items").insert(itemsWithPoId)
 
       if (itemsInsertError) {
+        // Do not leave a PO header without its lines (its total would not match anything): remove it and fail.
         console.error("Purchase Orders POST: Error inserting items", itemsInsertError)
+        const { error: cleanupError } = await supabase.from("purchase_order_items").delete().eq("po_id", order.po_id)
+        if (cleanupError) console.error("Purchase Orders POST: could not clean up items", cleanupError)
+        const { error: headerDeleteError } = await supabase.from("purchase_orders").delete().eq("po_id", order.po_id)
+        if (headerDeleteError) console.error("Purchase Orders POST: could not delete the PO header", headerDeleteError)
+        return NextResponse.json({ error: "Failed to create purchase order items" }, { status: 500 })
       }
     }
 
@@ -428,138 +477,12 @@ export async function PUT(request: Request) {
     const supabase = createAdminClient()
 
     const body = await request.json()
-    const { id, items, ...updates } = body
+    const { id, items, ...requested } = body
 
-    if (updates.poInvoiceUrl !== undefined) {
-      updates.invoice_file_url = updates.poInvoiceUrl
-      delete updates.poInvoiceUrl
-    }
-
-    if (updates.rejectionReason !== undefined) {
-      updates.rejection_reason = updates.rejectionReason
-      delete updates.rejectionReason
-    }
-
-    if (updates.rejectedBy !== undefined) {
-      updates.rejected_by = updates.rejectedBy
-      delete updates.rejectedBy
-    }
-
-    if (updates.rejectedAt !== undefined) {
-      updates.rejected_at = updates.rejectedAt
-      delete updates.rejectedAt
-    }
-
-    if (updates.approvedBy !== undefined) {
-      updates.approved_by = updates.approvedBy
-      delete updates.approvedBy
-    }
-
-    if (updates.approvedAt !== undefined) {
-      updates.approved_at = updates.approvedAt
-      delete updates.approvedAt
-    }
-
-    if (updates.createdBy !== undefined) {
-      updates.created_by = updates.createdBy
-      delete updates.createdBy
-    }
-
-    if (updates.createdAt !== undefined) {
-      delete updates.createdAt
-    }
-
-    if (updates.updatedAt !== undefined) {
-      delete updates.updatedAt
-    }
-
-    if (updates.taxAmount !== undefined) {
-      updates.tax_amount = updates.taxAmount
-      delete updates.taxAmount
-    }
-
-    if (updates.otherCosts !== undefined) {
-      updates.other_costs = updates.otherCosts
-      delete updates.otherCosts
-    }
-
-    if (updates.costFinalized !== undefined) {
-      updates.cost_finalized = updates.costFinalized
-      delete updates.costFinalized
-    }
-
-    if (updates.costFinalizedAt !== undefined) {
-      updates.cost_finalized_at = updates.costFinalizedAt
-      delete updates.costFinalizedAt
-    }
-
-    if (updates.costFinalizedBy !== undefined) {
-      updates.cost_finalized_by = updates.costFinalizedBy
-      delete updates.costFinalizedBy
-    }
-
-    if (updates.notes !== undefined) {
-      delete updates.notes
-    }
-
-    if (updates.paymentType !== undefined) {
-      updates.payment_type = updates.paymentType
-      delete updates.paymentType
-    }
-
-    if (updates.downPaymentAmount !== undefined) {
-      updates.down_payment_amount = updates.downPaymentAmount
-      delete updates.downPaymentAmount
-    }
-
-    if (updates.downPaymentPercent !== undefined) {
-      updates.down_payment_percent = updates.downPaymentPercent
-      delete updates.downPaymentPercent
-    }
-
-    if (updates.downPaymentType !== undefined) {
-      updates.down_payment_type = updates.downPaymentType
-      delete updates.downPaymentType
-    }
-
-    if (updates.downPaymentChequeBank !== undefined) {
-      updates.down_payment_cheque_bank = updates.downPaymentChequeBank
-      delete updates.downPaymentChequeBank
-    }
-
-    if (updates.downPaymentChequeNumber !== undefined) {
-      updates.down_payment_cheque_number = updates.downPaymentChequeNumber
-      delete updates.downPaymentChequeNumber
-    }
-
-    if (updates.downPaymentChequeDueDate !== undefined) {
-      updates.down_payment_cheque_due_date = updates.downPaymentChequeDueDate
-      delete updates.downPaymentChequeDueDate
-    }
-
-    if (updates.downPaymentDueDate !== undefined) {
-      updates.down_payment_due_date = updates.downPaymentDueDate
-      delete updates.downPaymentDueDate
-    }
-
-    if (updates.remainingAmount !== undefined) {
-      updates.remaining_amount = updates.remainingAmount
-      delete updates.remainingAmount
-    }
-
-    if (updates.remainingInstallmentMonths !== undefined) {
-      updates.remaining_installment_months = updates.remainingInstallmentMonths
-      delete updates.remainingInstallmentMonths
-    }
-
-    if (updates.monthlyAmount !== undefined) {
-      updates.monthly_amount = updates.monthlyAmount
-      delete updates.monthlyAmount
-    }
-
-    if (updates.paymentStartDate !== undefined) {
-      updates.payment_start_date = updates.paymentStartDate
-      delete updates.paymentStartDate
+    // Whitelist: only PO_PUT_COLUMNS are written; every other key in the body is ignored.
+    const updates: Record<string, any> = {}
+    for (const [key, column] of Object.entries(PO_PUT_COLUMNS)) {
+      if (requested[key] !== undefined) updates[column] = requested[key]
     }
 
     // Only touch schedule_entries when the caller sent it (an approve/reject must not wipe it).
@@ -569,37 +492,6 @@ export async function PUT(request: Request) {
           ? updates.schedule_entries
           : JSON.stringify(updates.schedule_entries)
         : null
-    }
-
-    // Add bank details fields to updates
-    if (updates.bankName !== undefined) {
-      updates.bank_name = updates.bankName
-      delete updates.bankName
-    }
-
-    if (updates.bankAccountNumber !== undefined) {
-      updates.bank_account_number = updates.bankAccountNumber
-      delete updates.bankAccountNumber
-    }
-
-    if (updates.bankSwiftCode !== undefined) {
-      updates.bank_swift_code = updates.bankSwiftCode
-      delete updates.bankSwiftCode
-    }
-
-    if (updates.bankIban !== undefined) {
-      updates.bank_iban = updates.bankIban
-      delete updates.bankIban
-    }
-
-    if (updates.bankBranch !== undefined) {
-      updates.bank_branch = updates.bankBranch
-      delete updates.bankBranch
-    }
-
-    if (updates.bankHolderName !== undefined) {
-      updates.bank_holder_name = updates.bankHolderName
-      delete updates.bankHolderName
     }
 
     const poId = Number.parseInt(id)
@@ -656,6 +548,31 @@ export async function PUT(request: Request) {
       }
     }
 
+    // The total is never taken from the client. When the items change it is recomputed from them (VAT stays on
+    // when the stored PO had VAT); otherwise the stored total stands, so the AP invoice is built from it.
+    let newItemRows: any[] | null = null
+    if (items) {
+      const { data: existingRows, error: existingError } = await supabase
+        .from("purchase_order_items")
+        .select("po_item_id, item_type, source_so_item_id, outsourced_name")
+        .eq("po_id", poId)
+      if (existingError) {
+        console.error("Purchase Orders PUT: Error reading existing items", existingError)
+        throw existingError
+      }
+      const existingItems = (existingRows || []) as any[]
+      newItemRows = (items as any[]).map((item: any) => ({
+        ...mapPoItem(item, poId, existingItems),
+        allocated_tax: item.allocatedTax || item.allocated_tax,
+        allocated_overhead: item.allocatedOverhead || item.allocated_overhead,
+        landed_cost: item.landedCost || item.landed_cost,
+      }))
+      const vatOn = Number(current.tax_amount) > 0
+      const totals = computePoTotals(newItemRows, vatOn)
+      updates.total = totals.total
+      if (vatOn) updates.tax_amount = totals.tax
+    }
+
     const statusChanged = targetStatus !== previousStatus
     const approving = statusChanged && targetStatus === "approved"
     if (approving && updates.approved_at === undefined) updates.approved_at = new Date().toISOString()
@@ -688,28 +605,12 @@ export async function PUT(request: Request) {
       )
     }
 
-    if (items) {
-      // Read the current rows first so lines without an item_type keep theirs (see mapPoItem).
-      const { data: existingRows, error: existingError } = await supabase
-        .from("purchase_order_items")
-        .select("po_item_id, item_type, source_so_item_id, outsourced_name")
-        .eq("po_id", poId)
-      if (existingError) {
-        console.error("Purchase Orders PUT: Error reading existing items", existingError)
-        throw existingError
-      }
-      const existingItems = (existingRows || []) as any[]
+    if (newItemRows) {
+      // The current rows were read above, so lines without an item_type keep theirs (see mapPoItem).
       await supabase.from("purchase_order_items").delete().eq("po_id", poId)
 
-      if (items.length > 0) {
-        const itemsWithPoId = items.map((item: any) => ({
-          ...mapPoItem(item, poId, existingItems),
-          allocated_tax: item.allocatedTax || item.allocated_tax,
-          allocated_overhead: item.allocatedOverhead || item.allocated_overhead,
-          landed_cost: item.landedCost || item.landed_cost,
-        }))
-
-        const { error: itemsError } = await supabase.from("purchase_order_items").insert(itemsWithPoId)
+      if (newItemRows.length > 0) {
+        const { error: itemsError } = await supabase.from("purchase_order_items").insert(newItemRows)
 
         if (itemsError) {
           console.error("Purchase Orders PUT: Error updating items", itemsError)

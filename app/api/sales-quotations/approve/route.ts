@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getConvertedSo, LOCKED_QUOTATION_STATUSES } from "@/lib/sales-quotations/converted"
 import { buildSalesOrderPaymentFields } from "@/lib/payment-type"
+import { loadAvailability } from "@/lib/stock-hold"
 import { type NextRequest, NextResponse } from "next/server"
 
 // Converts a quotation into a sales order using the values STORED on the quotation.
@@ -53,6 +54,35 @@ export async function POST(request: NextRequest) {
         { error: `Item "${itemWithoutProduct.product_name}" has no product and cannot be converted to a sales order.` },
         { status: 400 },
       )
+    }
+
+    // Same availability check as SO POST (lib/stock-hold.ts): available = on-hand - stock held by other approved
+    // sales orders. Lines of the same product are added up. Outsourced lines are not checked.
+    const stockLines = quotationItems.filter((item) => item.item_type !== "outsourced" && item.product_id)
+    if (stockLines.length > 0) {
+      let availability: Awaited<ReturnType<typeof loadAvailability>>
+      try {
+        availability = await loadAvailability(supabase, stockLines.map((item) => Number(item.product_id)))
+      } catch (inventoryError) {
+        console.error("Approve quotation: Error fetching inventory", inventoryError)
+        return NextResponse.json({ error: "Failed to validate inventory" }, { status: 500 })
+      }
+      const requested = new Map<number, { qty: number; name: string }>()
+      for (const item of stockLines) {
+        const id = Number(item.product_id)
+        const entry = requested.get(id) || { qty: 0, name: item.product_name }
+        entry.qty += Number(item.quantity) || 0
+        requested.set(id, entry)
+      }
+      for (const [productId, { qty, name }] of requested) {
+        const availableQty = availability.get(productId)?.available || 0
+        if (qty > availableQty) {
+          return NextResponse.json(
+            { error: `Insufficient inventory for ${name || "product"}. Requested: ${qty}, Available: ${availableQty}` },
+            { status: 400 },
+          )
+        }
+      }
     }
 
     // Generate SO number
