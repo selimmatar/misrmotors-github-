@@ -290,6 +290,7 @@ export interface SalesOrder {
   paymentTerms: "prepaid" | "installment"
   installments?: number
   invoiceFileUrl?: string // Invoice uploaded by accountant
+  approvalDocumentUrl?: string | null // Customer approval document uploaded when the quotation was converted
   shippingInvoiceUrl?: string // Shipping invoice uploaded by shipping team
   paymentType?: PaymentType
   paymentDetails?: PaymentDetails

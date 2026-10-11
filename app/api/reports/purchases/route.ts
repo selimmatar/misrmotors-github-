@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/supabase/admin"
+import { inDateRange, purchaseBySupplier, purchaseDetails, purchaseSummary } from "@/lib/reports/views"
 
 export const dynamic = "force-dynamic"
 
@@ -15,32 +16,18 @@ export async function GET(request: Request) {
 
     switch (reportType) {
       case "summary":
-        // Monthly purchase summary from view
-        let summaryQuery = supabase.from("report_purchase_summary").select("*")
-        if (fromDate) summaryQuery = summaryQuery.gte("month", fromDate)
-        if (toDate) summaryQuery = summaryQuery.lte("month", toDate)
-        const { data: summaryData, error: summaryError } = await summaryQuery
-        if (summaryError) throw summaryError
-        data = summaryData || []
+        // Monthly purchase summary (was the report_purchase_summary view)
+        data = inDateRange(await purchaseSummary(supabase), "month", fromDate, toDate)
         break
 
       case "details":
-        // Detailed purchases with supplier info
-        let detailsQuery = supabase.from("report_purchase_details").select("*")
-        if (fromDate) detailsQuery = detailsQuery.gte("order_date", fromDate)
-        if (toDate) detailsQuery = detailsQuery.lte("order_date", toDate)
-        const { data: detailsData, error: detailsError } = await detailsQuery
-        if (detailsError) throw detailsError
-        data = detailsData || []
+        // Detailed purchases with supplier info (was the report_purchase_details view)
+        data = inDateRange(await purchaseDetails(supabase), "order_date", fromDate, toDate)
         break
 
       case "by_supplier":
-        // Purchases aggregated by supplier
-        const { data: supplierData, error: supplierError } = await supabase
-          .from("report_purchase_by_supplier")
-          .select("*")
-        if (supplierError) throw supplierError
-        data = supplierData || []
+        // Purchases aggregated by supplier (was the report_purchase_by_supplier view)
+        data = await purchaseBySupplier(supabase)
         break
 
       default:

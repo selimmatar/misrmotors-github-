@@ -14,6 +14,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import type { SalesOrder } from "@/lib/types"
 import { Eye, CheckCircle, XCircle, Loader2 } from "lucide-react"
+import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
 
 export function ApproveSalesOrdersModule() {
   const { salesOrders, updateSalesOrder, customers } = useAppContext()
@@ -214,6 +215,7 @@ export function ApproveSalesOrdersModule() {
                   <p className="text-sm text-muted-foreground">{t("so.payment-terms")}</p>
                   <p className="font-semibold">{t(`payment.${selectedSalesOrder.paymentTerms}`)}</p>
                 </div>
+                <ApprovalDocumentLink url={selectedSalesOrder.approvalDocumentUrl} className="col-span-full" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-2">{t("field.items")}</p>

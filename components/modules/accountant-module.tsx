@@ -23,6 +23,7 @@ import { PageHeader } from "@/components/erp/page-header"
 import { Money } from "@/components/erp/money"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { formatDate } from "@/lib/format"
+import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
 
 export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
   const { t, formatNumber, language } = useI18n()
@@ -1266,6 +1267,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                   <p className="text-sm text-muted-foreground">{t("field.payment")}</p>
                   <p className="font-semibold capitalize">{selectedSalesOrder.paymentTerms ? t(`payment.${selectedSalesOrder.paymentTerms}`) : t("label.na")}</p>
                 </div>
+                <ApprovalDocumentLink url={selectedSalesOrder.approvalDocumentUrl} className="col-span-full" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-2">{t("field.items")}</p>

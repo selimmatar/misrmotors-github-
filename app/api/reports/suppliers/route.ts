@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/supabase/admin"
+import { apAging, purchaseBySupplier, whereNot } from "@/lib/reports/views"
 
 export const dynamic = "force-dynamic"
 
@@ -13,21 +14,13 @@ export async function GET(request: Request) {
 
     switch (reportType) {
       case "purchases":
-        // Suppliers with purchase data
-        const { data: purchaseData, error: purchaseError } = await supabase
-          .from("report_purchase_by_supplier")
-          .select("*")
-        if (purchaseError) throw purchaseError
-        data = purchaseData || []
+        // Suppliers with purchase data (was the report_purchase_by_supplier view)
+        data = await purchaseBySupplier(supabase)
         break
 
       case "ap_aging":
-        // Supplier AP aging
-        const { data: apData, error: apError } = await supabase
-          .from("report_ap_aging")
-          .select("*")
-          .neq("status", "paid")
-        if (apError) throw apError
+        // Supplier AP aging (was the report_ap_aging view)
+        const apData = whereNot(await apAging(supabase), "status", "paid")
 
         // Group by supplier
         const supplierAP: Record<string, any> = {}

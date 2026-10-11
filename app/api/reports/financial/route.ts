@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/supabase/admin"
+import { apAging, apSummary, arAging, arSummary, cashFlow, financialSummary, inDateRange } from "@/lib/reports/views"
 
 export const dynamic = "force-dynamic"
 
@@ -15,59 +16,33 @@ export async function GET(request: Request) {
 
     switch (reportType) {
       case "summary":
-        // Overall financial summary
-        const { data: summaryData, error: summaryError } = await supabase
-          .from("report_financial_summary")
-          .select("*")
-          .single()
-        if (summaryError) throw summaryError
-        data = summaryData
+        // Overall financial summary (was the report_financial_summary view)
+        data = await financialSummary(supabase)
         break
 
       case "ar_aging":
-        // AR aging report
-        const arQuery = supabase.from("report_ar_aging").select("*")
-        const { data: arData, error: arError } = await arQuery
-        if (arError) throw arError
-        data = arData || []
+        // AR aging report (was the report_ar_aging view)
+        data = await arAging(supabase)
         break
 
       case "ar_summary":
-        // AR summary totals
-        const { data: arSummaryData, error: arSummaryError } = await supabase
-          .from("report_ar_summary")
-          .select("*")
-          .single()
-        if (arSummaryError) throw arSummaryError
-        data = arSummaryData
+        // AR summary totals (was the report_ar_summary view)
+        data = await arSummary(supabase)
         break
 
       case "ap_aging":
-        // AP aging report
-        const apQuery = supabase.from("report_ap_aging").select("*")
-        const { data: apData, error: apError } = await apQuery
-        if (apError) throw apError
-        data = apData || []
+        // AP aging report (was the report_ap_aging view)
+        data = await apAging(supabase)
         break
 
       case "ap_summary":
-        // AP summary totals
-        const { data: apSummaryData, error: apSummaryError } = await supabase
-          .from("report_ap_summary")
-          .select("*")
-          .single()
-        if (apSummaryError) throw apSummaryError
-        data = apSummaryData
+        // AP summary totals (was the report_ap_summary view)
+        data = await apSummary(supabase)
         break
 
       case "cash_flow":
-        // Cash flow by month
-        let cashQuery = supabase.from("report_cash_flow").select("*")
-        if (fromDate) cashQuery = cashQuery.gte("month", fromDate)
-        if (toDate) cashQuery = cashQuery.lte("month", toDate)
-        const { data: cashData, error: cashError } = await cashQuery
-        if (cashError) throw cashError
-        data = cashData || []
+        // Cash flow by month (was the report_cash_flow view)
+        data = inDateRange(await cashFlow(supabase), "month", fromDate, toDate)
         break
 
       default:

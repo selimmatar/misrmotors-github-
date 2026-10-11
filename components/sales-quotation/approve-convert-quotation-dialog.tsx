@@ -630,10 +630,11 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
         body: formData,
       })
 
-      let documentUrl = ""
-      if (uploadResponse.ok) {
-        const uploadResult = await uploadResponse.json()
-        documentUrl = uploadResult.url || ""
+      // The approval document is required: if it could not be stored, stop before creating the sales order.
+      const uploadResult = uploadResponse.ok ? await uploadResponse.json().catch(() => null) : null
+      const documentUrl: string = uploadResult?.url || ""
+      if (!documentUrl) {
+        throw new Error(t("error.upload-failed"))
       }
       setUploadingDocument(false)
 

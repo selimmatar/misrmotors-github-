@@ -1,7 +1,10 @@
-import { createAdminClient } from "@/lib/supabase/admin"
+import { put } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
 import { checkUpload } from "@/lib/upload-allowlist"
 
+// Stores a quotation's approval document in Vercel Blob (like every other upload in the app) and returns its URL.
+// The caller passes that URL to POST /api/sales-quotations/approve, which saves it on the new sales order.
+// Nothing is written to the database here: quotation_id is a sales_quotations id, not a sales order id.
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
@@ -16,69 +19,22 @@ export async function POST(request: NextRequest) {
     const rejection = checkUpload(file)
     if (rejection) return NextResponse.json({ error: rejection.error }, { status: rejection.status })
 
-    const supabase = createAdminClient()
+    const folder = documentType.replace(/[^a-zA-Z0-9_-]/g, "_") || "approval"
+    const owner = (quotationId || "general").replace(/[^a-zA-Z0-9_-]/g, "_")
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_")
+    const filename = `${folder}-documents/${owner}/${Date.now()}-${safeName}`
 
-    // Generate unique filename
-    const timestamp = Date.now()
-    const extension = file.name.split(".").pop()
-    const filename = `${documentType}/${quotationId || "general"}_${timestamp}.${extension}`
-
-    // Convert file to Buffer for Supabase storage upload
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-
-    // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("documents")
-      .upload(filename, buffer, {
-        contentType: file.type,
-        upsert: false,
-        duplex: "half",
-      })
-
-    if (uploadError) {
-      console.error("Supabase storage upload error:", uploadError)
-      // If bucket doesn't exist, store URL as placeholder
-      const placeholderUrl = `document://${filename}`
-      
-      if (quotationId) {
-        await supabase
-          .from("sales_orders")
-          .update({ 
-            approval_document_url: placeholderUrl,
-            updated_at: new Date().toISOString()
-          })
-          .eq("so_id", parseInt(quotationId))
-      }
-      
-      return NextResponse.json({
-        success: true,
-        url: placeholderUrl,
-        filename: filename,
-        note: "Document reference saved (storage bucket may need setup)"
-      })
-    }
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from("documents")
-      .getPublicUrl(filename)
-
-    // Update the sales order with the approval document URL
-    if (quotationId) {
-      await supabase
-        .from("sales_orders")
-        .update({ 
-          approval_document_url: publicUrl,
-          updated_at: new Date().toISOString()
-        })
-        .eq("so_id", parseInt(quotationId))
-    }
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const blob = await put(filename, buffer, {
+      access: "public",
+      addRandomSuffix: false,
+      contentType: file.type || undefined,
+    })
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
-      filename: uploadData.path,
+      url: blob.url,
+      filename,
     })
   } catch (error) {
     console.error("Error uploading document:", error)
