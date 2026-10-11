@@ -72,11 +72,11 @@ export function SystemHealthModule() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "pass":
-        return <CheckCircle2 className="h-5 w-5 text-green-500" />
+        return <CheckCircle2 className="h-5 w-5 text-green-700" />
       case "fail":
-        return <XCircle className="h-5 w-5 text-red-500" />
+        return <XCircle className="h-5 w-5 text-red-700" />
       case "warn":
-        return <AlertTriangle className="h-5 w-5 text-yellow-500" />
+        return <AlertTriangle className="h-5 w-5 text-yellow-700" />
       default:
         return null
     }
@@ -130,9 +130,9 @@ export function SystemHealthModule() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 {report.summary.healthy ? (
-                  <CheckCircle2 className="h-6 w-6 text-green-500" />
+                  <CheckCircle2 className="h-6 w-6 text-green-700" />
                 ) : (
-                  <XCircle className="h-6 w-6 text-red-500" />
+                  <XCircle className="h-6 w-6 text-red-700" />
                 )}
                 {report.summary.healthy ? "System Healthy" : "Issues Detected"}
               </CardTitle>

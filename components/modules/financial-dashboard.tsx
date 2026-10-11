@@ -619,11 +619,11 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
               </div>
               <div className="flex justify-between">
                 <span>{t("financial.collected")} (EGP)</span>
-                <span className="font-bold text-green-600"><Money value={totalCollected} /></span>
+                <span className="font-bold text-green-700"><Money value={totalCollected} /></span>
               </div>
               <div className="flex justify-between">
                 <span>{t("financial.outstanding")} (EGP)</span>
-                <span className="font-bold text-yellow-600"><Money value={totalOutstanding} /></span>
+                <span className="font-bold text-yellow-700"><Money value={totalOutstanding} /></span>
               </div>
             </div>
           </CardContent>
@@ -642,11 +642,11 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
               </div>
               <div className="flex justify-between">
                 <span>{t("financial.paid")} (EGP)</span>
-                <span className="font-bold text-green-600"><Money value={totalPaid} /></span>
+                <span className="font-bold text-green-700"><Money value={totalPaid} /></span>
               </div>
               <div className="flex justify-between">
                 <span>{t("financial.outstanding")} (EGP)</span>
-                <span className="font-bold text-yellow-600"><Money value={totalUnpaid} /></span>
+                <span className="font-bold text-yellow-700"><Money value={totalUnpaid} /></span>
               </div>
             </div>
           </CardContent>
@@ -715,7 +715,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
             {aiAnalysis.paymentRisks.length > 0 && (
               <div className="p-4 rounded-lg bg-background border">
                 <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                  <AlertTriangle className="w-4 h-4 text-yellow-700" />
                   <h3 className="font-semibold">{t("financial.payment-risk-alerts")}</h3>
                 </div>
                 <div className="space-y-2">
@@ -745,7 +745,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
             {/* AI Recommendations */}
             <div className="p-4 rounded-lg bg-background border">
               <div className="flex items-center gap-2 mb-3">
-                <CheckCircle2 className="w-4 h-4 text-green-600" />
+                <CheckCircle2 className="w-4 h-4 text-green-700" />
                 <h3 className="font-semibold">{t("financial.ai-recommendations")}</h3>
               </div>
               <ul className="space-y-2">
@@ -799,10 +799,10 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
       {user.role === "ceo" && (
         <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-transparent">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                  <AlertTriangle className="w-5 h-5 text-amber-700" />
                   Payment Reschedule Requests
                 </CardTitle>
                 <CardDescription>
@@ -817,7 +817,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
           <CardContent>
             {rescheduleRequests.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-500" />
+                <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-700" />
                 <p className="font-medium">No pending reschedule requests</p>
                 <p className="text-sm">All payment reschedule requests have been processed</p>
               </div>
@@ -897,7 +897,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                           variant="outline"
                           onClick={() => handleRejectReschedule(request.id)}
                           disabled={loadingReschedule}
-                          className="border-red-300 text-red-600 hover:bg-red-50"
+                          className="border-red-300 text-red-700 hover:bg-red-50"
                         >
                           Reject
                         </Button>
@@ -1000,7 +1000,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                       <TableCell className="font-medium">{item.invoiceNumber}</TableCell>
                       <TableCell>{item.supplierName || t("financial.unknown")}</TableCell>
                       <TableCell>{formatDate(item.dueDate, language)}</TableCell>
-                      <TableCell className="text-end font-semibold text-red-600">
+                      <TableCell className="text-end font-semibold text-red-700">
                         <Money value={item.amount} />
                       </TableCell>
                     </TableRow>
@@ -1024,7 +1024,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                       <TableCell className="font-medium">{item.invoiceNumber}</TableCell>
                       <TableCell>{item.customerName || t("financial.unknown")}</TableCell>
                       <TableCell>{formatDate(item.dueDate, language)}</TableCell>
-                      <TableCell className="text-end font-semibold text-red-600">
+                      <TableCell className="text-end font-semibold text-red-700">
                         <Money value={(item.amount || 0) - (item.collectedAmount || 0)} />
                       </TableCell>
                     </TableRow>

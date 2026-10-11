@@ -269,7 +269,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="h-auto w-full flex-wrap justify-start">
           <TabsTrigger value="employees" className="gap-2">
             <Users className="w-4 h-4" />
             Employees
@@ -356,11 +356,11 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                   filteredEmployees.map((employee) => (
                     <Card key={employee.employee_id} className="hover:bg-muted/50 transition-colors">
                       <CardContent className="pt-6">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1 space-y-3">
                             <div className="flex items-center gap-3">
                               <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                                <span className="text-lg font-semibold text-primary">
+                                <span className="text-lg font-semibold text-foreground">
                                   {employee.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                                 </span>
                               </div>
@@ -386,7 +386,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                               )}
                               <div className="flex items-center gap-2">
                                 <Mail className="w-4 h-4 text-muted-foreground" />
-                                <span>{employee.email}</span>
+                                <span className="min-w-0 break-words">{employee.email}</span>
                               </div>
                               {employee.phone && (
                                 <div className="flex items-center gap-2">
@@ -425,7 +425,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
         <TabsContent value="departments">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <CardTitle>Departments ({departments.length})</CardTitle>
                   <CardDescription>Organizational departments and structure</CardDescription>
@@ -483,7 +483,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
         <TabsContent value="positions">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <CardTitle>Job Positions ({positions.length})</CardTitle>
                   <CardDescription>Available job positions and titles</CardDescription>
@@ -517,7 +517,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                 {positions.map((position) => (
                   <div
                     key={position.position_id}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                    className="flex flex-wrap items-center justify-between gap-2 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <Briefcase className="w-5 h-5 text-muted-foreground" />
@@ -544,7 +544,7 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <span className="text-lg font-semibold text-primary">
+                  <span className="text-lg font-semibold text-foreground">
                     {selectedEmployee.full_name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                   </span>
                 </div>
@@ -617,7 +617,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
 
   return (
     <Tabs defaultValue="overview">
-      <TabsList className="grid w-full grid-cols-4">
+      <TabsList className="h-auto w-full flex-wrap justify-start">
         <TabsTrigger value="overview">Overview</TabsTrigger>
         <TabsTrigger value="compensation">Compensation</TabsTrigger>
         <TabsTrigger value="salary">Salary Payments</TabsTrigger>
@@ -785,7 +785,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
       </TabsContent>
 
       <TabsContent value="salary" className="space-y-4">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap justify-between items-center gap-2">
           <h3 className="text-lg font-semibold">Salary Payments</h3>
           <Dialog open={showAddPaymentDialog} onOpenChange={setShowAddPaymentDialog}>
             <DialogTrigger asChild>
@@ -879,7 +879,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                         {payment.bonus_amount > 0 && (
                           <div>
                             <p className="text-muted-foreground">Bonus</p>
-                            <p className="font-medium text-green-600">+<Money value={payment.bonus_amount} /> EGP</p>
+                            <p className="font-medium text-green-700">+<Money value={payment.bonus_amount} /> EGP</p>
                             {payment.bonus_description && (
                               <p className="text-xs text-muted-foreground">{payment.bonus_description}</p>
                             )}
@@ -888,13 +888,13 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
                         {payment.overtime_amount > 0 && (
                           <div>
                             <p className="text-muted-foreground">Overtime ({payment.overtime_hours}h)</p>
-                            <p className="font-medium text-green-600">+<Money value={payment.overtime_amount} /> EGP</p>
+                            <p className="font-medium text-green-700">+<Money value={payment.overtime_amount} /> EGP</p>
                           </div>
                         )}
                         {payment.adjustments !== 0 && (
                           <div>
                             <p className="text-muted-foreground">Adjustments</p>
-                            <p className={`font-medium ${payment.adjustments > 0 ? "text-green-600" : "text-destructive"}`}>
+                            <p className={`font-medium ${payment.adjustments > 0 ? "text-green-700" : "text-destructive"}`}>
                               {payment.adjustments > 0 ? "+" : ""}<Money value={payment.adjustments} /> EGP
                             </p>
                             {payment.adjustment_notes && (
@@ -1562,7 +1562,7 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-2">
         <h3 className="text-lg font-semibold">Employee Documents</h3>
         <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
           <DialogTrigger asChild>
@@ -1659,9 +1659,9 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
       ) : (
         <div className="space-y-2">
           {documents.map((doc) => (
-            <div key={doc.document_id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+            <div key={doc.document_id} className="flex flex-wrap items-center justify-between gap-2 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
               <div className="flex items-center gap-3">
-                <FileText className="w-8 h-8 text-red-500" />
+                <FileText className="w-8 h-8 text-red-700" />
                 <div>
                   <p className="font-medium">{doc.document_name}</p>
                   <p className="text-sm text-muted-foreground">

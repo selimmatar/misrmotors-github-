@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useI18n } from "@/lib/i18n-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +42,7 @@ export function PaymentScheduleEditor({
   paymentStartDate,
   onScheduleChange,
 }: PaymentScheduleEditorProps) {
+  const { t } = useI18n()
   const [scheduleEntries, setScheduleEntries] = useState<PaymentScheduleEntry[]>([])
   const [showManualEdit, setShowManualEdit] = useState(false)
 
@@ -197,6 +199,7 @@ export function PaymentScheduleEditor({
                       <Button
                         variant="destructive"
                         size="icon"
+                        aria-label={t("action.delete")}
                         onClick={() => removeEntry(entry.id)}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -223,7 +226,7 @@ export function PaymentScheduleEditor({
             <Label className="text-xs text-muted-foreground">Remaining</Label>
             <div
               className={`text-lg font-bold ${
-                remainingAmount > 0.01 ? "text-red-600" : "text-green-600"
+                remainingAmount > 0.01 ? "text-red-700" : "text-green-700"
               }`}
             >
               {remainingAmount.toFixed(2)} EGP

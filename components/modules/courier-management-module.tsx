@@ -266,7 +266,7 @@ export function CourierManagementModule() {
         </Card>
 
         <Tabs defaultValue="upcoming" className="space-y-4">
-          <TabsList>
+          <TabsList className="h-auto flex-wrap w-full justify-start">
             <TabsTrigger value="upcoming">
               {t("courier.upcoming-shipments")} ({formatNumber(upcomingShipments.length)})
             </TabsTrigger>
@@ -288,8 +288,8 @@ export function CourierManagementModule() {
                 {upcomingShipments.map((permit) => (
                   <Card key={permit.id} className="border-amber-200 bg-amber-50/30">
                     <CardContent className="pt-6">
-                      <div className="flex justify-between items-start">
-                        <div>
+                      <div className="flex justify-between items-start flex-wrap gap-2">
+                        <div className="min-w-0 break-words">
                           <p className="font-semibold">{permit.permitNo}</p>
                           <p className="text-sm text-muted-foreground">
                             {t("field.customer")}: {permit.customerName}
@@ -523,7 +523,7 @@ export function CourierManagementModule() {
                 rows={2}
               />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <Label htmlFor="edit-active">{t("courier.active")}</Label>
               <Switch
                 id="edit-active"
@@ -549,7 +549,7 @@ export function CourierManagementModule() {
         </Card>
       ) : (
         <Tabs defaultValue="active" className="space-y-4">
-          <TabsList>
+          <TabsList className="h-auto flex-wrap w-full justify-start">
             <TabsTrigger value="active">
               {t("courier.active-couriers")} ({formatNumber(activeCouriers.length)})
             </TabsTrigger>
@@ -583,7 +583,7 @@ export function CourierManagementModule() {
                       onClick={() => setSelectedCourier(courier)}
                     >
                       <CardHeader className="pb-2">
-                        <div className="flex items-start justify-between">
+                        <div className="flex items-start justify-between flex-wrap gap-2">
                           <div className="flex items-center gap-3">
                             <div className="p-2 bg-primary/10 rounded-full">
                               <User className="w-5 h-5 text-primary" />
@@ -596,6 +596,7 @@ export function CourierManagementModule() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={`${t("action.edit")} ${courier.name}`}
                             onClick={(e) => {
                               e.stopPropagation()
                               openEditDialog(courier)
@@ -620,13 +621,13 @@ export function CourierManagementModule() {
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-4 mt-4 pt-4 border-t">
+                        <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
                           <div className="text-center flex-1">
-                            <p className="text-2xl font-bold text-amber-600">{formatNumber(activeDeliveries)}</p>
+                            <p className="text-2xl font-bold text-amber-700">{formatNumber(activeDeliveries)}</p>
                             <p className="text-xs text-muted-foreground">{t("courier.active")}</p>
                           </div>
                           <div className="text-center flex-1">
-                            <p className="text-2xl font-bold text-green-600">{formatNumber(totalDeliveries)}</p>
+                            <p className="text-2xl font-bold text-green-700">{formatNumber(totalDeliveries)}</p>
                             <p className="text-xs text-muted-foreground">{t("courier.total")}</p>
                           </div>
                         </div>

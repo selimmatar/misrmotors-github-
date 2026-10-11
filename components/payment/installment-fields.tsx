@@ -84,6 +84,7 @@ export function InstallmentFields({
               type="button"
               variant="outline"
               size="icon"
+              aria-label={t("a11y.sales.decrease-months")}
               onClick={() => handleMonthsChange(Math.max(1, actualMonths - 1))}
               disabled={actualMonths <= 1}
             >
@@ -102,6 +103,7 @@ export function InstallmentFields({
               type="button"
               variant="outline"
               size="icon"
+              aria-label={t("a11y.sales.increase-months")}
               onClick={() => handleMonthsChange(Math.min(60, actualMonths + 1))}
               disabled={actualMonths >= 60}
             >

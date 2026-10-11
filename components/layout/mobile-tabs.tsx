@@ -13,7 +13,7 @@ import {
   Warehouse,
   type LucideIcon,
 } from "lucide-react"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import type { NavItem } from "@/components/layout/nav-config"
 import { buildMobileTabs, groupFor, type GroupId } from "@/lib/nav-groups"
 import { useI18n } from "@/lib/i18n-context"
@@ -58,7 +58,8 @@ export function MobileTabs({ items, activeModule, onNavigate, onOpenMenu }: Mobi
   return (
     <>
       <nav
-        aria-label={t("nav.menu")}
+        aria-label={t("a11y.bottom-nav")}
+        style={{ paddingLeft: "env(safe-area-inset-left)", paddingRight: "env(safe-area-inset-right)" }}
         className="fixed inset-x-0 bottom-0 z-40 md:hidden bg-card border-t pb-[env(safe-area-inset-bottom)]"
       >
         <div className="grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
@@ -110,9 +111,9 @@ export function MobileTabs({ items, activeModule, onNavigate, onOpenMenu }: Mobi
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" className="bg-card rounded-t-xl pb-[env(safe-area-inset-bottom)]">
-          {/* The sheet's close button is pinned physically right; clear it on whichever side it lands. */}
-          <SheetHeader className="pe-10 rtl:pe-4 rtl:ps-10">
+          <SheetHeader className="pe-14">
             <SheetTitle>{sheetGroup ? t(`group.${sheetGroup}`) : ""}</SheetTitle>
+            <SheetDescription className="sr-only">{t("a11y.group-sheet")}</SheetDescription>
           </SheetHeader>
           <div className="flex flex-col gap-1 px-2 pb-4">
             {sheetItems.map((item) => {

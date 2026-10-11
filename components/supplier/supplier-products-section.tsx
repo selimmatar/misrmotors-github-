@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table"
 import { Plus, Trash2, Edit2, Package } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useI18n } from "@/lib/i18n-context"
 import { useAppContext } from "@/lib/app-context"
 
 interface SupplierProduct {
@@ -54,6 +55,7 @@ interface Props {
 export function SupplierProductsSection({ supplierId, supplierName }: Props) {
   const { products } = useAppContext()
   const { toast } = useToast()
+  const { t } = useI18n()
   const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -327,6 +329,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
                         variant="ghost"
                         size="sm"
                         onClick={() => openEditDialog(sp)}
+                        aria-label={`${t("action.edit")} ${sp.productName}`}
                       >
                         <Edit2 className="w-4 h-4" />
                       </Button>
@@ -334,6 +337,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleRemoveProduct(sp.productId, sp.productName)}
+                        aria-label={`${t("action.remove")} ${sp.productName}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

@@ -156,7 +156,7 @@ export function ProductSearchCombobox({
                       {qty !== null && (
                         <span className={cn(
                           "text-xs",
-                          qty > 0 ? "text-green-600" : "text-red-600"
+                          qty > 0 ? "text-green-700" : "text-red-700"
                         )}>
                           {qty > 0 ? `${qty} available` : "Out of stock"}
                         </span>

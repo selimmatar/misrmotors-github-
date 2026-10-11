@@ -311,10 +311,10 @@ export function OperationsManagementModule() {
               </div>
 
               {/* Summary Stats */}
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="p-3 rounded-md bg-amber-50 text-center border border-amber-200">
                   <p className="text-2xl font-bold text-amber-700">{selectedEmployee.stats.active_work_orders}</p>
-                  <p className="text-xs text-amber-600">Active WOs</p>
+                  <p className="text-xs text-amber-700">Active WOs</p>
                 </div>
                 <div className="p-3 rounded-md bg-blue-50 text-center border border-blue-200">
                   <p className="text-2xl font-bold text-blue-700">{selectedEmployee.stats.active_deliveries}</p>
@@ -322,7 +322,7 @@ export function OperationsManagementModule() {
                 </div>
                 <div className="p-3 rounded-md bg-green-50 text-center border border-green-200">
                   <p className="text-2xl font-bold text-green-700">{selectedEmployee.stats.completed_work_orders}</p>
-                  <p className="text-xs text-green-600">Completed WOs</p>
+                  <p className="text-xs text-green-700">Completed WOs</p>
                 </div>
                 <div className="p-3 rounded-md bg-purple-50 text-center border border-purple-200">
                   <p className="text-2xl font-bold text-purple-700">{selectedEmployee.stats.completed_deliveries}</p>
@@ -332,7 +332,7 @@ export function OperationsManagementModule() {
 
               {/* Tabs for Work Orders and Delivery Orders */}
               <Tabs defaultValue="current-wo" className="w-full">
-                <TabsList className="w-full grid grid-cols-4">
+                <TabsList className="h-auto flex-wrap w-full justify-start">
                   <TabsTrigger value="current-wo">
                     Active WOs ({selectedEmployee.current_work_orders.length})
                   </TabsTrigger>

@@ -247,7 +247,7 @@ export function AIAssistantModule({ userRole }: AIAssistantModuleProps) {
               disabled={isLoading}
               className="flex-1"
             />
-            <Button type="submit" disabled={isLoading || !inputValue.trim()} size="icon">
+            <Button type="submit" disabled={isLoading || !inputValue.trim()} size="icon" aria-label={t("action.send")}>
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </form>

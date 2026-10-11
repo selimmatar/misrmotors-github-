@@ -363,7 +363,7 @@ export function ShippingModule() {
       <PageHeader group={t("group.operations")} title={t("shipping.title")} subtitle={t("shipping.description")} />
 
       <Tabs defaultValue="ready" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="h-auto flex-wrap w-full justify-start">
           <TabsTrigger value="ready">
             {t("shipping.ready-for-pickup")} ({formatNumber(readyForPickup.length)})
           </TabsTrigger>
@@ -400,8 +400,8 @@ export function ShippingModule() {
               {readyForPickup.map((permit) => (
                 <Card key={permit.id}>
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
                           <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
@@ -414,7 +414,7 @@ export function ShippingModule() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                         <div>
                           <p className="text-muted-foreground">{t("permit.recipient")}</p>
                           <p className="font-medium">{permit.recipientName || permit.customerName || "-"}</p>
@@ -482,7 +482,7 @@ export function ShippingModule() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <Button
                               variant="outline"
                               onClick={() => {
@@ -495,7 +495,7 @@ export function ShippingModule() {
                               {t("action.print-dp")}
                             </Button>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <Button
                               onClick={() => handleMarkOutForDelivery(permit)}
                               disabled={!selectedCouriers[permit.id]}
@@ -547,8 +547,8 @@ export function ShippingModule() {
               {outForDelivery.map((permit) => (
                 <Card key={permit.id} className="border-amber-200 bg-amber-50/30">
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
                           <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
@@ -574,7 +574,7 @@ export function ShippingModule() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                    <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                       <div>
                         <p className="text-muted-foreground">{t("permit.recipient")}</p>
                         <p className="font-medium">{permit.recipientName || permit.customerName || "-"}</p>
@@ -590,7 +590,7 @@ export function ShippingModule() {
                     </div>
 
                       {/* The customer may refuse an item when the driver arrives, so returns are allowed here too. */}
-                      <div className="flex gap-2 mb-4">
+                      <div className="flex flex-wrap gap-2 mb-4">
                         <Button variant="outline" size="sm" onClick={() => openReturnDialog(permit)} className="bg-transparent">
                           <RotateCcw className="w-4 h-4 me-2" />
                           Return Items
@@ -609,7 +609,7 @@ export function ShippingModule() {
                               className="mt-1"
                             />
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <Button
                               onClick={() => handleUploadSigned(permit)}
                               disabled={!signedFile || uploading}
@@ -664,8 +664,8 @@ export function ShippingModule() {
               {delivered.map((permit) => (
                 <Card key={permit.id} className="border-green-200 bg-green-50/30">
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
                           <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
@@ -731,8 +731,8 @@ export function ShippingModule() {
               {pendingReturns.map((returnReq) => (
                 <Card key={returnReq.id} className="border-orange-200 bg-orange-50/30">
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
                           Return #{returnReq.id}
                           <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
@@ -791,8 +791,8 @@ export function ShippingModule() {
             {returnItems.map((item, index) => (
               <Card key={index} className={item.quantityReturned > 0 ? "border-orange-300 bg-orange-50" : ""}>
                 <CardContent className="pt-4">
-                  <div className="flex items-start justify-between">
-                    <div>
+                  <div className="flex items-start justify-between flex-wrap gap-2">
+                    <div className="min-w-0 break-words">
                       <div className="flex items-center gap-2">
                         <p className="font-semibold">{item.productName || "Unknown Item"}</p>
                         {item.isOutsourced && (

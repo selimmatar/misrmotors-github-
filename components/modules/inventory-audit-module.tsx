@@ -233,7 +233,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
         </div>
       )}
       {successMessage && (
-        <div className="bg-green-500/10 text-green-600 px-4 py-3 rounded-lg flex items-center gap-2">
+        <div className="bg-green-500/10 text-green-700 px-4 py-3 rounded-lg flex items-center gap-2">
           <CheckCircle className="w-5 h-5" />
           {successMessage}
         </div>

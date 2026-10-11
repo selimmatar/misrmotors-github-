@@ -240,8 +240,8 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
           {transfers.map((transfer) => (
             <Card key={transfer.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
+                <div className="flex justify-between items-start flex-wrap gap-2">
+                  <div className="flex-1 min-w-0 break-words">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="font-semibold">{transfer.transferNumber}</span>
                       <StatusBadge status={transfer.status} />
@@ -255,10 +255,11 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                       {transfer.items.length} item(s) | Created: {formatDate(transfer.createdAt, language)}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label={`${t("action.view-details")} ${transfer.transferNumber}`}
                       onClick={() => {
                         setSelectedTransfer(transfer)
                         setShowDetailsDialog(true)
@@ -353,7 +354,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                     className="w-24"
                     placeholder="Qty"
                   />
-                  <Button onClick={handleAddItem} disabled={!selectedProductId}>
+                  <Button onClick={handleAddItem} disabled={!selectedProductId} aria-label={t("action.add-item")}>
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
@@ -361,11 +362,11 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                 {transferItems.length > 0 && (
                   <div className="border rounded-lg divide-y">
                     {transferItems.map((item) => (
-                      <div key={item.inventoryId} className="flex justify-between items-center p-3">
-                        <div>
+                      <div key={item.inventoryId} className="flex justify-between items-center p-3 flex-wrap gap-2">
+                        <div className="min-w-0 break-words">
                           <p className="font-medium">
                             {item.productName}
-                            {item.isOutsourced ? <span className="ms-2 text-xs text-amber-600">(Outsourced)</span> : null}
+                            {item.isOutsourced ? <span className="ms-2 text-xs text-amber-700">(Outsourced)</span> : null}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {item.sku ? `SKU: ${item.sku} | ` : ""}Qty: {item.quantity} (Avail: {item.availableQty})
@@ -374,9 +375,10 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                         <Button
                           variant="ghost"
                           size="sm"
+                          aria-label={`${t("action.remove")} ${item.productName}`}
                           onClick={() => handleRemoveItem(item.inventoryId)}
                         >
-                          <Trash2 className="w-4 h-4 text-red-500" />
+                          <Trash2 className="w-4 h-4 text-red-700" />
                         </Button>
                       </div>
                     ))}
@@ -419,7 +421,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
 
           {selectedTransfer && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center flex-wrap gap-2">
                 <span className="font-semibold text-lg">{selectedTransfer.transferNumber}</span>
                 <StatusBadge status={selectedTransfer.status} />
               </div>
@@ -449,8 +451,8 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                 <p className="text-muted-foreground mb-2">Items</p>
                 <div className="border rounded-lg divide-y">
                   {selectedTransfer.items.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center p-3">
-                      <div>
+                    <div key={item.id} className="flex justify-between items-center p-3 flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <p className="font-medium">{item.productName}</p>
                         <p className="text-sm text-muted-foreground">SKU: {item.sku}</p>
                       </div>

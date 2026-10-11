@@ -58,7 +58,7 @@ export function PricingSummaryCard({
                   : t("discount-fixed")}
               </span>
             </div>
-            <div className="flex justify-between text-sm text-red-600">
+            <div className="flex justify-between text-sm text-red-700">
               <span>{t("discount-amount")}</span>
               <span>- {formatCurrency(calculatedDiscountAmount)}</span>
             </div>

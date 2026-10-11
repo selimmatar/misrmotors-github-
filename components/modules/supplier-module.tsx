@@ -346,15 +346,15 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("supplier.total-paid")} (EGP)</p>
-                <p className="font-semibold text-lg text-green-600"><Money value={totalPaid} /></p>
+                <p className="font-semibold text-lg text-green-700"><Money value={totalPaid} /></p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("supplier.balance-due")} (EGP)</p>
-                <p className="font-semibold text-lg text-orange-600"><Money value={totalSpent - totalPaid} /></p>
+                <p className="font-semibold text-lg text-orange-700"><Money value={totalSpent - totalPaid} /></p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Available Credit (EGP)</p>
-                <p className="font-semibold text-lg text-green-600">
+                <p className="font-semibold text-lg text-green-700">
                   <Money value={supplierCredits[selectedSupplier.id] || 0} />
                 </p>
               </div>
@@ -450,11 +450,11 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.amount-paid")} (EGP)</p>
-                            <p className="font-semibold text-green-600"><Money value={paymentStatus.amountPaid} /></p>
+                            <p className="font-semibold text-green-700"><Money value={paymentStatus.amountPaid} /></p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.amount-due")} (EGP)</p>
-                            <p className="font-semibold text-orange-600"><Money value={paymentStatus.amountDue} /></p>
+                            <p className="font-semibold text-orange-700"><Money value={paymentStatus.amountDue} /></p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment-status")}</p>
@@ -536,7 +536,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
         <Card>
           <CardHeader className="flex items-center justify-between">
             <CardTitle>{t("supplier.add-new")}</CardTitle>
-            <Button variant="ghost" size="icon" onClick={() => setShowForm(false)}>
+            <Button variant="ghost" size="icon" onClick={() => setShowForm(false)} aria-label={t("action.close")}>
               <X className="h-4 w-4" />
             </Button>
           </CardHeader>
@@ -690,6 +690,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           handleDeleteSupplier(supplier.id, supplier.name)
                         }}
                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        aria-label={`${t("action.delete")} ${supplier.name}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

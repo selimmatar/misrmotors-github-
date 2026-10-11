@@ -211,7 +211,7 @@ export function UserManagementModule() {
                   <div className="flex items-center gap-3">
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="sm">
+                        <Button variant="destructive" size="sm" aria-label={`${t("action.delete")} ${user.name}`}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>

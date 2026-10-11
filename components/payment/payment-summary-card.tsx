@@ -121,7 +121,7 @@ export function PaymentSummaryCard({
             </div>
             <div className="flex justify-between text-sm">
               <span>{t("payment.cheque-amount")}</span>
-              <span className="font-medium text-amber-600">
+              <span className="font-medium text-amber-700">
                 {formatCurrency(paymentDetails.chequeAmount || totalAmount, currency)}
               </span>
             </div>
@@ -145,7 +145,7 @@ export function PaymentSummaryCard({
               </div>
               <div className="flex justify-between text-sm">
                 <span>{t("amount")}</span>
-                <span className="font-medium text-green-600">
+                <span className="font-medium text-green-700">
                   {formatCurrency(paymentDetails.downPaymentAmount, currency)}({paymentDetails.downPaymentPercent}%)
                 </span>
               </div>
@@ -168,7 +168,7 @@ export function PaymentSummaryCard({
               <p className="text-xs font-medium text-blue-800">{t("payment.remaining-installments")}</p>
               <div className="flex justify-between text-sm">
                 <span>{t("payment.remaining-amount")}</span>
-                <span className="font-medium text-orange-600">
+                <span className="font-medium text-orange-700">
                   {formatCurrency(paymentDetails.remainingAmount, currency)}
                 </span>
               </div>

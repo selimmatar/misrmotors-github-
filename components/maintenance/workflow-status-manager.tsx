@@ -37,21 +37,21 @@ const stageConfig: Record<WorkflowStage, {
     label: "In Progress",
     description: "Assigned to shipping team",
     icon: Wrench,
-    color: "text-orange-600",
+    color: "text-orange-700",
     badgeVariant: "outline"
   },
   report_pending: {
     label: "Awaiting Approval",
     description: "Report submitted, pending sales review",
     icon: Clock,
-    color: "text-yellow-600",
+    color: "text-yellow-700",
     badgeVariant: "secondary"
   },
   approved: {
     label: "Approved",
     description: "Sales approved the report",
     icon: UserCheck,
-    color: "text-green-600",
+    color: "text-green-700",
     badgeVariant: "default"
   },
   ready_for_invoice: {
@@ -119,7 +119,7 @@ export function WorkflowTimeline({ currentStage }: { currentStage: WorkflowStage
               <Icon className={`w-5 h-5 ${
                 isComplete ? 'text-green-700' :
                 isCurrent ? 'text-blue-700' :
-                'text-gray-400'
+                'text-muted-foreground'
               }`} />
             </div>
             <div className="flex-1">
@@ -133,7 +133,7 @@ export function WorkflowTimeline({ currentStage }: { currentStage: WorkflowStage
               <p className="text-sm text-muted-foreground">{config.description}</p>
             </div>
             {isComplete && (
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              <CheckCircle2 className="w-5 h-5 text-green-700" />
             )}
           </div>
         )

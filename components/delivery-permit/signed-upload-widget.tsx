@@ -107,7 +107,7 @@ export function SignedUploadWidget({ permitId, onUploadComplete, existingFiles =
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md text-sm hover:bg-green-100 transition-colors"
                 >
-                  <FileImage className="h-4 w-4 text-green-600" />
+                  <FileImage className="h-4 w-4 text-green-700" />
                   <span className="flex-1 truncate">{file.fileName}</span>
                   <span className="text-xs text-muted-foreground">
                     {new Date(file.uploadedAt).toLocaleDateString()}
@@ -170,16 +170,11 @@ export function SignedUploadWidget({ permitId, onUploadComplete, existingFiles =
               </div>
               <Button onClick={handleUpload} disabled={isUploading} className="w-full">
                 {isUploading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {t("action.uploading")}
-                  </>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    {t("action.upload")}
-                  </>
+                  <Upload className="h-4 w-4 mr-2" />
                 )}
+                {isUploading ? t("action.uploading") : t("action.upload")}
               </Button>
             </>
           )}

@@ -231,7 +231,7 @@ export function CEOChatAssistant() {
         <div className="flex-shrink-0 p-4 border-b bg-background/50">
           {aiNotConfigured && (
             <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
-              <Settings className="h-4 w-4 text-amber-600" />
+              <Settings className="h-4 w-4 text-amber-700" />
               <AlertTitle className="text-amber-800 dark:text-amber-400 text-sm">API Key Required</AlertTitle>
               <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs">
                 Add GEMINI_API_KEY in the Vars section to enable AI features.
@@ -285,7 +285,7 @@ export function CEOChatAssistant() {
                   key={idx}
                   onClick={() => handleSuggestedQuestion(q.text)}
                   disabled={isLoading || aiNotConfigured}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 ${q.color}`}
+                  className={`inline-flex items-center gap-1.5 max-md:min-h-11 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 ${q.color}`}
                 >
                   <q.icon className="w-3.5 h-3.5" />
                   {q.text}
@@ -365,6 +365,7 @@ export function CEOChatAssistant() {
             type="submit"
             disabled={isLoading || !inputValue.trim() || aiNotConfigured}
             size="icon"
+            aria-label={t("action.send")}
             className="rounded-xl w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 shadow-lg shadow-blue-500/20"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

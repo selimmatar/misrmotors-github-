@@ -1025,13 +1025,13 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const getScheduleStatusIcon = (status: string) => {
     switch (status) {
       case "paid":
-        return <CheckCircle className="w-4 h-4 text-green-600" />
+        return <CheckCircle className="w-4 h-4 text-green-700" />
       case "overdue":
-        return <AlertCircle className="w-4 h-4 text-red-600" />
+        return <AlertCircle className="w-4 h-4 text-red-700" />
       case "partial":
         return <Clock className="w-4 h-4 text-blue-600" />
       default:
-        return <Clock className="w-4 h-4 text-yellow-600" />
+        return <Clock className="w-4 h-4 text-yellow-700" />
     }
   }
 
@@ -1052,6 +1052,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     return (
       <>
         <Button
+          aria-label={`${t("a11y.finance.payment-schedule")} ${invoice.invoiceNumber}`}
           size="sm"
           variant="outline"
           onClick={(e) => {
@@ -1063,6 +1064,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         </Button>
         {status !== "paid" && (userRole === "accountant" || userRole === "ceo") && (
           <Button
+            aria-label={`${t("action.record-payment")} ${invoice.invoiceNumber}`}
             size="sm"
             onClick={(e) => {
               e.stopPropagation()
@@ -1234,7 +1236,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               value={invoiceSearchQuery}
               onChange={(e) => setInvoiceSearchQuery(e.target.value)}
               className="ps-9"
-              aria-label="Search invoices"
+              aria-label={t("a11y.finance.search-invoices")}
             />
           </div>
         </CardHeader>
@@ -1305,15 +1307,15 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         <TableCell>{getCustomerName(invoice.customerId)}</TableCell>
                         <TableCell>{getSONumber(invoice.soId, invoice)}</TableCell>
                         <TableCell>
-                          <span className="px-2 py-1 rounded-full text-xs bg-primary/10 text-primary capitalize">
+                          <span className="px-2 py-1 rounded-full text-xs bg-primary/10 text-foreground capitalize">
                             {paymentType}
                           </span>
                         </TableCell>
                         <TableCell>{formatDate(invoice.date, language)}</TableCell>
                         <TableCell>{formatDate(invoice.dueDate, language)}</TableCell>
                         <NumCell>{formatMoney(invoice.amount || 0, language)}</NumCell>
-                        <NumCell className="text-green-600">{formatMoney(invoice.collectedAmount || 0, language)}</NumCell>
-                        <NumCell className="text-amber-600">{formatMoney(balance, language)}</NumCell>
+                        <NumCell className="text-green-700">{formatMoney(invoice.collectedAmount || 0, language)}</NumCell>
+                        <NumCell className="text-amber-700">{formatMoney(balance, language)}</NumCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Progress value={progress} className="w-16 h-2" />
@@ -1357,11 +1359,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t("ar.paid-amount")}</p>
-                  <p className="font-medium text-green-600"><Money value={getTotalSchedulePaid()} /> EGP</p>
+                  <p className="font-medium text-green-700"><Money value={getTotalSchedulePaid()} /> EGP</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t("ar.balance")}</p>
-                  <p className="font-medium text-amber-600">
+                  <p className="font-medium text-amber-700">
                     <Money value={(selectedInvoiceForSchedule.amount || 0) - getTotalSchedulePaid()} /> EGP
                   </p>
                 </div>
@@ -1385,7 +1387,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
               {!schedulesFromDB && paymentSchedules.length > 0 && (
                 <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-yellow-600" />
+                  <AlertCircle className="w-5 h-5 text-yellow-700" />
                   <p className="text-sm text-yellow-700">
                     {t("ar.schedules-generated") ||
                       "Payment schedule generated from order data. Actual schedule may vary."}
@@ -1442,7 +1444,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                             </td>
                             <td className="p-3">{formatDate(schedule.dueDate, language)}</td>
                             <td className="p-3 font-medium"><Money value={schedule.amount} /></td>
-                            <td className="p-3 text-green-600"><Money value={schedule.paidAmount} /></td>
+                            <td className="p-3 text-green-700"><Money value={schedule.paidAmount} /></td>
                             <td className="p-3">{schedule.paymentDate ? formatDate(schedule.paymentDate, language) : "—"}</td>
                             <td className="p-3">
                               <StatusBadge status={effectiveStatus} label={t(`status.${effectiveStatus}`)} />
@@ -1463,6 +1465,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                               )}
                               {schedule.receiptUrl && (
                                 <Button
+                                  aria-label={t("action.view")}
                                   size="sm"
                                   variant="outline"
                                   className="ms-2 bg-transparent"
@@ -1579,13 +1582,14 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         <td className="p-2">{getCustomerName(invoice.customerId)}</td>
                         <td className="p-2">{formatDate(invoice.dueDate, language)}</td>
                         <td className="p-2"><Money value={invoice.amount || 0} /></td>
-                        <td className="p-2 text-green-600"><Money value={invoice.collectedAmount || 0} /></td>
-                        <td className="p-2 text-amber-600"><Money value={balance} /></td>
+                        <td className="p-2 text-green-700"><Money value={invoice.collectedAmount || 0} /></td>
+                        <td className="p-2 text-amber-700"><Money value={balance} /></td>
                         <td className="p-2">
                           <StatusBadge status={status} label={t(`status.${status}`)} />
                         </td>
                         <td className="p-2">
                           <Button
+                            aria-label={`${t("a11y.finance.payment-schedule")} ${invoice.invoiceNumber}`}
                             size="sm"
                             variant="outline"
                             onClick={(e) => {
@@ -1886,7 +1890,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                             {soDeliveryPermits.map((dp) => (
                               <div key={dp.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg border">
                                 <div className="flex items-center gap-3">
-                                  <CheckCircle className="w-4 h-4 text-green-600" />
+                                  <CheckCircle className="w-4 h-4 text-green-700" />
                                   <div>
                                     <p className="font-medium">{dp.permitNo || `DP-${dp.id}`}</p>
                                     <p className="text-xs text-muted-foreground">
@@ -1894,7 +1898,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                                     </p>
                                   </div>
                                 </div>
-                                <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium capitalize">
+                                <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-foreground font-medium capitalize">
                                   {dp.status}
                                 </span>
                               </div>
@@ -1976,7 +1980,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
             <DialogDescription>
               Select one or more delivery permits to consolidate into an invoice
               <br />
-              <span className="text-xs text-yellow-600">⚠️ All selected DPs must have the same payment terms</span>
+              <span className="text-xs text-yellow-700">⚠️ All selected DPs must have the same payment terms</span>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 max-h-[400px] overflow-y-auto">
@@ -2030,6 +2034,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                     </div>
                     <div className="text-end flex items-center gap-2">
                       <Checkbox
+                        aria-label={`${t("a11y.select-row")} ${permitNo}`}
                         checked={selectedDPs.includes(permitId)}
                         onCheckedChange={() => {}} // Handled by parent div
                       />
@@ -2047,7 +2052,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           {availableDPs.some((dp) => dp.returnedQuantity && Number(dp.returnedQuantity) > 0) && (
             <div className="border-t pt-4 mt-4">
               <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600" />
+                <AlertCircle className="w-4 h-4 text-amber-700" />
                 Items Returned from Selected Deliveries
               </h4>
               <div className="space-y-3 bg-amber-50 p-4 rounded-lg border border-amber-200">

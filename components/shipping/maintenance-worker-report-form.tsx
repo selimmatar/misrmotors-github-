@@ -163,14 +163,14 @@ export function MaintenanceWorkerReportForm({
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="yes" id="settled-yes" />
               <Label htmlFor="settled-yes" className="font-normal cursor-pointer flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-green-600" />
+                <CheckCircle className="w-4 h-4 text-green-700" />
                 Yes, issue is resolved
               </Label>
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="no" id="settled-no" />
               <Label htmlFor="settled-no" className="font-normal cursor-pointer flex items-center gap-2">
-                <XCircle className="w-4 h-4 text-orange-600" />
+                <XCircle className="w-4 h-4 text-orange-700" />
                 No, additional work/equipment needed
               </Label>
             </div>
@@ -193,14 +193,14 @@ export function MaintenanceWorkerReportForm({
             <div>
               <Label htmlFor="equipment-cost">Estimated Equipment Cost (EGP)</Label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <DollarSign className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="equipment-cost"
                   type="number"
                   value={equipmentCost}
                   onChange={(e) => setEquipmentCost(e.target.value)}
                   placeholder="0.00"
-                  className="pl-9"
+                  className="ps-9"
                 />
               </div>
             </div>
@@ -211,28 +211,28 @@ export function MaintenanceWorkerReportForm({
           <div>
             <Label htmlFor="labor-hours">Labor Hours</Label>
             <div className="relative">
-              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Clock className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 id="labor-hours"
                 type="number"
                 value={laborHours}
                 onChange={(e) => setLaborHours(e.target.value)}
                 placeholder="0"
-                className="pl-9"
+                className="ps-9"
               />
             </div>
           </div>
           <div>
             <Label htmlFor="labor-cost">Labor Cost (EGP)</Label>
             <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <DollarSign className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 id="labor-cost"
                 type="number"
                 value={laborCost}
                 onChange={(e) => setLaborCost(e.target.value)}
                 placeholder="0.00"
-                className="pl-9"
+                className="ps-9"
               />
             </div>
           </div>
@@ -292,7 +292,7 @@ export function MaintenanceWorkerReportForm({
             className="cursor-pointer"
           />
           {pdfFile && (
-            <p className="text-sm text-green-600 mt-2">
+            <p className="text-sm text-green-700 mt-2">
               File selected: {pdfFile.name}
             </p>
           )}

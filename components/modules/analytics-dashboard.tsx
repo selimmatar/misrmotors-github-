@@ -293,7 +293,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
               </div>
               <div className="p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Growth Trend</p>
-                <p className="text-2xl font-bold text-emerald-500">{kpiData?.revenue?.trend || "+0%"}</p>
+                <p className="text-2xl font-bold text-emerald-700">{kpiData?.revenue?.trend || "+0%"}</p>
               </div>
             </div>
             <div className="space-y-2">
@@ -301,7 +301,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
               {salesData?.topCustomers?.slice(0, 5).map((customer: any, idx: number) => (
                 <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                   <span className="font-medium">{customer.customerName}</span>
-                  <span className="text-emerald-500 font-bold">
+                  <span className="text-emerald-700 font-bold">
                     <Money value={customer.totalSpent || 0} /> EGP
                   </span>
                 </div>
@@ -321,7 +321,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
               </div>
               <div className="p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Profit Margin</p>
-                <p className="text-2xl font-bold text-emerald-500">
+                <p className="text-2xl font-bold text-emerald-700">
                   {formatNumber(kpiData?.grossProfit?.margin || 0)}%
                 </p>
               </div>
@@ -346,13 +346,13 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
               </div>
               <div className="p-4 bg-emerald-500/10 rounded-lg">
                 <p className="text-sm text-muted-foreground">Receivables (AR) (EGP)</p>
-                <p className="text-2xl font-bold text-emerald-500">
+                <p className="text-2xl font-bold text-emerald-700">
                   <Money value={kpiData?.cashPosition?.ar || 0} />
                 </p>
               </div>
               <div className="p-4 bg-red-500/10 rounded-lg">
                 <p className="text-sm text-muted-foreground">Payables (AP) (EGP)</p>
-                <p className="text-2xl font-bold text-red-500">
+                <p className="text-2xl font-bold text-red-700">
                   <Money value={kpiData?.cashPosition?.ap || 0} />
                 </p>
               </div>
@@ -393,7 +393,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
             </div>
             {inventoryData?.stockoutRisk?.highRisk > 0 && (
               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-                <p className="font-medium text-red-500">Stock-out Alert</p>
+                <p className="font-medium text-red-700">Stock-out Alert</p>
                 <p className="text-sm text-muted-foreground">
                   {inventoryData.stockoutRisk.highRisk} products at high risk of running out
                 </p>
@@ -429,10 +429,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
       </DetailDialog>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList
-          className="grid w-full bg-muted/50"
-          style={{ gridTemplateColumns: `repeat(${visibleTabs.length}, 1fr)` }}
-        >
+        <TabsList className="h-auto w-full flex-wrap justify-start bg-muted/50">
           {visibleTabs.includes("executive") && <TabsTrigger value="executive">Executive</TabsTrigger>}
           {visibleTabs.includes("sales") && <TabsTrigger value="sales">Sales</TabsTrigger>}
           {visibleTabs.includes("inventory") && <TabsTrigger value="inventory">Inventory</TabsTrigger>}
@@ -504,7 +501,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   </div>
                   <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
                     <div className="flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-emerald-500" />
+                      <TrendingUp className="h-4 w-4 text-emerald-700" />
                       <span className="text-sm font-medium">New Customers (This Month)</span>
                     </div>
                     <span className="text-sm font-bold">{kpiData?.customers?.newThisMonth || 0}</span>
@@ -520,7 +517,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardContent className="space-y-3">
                   {inventoryData?.stockoutRisk?.highRisk > 0 && (
                     <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg cursor-pointer hover:bg-red-500/20 transition-colors">
-                      <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5" />
+                      <AlertTriangle className="h-4 w-4 text-red-700 mt-0.5" />
                       <div className="flex-1">
                         <p className="text-sm font-medium">Stock-out Risk</p>
                         <p className="text-xs text-muted-foreground">
@@ -532,7 +529,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   )}
                   {kpiData?.orders?.pendingCount > 0 && (
                     <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg cursor-pointer hover:bg-amber-500/20 transition-colors">
-                      <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5" />
+                      <AlertTriangle className="h-4 w-4 text-amber-700 mt-0.5" />
                       <div className="flex-1">
                         <p className="text-sm font-medium">Pending Orders</p>
                         <p className="text-xs text-muted-foreground">
@@ -544,7 +541,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   )}
                   {inventoryData?.slowMoving?.length > 0 && (
                     <div className="flex items-start gap-2 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg cursor-pointer hover:bg-indigo-500/20 transition-colors">
-                      <Package className="h-4 w-4 text-indigo-500 mt-0.5" />
+                      <Package className="h-4 w-4 text-indigo-600 mt-0.5" />
                       <div className="flex-1">
                         <p className="text-sm font-medium">Slow-Moving Inventory</p>
                         <p className="text-xs text-muted-foreground">
@@ -558,7 +555,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     !kpiData?.orders?.pendingCount &&
                     !inventoryData?.slowMoving?.length && (
                       <div className="flex items-center justify-center p-8 text-muted-foreground">
-                        <CheckCircle className="h-5 w-5 me-2 text-emerald-500" />
+                        <CheckCircle className="h-5 w-5 me-2 text-emerald-700" />
                         All systems operating normally
                       </div>
                     )}
@@ -664,7 +661,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     <div className="pt-4 border-t border-border">
                       <div className="flex items-center justify-between p-3 bg-emerald-500/10 rounded-lg">
                         <span className="text-sm font-medium">Conversion Rate</span>
-                        <span className="text-xl font-bold text-emerald-500">
+                        <span className="text-xl font-bold text-emerald-700">
                           {salesData?.funnel?.conversionRate?.toFixed(1) || 0}%
                         </span>
                       </div>
@@ -751,7 +748,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                       ))
                     ) : (
                       <div className="flex items-center justify-center p-8 text-muted-foreground">
-                        <CheckCircle className="h-5 w-5 me-2 text-emerald-500" />
+                        <CheckCircle className="h-5 w-5 me-2 text-emerald-700" />
                         No high-risk items
                       </div>
                     )}
@@ -804,7 +801,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     <div className="p-4 bg-emerald-500/10 rounded-lg">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Accounts Receivable (EGP)</span>
-                        <span className="text-xl font-bold text-emerald-500">
+                        <span className="text-xl font-bold text-emerald-700">
                           <Money value={kpiData?.cashPosition?.ar || 0} />
                         </span>
                       </div>
@@ -813,7 +810,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     <div className="p-4 bg-red-500/10 rounded-lg">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Accounts Payable (EGP)</span>
-                        <span className="text-xl font-bold text-red-500">
+                        <span className="text-xl font-bold text-red-700">
                           <Money value={kpiData?.cashPosition?.ap || 0} />
                         </span>
                       </div>
@@ -823,7 +820,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Net Position (EGP)</span>
                         <span
-                          className={`text-xl font-bold ${(kpiData?.cashPosition?.total || 0) >= 0 ? "text-emerald-500" : "text-red-500"}`}
+                          className={`text-xl font-bold ${(kpiData?.cashPosition?.total || 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}
                         >
                           <Money value={kpiData?.cashPosition?.total || 0} />
                         </span>
@@ -848,7 +845,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     </div>
                     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                       <span className="text-sm font-medium">Gross Profit (EGP)</span>
-                      <span className="font-bold text-emerald-500">
+                      <span className="font-bold text-emerald-700">
                         <Money value={kpiData?.grossProfit?.total || 0} />
                       </span>
                     </div>
@@ -931,7 +928,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">Optimal Stock</span>
-                      <CheckCircle className="h-4 w-4 text-emerald-500" />
+                      <CheckCircle className="h-4 w-4 text-emerald-700" />
                     </div>
                     <div className="text-2xl font-bold">
                       {inventoryData?.abcAnalysis?.details?.filter(
@@ -944,9 +941,9 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   <div className="p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">Low Stock Alert</span>
-                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      <AlertTriangle className="h-4 w-4 text-amber-700" />
                     </div>
-                    <div className="text-2xl font-bold text-amber-500">
+                    <div className="text-2xl font-bold text-amber-700">
                       {inventoryData?.stockoutRisk?.mediumRisk || 0}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Products need reorder soon</p>
@@ -955,9 +952,9 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   <div className="p-4 bg-red-500/10 rounded-lg border border-red-500/20">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">Critical Stock</span>
-                      <AlertTriangle className="h-4 w-4 text-red-500" />
+                      <AlertTriangle className="h-4 w-4 text-red-700" />
                     </div>
-                    <div className="text-2xl font-bold text-red-500">{inventoryData?.stockoutRisk?.highRisk || 0}</div>
+                    <div className="text-2xl font-bold text-red-700">{inventoryData?.stockoutRisk?.highRisk || 0}</div>
                     <p className="text-xs text-muted-foreground mt-1">Products at risk of stockout</p>
                   </div>
                 </div>
@@ -1060,7 +1057,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
         {/* AI Predictions */}
         {visibleTabs.includes("predictions") && (
           <TabsContent value="predictions" className="space-y-4">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div>
                 <h2 className="text-2xl font-bold">AI-Powered Predictions</h2>
                 <p className="text-sm text-muted-foreground">Generate forecasts and analyze business trends</p>
@@ -1168,7 +1165,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
               >
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <DollarSign className="h-5 w-5 text-emerald-500" />
+                    <DollarSign className="h-5 w-5 text-emerald-700" />
                     Dynamic Pricing
                   </CardTitle>
                   <CardDescription>Optimize prices based on market trends and inventory levels</CardDescription>
@@ -1189,7 +1186,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
               >
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    <AlertTriangle className="h-5 w-5 text-amber-700" />
                     Churn Prediction
                   </CardTitle>
                   <CardDescription>Identify at-risk customers and prevent revenue loss</CardDescription>
@@ -1241,13 +1238,13 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                             </div>
                             <div>
                               <p className="text-sm text-muted-foreground">High Confidence Items</p>
-                              <p className="text-2xl font-bold text-emerald-500">
+                              <p className="text-2xl font-bold text-emerald-700">
                                 {predictions.data.predictions.filter((p: any) => p.confidence === "high").length}
                               </p>
                             </div>
                             <div>
                               <p className="text-sm text-muted-foreground">Requires Restocking</p>
-                              <p className="text-2xl font-bold text-amber-500">
+                              <p className="text-2xl font-bold text-amber-700">
                                 {
                                   predictions.data.predictions.filter(
                                     (p: any) => p.predictedDemand > (p.currentStock || 0),
@@ -1303,7 +1300,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                                 <span className="text-sm line-through text-muted-foreground">
                                   <Money value={rec.currentPrice} /> EGP
                                 </span>
-                                <span className="ms-2 text-sm font-bold text-emerald-500">
+                                <span className="ms-2 text-sm font-bold text-emerald-700">
                                   <Money value={rec.suggestedPrice} /> EGP
                                 </span>
                                 <Badge variant="outline" className="ms-2">
@@ -1325,7 +1322,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                           <div className="grid grid-cols-3 gap-4 mb-4 p-4 bg-red-500/10 rounded-lg border border-red-500/20">
                             <div>
                               <p className="text-sm text-muted-foreground">High Risk Customers</p>
-                              <p className="text-2xl font-bold text-red-500">
+                              <p className="text-2xl font-bold text-red-700">
                                 {predictions.data.atRisk.filter((c: any) => c.riskLevel === "high").length}
                               </p>
                             </div>
@@ -1342,7 +1339,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                             </div>
                             <div>
                               <p className="text-sm text-muted-foreground">Action Required</p>
-                              <p className="text-2xl font-bold text-amber-500">
+                              <p className="text-2xl font-bold text-amber-700">
                                 {predictions.data.atRisk.filter((c: any) => c.lastOrderDays > 60).length}
                               </p>
                             </div>
@@ -1379,7 +1376,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         </>
                       ) : (
                         <div className="text-center py-8 text-muted-foreground">
-                          <CheckCircle className="h-8 w-8 mx-auto mb-2 text-emerald-500" />
+                          <CheckCircle className="h-8 w-8 mx-auto mb-2 text-emerald-700" />
                           <p className="font-medium">No at-risk customers detected</p>
                           <p className="text-sm">All customers are engaging regularly with your business</p>
                         </div>

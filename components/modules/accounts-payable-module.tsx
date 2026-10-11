@@ -142,15 +142,15 @@ export function AccountsPayableModule() {
   const getScheduleStatusIcon = (status: string) => {
     switch (status) {
       case "paid":
-        return <CheckCircle className="w-4 h-4 text-green-600" />
+        return <CheckCircle className="w-4 h-4 text-green-700" />
       case "overdue":
-        return <XCircle className="w-4 h-4 text-red-600" />
+        return <XCircle className="w-4 h-4 text-red-700" />
       case "partial":
         return <Clock className="w-4 h-4 text-blue-600" />
       case "partially_paid": // Added for new status
         return <Clock className="w-4 h-4 text-blue-600" />
       default:
-        return <Clock className="w-4 h-4 text-gray-400" />
+        return <Clock className="w-4 h-4 text-muted-foreground" />
     }
   }
 
@@ -673,6 +673,7 @@ export function AccountsPayableModule() {
     return (
       <>
         <Button
+          aria-label={`${t("action.view-details")} ${invoice.invoiceNumber}`}
           size="sm"
           variant="outline"
           onClick={() => handleViewPaymentDetails(invoice)}
@@ -1309,6 +1310,7 @@ export function AccountsPayableModule() {
                                     <p className="font-medium font-mono">{bankDetails.chequeNumber}</p>
                                   </div>
                                   <Button
+                                    aria-label={`${t("a11y.finance.copy-value")} ${t("payment.cheque-number") || "Cheque Number"}`}
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => copyToClipboard(bankDetails.chequeNumber)}
@@ -1326,6 +1328,7 @@ export function AccountsPayableModule() {
                                     <p className="font-medium">{bankDetails.chequeBankName}</p>
                                   </div>
                                   <Button
+                                    aria-label={`${t("a11y.finance.copy-value")} ${t("payment.bank-name") || "Bank Name"}`}
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => copyToClipboard(bankDetails.chequeBankName)}
@@ -1373,6 +1376,7 @@ export function AccountsPayableModule() {
                                     <p className="font-medium font-mono">{bankDetails.downPaymentChequeNumber}</p>
                                   </div>
                                   <Button
+                                    aria-label={`${t("a11y.finance.copy-value")} ${t("payment.cheque-number") || "Cheque Number"}`}
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => copyToClipboard(bankDetails.downPaymentChequeNumber)}
@@ -1420,6 +1424,7 @@ export function AccountsPayableModule() {
                                 <p className="font-medium">{bankDetails.bankHolderName}</p>
                               </div>
                               <Button
+                                aria-label={`${t("a11y.finance.copy-value")} ${t("po.account-holder") || "Account Holder"}`}
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => copyToClipboard(bankDetails.bankHolderName)}
@@ -1434,7 +1439,7 @@ export function AccountsPayableModule() {
                                 <p className="text-xs text-muted-foreground">{t("po.bank-name") || "Bank Name"}</p>
                                 <p className="font-medium">{bankDetails.bankName}</p>
                               </div>
-                              <Button size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankName)}>
+                              <Button aria-label={`${t("a11y.finance.copy-value")} ${t("po.bank-name") || "Bank Name"}`} size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankName)}>
                                 <Copy className="w-4 h-4" />
                               </Button>
                             </div>
@@ -1448,6 +1453,7 @@ export function AccountsPayableModule() {
                                 <p className="font-medium font-mono">{bankDetails.bankAccountNumber}</p>
                               </div>
                               <Button
+                                aria-label={`${t("a11y.finance.copy-value")} ${t("po.account-number") || "Account Number"}`}
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => copyToClipboard(bankDetails.bankAccountNumber)}
@@ -1462,7 +1468,7 @@ export function AccountsPayableModule() {
                                 <p className="text-xs text-muted-foreground">{t("po.iban") || "IBAN"}</p>
                                 <p className="font-medium font-mono text-sm">{bankDetails.bankIban}</p>
                               </div>
-                              <Button size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankIban)}>
+                              <Button aria-label={`${t("a11y.finance.copy-value")} ${t("po.iban") || "IBAN"}`} size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankIban)}>
                                 <Copy className="w-4 h-4" />
                               </Button>
                             </div>
@@ -1474,6 +1480,7 @@ export function AccountsPayableModule() {
                                 <p className="font-medium font-mono">{bankDetails.bankSwiftCode}</p>
                               </div>
                               <Button
+                                aria-label={`${t("a11y.finance.copy-value")} ${t("po.swift-code") || "SWIFT Code"}`}
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => copyToClipboard(bankDetails.bankSwiftCode)}
@@ -1488,7 +1495,7 @@ export function AccountsPayableModule() {
                                 <p className="text-xs text-muted-foreground">{t("po.branch") || "Branch"}</p>
                                 <p className="font-medium">{bankDetails.bankBranch}</p>
                               </div>
-                              <Button size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankBranch)}>
+                              <Button aria-label={`${t("a11y.finance.copy-value")} ${t("po.branch") || "Branch"}`} size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankBranch)}>
                                 <Copy className="w-4 h-4" />
                               </Button>
                             </div>

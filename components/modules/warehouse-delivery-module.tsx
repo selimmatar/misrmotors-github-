@@ -302,7 +302,7 @@ export function WarehouseDeliveryModule() {
       />
 
       <Tabs defaultValue="pending" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="h-auto flex-wrap w-full justify-start">
           <TabsTrigger value="pending">
             Pending Allocation ({formatNumber(draftPermits.length)})
           </TabsTrigger>
@@ -312,7 +312,7 @@ export function WarehouseDeliveryModule() {
           <TabsTrigger value="ready">
             {t("warehouse.ready-for-pickup")} ({formatNumber(readyPermits.length)})
           </TabsTrigger>
-          <TabsTrigger value="returns" className="text-orange-600">
+          <TabsTrigger value="returns" className="text-orange-700">
             Returns ({formatNumber(pendingReturns.length)})
           </TabsTrigger>
           <TabsTrigger value="completed">
@@ -338,8 +338,8 @@ export function WarehouseDeliveryModule() {
               {draftPermits.map((permit) => (
                 <Card key={permit.id}>
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
                           <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
@@ -378,12 +378,12 @@ export function WarehouseDeliveryModule() {
                         </ul>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           onClick={() => openAllocationDialog(permit)}
-                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          className="flex-1 min-w-0 h-auto whitespace-normal bg-blue-600 hover:bg-blue-700"
                         >
-                          <Warehouse className="w-4 h-4 me-2" />
+                          <Warehouse className="w-4 h-4 me-2 shrink-0" />
                           Allocate Warehouses & Prepare
                         </Button>
                         <Button variant="outline" onClick={() => handleViewPermit(permit)}>
@@ -421,8 +421,8 @@ export function WarehouseDeliveryModule() {
               {readyForShipmentPermits.map((permit) => (
                 <Card key={permit.id} className="border-purple-200 bg-purple-50/30">
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
                           <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
@@ -577,7 +577,7 @@ export function WarehouseDeliveryModule() {
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           onClick={() => handleMarkReady(permit)}
                           className="flex-1 bg-green-600 hover:bg-green-700"
@@ -620,8 +620,8 @@ export function WarehouseDeliveryModule() {
               {readyPermits.map((permit) => (
                 <Card key={permit.id} className="border-yellow-200 bg-yellow-50/30">
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
                           <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
@@ -633,7 +633,7 @@ export function WarehouseDeliveryModule() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button variant="outline" onClick={() => handleViewPermit(permit)}>
                         <Eye className="w-4 h-4 me-2" />
                         {t("action.view")}
@@ -669,8 +669,8 @@ export function WarehouseDeliveryModule() {
               {pendingReturns.map((returnReq) => (
                 <Card key={returnReq.id} className="border-orange-200 bg-orange-50/30">
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
                           Return #{returnReq.id}
                           <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
@@ -714,7 +714,7 @@ export function WarehouseDeliveryModule() {
                         </p>
                       )}
                       <Button
-                        className="w-full mt-4 bg-orange-600 hover:bg-orange-700"
+                        className="w-full mt-4 h-auto whitespace-normal bg-orange-600 hover:bg-orange-700"
                         onClick={() => {
                           setSelectedReturn(returnReq)
                           // Initialize warehouse selections for each item
@@ -755,8 +755,8 @@ export function WarehouseDeliveryModule() {
               {completedPermits.map((permit) => (
                 <Card key={permit.id} className="border-green-200 bg-green-50/30">
                   <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
+                    <div className="flex items-start justify-between flex-wrap gap-2">
+                      <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
                           <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
@@ -849,11 +849,11 @@ export function WarehouseDeliveryModule() {
                   return (
                     <Card key={item.itemId} className="border-blue-100">
                       <CardHeader className="py-3">
-                        <div className="flex items-center justify-between">
-                          <div>
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="min-w-0 break-words">
                             <CardTitle className="text-base">{item.productName}</CardTitle>
                             {item.sku && <p className="text-sm text-muted-foreground">SKU: {item.sku}</p>}
-                            {item.isOutsourced && <p className="text-sm text-amber-600 font-medium">Outsourced Item</p>}
+                            {item.isOutsourced && <p className="text-sm text-amber-700 font-medium">Outsourced Item</p>}
                           </div>
                           <Badge variant="outline" className="text-base">
                             {item.totalQuantity} {item.unit}
@@ -914,19 +914,19 @@ export function WarehouseDeliveryModule() {
                               const totalAllocated = item.allocations.reduce((sum, a) => sum + a.quantity, 0)
                               const remaining = item.totalQuantity - totalAllocated
                               return remaining !== 0 ? (
-                                <p className={`text-xs ${remaining > 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                                <p className={`text-xs ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
                                   {remaining > 0 
                                     ? `${remaining} units not yet allocated`
                                     : `Over-allocated by ${Math.abs(remaining)} units`
                                   }
                                 </p>
                               ) : (
-                                <p className="text-xs text-green-600">All {totalAllocated} units allocated</p>
+                                <p className="text-xs text-green-700">All {totalAllocated} units allocated</p>
                               )
                             })()}
                           </>
                         ) : item.availableWarehouses.length === 0 ? (
-                          <p className="text-sm text-red-600">This product is not available in any warehouse. Please check inventory.</p>
+                          <p className="text-sm text-red-700">This product is not available in any warehouse. Please check inventory.</p>
                         ) : (
                           <>
                             {item.allocations.map((alloc, allocIndex) => {
@@ -993,6 +993,7 @@ export function WarehouseDeliveryModule() {
                                       type="button"
                                       variant="ghost"
                                       size="sm"
+                                      aria-label={t("action.remove")}
                                       onClick={() => {
                                         setItemAllocations(prev => prev.map((it, i) => 
                                           i === itemIndex ? {
@@ -1001,7 +1002,7 @@ export function WarehouseDeliveryModule() {
                                           } : it
                                         ))
                                       }}
-                                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                                      className="h-8 w-8 p-0 text-red-700 hover:text-red-700"
                                     >
                                       <X className="w-4 h-4" />
                                     </Button>
@@ -1010,7 +1011,7 @@ export function WarehouseDeliveryModule() {
                               )
                             })}
                             
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
                               {availableForSplit.length > 0 ? (
                                 <Button
                                   type="button"
@@ -1043,14 +1044,14 @@ export function WarehouseDeliveryModule() {
                                 const totalAllocated = item.allocations.reduce((sum, a) => sum + a.quantity, 0)
                                 const remaining = item.totalQuantity - totalAllocated
                                 return remaining !== 0 ? (
-                                  <p className={`text-xs ${remaining > 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                                  <p className={`text-xs ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
                                     {remaining > 0 
                                       ? `${remaining} units not yet allocated`
                                       : `Over-allocated by ${Math.abs(remaining)} units`
                                     }
                                   </p>
                                 ) : (
-                                  <p className="text-xs text-green-600">All {totalAllocated} units allocated</p>
+                                  <p className="text-xs text-green-700">All {totalAllocated} units allocated</p>
                                 )
                               })()}
                             </div>
@@ -1072,7 +1073,7 @@ export function WarehouseDeliveryModule() {
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t">
+              <div className="flex flex-wrap justify-end gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowAllocationDialog(false)}>
                   Cancel
                 </Button>
@@ -1095,7 +1096,7 @@ export function WarehouseDeliveryModule() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <RotateCcw className="w-5 h-5 text-orange-600" />
+              <RotateCcw className="w-5 h-5 text-orange-700" />
               Process Return - Assign Warehouses
             </DialogTitle>
           </DialogHeader>
@@ -1112,8 +1113,8 @@ export function WarehouseDeliveryModule() {
                 {selectedReturn.items?.map((item: any, idx: number) => (
                   <Card key={idx} className={item.condition === "good" ? "border-green-200" : "border-red-200"}>
                     <CardContent className="pt-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
+                      <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
+                        <div className="min-w-0 break-words">
                           <p className="font-semibold">{item.productName}</p>
                           <p className="text-sm text-muted-foreground">Quantity: {item.quantityReturned}</p>
                           <div className="flex gap-2 mt-1 flex-wrap">
@@ -1153,7 +1154,7 @@ export function WarehouseDeliveryModule() {
                           </Select>
                         </div>
                       ) : (
-                        <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                        <p className="text-sm text-amber-700 bg-amber-50 p-2 rounded">
                           This item is marked as {item.condition} and will not be restocked automatically.
                           Manual inspection required.
                         </p>
@@ -1163,7 +1164,7 @@ export function WarehouseDeliveryModule() {
                 ))}
               </div>
               
-              <div className="flex justify-end gap-2 pt-4 border-t">
+              <div className="flex flex-wrap justify-end gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowReturnProcessDialog(false)} className="bg-transparent">
                   Cancel
                 </Button>

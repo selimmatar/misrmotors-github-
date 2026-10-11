@@ -55,6 +55,7 @@ export default function MetricsValidationModule() {
     <Button
       variant="ghost"
       size="sm"
+      aria-label={`${t("a11y.overview.view-query")} ${result.kpi}`}
       onClick={() => setExpandedQuery(expandedQuery === result.kpi ? null : result.kpi)}
     >
       <Code className="h-4 w-4" />
@@ -81,12 +82,12 @@ export default function MetricsValidationModule() {
           <CardTitle className="flex items-center gap-2">
             {data?.allValid ? (
               <>
-                <CheckCircle className="h-5 w-5 text-emerald-500" />
+                <CheckCircle className="h-5 w-5 text-emerald-700" />
                 All Metrics Valid
               </>
             ) : (
               <>
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <AlertTriangle className="h-5 w-5 text-amber-700" />
                 Validation Issues Detected
               </>
             )}
@@ -140,7 +141,7 @@ export default function MetricsValidationModule() {
                         <NumCell className="font-mono">{formatMoney(result.actual, language)}</NumCell>
                         <NumCell
                           className={`font-mono ${
-                            Math.abs(result.expected - result.actual) > 0.01 ? "text-red-500" : "text-emerald-500"
+                            Math.abs(result.expected - result.actual) > 0.01 ? "text-red-700" : "text-emerald-700"
                           }`}
                         >
                           {formatMoney(Math.abs(result.expected - result.actual), language)}

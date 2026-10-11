@@ -304,11 +304,11 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
       />
 
       <Tabs defaultValue={defaultTab || "approve-so"} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-9">
+        <TabsList className="h-auto flex-wrap w-full justify-start">
           <TabsTrigger value="approve-so" className="relative">
             {t("tabs.approve_so")}
             {pendingSalesOrders.length > 0 && (
-              <span className="absolute -top-1 -end-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+              <span className="absolute -top-1 -end-1 bg-red-700 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                 {pendingSalesOrders.length}
               </span>
             )}
@@ -324,7 +324,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                   <Wrench className="w-4 h-4 me-2" />
                   Maintenance
                   {pendingMaintenanceInvoices > 0 && (
-                    <span className="absolute -top-1 -end-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold px-1">
+                    <span className="absolute -top-1 -end-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-700 text-white text-xs font-bold px-1">
                       {pendingMaintenanceInvoices}
                     </span>
                   )}
@@ -378,7 +378,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                           </div>
                           <div>
                             <p className="text-muted-foreground">Remaining (EGP)</p>
-                            <p className="font-semibold text-orange-600"><Money value={remaining} /></p>
+                            <p className="font-semibold text-orange-700"><Money value={remaining} /></p>
                           </div>
                         </div>
                         
@@ -477,9 +477,9 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.invoice_status")}</p>
                           {order.invoiceFileUrl ? (
-                            <span className="text-green-600 text-sm font-semibold">✓ {t("label.uploaded")}</span>
+                            <span className="text-green-700 text-sm font-semibold">✓ {t("label.uploaded")}</span>
                           ) : (
-                            <span className="text-orange-600 text-sm font-semibold">{t("label.pending_upload")}</span>
+                            <span className="text-orange-700 text-sm font-semibold">{t("label.pending_upload")}</span>
                           )}
                         </div>
                       </div>
@@ -497,6 +497,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             size="sm"
                             variant="outline"
                             className="gap-2 bg-transparent"
+                            aria-label={uploadingOrderId === order.id ? t("button.uploading") : order.invoiceFileUrl ? t("button.replace_invoice") : t("button.upload_invoice")}
                             onClick={() => document.getElementById(`file-${order.id}`)?.click()}
                             disabled={uploadingOrderId === order.id}
                           >
@@ -883,13 +884,13 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">{t("field.amount_paid")} (EGP)</p>
-                      <p className="font-semibold text-lg text-green-600">
+                      <p className="font-semibold text-lg text-green-700">
                         <Money value={customerPaymentsByCustomer[selectedCustomer] || 0} />
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">{t("field.balance_due")} (EGP)</p>
-                      <p className="font-semibold text-lg text-orange-600">
+                      <p className="font-semibold text-lg text-orange-700">
                         <Money
                           value={getCustomerTotalSpent(selectedCustomer) - (customerPaymentsByCustomer[selectedCustomer] || 0)}
                         />
@@ -931,11 +932,11 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                                 </div>
                                 <div>
                                   <p className="text-sm text-muted-foreground">{t("field.amount_paid")} (EGP)</p>
-                                  <p className="font-semibold text-green-600"><Money value={amountPaid} /></p>
+                                  <p className="font-semibold text-green-700"><Money value={amountPaid} /></p>
                                 </div>
                                 <div>
                                   <p className="text-sm text-muted-foreground">{t("field.amount_due")} (EGP)</p>
-                                  <p className="font-semibold text-orange-600"><Money value={amountDue} /></p>
+                                  <p className="font-semibold text-orange-700"><Money value={amountDue} /></p>
                                 </div>
                                 <div>
                                   <p className="text-sm text-muted-foreground">{t("field.payment_status")}</p>

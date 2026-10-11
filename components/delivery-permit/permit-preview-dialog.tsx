@@ -64,7 +64,7 @@ export function PermitPreviewDialog({ permit, open, onOpenChange }: PermitPrevie
           {permit.items && permit.items.length > 0 && (
             <div>
               <p className="text-sm font-medium mb-2">{t("field.items")}</p>
-              <div className="border rounded-md overflow-hidden">
+              <div className="border rounded-md overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-muted">
                     <tr>
