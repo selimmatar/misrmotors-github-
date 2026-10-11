@@ -532,25 +532,24 @@ export async function productPerformance(db: Db): Promise<Row[]> {
       else if (revenue === 0) margin = 0
       else margin = round2(((revenue - sales.total_quantity_sold * coalesce0(num(p.last_landed_cost))) / revenue) * 100)
     }
-    // LEFT JOIN inventory: one output row per inventory row of the product (one row with NULLs when it has none)
-    const invRows: (Row | null)[] = inventoryBy.get(p.product_id) || [null]
-    for (const i of invRows) {
-      rows.push({
-        product_id: p.product_id,
-        product_name: val(p.product_name),
-        sku: val(p.sku),
-        category: pc ? val(pc.category_name) : null,
-        unit_price: num(p.unit_price),
-        last_landed_cost: num(p.last_landed_cost),
-        markup_percentage: num(p.markup_percentage),
-        current_stock: coalesce0(i ? num(i.quantity) : null),
-        reorder_point: coalesce0(i ? num(i.reorder_point) : null),
-        total_quantity_sold: coalesce0(sales ? sales.total_quantity_sold : null),
-        total_revenue: coalesce0(sales ? sales.total_revenue : null),
-        order_count: sales ? sales.order_count : 0,
-        profit_margin_pct: margin,
-      })
-    }
+    // One row per product. The original view joined inventory row by row, so a product stocked in several
+    // warehouses was listed once per warehouse with its sales repeated; stock and reorder points are added up instead.
+    const invRows: Row[] = inventoryBy.get(p.product_id) || []
+    rows.push({
+      product_id: p.product_id,
+      product_name: val(p.product_name),
+      sku: val(p.sku),
+      category: pc ? val(pc.category_name) : null,
+      unit_price: num(p.unit_price),
+      last_landed_cost: num(p.last_landed_cost),
+      markup_percentage: num(p.markup_percentage),
+      current_stock: coalesce0(sum(invRows.map((i) => num(i.quantity)))),
+      reorder_point: coalesce0(sum(invRows.map((i) => num(i.reorder_point)))),
+      total_quantity_sold: coalesce0(sales ? sales.total_quantity_sold : null),
+      total_revenue: coalesce0(sales ? sales.total_revenue : null),
+      order_count: sales ? sales.order_count : 0,
+      profit_margin_pct: margin,
+    })
   }
   return orderBy(rows, "total_revenue", "desc")
 }

@@ -138,8 +138,9 @@ const INV1 = { inventory_id: 1, product_id: 10, product_name: "Filter", sku: "F-
 const INV2 = { inventory_id: 2, product_id: 10, product_name: "Filter", sku: "F-1", category: "Filters", quantity: 0, unit_cost: 30, total_value: 0, reorder_point: 2, location: "Annex", stock_status: "Out of Stock", last_updated: "2026-10-02T00:00:00Z" }
 const P10 = { product_id: 10, product_name: "Filter", sku: "F-1", category: "Filters", unit_price: 50, last_landed_cost: 30, markup_percentage: 40 }
 const PERFORMANCE = [
-  { ...P10, current_stock: 5, reorder_point: 10, total_quantity_sold: 3, total_revenue: 125, order_count: 2, profit_margin_pct: 28 },
-  { ...P10, current_stock: 0, reorder_point: 2, total_quantity_sold: 3, total_revenue: 125, order_count: 2, profit_margin_pct: 28 },
+  // One row per product: product 10 is stocked in two warehouses (5 + 0), its stock and reorder points are added up
+  // and its sales appear once.
+  { ...P10, current_stock: 5, reorder_point: 12, total_quantity_sold: 3, total_revenue: 125, order_count: 2, profit_margin_pct: 28 },
   { product_id: 11, product_name: "Pump", sku: "P-1", category: null, unit_price: 60, last_landed_cost: null, markup_percentage: null, current_stock: 2, reorder_point: 1, total_quantity_sold: 1, total_revenue: 50, order_count: 1, profit_margin_pct: 100 },
   { product_id: 12, product_name: "Belt", sku: "B-1", category: "Belts", unit_price: 10, last_landed_cost: 5, markup_percentage: 100, current_stock: 50, reorder_point: 10, total_quantity_sold: 0, total_revenue: 0, order_count: 0, profit_margin_pct: 0 },
 ]
@@ -249,7 +250,7 @@ test("inventory by_category: grouped by category name, NULL category is Uncatego
 test("inventory low_stock: Low Stock and Out of Stock rows only", async () => {
   assert.deepEqual(ok(await get(inventoryRoute.GET, "/api/reports/inventory?type=low_stock")).data, [INV1, INV2])
 })
-test("inventory product_performance: every product x inventory row with sold totals and margin", async () => {
+test("inventory product_performance: one row per product with total stock, sold totals and margin", async () => {
   assert.deepEqual(ok(await get(inventoryRoute.GET, "/api/reports/inventory?type=product_performance")).data, PERFORMANCE)
 })
 test("inventory: invalid type is a 400", async () => {
