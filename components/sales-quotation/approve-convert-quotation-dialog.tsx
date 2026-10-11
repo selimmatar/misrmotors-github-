@@ -16,7 +16,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Package, Printer, Trash2, UserPlus, Upload } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
-import { escapeHtml, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
+import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 import { useAppContext } from "@/lib/app-context"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
@@ -344,19 +344,13 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       .map((item, idx) => {
         const unitPrice = item.unitPrice || 0
         const itemTotal = item.quantity * item.unitPrice
-        const unitGineh = Math.floor(unitPrice)
-        const unitQirsh = Math.round((unitPrice - unitGineh) * 100)
-        const totalGineh = Math.floor(itemTotal)
-        const totalQirsh = Math.round((itemTotal - totalGineh) * 100)
         return `
         <tr>
           <td class="center">${idx + 1}</td>
           <td>${escapeHtml(item.productName)}</td>
           <td class="center">${item.quantity}</td>
-          <td class="currency-col">${unitGineh.toLocaleString("en-US")}</td>
-          <td class="currency-col">${unitQirsh.toString().padStart(2, "0")}</td>
-          <td class="currency-col">${totalGineh.toLocaleString("en-US")}</td>
-          <td class="currency-col">${totalQirsh.toString().padStart(2, "0")}</td>
+          ${moneyCell(unitPrice)}
+          ${moneyCell(itemTotal)}
         </tr>`
       })
       .join("")
@@ -545,17 +539,11 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   <table class="items-table">
     <thead>
       <tr>
-        <th rowspan="2" style="width: 6%;">م</th>
-        <th rowspan="2" style="width: 36%;">البيان</th>
-        <th rowspan="2" style="width: 8%;">الكمية</th>
-        <th colspan="2" style="text-align: center;">سعر الوحدة</th>
-        <th colspan="2" style="text-align: center;">القيمة</th>
-      </tr>
-      <tr>
-        <th class="subheader" style="width: 12.5%;">جنيه</th>
-        <th class="subheader" style="width: 12.5%;">قرش</th>
-        <th class="subheader" style="width: 12.5%;">جنيه</th>
-        <th class="subheader" style="width: 12.5%;">قرش</th>
+        <th style="width: 6%;">م</th>
+        <th style="width: 36%;">البيان</th>
+        <th style="width: 8%;">الكمية</th>
+        <th style="width: 25%; text-align: center;">سعر الوحدة (جنيه)</th>
+        <th style="width: 25%; text-align: center;">القيمة (جنيه)</th>
       </tr>
     </thead>
     <tbody>

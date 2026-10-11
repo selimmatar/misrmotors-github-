@@ -1,11 +1,9 @@
+// Shared print theme for the printable documents ("Plain modern"): black ink on white, one typeface, hairlines, no fills,
+// no rounded boxes, no colour except the logo. Presentation only: the helpers below take trusted, already-escaped HTML
+// and emit markup around it; they add no text of their own. This module stands alone (no imports, no Arabic text).
 
-<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-  <meta charset="UTF-8">
-  <title>فاتورة - INV-2026-0001</title>
-  <style>
-    
+/** The shared stylesheet. One rule per line. Templates put it first in their <style>, then their own small additions. */
+export const PRINT_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap');
 * { margin: 0; padding: 0; box-sizing: border-box; }
 @page { size: A4; margin: 15mm; }
@@ -66,117 +64,43 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
 .pm-sign-line { margin-block-start: 6px; border-block-end: 1px solid #000; block-size: 28px; }
 .pm-footer { margin-block-start: 16px; font-size: 11px; color: #555; text-align: center; }
 @media print { .no-print { display: none !important; } }
+`
 
-    .print-button {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      padding: 10px 20px;
-      background: #2563eb;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 14px;
-      z-index: 1000;
-    }
-  </style>
-</head>
-<body>
-  <button class="print-button no-print" onclick="window.print()">🖨️ طباعة</button>
-  
-  <header class="pm-header"><div class="pm-brand"><div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div><div class="pm-names"><div class="pm-name-ar">شركة مصر للمحركات</div><div class="pm-name-en">Misr Motors Co.</div></div></div><div class="pm-company"><div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
-      <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
-      <div>البريد الإلكتروني: sales@misrmotors.com</div><div class="pm-tax">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div></div></header>
-  
-  <!-- Document Title -->
-  <div class="pm-title"><div class="doc-title">فاتورة</div></div>
-  
-  <!-- Invoice Info -->
-  <section class="pm-info">
-  <div class="pm-fields">
-    <div class="pm-field pm-field-wide">
-      <span class="pm-label">رقم الفاتورة:</span>
-      <span class="pm-value">INV-2026-0001</span>
-    </div>
-    <div class="pm-field pm-field-wide">
-      <span class="pm-label">التاريخ:</span>
-      <span class="pm-value"><DATE></span>
-    </div>
-    <div class="pm-field pm-field-wide">
-      <span class="pm-label">رقم طلب التسعير:</span>
-      <span class="pm-value">QR-77</span>
-    </div>
-    <div class="pm-field pm-field-wide">
-      <span class="pm-label">أذونات التسليم:</span>
-      <span class="pm-value">DP-2026-0001</span>
-    </div>
-    <div class="pm-field pm-field-wide">
-      <span class="pm-label">المطلوب من السيد:</span> <span class="pm-value">Customer Co</span>
-    </div>
-    <div class="pm-field pm-field-wide">
-      <span class="pm-label">القسم ورقم طلب التسعير:</span> <span class="pm-value">Dept</span>
-    </div>
-    <div class="pm-field pm-field-wide">
-      <span class="pm-label">اسم المستلم:</span> <span class="pm-value">Receiver - تليفون: Phone-0111</span>
-    </div>
-    <div class="pm-field pm-field-wide">
-      <span class="pm-label">العنوان:</span> <span class="pm-value">AR Street, Alex</span>
-    </div>
-  </div>
-  </section>
-  
-  <!-- Items Table - EXACT COLUMNS -->
-  <table class="items-table pm-table">
-    <thead>
-      <tr>
-        <th class="pm-center" style="width: 8%;">عدد</th>
-        <th style="width: 40%;">البيان</th>
-        <th class="pm-num" style="width: 26%;">سعر الوحدة (جنيه)</th>
-        <th class="pm-num" style="width: 26%;">القيمة (جنيه)</th>
-      </tr>
-    </thead>
-    <tbody>
-      
-        <tr>
-          <td class="center pm-center">2</td>
-          <td>Pump A</td>
-          <td class="currency-col">500</td>
-          <td class="currency-col">1,000</td>
-        </tr>
-      
-    </tbody>
-    <tfoot>
-      <tr>
-        <td colspan="3" class="pm-num">المجموع الفرعي</td>
-        <td class="currency-col">1,000</td>
-      </tr>
-      <tr>
-        <td colspan="3" class="pm-num">ضريبة القيمة المضافة (14%)</td>
-        <td class="currency-col">140</td>
-      </tr>
-      <tr class="pm-total-final">
-        <td colspan="3" class="pm-num">إجمالي الفاتورة</td>
-        <td class="currency-col">1,140</td>
-      </tr>
-    </tfoot>
-  </table>
-  
-  <!-- Footer -->
-  <div class="pm-signatures">
-    <div class="pm-sign">
-      <div class="pm-sign-label">الحسابات</div>
-      <div class="pm-sign-line"></div>
-    </div>
-    <div class="pm-sign">
-      <div class="pm-sign-label">توقيع المستلم</div>
-      <div class="pm-sign-line"></div>
-    </div>
-    <div class="pm-sign">
-      <div class="pm-sign-label">ختم الشركة</div>
-      <div class="pm-sign-line"></div>
-    </div>
-  </div>
-</body>
-</html>
-    
+/** Company header: logo and names on the start side, the company details block on the end side (small, grey). */
+export function printHeader(o: {
+  logoHtml: string
+  company: { nameAr?: string; nameEn?: string; detailsHtml: string }
+  taxInfo?: string
+}): string {
+  const ar = o.company.nameAr !== undefined ? `<div class="pm-name-ar">${o.company.nameAr}</div>` : ""
+  const en = o.company.nameEn !== undefined ? `<div class="pm-name-en">${o.company.nameEn}</div>` : ""
+  const tax = o.taxInfo !== undefined ? `<div class="pm-tax">${o.taxInfo}</div>` : ""
+  return `<header class="pm-header"><div class="pm-brand">${o.logoHtml}<div class="pm-names">${ar}${en}</div></div><div class="pm-company">${o.company.detailsHtml}${tax}</div></header>`
+}
+
+/**
+ * The document title, large, with its number (and an optional note) in the same row. `titleAr` is the main title in the
+ * document's own language. The `doc-title` markup is kept as it is because print tests match it.
+ */
+export function docTitle(o: { titleAr: string; numberLabel?: string; number?: string; noteHtml?: string }): string {
+  const note = o.noteHtml !== undefined ? `<div class="pm-title-note">${o.noteHtml}</div>` : ""
+  let no = ""
+  if (o.numberLabel !== undefined || o.number !== undefined) {
+    const label = o.numberLabel !== undefined ? `<span class="pm-label">${o.numberLabel}</span>` : ""
+    const value = o.number !== undefined ? `<span class="pm-value">${o.number}</span>` : ""
+    no = `<div class="pm-title-no">${label}${label && value ? " " : ""}${value}</div>`
+  }
+  return `<div class="pm-title"><div class="doc-title">${o.titleAr}</div>${note}${no}</div>`
+}
+
+export type InfoRow = readonly [label: string, value: string, wide?: true] | null | false | undefined
+
+/** A block of labelled fields: small grey labels over their values, one black rule above. Empty rows are skipped. */
+export function infoBox(title: string, rows: InfoRow[]): string {
+  const head = title ? `<div class="pm-info-title">${title}</div>` : ""
+  const fields = rows
+    .filter((r): r is readonly [string, string, true?] => Boolean(r))
+    .map((r) => `<div class="pm-field${r[2] ? " pm-field-wide" : ""}"><div class="pm-label">${r[0]}</div><div class="pm-value">${r[1]}</div></div>`)
+    .join("")
+  return `<section class="pm-info">${head}<div class="pm-fields">${fields}</div></section>`
+}

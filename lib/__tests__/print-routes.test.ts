@@ -112,7 +112,7 @@ test("P6. SO with a discount: breakdown shown and equals the stored total (SO-20
     items: [{ so_item_id: 1, so_id: 1, product_id: 7, quantity: 1, unit_price: 929757.6, total: 929757.6, item_type: "stock", outsourced_name: null }],
   })
   const html = (await get(printRoute.GET, "?soId=1")).html
-  assert.match(html, />911,162<\/td><td class="currency-col">45</) // net subtotal 911,162.45
+  assert.match(html, />911,162\.45<\/td>/) // net subtotal, one money column (no piastre column)
   assert.match(html, /127,562/) // VAT 127,562.74
   assert.match(html, /1,038,725/)
 })

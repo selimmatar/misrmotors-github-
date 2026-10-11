@@ -5,6 +5,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { loadMissingItems, type MissingItemRow } from "../missing-items"
+import { renderMissingItemsHtml } from "../missing-items-html"
 
 interface World {
   lines?: Row[]
@@ -16,6 +17,9 @@ interface World {
   poItems?: Row[]
   pos?: Row[]
   grn?: Row[]
+  status?: string
+  otherOrders?: Row[]
+  otherLines?: Row[]
 }
 const stockLine = (so_item_id: number, product_id: number, quantity: number, unit_price = 5000): Row => ({ so_item_id, so_id: 1, product_id, quantity, unit_price, total: quantity * unit_price, item_type: "stock", outsourced_name: null, outsourced_description: null })
 const outLine = (so_item_id: number, name: string, quantity: number, unit_price = 5000, supplier = "SMG"): Row => ({ so_item_id, so_id: 1, product_id: null, quantity, unit_price, total: quantity * unit_price, item_type: "outsourced", outsourced_name: name, outsourced_description: `Supplier: ${supplier}` })
@@ -31,9 +35,9 @@ const grn = (line_id: number, quantity_received: number, source_so_item_id: numb
 
 function db(w: World = {}) {
   return new FakeDb({
-    sales_orders: [{ so_id: 1, so_number: "SO-T-1", order_date: "2026-10-01", delivery_date: null, status: "ready_for_delivery", customer_id: 5 }],
+    sales_orders: [{ so_id: 1, so_number: "SO-T-1", order_date: "2026-10-01", delivery_date: null, status: w.status ?? "ready_for_delivery", customer_id: 5 }, ...(w.otherOrders ?? [])],
     customers: [{ customer_id: 5, customer_name: "Test Customer" }],
-    sales_order_items: w.lines ?? [stockLine(1, 7, 10)],
+    sales_order_items: [...(w.lines ?? [stockLine(1, 7, 10)]), ...(w.otherLines ?? [])],
     products: w.products ?? [{ product_id: 7, product_name: "Pump", sku: "P-7", last_landed_cost: null }],
     inventory: w.inventory ?? [],
     delivery_permits: w.permits ?? [],
@@ -335,4 +339,63 @@ test("C3. priority: landed cost beats product cost beats inventory beats PO Pric
 test("C4. mixed lines: a line with landed cost uses it alone; PO price is used only when NO line has a landed cost", async () => {
   const r = await only({ lines: [outLine(1, "B", 10)], pos: [po(1), po(2)], poItems: [poi(1, 1, 1, 5, 1000, 50), poi(2, 2, 1, 5, 0, 999)] })
   assert.deepEqual([r.unitCost, r.costSource], [200, "po"]) // 1000 / 5, the PO-price-only line is not blended in
+})
+
+// Stock cover: a stock line that our warehouse can fill is counted under Received, not Missing. What the warehouse can
+// give this order is on-hand minus what other approved orders already hold; once this order is accountant-approved the
+// covered stock shows as On Hold.
+const inv = (product_id: number, quantity: number, unit_cost = 0): Row => ({ product_id, quantity, unit_cost, is_returned: false, warehouse_id: 1 })
+
+test("S1. accountant-approved order, enough stock: nothing missing, all received, On Hold", async () => {
+  const r = await only({ status: "accountant_approved", inventory: [inv(7, 10)] })
+  assert.deepEqual([r.ordered, r.missing, r.received, r.inStock], [10, 0, 10, 10])
+  assert.equal(r.onHold, true)
+  assert.equal(r.procurementStatus, "On Hold — In Stock")
+})
+
+test("S2. partial stock: what we have is received, the rest is missing and needs a PO", async () => {
+  const r = await only({ status: "accountant_approved", inventory: [inv(7, 4)] })
+  assert.deepEqual([r.missing, r.received, r.inStock], [6, 4, 4])
+  assert.equal(r.procurementStatus, "On Hold 4/10 — Needs PO for 6")
+})
+
+test("S3. stock already held by another approved order is not counted twice", async () => {
+  const r = await only({
+    status: "accountant_approved",
+    inventory: [inv(7, 10)],
+    otherOrders: [{ so_id: 2, so_number: "SO-T-2", status: "accountant_approved", customer_id: 5 }],
+    otherLines: [{ ...stockLine(50, 7, 7), so_id: 2 }],
+  })
+  assert.deepEqual([r.missing, r.received, r.inStock], [7, 3, 3])
+})
+
+test("S4. returned-goods rows are not stock; outsourced lines never use stock", async () => {
+  const a = await only({ status: "accountant_approved", inventory: [{ ...inv(7, 10), is_returned: true }] })
+  assert.deepEqual([a.missing, a.received, a.inStock], [10, 0, 0])
+  const b = await only({ status: "accountant_approved", lines: [outLine(1, "Pump", 5)], inventory: [inv(7, 10)] })
+  assert.deepEqual([b.missing, b.received, b.inStock, b.onHold], [5, 0, 0, false])
+})
+
+test("S5. before accountant approval stock still counts as received but is not on hold", async () => {
+  const r = await only({ status: "pending", inventory: [inv(7, 10)] })
+  assert.deepEqual([r.missing, r.received, r.onHold], [0, 10, false])
+  assert.equal(r.procurementStatus, "In Stock — No PO Needed")
+})
+
+test("S6. only the undelivered quantity is covered; two lines of one product share the stock once", async () => {
+  const r = await only({ status: "accountant_approved", inventory: [inv(7, 10)], permits: [dp(1, "DELIVERED")], dpItems: [dpi(1, 4)] })
+  assert.deepEqual([r.netDelivered, r.missing, r.received], [4, 0, 6])
+  const two = await rows({ status: "accountant_approved", lines: [stockLine(1, 7, 6), stockLine(2, 7, 6)], inventory: [inv(7, 8)] })
+  assert.deepEqual(two.map((x) => [x.received, x.missing]), [[6, 0], [2, 4]])
+})
+
+test("S7. the report still lists stock-covered lines (Missing 0, Received N), shows On Hold, and does not price them", async () => {
+  const report = await loadMissingItems(db({ status: "accountant_approved", lines: [stockLine(1, 7, 10), outLine(2, "Gearbox", 2)], inventory: [inv(7, 10, 300)] }), 1)
+  assert.ok(report)
+  const html = renderMissingItemsHtml(report, { hideCost: false, generatedAt: "now" })
+  assert.match(html, /Pump/)
+  assert.match(html, /<span class="type-tag type-stock">On Hold<\/span>/)
+  assert.match(html, /<td class="n missing">0<\/td>/)
+  assert.match(html, /Received = goods receipts, or stock already in our warehouse/)
+  assert.doesNotMatch(html, /EGP 3,000\.00/) // 10 x 300 is covered by stock, so it is not a missing cost
 })

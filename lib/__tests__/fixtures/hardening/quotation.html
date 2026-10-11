@@ -5,64 +5,101 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>عرض سعر - QT-2026-1</title>
   <style>
-    @media print { body { margin: 0; } }
-    body { font-family: Arial, sans-serif; direction: rtl; margin: 20px; }
-    .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-    .logo { max-height: 80px; margin-bottom: 10px; }
-    .company-name { font-size: 24px; font-weight: bold; margin: 10px 0; }
-    .company-details { font-size: 12px; line-height: 1.6; }
-    .quotation-info { margin: 20px 0; }
-    .quotation-info table { width: 100%; border-collapse: collapse; }
-    .quotation-info td { padding: 8px; border: 1px solid #000; }
-    .items-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    .items-table th, .items-table td { border: 1px solid #000; padding: 10px; text-align: center; }
-    .items-table th { background-color: #f0f0f0; font-weight: bold; }
-    .totals { margin-top: 20px; }
-    .totals table { width: 50%; margin-right: auto; border-collapse: collapse; }
-    .totals td { padding: 10px; border: 1px solid #000; }
-    .totals .total-row { font-weight: bold; background-color: #f0f0f0; }
-    .footer { margin-top: 40px; font-size: 12px; text-align: center; border-top: 1px solid #000; padding-top: 10px; }
+    
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+@page { size: A4; margin: 15mm; }
+html { background: #fff; }
+body { font-family: 'IBM Plex Sans Arabic', 'Noto Naskh Arabic', Arial, Tahoma, sans-serif; color: #000; background: #fff; font-size: 13px; line-height: 1.5; }
+img { max-inline-size: 100%; }
+table { border-collapse: collapse; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+.pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
+.pm-brand { display: flex; align-items: center; gap: 12px; }
+.pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }
+.pm-names { display: block; }
+.pm-name-ar { font-size: 17px; font-weight: 700; }
+.pm-name-en { font-size: 11px; color: #555; letter-spacing: 0.06em; }
+.pm-company { font-size: 11px; color: #555; line-height: 1.7; text-align: end; }
+.pm-tax { margin-block-start: 4px; font-size: 11px; color: #555; }
+.pm-title { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 18px 16px; }
+.pm-title .doc-title { font-size: 34px; font-weight: 700; line-height: 1.2; }
+.pm-title-note { font-size: 13px; font-weight: 600; }
+.pm-title-no { font-size: 13px; color: #333; text-align: end; }
+.pm-title-no .pm-value { font-size: 15px; font-weight: 600; color: #000; }
+.pm-info { margin-block: 14px; }
+.pm-info-title { margin-block-end: 6px; font-size: 13px; font-weight: 700; }
+.pm-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 16px; border-block-start: 1.5px solid #000; padding-block-start: 10px; }
+.pm-field { min-inline-size: 0; }
+.pm-field-wide { grid-column: span 2; }
+.pm-label { font-size: 11px; font-weight: 400; color: #555; }
+.pm-field .pm-label { display: block; }
+.pm-value { font-weight: 500; color: #000; overflow-wrap: anywhere; }
+.pm-section-title { margin-block: 16px 8px; padding-block-end: 4px; border-block-end: 1px solid #000; font-size: 14px; font-weight: 700; }
+.pm-note { margin-block: 12px; font-size: 12px; line-height: 1.6; color: #000; overflow-wrap: anywhere; }
+.pm-table { inline-size: 100%; margin-block: 8px 12px; border-collapse: collapse; }
+.pm-table th, .pm-table td { border: 0; }
+.pm-table th { padding: 6px; font-size: 11px; font-weight: 500; color: #555; text-align: start; background: none; border-block-end: 1.5px solid #000; }
+.pm-table td { padding: 7px 6px; vertical-align: top; border-block-end: 1px solid #ccc; overflow-wrap: break-word; }
+.pm-table td.pm-num, .pm-table td.currency-col { white-space: nowrap; overflow-wrap: normal; }
+.pm-table tfoot td { border-block-end: 0; }
+.pm-num, .pm-table .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
+.pm-center, .center { text-align: center; }
+.pm-table th.pm-num { text-align: end; }
+.pm-table th.pm-center { text-align: center; }
+.pm-totals { inline-size: 60%; margin-block: 8px; margin-inline: auto 0; break-inside: avoid; page-break-inside: avoid; }
+.pm-totals td { padding: 4px 6px; border: 0; }
+.pm-total-final, .pm-total-final td { border-block-start: 1.5px solid #000; font-weight: 700; }
+body .totals-block tr:has(td[style*="font-weight: 700"]) td { border-block-start: 1.5px solid #000 !important; font-weight: 700; }
+body .totals-block, body .totals-block td { border: 0 !important; }
+body .totals-block { margin-inline: auto 0; }
+body .totals-block td { padding: 4px 6px; }
+body .totals-block .label { text-align: start; }
+body .totals-block .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
+body .totals-block td.currency-col { width: 40%; }
+body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] { color: #000 !important; background: none !important; }
+.missing { font-weight: 700; }
+[class*="status"], [class*="badge"] { padding: 0 !important; border: 0 !important; font-weight: 600; }
+.pm-signatures { display: flex; justify-content: space-between; gap: 48px; margin-block-start: 40px; break-inside: avoid; page-break-inside: avoid; }
+.pm-sign { flex: 1; font-size: 11px; color: #333; }
+.pm-sign-line { margin-block-start: 6px; border-block-end: 1px solid #000; block-size: 28px; }
+.pm-footer { margin-block-start: 16px; font-size: 11px; color: #555; text-align: center; }
+@media print { .no-print { display: none !important; } }
+
     .print-btn { position: fixed; top: 10px; left: 10px; padding: 10px 20px; background: #0066cc; color: white; border: none; border-radius: 5px; cursor: pointer; }
     @media print { .print-btn { display: none; } }
   </style>
 </head>
 <body>
   <button class="print-btn" onclick="window.print()">طباعة / Print</button>
-  <div class="header">
-    <div style="font-size: 24px; font-weight: bold; color: #1a56db;">مصر موتورز</div>
-    <div class="company-name">شركة مصر للمحركات</div>
-    <div class="company-name" style="font-size: 18px;">Misr Motors Co.</div>
-    <div class="company-details">212 ش السودان - ميدان لبنان - المهندسين - الجيزة<br>
+  <header class="pm-header"><div class="pm-brand"><div style="font-size: 24px; font-weight: bold; color: #1a56db;">مصر موتورز</div><div class="pm-names"><div class="pm-name-ar">شركة مصر للمحركات</div><div class="pm-name-en">Misr Motors Co.</div></div></div><div class="pm-company">212 ش السودان - ميدان لبنان - المهندسين - الجيزة<br>
       تليفون: 02-33039811 | فاكس: 02-33039818<br>
-      البريد الإلكتروني: sales@misrmotors.com
+      البريد الإلكتروني: sales@misrmotors.com</div></header>
+  <div class="pm-title"><div class="doc-title">عرض سعر / Sales Quotation</div></div>
+  <section class="pm-info">
+    <div class="pm-fields">
+      <div class="pm-field"><div class="pm-label">رقم العرض:</div><div class="pm-value">QT-2026-1</div></div>
+      <div class="pm-field"><div class="pm-label">التاريخ:</div><div class="pm-value"><DATE></div></div>
+      <div class="pm-field pm-field-wide"><div class="pm-label">العميل:</div><div class="pm-value">Customer Co</div></div>
+      <div class="pm-field pm-field-wide"><div class="pm-label">البريد:</div><div class="pm-value">c@example.com</div></div>
+      <div class="pm-field pm-field-wide"><div class="pm-label">الهاتف:</div><div class="pm-value">Phone-0100</div></div>
+      <div class="pm-field pm-field-wide"><div class="pm-label">صالح حتى:</div><div class="pm-value"><DATE></div></div>
     </div>
-  </div>
-  <h2 style="text-align: center; margin: 20px 0;">عرض سعر / Sales Quotation</h2>
-  <div class="quotation-info">
-    <table>
-      <tr><td style="width: 25%;"><strong>رقم العرض:</strong></td><td style="width: 25%;">QT-2026-1</td>
-        <td style="width: 25%;"><strong>التاريخ:</strong></td><td style="width: 25%;"><DATE></td></tr>
-      <tr><td><strong>العميل:</strong></td><td colspan="3">Customer Co</td></tr>
-      <tr><td><strong>البريد:</strong></td><td colspan="3">c@example.com</td></tr>
-      <tr><td><strong>الهاتف:</strong></td><td colspan="3">Phone-0100</td></tr>
-      <tr><td><strong>صالح حتى:</strong></td><td colspan="3"><DATE></td></tr>
-    </table>
-  </div>
-  <table class="items-table">
-    <thead><tr><th>م</th><th>اسم الصنف</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
-    <tbody><tr><td>1</td><td>Pump A</td><td>2</td>
-      <td>500.00 جنيه</td><td>1,000.00 جنيه</td></tr><tr><td>2</td><td>قطعة</td><td>3</td>
-      <td>99.50 جنيه</td><td>298.50 جنيه</td></tr></tbody>
+  </section>
+  <table class="pm-table items-table">
+    <thead><tr><th class="pm-center">م</th><th>اسم الصنف</th><th class="pm-center">الكمية</th><th class="pm-num">سعر الوحدة</th><th class="pm-num">الإجمالي</th></tr></thead>
+    <tbody><tr><td class="pm-center">1</td><td>Pump A</td><td class="pm-center">2</td>
+      <td class="pm-num">500.00 جنيه</td><td class="pm-num">1,000.00 جنيه</td></tr><tr><td class="pm-center">2</td><td>قطعة</td><td class="pm-center">3</td>
+      <td class="pm-num">99.50 جنيه</td><td class="pm-num">298.50 جنيه</td></tr></tbody>
   </table>
-  <div class="totals">
-    <table>
-      <tr><td><strong>المجموع الفرعي:</strong></td><td>1,298.50 جنيه</td></tr>
-      <tr><td><strong>ضريبة القيمة المضافة (14%):</strong></td><td>181.79 جنيه</td></tr>
-      <tr class="total-row"><td><strong>الإجمالي الكلي:</strong></td><td><strong>1,480.29 جنيه</strong></td></tr>
-    </table>
-  </div>
-  <div style="margin-top: 30px; padding: 10px; border: 1px solid #000;"><strong>ملاحظات:</strong><br>Quotation notes</div>
-  <div class="footer"><p>هذا العرض صالح لمدة 30 يوم من تاريخ الإصدار</p>
+  <table class="pm-totals">
+    <tr><td><strong>المجموع الفرعي:</strong></td><td class="pm-num">1,298.50 جنيه</td></tr>
+    <tr><td><strong>ضريبة القيمة المضافة (14%):</strong></td><td class="pm-num">181.79 جنيه</td></tr>
+    <tr class="pm-total-final"><td><strong>الإجمالي الكلي:</strong></td><td class="pm-num"><strong>1,480.29 جنيه</strong></td></tr>
+  </table>
+  <div class="pm-note"><strong>ملاحظات:</strong><br>Quotation notes</div>
+  <div class="pm-footer"><p>هذا العرض صالح لمدة 30 يوم من تاريخ الإصدار</p>
     <p>نشكركم على ثقتكم في شركة مصر للمحركات</p></div>
 </body>
 </html>
