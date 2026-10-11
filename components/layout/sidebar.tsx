@@ -47,7 +47,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
     <>
       <div className="flex flex-col gap-1 border-b border-sidebar-border p-4">
         <div className="flex items-center gap-3">
-          <img src="/images/image.png" alt="Misr Motors Logo" className="h-10 w-auto" />
+          <img src="/images/image.png" alt={t("frame.logo-alt")} className="h-10 w-auto" />
           <h1 className="text-lg font-extrabold text-sidebar-foreground">{t("misr-motors")}</h1>
         </div>
         <p className="text-xs text-muted-foreground">{t(ROLE_DISPLAY_NAMES[userRole])}</p>
