@@ -1009,7 +1009,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         <XAxis dataKey="category" />
                         <YAxis />
                         <Tooltip formatter={(value: any) => fill(t("analytics.egp-amount"), { amount: value.toLocaleString() })} />
-                        <Bar dataKey="value" fill={CHART_COLORS[0]} name={t("common.total-value-egp")} />
+                        <Bar dataKey="value" fill={CHART_COLORS[0]} name="Total Value (EGP)" />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>

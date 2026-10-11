@@ -839,14 +839,14 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   const handlePrintInvoice = (order: PurchaseOrder) => {
     const invoice = supplierInvoices.find((inv) => inv.poId === order.id)
     if (!invoice) {
-      alert(t("po.no-invoice-found"))
+      alert("No invoice found for this purchase order")
       return
     }
 
     const supplier = suppliers.find((s) => s.id === order.supplierId)
     const printWindow = window.open("", "_blank")
     if (!printWindow) {
-      alert(t("po.allow-popups"))
+      alert("Please allow popups to print invoices")
       return
     }
 
