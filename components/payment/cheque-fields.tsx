@@ -67,7 +67,7 @@ export function ChequeFields({
   return (
     <Card className="border-amber-200 bg-amber-50/50">
       <CardContent className="pt-4 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>{t("payment.cheque-number")}</Label>
             <Input
@@ -88,7 +88,7 @@ export function ChequeFields({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>{t("payment.cheque-due-date")}</Label>
             <Input type="date" value={dueDate || ""} onChange={handleChange("dueDate")} />

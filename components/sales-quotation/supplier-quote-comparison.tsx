@@ -113,7 +113,7 @@ export function SupplierQuoteComparison({ salesQuotationId, quotationItems }: Su
           {/* Step 1: Upload PDFs */}
           <div className="space-y-4">
             <h3 className="font-semibold">{t("quote-compare.step-1")}</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>{t("quote-compare.supplier-name")}</Label>
                 <Input

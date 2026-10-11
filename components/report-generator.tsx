@@ -1598,7 +1598,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
               type === "lost-sales") && (
               <div className="bg-muted/30 rounded-xl p-4">
                 <Label className="text-base font-semibold mb-3 block">Date Range (Optional)</Label>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="fromDate" className="text-sm mb-1.5 block text-muted-foreground">
                       From Date
@@ -1640,7 +1640,7 @@ export function ReportGenerator({ type, userRole }: ReportGeneratorProps) {
 
             <div className="bg-muted/30 rounded-xl p-4">
               <Label className="text-base font-semibold mb-3 block">Group By (Optional)</Label>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-sm text-muted-foreground">Level 1</Label>
                   <Select

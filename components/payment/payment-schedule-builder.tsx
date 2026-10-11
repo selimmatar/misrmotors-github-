@@ -204,7 +204,7 @@ export function PaymentScheduleBuilder({
           </TabsList>
 
           <TabsContent value="AUTO" className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t("payment.installments-start-date")}</Label>
                 <Input

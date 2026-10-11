@@ -651,7 +651,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
       </TabsList>
 
       <TabsContent value="overview" className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <Label className="text-muted-foreground">{t("email")}</Label>
             <p className="font-medium">{employee.email}</p>
@@ -695,7 +695,7 @@ function EmployeeDetailsView({ employee, compensation }: { employee: Employee; c
               <CardDescription>{fill(t("hr.effective-from"), { date: formatDate(activeCompensation.effective_date, language) })}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">{t("hr.base-salary")}</Label>
                   <p className="text-lg font-semibold"><Money value={activeCompensation.base_salary} /> {t("common.egp-2")}</p>
@@ -1024,7 +1024,7 @@ function AddCompensationForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{t("hr.effective-date-2")}</Label>
           <Input
@@ -1048,7 +1048,7 @@ function AddCompensationForm({
 
       <div className="space-y-2">
         <Label className="font-semibold">{t("hr.allowances")}</Label>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label className="text-sm">{t("hr.housing-2")}</Label>
             <Input
@@ -1086,7 +1086,7 @@ function AddCompensationForm({
 
       <div className="space-y-2">
         <Label className="font-semibold">{t("hr.deductions")}</Label>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label className="text-sm">{t("hr.social-insurance-2")}</Label>
             <Input
@@ -1114,7 +1114,7 @@ function AddCompensationForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{t("hr.payment-frequency")}</Label>
           <Select value={formData.payment_frequency} onValueChange={(value) => setFormData({ ...formData, payment_frequency: value })}>
@@ -1144,7 +1144,7 @@ function AddCompensationForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{t("field.bank-name")}</Label>
           <Input
@@ -1292,7 +1292,7 @@ function AddSalaryPaymentForm({
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label>{t("hr.period-start")}</Label>
           <Input
@@ -1322,7 +1322,7 @@ function AddSalaryPaymentForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label>{t("hr.base-salary-egp-2")}</Label>
           <Input
@@ -1351,7 +1351,7 @@ function AddSalaryPaymentForm({
 
       <div className="space-y-2">
         <Label className="font-semibold">{t("hr.bonus")}</Label>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label className="text-sm">{t("hr.bonus-amount-egp")}</Label>
             <Input
@@ -1374,7 +1374,7 @@ function AddSalaryPaymentForm({
 
       <div className="space-y-2">
         <Label className="font-semibold">{t("hr.overtime")}</Label>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label className="text-sm">{t("hr.overtime-hours")}</Label>
             <Input
@@ -1399,7 +1399,7 @@ function AddSalaryPaymentForm({
 
       <div className="space-y-2">
         <Label className="font-semibold">{t("hr.adjustments")}</Label>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label className="text-sm">{t("hr.amount-egp-use-negative-for")}</Label>
             <Input
@@ -1420,7 +1420,7 @@ function AddSalaryPaymentForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{t("hr.payment-method")}</Label>
           <Select value={formData.payment_method} onValueChange={(value) => setFormData({ ...formData, payment_method: value })}>
@@ -1635,7 +1635,7 @@ function EmployeeDocumentsTab({ employee }: { employee: Employee }) {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>{t("hr.document-date")}</Label>
                   <Input
@@ -1873,7 +1873,7 @@ function AddPositionForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="pos_title">{t("hr.position-title-2")}</Label>
           <Input
@@ -1896,7 +1896,7 @@ function AddPositionForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="pos_dept">{t("hr.department")}</Label>
           <Select value={formData.department_id} onValueChange={(value) => setFormData({ ...formData, department_id: value })}>
@@ -1923,7 +1923,7 @@ function AddPositionForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="sal_min">{t("hr.salary-range-min-egp")}</Label>
           <Input
@@ -2033,7 +2033,7 @@ function AddEmployeeForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="emp_name">{t("hr.full-name")}</Label>
           <Input
@@ -2056,7 +2056,7 @@ function AddEmployeeForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="emp_email">{t("email")} <span className="text-muted-foreground font-normal">{t("hr.optional-must-be-unique")}</span></Label>
           <Input
@@ -2078,7 +2078,7 @@ function AddEmployeeForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="emp_dept">{t("hr.department")}</Label>
           <Select value={formData.department_id} onValueChange={(value) => setFormData({ ...formData, department_id: value })}>
@@ -2111,7 +2111,7 @@ function AddEmployeeForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label htmlFor="emp_hire">{t("hr.hire-date-2")}</Label>
           <Input
