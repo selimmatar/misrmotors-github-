@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
+import { PRINT_CSS, printHeader, docTitle, infoBox } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
 
@@ -83,230 +84,15 @@ export async function GET(request: NextRequest) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>طلب عرض أسعار - ${escapeHtml(poRequest.request_number)}</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    body {
-      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-      font-size: 14px;
-      line-height: 1.6;
-      color: #333;
-      background: #fff;
-      padding: 20px;
-    }
-    
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background: #fff;
-    }
-    
-    .print-button {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      padding: 12px 24px;
-      background: #2563eb;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: 600;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      z-index: 1000;
-    }
-    
-    .print-button:hover {
-      background: #1d4ed8;
-    }
-    
-    @media print {
-      .print-button { display: none !important; }
-      body { padding: 0; }
-    }
-    
-    .company-header {
-      text-align: center;
-      border-bottom: 3px solid #1e40af;
-      padding-bottom: 20px;
-      margin-bottom: 20px;
-    }
-    
-    .company-logo {
-      max-height: 80px;
-      margin-bottom: 10px;
-    }
-    
-    .company-name-ar {
-      font-size: 28px;
-      font-weight: bold;
-      color: #1e3a5f;
-      margin-bottom: 5px;
-    }
-    
-    .company-name-en {
-      font-size: 18px;
-      color: #4a5568;
-      margin-bottom: 10px;
-    }
-    
-    .company-details {
-      font-size: 12px;
-      color: #666;
-      line-height: 1.8;
-    }
-    
-    .tax-info {
-      font-size: 11px;
-      color: #666;
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #e5e7eb;
-    }
-    
-    .document-title {
-      text-align: center;
-      font-size: 24px;
-      font-weight: bold;
-      color: #1e40af;
-      margin: 25px 0;
-      padding: 15px;
-      background: #eff6ff;
-      border-radius: 8px;
-    }
-    
-    .info-section {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 25px;
-      gap: 20px;
-    }
-    
-    .info-box {
-      flex: 1;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 15px;
-    }
-    
-    .info-box h3 {
-      font-size: 14px;
-      color: #1e40af;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid #3b82f6;
-    }
-    
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 8px;
-      font-size: 13px;
-    }
-    
-    .info-label {
-      color: #64748b;
-      font-weight: 500;
-    }
-    
-    .info-value {
-      color: #1e293b;
-      font-weight: 600;
-    }
-    
-    .items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 20px 0;
-    }
-    
-    .items-table th {
-      background: #1e40af;
-      color: white;
-      padding: 12px 8px;
-      text-align: center;
-      font-weight: 600;
-      font-size: 13px;
-    }
-    
-    .items-table td {
-      padding: 10px 8px;
-      border-bottom: 1px solid #e5e7eb;
-      text-align: center;
-    }
-    
-    .items-table tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    
-    .items-table tr:hover {
-      background: #eff6ff;
-    }
-    
-    .notes-section {
-      background: #fefce8;
-      border: 1px solid #fbbf24;
-      border-radius: 8px;
-      padding: 15px;
-      margin: 20px 0;
-    }
-    
-    .notes-section h4 {
-      color: #92400e;
-      margin-bottom: 8px;
-    }
-    
-    .quotation-request-note {
-      background: #f0f9ff;
-      border: 2px solid #3b82f6;
-      border-radius: 8px;
-      padding: 20px;
-      margin: 25px 0;
-      text-align: center;
-    }
-    
-    .quotation-request-note h4 {
-      color: #1e40af;
-      font-size: 16px;
-      margin-bottom: 10px;
-    }
-    
-    .quotation-request-note p {
-      color: #1e3a5f;
-      margin: 5px 0;
-    }
-    
-    .signature-section {
-      margin-top: 40px;
-      display: flex;
-      justify-content: space-between;
-    }
-    
-    .signature-box {
-      width: 45%;
-      text-align: center;
-    }
-    
-    .signature-line {
-      border-top: 1px solid #333;
-      margin-top: 60px;
-      padding-top: 8px;
-      font-weight: 600;
-    }
-    
-    .footer {
-      margin-top: 30px;
-      padding-top: 15px;
-      border-top: 2px solid #e5e7eb;
-      text-align: center;
-      font-size: 11px;
-      color: #666;
-    }
+    ${PRINT_CSS}
+    .container { max-width: 800px; margin: 0 auto; }
+    .print-button { position: fixed; top: 20px; left: 20px; padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 1000; }
+    .print-button:hover { background: #1d4ed8; }
+    @media screen { body { padding: 20px; } }
+    @media print { .print-button { display: none !important; } }
+    .pm-note h4 { margin-block-end: 4px; font-size: 13px; font-weight: 700; }
+    .pm-note p { margin-block: 2px; }
+    .pm-note ul { padding-inline-start: 18px; }
   </style>
 </head>
 <body>
@@ -314,100 +100,87 @@ export async function GET(request: NextRequest) {
   
   <div class="container">
     <!-- Company Header -->
-    <div class="company-header">
-      ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Misr Motors Logo" class="company-logo" />` : `<div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div>`}
-      <div class="company-name-ar">${COMPANY_SETTINGS.nameAr}</div>
-      <div class="company-name-en">${COMPANY_SETTINGS.nameEn}</div>
-      <div class="company-details">
+    ${printHeader({
+      logoHtml: `${logoDataUrl ? `<img src="${logoDataUrl}" alt="Misr Motors Logo" class="company-logo" />` : `<div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div>`}`,
+      company: {
+        nameAr: `${COMPANY_SETTINGS.nameAr}`,
+        nameEn: `${COMPANY_SETTINGS.nameEn}`,
+        detailsHtml: `
         <div>العنوان: ${COMPANY_SETTINGS.address}</div>
         <div>تليفون: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax}</div>
         <div>البريد الإلكتروني: ${COMPANY_SETTINGS.email}</div>
-      </div>
-      <div class="tax-info">${getTaxInfo()}</div>
-    </div>
+      `,
+      },
+      taxInfo: `${getTaxInfo()}`,
+    })}
     
     <!-- Document Title -->
-    <div class="document-title">
-      طلب عرض أسعار / Quotation Request
-    </div>
+    ${docTitle({ titleAr: `طلب عرض أسعار / Quotation Request` })}
     
     <!-- Info Section -->
-    <div class="info-section">
-      <div class="info-box">
-        <h3>بيانات الطلب / Request Details</h3>
-        <div class="info-row">
-          <span class="info-label">رقم الطلب:</span>
-          <span class="info-value">${escapeHtml(poRequest.request_number)}</span>
+    <section class="pm-info">
+        <div class="pm-info-title">بيانات الطلب / Request Details</div>
+        <div class="pm-fields">
+        <div class="pm-field">
+          <div class="pm-label">رقم الطلب:</div>
+          <div class="pm-value">${escapeHtml(poRequest.request_number)}</div>
         </div>
-        <div class="info-row">
-          <span class="info-label">تاريخ الطلب:</span>
-          <span class="info-value">${new Date(poRequest.request_date || poRequest.created_at).toLocaleDateString("ar-EG")}</span>
+        <div class="pm-field">
+          <div class="pm-label">تاريخ الطلب:</div>
+          <div class="pm-value">${new Date(poRequest.request_date || poRequest.created_at).toLocaleDateString("ar-EG")}</div>
         </div>
         ${poRequest.expected_delivery_date ? `
-        <div class="info-row">
-          <span class="info-label">تاريخ التسليم المتوقع:</span>
-          <span class="info-value">${new Date(poRequest.expected_delivery_date).toLocaleDateString("ar-EG")}</span>
+        <div class="pm-field">
+          <div class="pm-label">تاريخ التسليم المتوقع:</div>
+          <div class="pm-value">${new Date(poRequest.expected_delivery_date).toLocaleDateString("ar-EG")}</div>
         </div>
         ` : ""}
-        <div class="info-row">
-          <span class="info-label">الحالة:</span>
-          <span class="info-value">${escapeHtml(poRequest.status === "pending" ? "في انتظار عرض السعر" : poRequest.status)}</span>
+        <div class="pm-field">
+          <div class="pm-label">الحالة:</div>
+          <div class="pm-value">${escapeHtml(poRequest.status === "pending" ? "في انتظار عرض السعر" : poRequest.status)}</div>
         </div>
-      </div>
+        </div>
+    </section>
       
-      <div class="info-box">
-        <h3>بيانات المورد / Supplier Details</h3>
-        <div class="info-row">
-          <span class="info-label">اسم المورد:</span>
-          <span class="info-value">${escapeHtml(supplier.supplier_name || "-")}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">التليفون:</span>
-          <span class="info-value">${escapeHtml(supplier.phone || "-")}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">البريد الإلكتروني:</span>
-          <span class="info-value">${escapeHtml(supplier.email || "-")}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">العنوان:</span>
-          <span class="info-value">${escapeHtml(supplier.address || "-")}</span>
-        </div>
-      </div>
-    </div>
+    ${infoBox(`بيانات المورد / Supplier Details`, [
+      [`اسم المورد:`, `${escapeHtml(supplier.supplier_name || "-")}`],
+      [`التليفون:`, `${escapeHtml(supplier.phone || "-")}`],
+      [`البريد الإلكتروني:`, `${escapeHtml(supplier.email || "-")}`],
+      [`العنوان:`, `${escapeHtml(supplier.address || "-")}`],
+    ])}
     
     <!-- Items Table (No Prices) -->
-    <table class="items-table">
+    <table class="pm-table">
       <thead>
         <tr>
-          <th style="width: 50px;">م</th>
+          <th class="pm-center" style="width: 50px;">م</th>
           <th>اسم الصنف / Item Description</th>
-          <th style="width: 100px;">الكود / SKU</th>
-          <th style="width: 100px;">الكمية / Quantity</th>
-          <th style="width: 80px;">الوحدة / Unit</th>
+          <th class="pm-center" style="width: 100px;">الكود / SKU</th>
+          <th class="pm-center" style="width: 100px;">الكمية / Quantity</th>
+          <th class="pm-center" style="width: 80px;">الوحدة / Unit</th>
           <th>ملاحظات / Notes</th>
         </tr>
       </thead>
       <tbody>
         ${items.map((item: any, index: number) => `
           <tr>
-            <td>${index + 1}</td>
-            <td style="text-align: right;">${escapeHtml(item.products?.product_name || item.product_name || "-")}</td>
-            <td>${escapeHtml(item.products?.sku || "-")}</td>
-            <td>${escapeHtml(item.quantity)}</td>
-            <td>${escapeHtml(item.unit || item.products?.unit || "-")}</td>
-            <td style="text-align: right;">${escapeHtml(item.notes || "-")}</td>
+            <td class="pm-center">${index + 1}</td>
+            <td>${escapeHtml(item.products?.product_name || item.product_name || "-")}</td>
+            <td class="pm-center">${escapeHtml(item.products?.sku || "-")}</td>
+            <td class="pm-center">${escapeHtml(item.quantity)}</td>
+            <td class="pm-center">${escapeHtml(item.unit || item.products?.unit || "-")}</td>
+            <td>${escapeHtml(item.notes || "-")}</td>
           </tr>
         `).join("")}
       </tbody>
     </table>
     
     <!-- Quotation Request Note -->
-    <div class="quotation-request-note">
+    <div class="quotation-request-note pm-note">
       <h4>مطلوب من المورد / Required from Supplier:</h4>
       <p>يرجى تزويدنا بعرض سعر للأصناف المذكورة أعلاه يتضمن:</p>
       <p>Please provide us with a quotation for the above items including:</p>
-      <ul style="text-align: right; margin: 15px auto; max-width: 400px;">
+      <ul>
         <li>سعر الوحدة لكل صنف / Unit price for each item</li>
         <li>مدة الصلاحية / Validity period</li>
         <li>شروط الدفع / Payment terms</li>
@@ -416,24 +189,24 @@ export async function GET(request: NextRequest) {
     </div>
     
     ${poRequest.notes ? `
-    <div class="notes-section">
+    <div class="pm-note">
       <h4>ملاحظات إضافية / Additional Notes:</h4>
       <p>${escapeHtml(poRequest.notes)}</p>
     </div>
     ` : ""}
     
     <!-- Signature Section -->
-    <div class="signature-section">
-      <div class="signature-box">
-        <div class="signature-line">مدير المشتريات / Procurement Manager</div>
+    <div class="pm-signatures">
+      <div class="pm-sign">
+        <div>مدير المشتريات / Procurement Manager</div><div class="pm-sign-line"></div>
       </div>
-      <div class="signature-box">
-        <div class="signature-line">ختم المورد / Supplier Stamp</div>
+      <div class="pm-sign">
+        <div>ختم المورد / Supplier Stamp</div><div class="pm-sign-line"></div>
       </div>
     </div>
     
     <!-- Footer -->
-    <div class="footer">
+    <div class="pm-footer">
       <p>شركة مصر للمحركات - ${COMPANY_SETTINGS.address}</p>
       <p>هاتف: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax} | ${COMPANY_SETTINGS.email}</p>
     </div>

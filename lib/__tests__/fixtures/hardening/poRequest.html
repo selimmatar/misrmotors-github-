@@ -6,230 +6,76 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>طلب عرض أسعار - REQ-1</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
     
-    body {
-      font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-      font-size: 14px;
-      line-height: 1.6;
-      color: #333;
-      background: #fff;
-      padding: 20px;
-    }
-    
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background: #fff;
-    }
-    
-    .print-button {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      padding: 12px 24px;
-      background: #2563eb;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: 600;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      z-index: 1000;
-    }
-    
-    .print-button:hover {
-      background: #1d4ed8;
-    }
-    
-    @media print {
-      .print-button { display: none !important; }
-      body { padding: 0; }
-    }
-    
-    .company-header {
-      text-align: center;
-      border-bottom: 3px solid #1e40af;
-      padding-bottom: 20px;
-      margin-bottom: 20px;
-    }
-    
-    .company-logo {
-      max-height: 80px;
-      margin-bottom: 10px;
-    }
-    
-    .company-name-ar {
-      font-size: 28px;
-      font-weight: bold;
-      color: #1e3a5f;
-      margin-bottom: 5px;
-    }
-    
-    .company-name-en {
-      font-size: 18px;
-      color: #4a5568;
-      margin-bottom: 10px;
-    }
-    
-    .company-details {
-      font-size: 12px;
-      color: #666;
-      line-height: 1.8;
-    }
-    
-    .tax-info {
-      font-size: 11px;
-      color: #666;
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #e5e7eb;
-    }
-    
-    .document-title {
-      text-align: center;
-      font-size: 24px;
-      font-weight: bold;
-      color: #1e40af;
-      margin: 25px 0;
-      padding: 15px;
-      background: #eff6ff;
-      border-radius: 8px;
-    }
-    
-    .info-section {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 25px;
-      gap: 20px;
-    }
-    
-    .info-box {
-      flex: 1;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 15px;
-    }
-    
-    .info-box h3 {
-      font-size: 14px;
-      color: #1e40af;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid #3b82f6;
-    }
-    
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 8px;
-      font-size: 13px;
-    }
-    
-    .info-label {
-      color: #64748b;
-      font-weight: 500;
-    }
-    
-    .info-value {
-      color: #1e293b;
-      font-weight: 600;
-    }
-    
-    .items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 20px 0;
-    }
-    
-    .items-table th {
-      background: #1e40af;
-      color: white;
-      padding: 12px 8px;
-      text-align: center;
-      font-weight: 600;
-      font-size: 13px;
-    }
-    
-    .items-table td {
-      padding: 10px 8px;
-      border-bottom: 1px solid #e5e7eb;
-      text-align: center;
-    }
-    
-    .items-table tr:nth-child(even) {
-      background: #f8fafc;
-    }
-    
-    .items-table tr:hover {
-      background: #eff6ff;
-    }
-    
-    .notes-section {
-      background: #fefce8;
-      border: 1px solid #fbbf24;
-      border-radius: 8px;
-      padding: 15px;
-      margin: 20px 0;
-    }
-    
-    .notes-section h4 {
-      color: #92400e;
-      margin-bottom: 8px;
-    }
-    
-    .quotation-request-note {
-      background: #f0f9ff;
-      border: 2px solid #3b82f6;
-      border-radius: 8px;
-      padding: 20px;
-      margin: 25px 0;
-      text-align: center;
-    }
-    
-    .quotation-request-note h4 {
-      color: #1e40af;
-      font-size: 16px;
-      margin-bottom: 10px;
-    }
-    
-    .quotation-request-note p {
-      color: #1e3a5f;
-      margin: 5px 0;
-    }
-    
-    .signature-section {
-      margin-top: 40px;
-      display: flex;
-      justify-content: space-between;
-    }
-    
-    .signature-box {
-      width: 45%;
-      text-align: center;
-    }
-    
-    .signature-line {
-      border-top: 1px solid #333;
-      margin-top: 60px;
-      padding-top: 8px;
-      font-weight: 600;
-    }
-    
-    .footer {
-      margin-top: 30px;
-      padding-top: 15px;
-      border-top: 2px solid #e5e7eb;
-      text-align: center;
-      font-size: 11px;
-      color: #666;
-    }
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+@page { size: A4; margin: 15mm; }
+html { background: #fff; }
+body { font-family: 'IBM Plex Sans Arabic', 'Noto Naskh Arabic', Arial, Tahoma, sans-serif; color: #000; background: #fff; font-size: 13px; line-height: 1.5; }
+img { max-inline-size: 100%; }
+table { border-collapse: collapse; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+.pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
+.pm-brand { display: flex; align-items: center; gap: 12px; }
+.pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }
+.pm-names { display: block; }
+.pm-name-ar { font-size: 17px; font-weight: 700; }
+.pm-name-en { font-size: 11px; color: #555; letter-spacing: 0.06em; }
+.pm-company { font-size: 11px; color: #555; line-height: 1.7; text-align: end; }
+.pm-tax { margin-block-start: 4px; font-size: 11px; color: #555; }
+.pm-title { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 18px 16px; }
+.pm-title .doc-title { font-size: 34px; font-weight: 700; line-height: 1.2; }
+.pm-title-note { font-size: 13px; font-weight: 600; }
+.pm-title-no { font-size: 13px; color: #333; text-align: end; }
+.pm-title-no .pm-value { font-size: 15px; font-weight: 600; color: #000; }
+.pm-info { margin-block: 14px; }
+.pm-info-title { margin-block-end: 6px; font-size: 13px; font-weight: 700; }
+.pm-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 16px; border-block-start: 1.5px solid #000; padding-block-start: 10px; }
+.pm-field { min-inline-size: 0; }
+.pm-field-wide { grid-column: span 2; }
+.pm-label { font-size: 11px; font-weight: 400; color: #555; }
+.pm-field .pm-label { display: block; }
+.pm-value { font-weight: 500; color: #000; overflow-wrap: anywhere; }
+.pm-section-title { margin-block: 16px 8px; padding-block-end: 4px; border-block-end: 1px solid #000; font-size: 14px; font-weight: 700; }
+.pm-note { margin-block: 12px; font-size: 12px; line-height: 1.6; color: #000; overflow-wrap: anywhere; }
+.pm-table { inline-size: 100%; margin-block: 8px 12px; border-collapse: collapse; }
+.pm-table th, .pm-table td { border: 0; }
+.pm-table th { padding: 6px; font-size: 11px; font-weight: 500; color: #555; text-align: start; background: none; border-block-end: 1.5px solid #000; }
+.pm-table td { padding: 7px 6px; vertical-align: top; border-block-end: 1px solid #ccc; overflow-wrap: break-word; }
+.pm-table td.pm-num, .pm-table td.currency-col { white-space: nowrap; overflow-wrap: normal; }
+.pm-table tfoot td { border-block-end: 0; }
+.pm-num, .pm-table .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
+.pm-center, .center { text-align: center; }
+.pm-table th.pm-num { text-align: end; }
+.pm-table th.pm-center { text-align: center; }
+.pm-totals { inline-size: 60%; margin-block: 8px; margin-inline: auto 0; break-inside: avoid; page-break-inside: avoid; }
+.pm-totals td { padding: 4px 6px; border: 0; }
+.pm-total-final, .pm-total-final td { border-block-start: 1.5px solid #000; font-weight: 700; }
+body .totals-block tr:has(td[style*="font-weight: 700"]) td { border-block-start: 1.5px solid #000 !important; font-weight: 700; }
+body .totals-block, body .totals-block td { border: 0 !important; }
+body .totals-block { margin-inline: auto 0; }
+body .totals-block td { padding: 4px 6px; }
+body .totals-block .label { text-align: start; }
+body .totals-block .currency-col { text-align: end; font-variant-numeric: tabular-nums; }
+body .totals-block td.currency-col { width: 40%; }
+body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] { color: #000 !important; background: none !important; }
+.missing { font-weight: 700; }
+[class*="status"], [class*="badge"] { padding: 0 !important; border: 0 !important; font-weight: 600; }
+.pm-signatures { display: flex; justify-content: space-between; gap: 48px; margin-block-start: 40px; break-inside: avoid; page-break-inside: avoid; }
+.pm-sign { flex: 1; font-size: 11px; color: #333; }
+.pm-sign-line { margin-block-start: 6px; border-block-end: 1px solid #000; block-size: 28px; }
+.pm-footer { margin-block-start: 16px; font-size: 11px; color: #555; text-align: center; }
+@media print { .no-print { display: none !important; } }
+
+    .container { max-width: 800px; margin: 0 auto; }
+    .print-button { position: fixed; top: 20px; left: 20px; padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,0.2); z-index: 1000; }
+    .print-button:hover { background: #1d4ed8; }
+    @media screen { body { padding: 20px; } }
+    @media print { .print-button { display: none !important; } }
+    .pm-note h4 { margin-block-end: 4px; font-size: 13px; font-weight: 700; }
+    .pm-note p { margin-block: 2px; }
+    .pm-note ul { padding-inline-start: 18px; }
   </style>
 </head>
 <body>
@@ -237,109 +83,83 @@
   
   <div class="container">
     <!-- Company Header -->
-    <div class="company-header">
-      <div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div>
-      <div class="company-name-ar">شركة مصر للمحركات</div>
-      <div class="company-name-en">Misr Motors Co.</div>
-      <div class="company-details">
+    <header class="pm-header"><div class="pm-brand"><div style="font-size: 28px; font-weight: bold; color: #1a56db; margin-bottom: 10px;">مصر موتورز</div><div class="pm-names"><div class="pm-name-ar">شركة مصر للمحركات</div><div class="pm-name-en">Misr Motors Co.</div></div></div><div class="pm-company">
         <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
         <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
         <div>البريد الإلكتروني: sales@misrmotors.com</div>
-      </div>
-      <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
-    </div>
+      <div class="pm-tax">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div></div></header>
     
     <!-- Document Title -->
-    <div class="document-title">
-      طلب عرض أسعار / Quotation Request
-    </div>
+    <div class="pm-title"><div class="doc-title">طلب عرض أسعار / Quotation Request</div></div>
     
     <!-- Info Section -->
-    <div class="info-section">
-      <div class="info-box">
-        <h3>بيانات الطلب / Request Details</h3>
-        <div class="info-row">
-          <span class="info-label">رقم الطلب:</span>
-          <span class="info-value">REQ-1</span>
+    <section class="pm-info">
+        <div class="pm-info-title">بيانات الطلب / Request Details</div>
+        <div class="pm-fields">
+        <div class="pm-field">
+          <div class="pm-label">رقم الطلب:</div>
+          <div class="pm-value">REQ-1</div>
         </div>
-        <div class="info-row">
-          <span class="info-label">تاريخ الطلب:</span>
-          <span class="info-value"><DATE></span>
-        </div>
-        
-        <div class="info-row">
-          <span class="info-label">تاريخ التسليم المتوقع:</span>
-          <span class="info-value"><DATE></span>
+        <div class="pm-field">
+          <div class="pm-label">تاريخ الطلب:</div>
+          <div class="pm-value"><DATE></div>
         </div>
         
-        <div class="info-row">
-          <span class="info-label">الحالة:</span>
-          <span class="info-value">في انتظار عرض السعر</span>
+        <div class="pm-field">
+          <div class="pm-label">تاريخ التسليم المتوقع:</div>
+          <div class="pm-value"><DATE></div>
         </div>
-      </div>
+        
+        <div class="pm-field">
+          <div class="pm-label">الحالة:</div>
+          <div class="pm-value">في انتظار عرض السعر</div>
+        </div>
+        </div>
+    </section>
       
-      <div class="info-box">
-        <h3>بيانات المورد / Supplier Details</h3>
-        <div class="info-row">
-          <span class="info-label">اسم المورد:</span>
-          <span class="info-value">Supplier One</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">التليفون:</span>
-          <span class="info-value">Phone-0200</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">البريد الإلكتروني:</span>
-          <span class="info-value">s@example.com</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">العنوان:</span>
-          <span class="info-value">Supplier Street</span>
-        </div>
-      </div>
-    </div>
+    <section class="pm-info"><div class="pm-info-title">بيانات المورد / Supplier Details</div><div class="pm-fields"><div class="pm-field"><div class="pm-label">اسم المورد:</div><div class="pm-value">Supplier One</div></div><div class="pm-field"><div class="pm-label">التليفون:</div><div class="pm-value">Phone-0200</div></div><div class="pm-field"><div class="pm-label">البريد الإلكتروني:</div><div class="pm-value">s@example.com</div></div><div class="pm-field"><div class="pm-label">العنوان:</div><div class="pm-value">Supplier Street</div></div></div></section>
     
     <!-- Items Table (No Prices) -->
-    <table class="items-table">
+    <table class="pm-table">
       <thead>
         <tr>
-          <th style="width: 50px;">م</th>
+          <th class="pm-center" style="width: 50px;">م</th>
           <th>اسم الصنف / Item Description</th>
-          <th style="width: 100px;">الكود / SKU</th>
-          <th style="width: 100px;">الكمية / Quantity</th>
-          <th style="width: 80px;">الوحدة / Unit</th>
+          <th class="pm-center" style="width: 100px;">الكود / SKU</th>
+          <th class="pm-center" style="width: 100px;">الكمية / Quantity</th>
+          <th class="pm-center" style="width: 80px;">الوحدة / Unit</th>
           <th>ملاحظات / Notes</th>
         </tr>
       </thead>
       <tbody>
         
           <tr>
-            <td>1</td>
-            <td style="text-align: right;">Filter F</td>
-            <td>SKU-F</td>
-            <td>5</td>
-            <td>Unit Box</td>
-            <td style="text-align: right;">Item note</td>
+            <td class="pm-center">1</td>
+            <td>Filter F</td>
+            <td class="pm-center">SKU-F</td>
+            <td class="pm-center">5</td>
+            <td class="pm-center">Unit Box</td>
+            <td>Item note</td>
           </tr>
         
           <tr>
-            <td>2</td>
-            <td style="text-align: right;">Loose item</td>
+            <td class="pm-center">2</td>
+            <td>Loose item</td>
+            <td class="pm-center">-</td>
+            <td class="pm-center">2</td>
+            <td class="pm-center">-</td>
             <td>-</td>
-            <td>2</td>
-            <td>-</td>
-            <td style="text-align: right;">-</td>
           </tr>
         
       </tbody>
     </table>
     
     <!-- Quotation Request Note -->
-    <div class="quotation-request-note">
+    <div class="quotation-request-note pm-note">
       <h4>مطلوب من المورد / Required from Supplier:</h4>
       <p>يرجى تزويدنا بعرض سعر للأصناف المذكورة أعلاه يتضمن:</p>
       <p>Please provide us with a quotation for the above items including:</p>
-      <ul style="text-align: right; margin: 15px auto; max-width: 400px;">
+      <ul>
         <li>سعر الوحدة لكل صنف / Unit price for each item</li>
         <li>مدة الصلاحية / Validity period</li>
         <li>شروط الدفع / Payment terms</li>
@@ -348,24 +168,24 @@
     </div>
     
     
-    <div class="notes-section">
+    <div class="pm-note">
       <h4>ملاحظات إضافية / Additional Notes:</h4>
       <p>Request notes</p>
     </div>
     
     
     <!-- Signature Section -->
-    <div class="signature-section">
-      <div class="signature-box">
-        <div class="signature-line">مدير المشتريات / Procurement Manager</div>
+    <div class="pm-signatures">
+      <div class="pm-sign">
+        <div>مدير المشتريات / Procurement Manager</div><div class="pm-sign-line"></div>
       </div>
-      <div class="signature-box">
-        <div class="signature-line">ختم المورد / Supplier Stamp</div>
+      <div class="pm-sign">
+        <div>ختم المورد / Supplier Stamp</div><div class="pm-sign-line"></div>
       </div>
     </div>
     
     <!-- Footer -->
-    <div class="footer">
+    <div class="pm-footer">
       <p>شركة مصر للمحركات - 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</p>
       <p>هاتف: 02-33039811 | فاكس: 02-33039818 | sales@misrmotors.com</p>
     </div>
