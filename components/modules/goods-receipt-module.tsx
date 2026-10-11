@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
@@ -192,7 +193,7 @@ export function GoodsReceiptModule() {
     }).filter((l: ReceiptLineItem) => l.quantityOrdered > 0)
 
     if (lines.length === 0) {
-      alert('Every item on this purchase order has already been received.')
+      alert(t("gr.all-items-received"))
       return
     }
 
@@ -284,7 +285,7 @@ export function GoodsReceiptModule() {
       if (line.itemType === 'outsourced') continue
       const totalAllocated = line.warehouseAllocations.reduce((sum, a) => sum + a.quantity, 0)
       if (totalAllocated !== line.quantityReceived) {
-        alert(`${line.productName}: Allocated quantity (${totalAllocated}) doesn't match received quantity (${line.quantityReceived})`)
+        alert(fill(t("gr.allocation-mismatch"), { name: line.productName, allocated: totalAllocated, received: line.quantityReceived }))
         return
       }
     }
@@ -293,7 +294,7 @@ export function GoodsReceiptModule() {
     // (the server only accepts positive quantities, and the order stays open for the rest).
     const lineSpecs = receiptLines.filter((line) => line.quantityReceived > 0)
     if (lineSpecs.length === 0) {
-      alert('Enter a received quantity greater than zero for at least one item.')
+      alert(t("gr.enter-received-quantity"))
       return
     }
 
@@ -355,10 +356,12 @@ export function GoodsReceiptModule() {
       }
 
       await loadData()
-      alert(`Goods received successfully! GRN: ${result.receipt.grnNumber}${result.poStatus === 'partially_received' ? ' (order partially received - the rest can still be received)' : ''}`)
+      const grn = result.receipt.grnNumber
+      const partial = result.poStatus === 'partially_received'
+      alert(partial ? fill(t("gr.received-success-partial"), { grn }) : fill(t("gr.received-success"), { grn }))
     } catch (error: any) {
       console.error('Error creating goods receipt:', error)
-      alert(`Error: ${error.message}`)
+      alert(fill(t("gr.error-message"), { message: error.message }))
       setIsSubmitting(false)
       return
     }
@@ -455,7 +458,7 @@ export function GoodsReceiptModule() {
                     </div>
                     <div className="text-end">
                       <p className="text-2xl font-bold">
-                        <Money value={po.total} /> EGP
+                        <Money value={po.total} /> {t("common.egp-2")}
                       </p>
                       <div className="mt-1">
                         <StatusBadge status={po.status} label={t(`po.status.${po.status}`)} />
@@ -474,11 +477,11 @@ export function GoodsReceiptModule() {
                               <p className="font-medium text-sm">{item.productName}</p>
                               <p className="text-xs text-muted-foreground">
                                 {t("field.quantity")}: {formatNumber(item.quantity)} {t("gr.units")} @{" "}
-                                <Money value={item.unitPrice} /> EGP/{t("gr.unit")}
+                                <Money value={item.unitPrice} /> {t("gr.egp-per")}{t("gr.unit")}
                               </p>
                             </div>
                             <p className="font-semibold text-sm">
-                              <Money value={item.total} /> EGP
+                              <Money value={item.total} /> {t("common.egp-2")}
                             </p>
                           </div>
                         ))}
@@ -508,17 +511,17 @@ export function GoodsReceiptModule() {
                           className="gap-2"
                         >
                           <FileText className="w-4 h-4" />
-                          View PO PDF
+                          {t("gr.view-po-pdf")}
                         </Button>
                       ) : (
                         <Button
                           variant="ghost"
                           disabled
                           className="gap-2 opacity-50"
-                          title="No PO PDF uploaded"
+                          title={t("gr.no-po-pdf-uploaded")}
                         >
                           <FileText className="w-4 h-4" />
-                          No PDF
+                          {t("gr.no-pdf")}
                         </Button>
                       )}
                     </div>
@@ -588,8 +591,8 @@ export function GoodsReceiptModule() {
                 <div className="space-y-3">
                   <h4 className="font-semibold text-sm flex items-center gap-2">
                     <FileText className="w-4 h-4 text-amber-700" />
-                    Outsourced Services
-                    <span className="text-xs font-normal text-muted-foreground">(no warehouse allocation needed)</span>
+                    {t("gr.outsourced-services")}
+                    <span className="text-xs font-normal text-muted-foreground">{t("gr.no-warehouse-allocation")}</span>
                   </h4>
                   {receiptLines
                     .filter(l => l.itemType === 'outsourced')
@@ -600,10 +603,12 @@ export function GoodsReceiptModule() {
                           <div className="flex items-center justify-between gap-4 flex-wrap">
                             <div className="flex-1 min-w-0 break-words">
                               <p className="font-medium">{line.productName}</p>
-                              <p className="text-sm text-muted-foreground">Outsourced service — Ordered: {line.quantityOrdered + line.alreadyReceived}{line.alreadyReceived > 0 ? ` (already received ${line.alreadyReceived}, remaining ${line.quantityOrdered})` : ''}</p>
+                              <p className="text-sm text-muted-foreground">{line.alreadyReceived > 0
+                                ? fill(t("gr.outsourced-ordered-partial"), { ordered: line.quantityOrdered + line.alreadyReceived, received: line.alreadyReceived, remaining: line.quantityOrdered })
+                                : fill(t("gr.outsourced-ordered"), { ordered: line.quantityOrdered + line.alreadyReceived })}</p>
                             </div>
                             <div className="flex items-center gap-3">
-                              <Label htmlFor={`outsourced-qty-${globalIndex}`} className="text-sm">Qty Received</Label>
+                              <Label htmlFor={`outsourced-qty-${globalIndex}`} className="text-sm">{t("gr.qty-received")}</Label>
                               <Input
                                 id={`outsourced-qty-${globalIndex}`}
                                 type="number"
@@ -631,10 +636,10 @@ export function GoodsReceiptModule() {
                 <div className="space-y-3">
                   <h4 className="font-semibold text-sm flex items-center gap-2">
                     <Package className="w-4 h-4" />
-                    Stock Items
+                    {t("gr.stock-items")}
                   </h4>
                   <p className="text-sm text-muted-foreground">
-                    For each item, select which warehouse(s) to receive the quantity into. You can split quantities across multiple warehouses.
+                    {t("gr.warehouse-split-help")}
                   </p>
                   {receiptLines
                     .filter(l => l.itemType !== 'outsourced')
@@ -646,13 +651,15 @@ export function GoodsReceiptModule() {
                             <div className="flex items-start justify-between flex-wrap gap-2">
                               <div className="min-w-0 break-words">
                                 <p className="font-medium">{line.productName}</p>
-                                <p className="text-sm text-muted-foreground">Ordered: {line.quantityOrdered + line.alreadyReceived} units{line.alreadyReceived > 0 ? ` (already received ${line.alreadyReceived}, remaining ${line.quantityOrdered})` : ''}</p>
+                                <p className="text-sm text-muted-foreground">{line.alreadyReceived > 0
+                                  ? fill(t("gr.ordered-units-partial"), { ordered: line.quantityOrdered + line.alreadyReceived, received: line.alreadyReceived, remaining: line.quantityOrdered })
+                                  : fill(t("gr.ordered-units"), { ordered: line.quantityOrdered + line.alreadyReceived })}</p>
                               </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
                               <div className="space-y-1.5">
-                                <Label htmlFor={`qty-${line.productId}`}>Quantity Received *</Label>
+                                <Label htmlFor={`qty-${line.productId}`}>{t("gr.quantity-received")}</Label>
                                 <Input
                                   id={`qty-${line.productId}`}
                                   type="number"
@@ -673,7 +680,7 @@ export function GoodsReceiptModule() {
                                 />
                               </div>
                               <div className="space-y-1.5">
-                                <Label htmlFor={`issue-${line.productId}`}>Issue Type</Label>
+                                <Label htmlFor={`issue-${line.productId}`}>{t("gr.issue-type")}</Label>
                                 <Select
                                   value={line.discrepancyType || "none"}
                                   onValueChange={(value) => {
@@ -683,15 +690,15 @@ export function GoodsReceiptModule() {
                                   }}
                                 >
                                   <SelectTrigger id={`issue-${line.productId}`}>
-                                    <SelectValue placeholder="No issue" />
+                                    <SelectValue placeholder={t("gr.no-issue")} />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="none">No issue</SelectItem>
-                                    <SelectItem value="missing">Missing</SelectItem>
-                                    <SelectItem value="damaged">Damaged</SelectItem>
-                                    <SelectItem value="wrong_item">Wrong Item</SelectItem>
-                                    <SelectItem value="quantity_mismatch">Quantity Mismatch</SelectItem>
-                                    <SelectItem value="other">Other</SelectItem>
+                                    <SelectItem value="none">{t("gr.no-issue")}</SelectItem>
+                                    <SelectItem value="missing">{t("gr.issue-missing")}</SelectItem>
+                                    <SelectItem value="damaged">{t("common.damaged")}</SelectItem>
+                                    <SelectItem value="wrong_item">{t("common.wrong-item")}</SelectItem>
+                                    <SelectItem value="quantity_mismatch">{t("gr.quantity-mismatch")}</SelectItem>
+                                    <SelectItem value="other">{t("hr.document-other")}</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -699,10 +706,10 @@ export function GoodsReceiptModule() {
 
                             {line.discrepancyType && line.discrepancyType !== 'none' && (
                               <div className="space-y-1.5">
-                                <Label htmlFor={`notes-${line.productId}`}>Issue Details *</Label>
+                                <Label htmlFor={`notes-${line.productId}`}>{t("gr.issue-details")}</Label>
                                 <Textarea
                                   id={`notes-${line.productId}`}
-                                  placeholder="Describe the issue..."
+                                  placeholder={t("gr.describe-issue")}
                                   value={line.discrepancyNotes}
                                   onChange={(e) => {
                                     setReceiptLines(prev => prev.map((l, i) =>
@@ -720,7 +727,7 @@ export function GoodsReceiptModule() {
                               <div className="flex items-center justify-between flex-wrap gap-2">
                                 <Label className="flex items-center gap-2 font-medium">
                                   <Warehouse className="w-4 h-4" />
-                                  Warehouse Allocation
+                                  {t("gr.warehouse-allocation")}
                                 </Label>
                                 <Button
                                   type="button"
@@ -749,10 +756,10 @@ export function GoodsReceiptModule() {
                                   }}
                                   className="h-7 text-xs"
                                   disabled={warehouses.length < 2}
-                                  title={warehouses.length < 2 ? "Add more warehouses to enable splitting" : ""}
+                                  title={warehouses.length < 2 ? t("gr.add-warehouses-to-split") : ""}
                                 >
                                   <Plus className="w-3 h-3 me-1" />
-                                  Split to Another Warehouse
+                                  {t("gr.split-warehouse")}
                                 </Button>
                               </div>
 
@@ -773,12 +780,12 @@ export function GoodsReceiptModule() {
                                     }}
                                   >
                                     <SelectTrigger className="flex-1">
-                                      <SelectValue placeholder="Select warehouse" />
+                                      <SelectValue placeholder={t("common.select-warehouse")} />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {warehouses.map((wh) => (
                                         <SelectItem key={wh.id} value={String(wh.id)}>
-                                          {wh.name} {wh.isDefault && "(Default)"}
+                                          {wh.name} {wh.isDefault && t("gr.default-marker")}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
@@ -800,7 +807,7 @@ export function GoodsReceiptModule() {
                                       ))
                                     }}
                                     className="w-24"
-                                    placeholder="Qty"
+                                    placeholder={t("common.qty")}
                                   />
                                   {line.warehouseAllocations.length > 1 && (
                                     <Button
@@ -830,11 +837,11 @@ export function GoodsReceiptModule() {
                                 return remaining !== 0 ? (
                                   <p className={`text-xs ${remaining > 0 ? 'text-amber-700' : 'text-red-700'}`}>
                                     {remaining > 0
-                                      ? `${remaining} units not yet allocated to a warehouse`
-                                      : `Over-allocated by ${Math.abs(remaining)} units`}
+                                      ? fill(t("gr.units-unallocated"), { remaining })
+                                      : fill(t("gr.over-allocated"), { count: Math.abs(remaining) })}
                                   </p>
                                 ) : (
-                                  <p className="text-xs text-green-700">All {totalAllocated} units allocated</p>
+                                  <p className="text-xs text-green-700">{fill(t("gr.all-allocated"), { count: totalAllocated })}</p>
                                 )
                               })()}
                             </div>
@@ -865,7 +872,7 @@ export function GoodsReceiptModule() {
                                     className="w-20 h-20 border-2 border-dashed rounded flex flex-col items-center justify-center gap-1 hover:bg-muted/50 transition-colors"
                                   >
                                     <Camera className="w-4 h-4 text-muted-foreground" />
-                                    <span className="text-[10px] text-muted-foreground">Add Photo</span>
+                                    <span className="text-[10px] text-muted-foreground">{t("gr.add-photo")}</span>
                                   </button>
                                 )}
                                 <input
@@ -877,10 +884,10 @@ export function GoodsReceiptModule() {
                                 />
                               </div>
                               <div className="flex-1">
-                                <Label htmlFor={`photo-notes-${line.productId}`} className="text-xs">Photo Notes</Label>
+                                <Label htmlFor={`photo-notes-${line.productId}`} className="text-xs">{t("gr.photo-notes")}</Label>
                                 <Input
                                   id={`photo-notes-${line.productId}`}
-                                  placeholder="Optional notes about photo..."
+                                  placeholder={t("gr.photo-notes-hint")}
                                   value={photoNotes[line.productId] || ""}
                                   onChange={(e) =>
                                     setPhotoNotes((prev) => ({ ...prev, [line.productId]: e.target.value }))

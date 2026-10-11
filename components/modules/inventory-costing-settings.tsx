@@ -45,20 +45,20 @@ export function InventoryCostingSettings() {
       })
 
       if (response.ok) {
-        alert("Inventory costing method updated successfully!")
+        alert(t("costing.updated"))
       } else {
         throw new Error("Failed to update settings")
       }
     } catch (error) {
       console.error("Error saving settings:", error)
-      alert("Failed to save settings. Please try again.")
+      alert(t("costing.save-failed"))
     } finally {
       setSaving(false)
     }
   }
 
   if (loading) {
-    return <div className="p-6 text-center">Loading settings...</div>
+    return <div className="p-6 text-center">{t("costing.loading")}</div>
   }
 
   return (
@@ -68,9 +68,9 @@ export function InventoryCostingSettings() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Settings className="w-5 h-5" />
-            <CardTitle>Inventory Costing Method</CardTitle>
+            <CardTitle>{t("costing.title")}</CardTitle>
           </div>
-          <CardDescription>Choose how inventory costs are calculated when products are sold</CardDescription>
+          <CardDescription>{t("costing.description")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <RadioGroup value={costingMethod} onValueChange={(value) => setCostingMethod(value as "FIFO" | "LIFO")}>
@@ -79,14 +79,13 @@ export function InventoryCostingSettings() {
               <div className="flex-1">
                 <Label htmlFor="fifo" className="cursor-pointer flex items-center gap-2 font-semibold">
                   <TrendingUp className="w-4 h-4" />
-                  FIFO (First-In, First-Out)
+                  {t("costing.fifo")}
                 </Label>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Uses the cost of the oldest inventory first. Best for perishable goods or when costs are rising.
+                  {t("costing.fifo-description")}
                 </p>
                 <div className="mt-2 p-3 bg-muted rounded text-sm">
-                  <strong>Example:</strong> If you bought 10 units at $5 and then 10 units at $7, selling 15 units will
-                  use 10 units at $5 and 5 units at $7.
+                  <strong>{t("costing.example")}</strong> {t("costing.fifo-example")}
                 </div>
               </div>
             </div>
@@ -96,14 +95,13 @@ export function InventoryCostingSettings() {
               <div className="flex-1">
                 <Label htmlFor="lifo" className="cursor-pointer flex items-center gap-2 font-semibold">
                   <TrendingDown className="w-4 h-4" />
-                  LIFO (Last-In, First-Out)
+                  {t("costing.lifo")}
                 </Label>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Uses the cost of the newest inventory first. Can provide tax benefits when costs are rising.
+                  {t("costing.lifo-description")}
                 </p>
                 <div className="mt-2 p-3 bg-muted rounded text-sm">
-                  <strong>Example:</strong> If you bought 10 units at $5 and then 10 units at $7, selling 15 units will
-                  use 10 units at $7 and 5 units at $5.
+                  <strong>{t("costing.example")}</strong> {t("costing.lifo-example")}
                 </div>
               </div>
             </div>
@@ -111,14 +109,13 @@ export function InventoryCostingSettings() {
 
           <div className="pt-4 border-t">
             <Button onClick={handleSave} disabled={saving} size="lg" className="w-full">
-              {saving ? "Saving..." : "Save Costing Method"}
+              {saving ? t("common.saving") : t("costing.save")}
             </Button>
           </div>
 
           <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p className="text-sm text-yellow-800">
-              <strong>Important:</strong> Changing the costing method will only affect future sales. Previously allocated
-              inventory will retain their original costing method.
+              <strong>{t("costing.important")}</strong> {t("costing.important-note")}
             </p>
           </div>
         </CardContent>

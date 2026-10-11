@@ -121,7 +121,7 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
   }
 
   if (loading) {
-    return <div className="p-6 text-center">{t("action.loading")}</div>
+    return <div className="p-6 text-center">{t("loading")}</div>
   }
 
   if (products.length === 0) {
@@ -169,7 +169,7 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
                     </CardDescription>
                   </div>
                   <div className="text-end">
-                    <div className="text-sm text-muted-foreground">{t("pricing.current-price")} (EGP)</div>
+                    <div className="text-sm text-muted-foreground">{t("pricing.current-price")} {t("common.egp")}</div>
                     <div className="text-2xl font-bold">
                       <Money value={product.currentUnitPrice} />
                     </div>
@@ -189,19 +189,19 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
                       <div className="font-medium">{latestPurchase.poNumber}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">{t("pricing.base-cost")} (EGP)</div>
+                      <div className="text-muted-foreground">{t("pricing.base-cost")} {t("common.egp")}</div>
                       <div className="font-medium">
                         <Money value={latestPurchase.unitPrice} />
                       </div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">{t("pricing.tax-overhead")} (EGP)</div>
+                      <div className="text-muted-foreground">{t("pricing.tax-overhead")} {t("common.egp")}</div>
                       <div className="font-medium">
                         <Money value={latestPurchase.allocatedOverhead} />
                       </div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">{t("pricing.landed-cost")} (EGP)</div>
+                      <div className="text-muted-foreground">{t("pricing.landed-cost")} {t("common.egp")}</div>
                       <div className="font-bold text-lg">
                         <Money value={landedCostPerUnit} />
                       </div>
@@ -253,7 +253,7 @@ export function PricingReviewModule({ userRole }: PricingReviewModuleProps) {
                 {/* Summary */}
                 <div className="flex items-center justify-between pt-4 border-t">
                   <div className="text-sm text-muted-foreground">
-                    {t("pricing.profit-per-unit")} (EGP):{" "}
+                    {t("pricing.profit-per-unit")} {t("common.egp")}:{" "}
                     <span className="font-semibold text-foreground">
                       <Money value={pricing.price - landedCostPerUnit} />
                     </span>

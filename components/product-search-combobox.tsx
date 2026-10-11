@@ -3,6 +3,8 @@
 import * as React from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -47,9 +49,10 @@ export function ProductSearchCombobox({
   value,
   onSelect,
   disabled = false,
-  placeholder = "Search product by name or SKU...",
+  placeholder,
   className,
 }: ProductSearchComboboxProps) {
+  const { t } = useI18n()
   const [open, setOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
 
@@ -105,12 +108,12 @@ export function ProductSearchCombobox({
               )}
               {warehouseId && (
                 <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded ml-auto">
-                  {getAvailableQuantity(value!)} in stock
+                  {fill(t("product.in-stock-qty"), { qty: getAvailableQuantity(value!) })}
                 </span>
               )}
             </span>
           ) : (
-            placeholder
+            placeholder ?? t("product.search-by-name-sku")
           )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -118,12 +121,12 @@ export function ProductSearchCombobox({
       <PopoverContent className="w-[400px] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Type to search..."
+            placeholder={t("product.type-to-search")}
             value={searchQuery}
             onValueChange={setSearchQuery}
           />
           <CommandList>
-            <CommandEmpty>No product found.</CommandEmpty>
+            <CommandEmpty>{t("product.none-found")}</CommandEmpty>
             <CommandGroup>
               {filteredProducts.map((product) => {
                 const qty = warehouseId ? getAvailableQuantity(product.id) : null
@@ -158,7 +161,7 @@ export function ProductSearchCombobox({
                           "text-xs",
                           qty > 0 ? "text-green-700" : "text-red-700"
                         )}>
-                          {qty > 0 ? `${qty} available` : "Out of stock"}
+                          {qty > 0 ? fill(t("product.qty-available"), { qty }) : t("product.out-of-stock")}
                         </span>
                       )}
                     </div>

@@ -88,7 +88,7 @@ export function ProductModule() {
 
   const handleAddProduct = async () => {
     if (!formData.productName || !formData.sku || !formData.unitPrice) {
-      alert(t("message.fill-required-fields"))
+      alert(t("message.fill-required"))
       return
     }
 
@@ -162,7 +162,7 @@ export function ProductModule() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder={t("product.search-placeholder") || "Search by product name or SKU..."}
+              placeholder={t("product.search-placeholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="ps-9"
@@ -301,7 +301,7 @@ export function ProductModule() {
                     <p className="font-semibold">{product.category || "-"}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">{t("product.unit-price")} (EGP)</p>
+                    <p className="text-sm text-muted-foreground">{t("product.unit-price")} {t("common.egp")}</p>
                     <p className="font-semibold"><Money value={product.unitPrice} /></p>
                   </div>
                   <div>
@@ -346,7 +346,7 @@ export function ProductModule() {
           </DialogHeader>
           <div className="py-4">
             {loadingImages ? (
-              <div className="text-center py-8 text-muted-foreground">{t("message.loading")}...</div>
+              <div className="text-center py-8 text-muted-foreground">{t("loading")}</div>
             ) : productImages.length === 0 ? (
               <div className="text-center py-8">
                 <ImageIcon className="w-16 h-16 mx-auto text-muted-foreground/50 mb-4" />
