@@ -399,7 +399,7 @@ export function CourierManagementModule() {
                     placeholder={t("courier.name-placeholder")}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="phone">{t("field.phone")}</Label>
                     <Input
@@ -419,7 +419,7 @@ export function CourierManagementModule() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="vehicleType">{t("courier.vehicle-type")}</Label>
                     <Input
@@ -477,7 +477,7 @@ export function CourierManagementModule() {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-phone">{t("field.phone")}</Label>
                 <Input
@@ -496,7 +496,7 @@ export function CourierManagementModule() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-vehicleType">{t("courier.vehicle-type")}</Label>
                 <Input

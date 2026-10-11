@@ -382,7 +382,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="unitCost">{t("common.unit-cost-egp")}</Label>
                 <Input
@@ -460,7 +460,7 @@ export function SupplierProductsSection({ supplierId, supplierName }: Props) {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-unitCost">{t("common.unit-cost-egp")}</Label>
                 <Input

@@ -229,7 +229,7 @@ export function MaintenanceMaterialsSelector({
                 onChange={(e) => setOutsourcedName(e.target.value)}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">{t("quantity")}</Label>
                 <Input

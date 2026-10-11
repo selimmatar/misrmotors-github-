@@ -1126,8 +1126,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
           ) : (
             <div className="space-y-4">
               {items.map((item, index) => (
-                <div key={item.id} className="grid grid-cols-12 gap-4 items-end p-4 border rounded-lg">
-                  <div className="col-span-1 text-center">
+                <div key={item.id} className="grid grid-cols-2 lg:grid-cols-12 gap-4 items-end p-4 border rounded-lg">
+                  <div className="col-span-2 lg:col-span-12">
                     <div className="font-semibold">{index + 1}</div>
                     <div className="text-xs text-muted-foreground mt-1">
                       {item.item_type === "inventory" ? t("group.inventory") : t("common.outsourced-2")}
@@ -1135,7 +1135,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                   </div>
                   {item.item_type === "inventory" ? (
                     <>
-                      <div className="col-span-4 space-y-2">
+                      <div className="col-span-2 lg:col-span-6 space-y-2">
                         <Label htmlFor={`product-${item.id}`}>{t("sq.select-product-from-inventory")}</Label>
                         <ProductSearchCombobox
                           products={products
@@ -1155,7 +1155,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                     </>
                   ) : (
                     <>
-                      <div className="col-span-2 space-y-2">
+                      <div className="col-span-2 lg:col-span-3 space-y-2">
                         <Label htmlFor={`product-${item.id}`}>{t("sq.outsourced-product-name")}</Label>
                         <Input
                           id={`product-${item.id}`}
@@ -1164,13 +1164,13 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                           onChange={(e) => updateItem(item.id, "product_name", e.target.value)}
                         />
                       </div>
-                      <div className="col-span-2 space-y-2">
+                      <div className="col-span-2 lg:col-span-3 space-y-2">
                         <Label htmlFor={`supplier-${item.id}`}>{t("field.supplier")}</Label>
                         <Select
                           value={item.supplier_name || ""}
                           onValueChange={(value) => updateItem(item.id, "supplier_name", value)}
                         >
-                          <SelectTrigger id={`supplier-${item.id}`}>
+                          <SelectTrigger id={`supplier-${item.id}`} className="w-full">
                             <SelectValue placeholder={t("common.select-supplier")} />
                           </SelectTrigger>
                           <SelectContent>
@@ -1184,7 +1184,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                       </div>
                     </>
                   )}
-                  <div className="col-span-2 space-y-2">
+                  <div className="col-span-1 lg:col-span-1 space-y-2">
                     <Label htmlFor={`quantity-${item.id}`}>{t("quantity")}</Label>
                     {(() => {
                       const stockLimit = item.item_type === "inventory" ? getAvailableStock(item.product_id) : null
@@ -1211,7 +1211,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                       )
                     })()}
                   </div>
-                  <div className="col-span-2 space-y-2">
+                  <div className="col-span-1 lg:col-span-2 space-y-2">
                     <Label htmlFor={`price-${item.id}`}>{t("common.unit-cost-egp")}</Label>
                     <Input
                       id={`price-${item.id}`}
@@ -1222,7 +1222,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                       onChange={(e) => updateItem(item.id, "unit_price", Number(e.target.value))}
                     />
                   </div>
-                  <div className="col-span-1 space-y-2">
+                  <div className="col-span-1 lg:col-span-1 space-y-2">
                     <Label htmlFor={`markup-${item.id}`}>{t("so.markup")}</Label>
                     <Input
                       id={`markup-${item.id}`}
@@ -1233,14 +1233,14 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                       onChange={(e) => updateItem(item.id, "markup", Number(e.target.value))}
                     />
                   </div>
-                  <div className="col-span-1 space-y-2">
+                  <div className="col-span-1 lg:col-span-1 space-y-2">
                     <Label>{t("total")}</Label>
                     <div className="text-sm font-medium pt-2"><Money value={item.quantity * getItemFinalPrice(item)} /> {t("common.egp-2")}</div>
                     {(item.markup || 0) > 0 && (
                       <div className="text-xs text-muted-foreground">@ {getItemFinalPrice(item).toFixed(2)}</div>
                     )}
                   </div>
-                  <div className="col-span-1">
+                  <div className="col-span-1 lg:col-span-1">
                     <Button variant="destructive" size="icon" aria-label={t("action.remove-item")} onClick={() => removeItem(item.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>

@@ -684,7 +684,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
               {quotation.customer_phone ? ` • ${quotation.customer_phone}` : ""}
               {quotation.customer_email ? ` • ${quotation.customer_email}` : ""}
             </p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t("so.customer")}</Label>
                 <Select value={customerId} onValueChange={setCustomerId}>
@@ -721,9 +721,9 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
 
           {/* Items */}
           <div className="border rounded-lg p-4 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-semibold text-sm">{t("so.items")}</h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => addItem("stock")}>
                   <Package className="h-4 w-4 mr-2" />
                   {t("common.add-from-inventory")}
@@ -744,12 +744,12 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                 {items.map((item) => {
                   const stockLimit = item.itemType === "stock" ? getAvailableStock(item.productId) : null
                   return (
-                    <div key={item.key} className="grid grid-cols-12 gap-3 items-end p-3 border rounded-md">
-                      <div className="col-span-1 text-center text-xs text-muted-foreground">
+                    <div key={item.key} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end p-3 border rounded-md">
+                      <div className="col-span-2 lg:col-span-12 text-xs text-muted-foreground">
                         {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
                       </div>
                       {item.itemType === "stock" ? (
-                        <div className="col-span-4 space-y-1">
+                        <div className="col-span-2 lg:col-span-6 space-y-1">
                           <Label className="text-xs">{t("field.product")}</Label>
                           <ProductSearchCombobox
                             products={products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
@@ -764,14 +764,14 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                         </div>
                       ) : (
                         <>
-                          <div className="col-span-2 space-y-1">
+                          <div className="col-span-2 lg:col-span-3 space-y-1">
                             <Label className="text-xs">{t("common.item-name")}</Label>
                             <Input
                               value={item.productName}
                               onChange={(e) => updateItem(item.key, { productName: e.target.value })}
                             />
                           </div>
-                          <div className="col-span-2 space-y-1">
+                          <div className="col-span-2 lg:col-span-3 space-y-1">
                             <Label className="text-xs">{t("field.supplier")}</Label>
                             <Select
                               value={item.supplierName || ""}
@@ -794,7 +794,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                           </div>
                         </>
                       )}
-                      <div className="col-span-2 space-y-1">
+                      <div className="col-span-1 lg:col-span-1 space-y-1">
                         <Label className="text-xs">{t("quantity")}</Label>
                         <Input
                           type="number"
@@ -803,7 +803,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                           onChange={(e) => updateItem(item.key, { quantity: Number(e.target.value) || 0 })}
                         />
                       </div>
-                      <div className="col-span-2 space-y-1">
+                      <div className="col-span-1 lg:col-span-2 space-y-1">
                         <Label className="text-xs">{t("field.unit-price")}</Label>
                         <Input
                           type="number"
@@ -813,13 +813,13 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                           onChange={(e) => updateItem(item.key, { unitPrice: Number(e.target.value) || 0 })}
                         />
                       </div>
-                      <div className="col-span-2 space-y-1">
+                      <div className="col-span-1 lg:col-span-2 space-y-1">
                         <Label className="text-xs">{t("total")}</Label>
                         <div className="text-sm font-medium pt-2 whitespace-nowrap">
                           {formatCurrency(item.quantity * item.unitPrice)}
                         </div>
                       </div>
-                      <div className="col-span-1 flex justify-end">
+                      <div className="col-span-1 lg:col-span-1 flex justify-end">
                         <Button variant="destructive" size="icon" aria-label={t("action.remove-item")} onClick={() => removeItem(item.key)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>

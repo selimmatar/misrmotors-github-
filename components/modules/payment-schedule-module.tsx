@@ -305,7 +305,7 @@ export function PaymentScheduleModule() {
               {/* Current Plan Summary */}
               <div className="bg-muted/50 rounded-lg p-4">
                 <h4 className="font-semibold mb-2">{t("financial.current-plan")}</h4>
-                <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">{t("common.total-amount-egp")}</p>
                     <p className="font-semibold"><Money value={selectedOrder.schedules.reduce((sum, s) => sum + s.amount, 0)} /></p>
@@ -325,7 +325,7 @@ export function PaymentScheduleModule() {
               <div className="space-y-4">
                 <h4 className="font-semibold">{t("schedule.new-payment-terms")}</h4>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>{t("common.total-amount-egp")}</Label>
                     <Input

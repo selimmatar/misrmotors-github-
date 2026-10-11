@@ -79,7 +79,7 @@ export function InstallmentFields({
       <CardContent className="pt-4 space-y-4">
         <div className="space-y-2">
           <Label>{t("payment.installment-months")}</Label>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"

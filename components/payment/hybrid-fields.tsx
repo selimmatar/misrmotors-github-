@@ -263,7 +263,7 @@ export function HybridFields({
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>{t("payment.down-payment-amount")}</Label>
               <Input
@@ -408,7 +408,7 @@ export function HybridFields({
             </div>
 
             {/* Summary */}
-            <div className="grid grid-cols-3 gap-3 p-3 bg-white rounded-lg border">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-white rounded-lg border">
               <div>
                 <p className="text-xs text-muted-foreground">{t("payment.down-payment")}</p>
                 <p className="font-semibold text-green-700">{formatCurrency(effectiveDownPaymentAmount)}</p>
