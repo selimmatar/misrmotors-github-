@@ -5,6 +5,7 @@ import React from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { CheckCircle2, Clock, FileText, DollarSign, Wrench, UserCheck } from "lucide-react"
+import { useI18n } from "@/lib/i18n-context"
 
 export type WorkflowStage =
   | "created"              // Sales creates work order (status: pending)
@@ -27,43 +28,43 @@ const stageConfig: Record<WorkflowStage, {
   badgeVariant: "default" | "secondary" | "destructive" | "outline"
 }> = {
   created: {
-    label: "Created",
-    description: "Work order created by sales",
+    label: "wo-flow.created",
+    description: "wo-flow.created-desc",
     icon: FileText,
     color: "text-blue-600",
     badgeVariant: "secondary"
   },
   assigned: {
-    label: "In Progress",
-    description: "Assigned to shipping team",
+    label: "common.in-progress",
+    description: "wo-flow.assigned-desc",
     icon: Wrench,
     color: "text-orange-700",
     badgeVariant: "outline"
   },
   report_pending: {
-    label: "Awaiting Approval",
-    description: "Report submitted, pending sales review",
+    label: "wo-flow.awaiting-approval",
+    description: "wo-flow.awaiting-approval-desc",
     icon: Clock,
     color: "text-yellow-700",
     badgeVariant: "secondary"
   },
   approved: {
-    label: "Approved",
-    description: "Sales approved the report",
+    label: "status.approved",
+    description: "wo-flow.approved-desc",
     icon: UserCheck,
     color: "text-green-700",
     badgeVariant: "default"
   },
   ready_for_invoice: {
-    label: "Ready for Invoice",
-    description: "Awaiting accounting to create invoice",
+    label: "wo-flow.ready-for-invoice",
+    description: "wo-flow.ready-for-invoice-desc",
     icon: DollarSign,
     color: "text-purple-600",
     badgeVariant: "default"
   },
   invoiced: {
-    label: "Invoiced",
-    description: "Invoice created",
+    label: "wo-flow.invoiced",
+    description: "wo-flow.invoiced-desc",
     icon: CheckCircle2,
     color: "text-green-700",
     badgeVariant: "default"
@@ -71,6 +72,7 @@ const stageConfig: Record<WorkflowStage, {
 }
 
 export function WorkflowStatusBadge({ currentStage, compact = true }: WorkflowStatusProps) {
+  const { t } = useI18n()
   const config = stageConfig[currentStage]
   const Icon = config.icon
 
@@ -78,7 +80,7 @@ export function WorkflowStatusBadge({ currentStage, compact = true }: WorkflowSt
     return (
       <Badge variant={config.badgeVariant} className="flex items-center gap-1.5">
         <Icon className="w-3.5 h-3.5" />
-        {config.label}
+        {t(config.label)}
       </Badge>
     )
   }
@@ -88,15 +90,16 @@ export function WorkflowStatusBadge({ currentStage, compact = true }: WorkflowSt
       <CardHeader>
         <CardTitle className={`flex items-center gap-2 ${config.color}`}>
           <Icon className="w-5 h-5" />
-          {config.label}
+          {t(config.label)}
         </CardTitle>
-        <CardDescription>{config.description}</CardDescription>
+        <CardDescription>{t(config.description)}</CardDescription>
       </CardHeader>
     </Card>
   )
 }
 
 export function WorkflowTimeline({ currentStage }: { currentStage: WorkflowStage }) {
+  const { t } = useI18n()
   const stages: WorkflowStage[] = ["created", "assigned", "report_pending", "approved", "ready_for_invoice", "invoiced"]
   const currentIndex = stages.indexOf(currentStage)
 
@@ -128,9 +131,9 @@ export function WorkflowTimeline({ currentStage }: { currentStage: WorkflowStage
                 isCurrent ? 'text-blue-700' :
                 'text-gray-500'
               }`}>
-                {config.label}
+                {t(config.label)}
               </h4>
-              <p className="text-sm text-muted-foreground">{config.description}</p>
+              <p className="text-sm text-muted-foreground">{t(config.description)}</p>
             </div>
             {isComplete && (
               <CheckCircle2 className="w-5 h-5 text-green-700" />
