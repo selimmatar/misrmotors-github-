@@ -1992,9 +1992,10 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                 dp.deliveryDate || dp.delivery_date || dp.createdAt || dp.created_at || dp.printedAt || dp.printed_at
 
               // Get customer and SO info
-              const customerName = dp.customerName || getCustomerName(customerId) || "Unknown Customer"
+              const rawCustomerName = dp.customerName || getCustomerName(customerId)
+              const customerName = !rawCustomerName || rawCustomerName === "Unknown" ? t("acct.unknown-customer") : rawCustomerName
               const soNumber = dp.soNumber || getSONumber(salesOrderId) || t("label.na")
-              const paymentType = getSOPaymentType(salesOrderId) || "Unknown"
+              const paymentType = getSOPaymentType(salesOrderId)
 
               return (
                 <div
@@ -2018,7 +2019,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                       <p className="text-sm text-muted-foreground">
                         {t("ar.date-label")} {deliveryDate ? formatDate(deliveryDate, language) : t("label.na")}
                       </p>
-                      <p className="text-xs text-muted-foreground">{t("ar.payment-label")} {t(`payment.${paymentType}`)}</p>
+                      <p className="text-xs text-muted-foreground">{t("ar.payment-label")} {paymentType ? t(`payment.${paymentType}`) : "—"}</p>
                       {/* Show returned items warning if any */}
                       {dp.returnedQuantity && Number(dp.returnedQuantity) > 0 && (
                         <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs">

@@ -69,7 +69,7 @@ export function ShippingMaintenanceTab({ userRole }: { userRole: string }) {
       pending: { label: "status.pending", variant: "secondary" },
       assigned: { label: "maint.status-assigned", variant: "default" },
       in_progress: { label: "common.in-progress", variant: "outline" },
-      on_hold: { label: "inventory.on-hold", variant: "secondary" },
+      on_hold: { label: "status.on-hold", variant: "secondary" },
       completed: { label: "status.completed", variant: "default" },
       cancelled: { label: "status.cancelled", variant: "destructive" },
     }
