@@ -35,7 +35,7 @@ interface AppContextType {
   updateInventoryQuantity: (productId: string, quantityChange: number, warehouseId?: string) => Promise<void>
   purchaseOrders: PurchaseOrder[]
   setPurchaseOrders: (orders: PurchaseOrder[]) => void
-  addPurchaseOrder: (order: PurchaseOrder) => Promise<void>
+  addPurchaseOrder: (order: PurchaseOrder, options?: { allowOverOrder?: boolean }) => Promise<void>
   updatePurchaseOrder: (order: PurchaseOrder | (Partial<SalesOrder> & { id: string })) => Promise<void>
   salesOrders: SalesOrder[]
   setSalesOrders: (orders: SalesOrder[]) => void
@@ -526,12 +526,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const addPurchaseOrder = async (order: PurchaseOrder) => {
+  const addPurchaseOrder = async (order: PurchaseOrder, options?: { allowOverOrder?: boolean }) => {
     try {
       const response = await fetch("/api/purchase-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(options?.allowOverOrder && { allow_over_order: true }),
           po_number: order.poNumber,
           supplier_id: order.supplierId,
           supplier_name: order.supplierName,
@@ -576,7 +577,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Failed to create purchase order")
+        // code and lines let the form offer "order anyway" on PO_OVER_ORDER
+        throw Object.assign(new Error(error.error || "Failed to create purchase order"), { code: error.code, lines: error.lines })
       }
 
       // Refresh PO list

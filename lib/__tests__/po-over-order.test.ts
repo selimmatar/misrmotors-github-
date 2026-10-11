@@ -6,6 +6,7 @@ import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import * as poRoute from "../../app/api/purchase-orders/route"
+import { describeOverOrderLines } from "../po-over-order"
 
 // SO line 10 needs 10 units; SO line 11 needs 4 units.
 const soItems = (): Row[] => [
@@ -160,4 +161,38 @@ test("O13. every offending line is reported; a fully valid other line does not h
   assert.equal(r.status, 409)
   assert.equal(r.body.lines.length, 2)
   assert.deepEqual(r.body.lines.map((l: any) => l.sourceSoItemId).sort(), [10, 11])
+})
+
+test("O14. allow_over_order: true lets an over-ordering PO through; without it the 409 stays", async () => {
+  const db = mk([po(1, "pending")], [line(1, 1, 10, 10)])
+  assert.equal((await post([item(27, "10")])).status, 409)
+  const r = await post([item(27, "10")], { allow_over_order: true })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.purchase_orders.length, 2)
+  assert.equal(db.tables.purchase_orders[1].allow_over_order, undefined, "the flag is not stored as a column")
+  assert.equal(db.tables.purchase_order_items[1].quantity, 27)
+})
+
+test("O15. allow_over_order does not bypass the unknown-SO-line check", async () => {
+  mk()
+  const r = await post([item(1, "999")], { allow_over_order: true })
+  assert.equal(r.status, 400)
+  assert.equal(r.body.code, "PO_UNKNOWN_SO_ITEM")
+})
+
+test("O16. PUT with allow_over_order: true accepts an increased over-ordering line", async () => {
+  const db = mk([po(1, "pending")], [line(1, 1, 10, 5)])
+  assert.equal((await put({ id: "1", items: [item(12, "10")] })).status, 409)
+  const r = await put({ id: "1", items: [item(12, "10")], allow_over_order: true })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.purchase_orders[0].allow_over_order, undefined)
+})
+
+test("O17. describeOverOrderLines names each line by product and fills the template", () => {
+  const text = describeOverOrderLines(
+    [{ sourceSoItemId: 199, soQty: 27, alreadyOrdered: 27, requested: 27, allowed: 0 }, { sourceSoItemId: 7, soQty: 2, alreadyOrdered: 0, requested: 3, allowed: 2 }],
+    [{ sourceSoItemId: "199", productName: "Brake pad" }],
+    "{product}: {needed} / {ordered} / {requested}",
+  )
+  assert.equal(text, "Brake pad: 27 / 27 / 27\n#7: 2 / 0 / 3")
 })

@@ -239,17 +239,20 @@ export async function POST(request: Request) {
     const supabase = createAdminClient()
 
     const body = await request.json()
-    const { items, ...orderData } = body
+    const { items, allow_over_order, ...orderData } = body
+    const allowOverOrder = allow_over_order === true
 
     // Do not order more from suppliers than the sales order lines need (400/409 before anything is written).
+    // The user may confirm ordering more anyway (allow_over_order: true); an unknown SO line is still refused.
     // Known limit: two concurrent POSTs can still both pass; closing that needs a DB constraint (not approved).
     const overOrder = await checkPoOverOrder(supabase, items)
-    if (!overOrder.ok) {
+    if (!overOrder.ok && !(allowOverOrder && overOrder.code === "PO_OVER_ORDER")) {
       return NextResponse.json(
         { error: overOrder.error, code: overOrder.code, lines: overOrder.lines },
         { status: overOrder.status },
       )
     }
+    if (!overOrder.ok) console.warn("Purchase Orders POST: over-order confirmed by the user", JSON.stringify(overOrder.lines))
 
     let scheduleEntriesValue = null
     if (orderData.schedule_entries) {
@@ -477,7 +480,7 @@ export async function PUT(request: Request) {
     const supabase = createAdminClient()
 
     const body = await request.json()
-    const { id, items, ...requested } = body
+    const { id, items, allow_over_order, ...requested } = body
 
     // Whitelist: only PO_PUT_COLUMNS are written; every other key in the body is ignored.
     const updates: Record<string, any> = {}
@@ -540,7 +543,7 @@ export async function PUT(request: Request) {
         return NextResponse.json({ error: "Failed to read purchase order items" }, { status: 500 })
       }
       const overOrder = await checkPoOverOrder(supabase, linesWithIncreasedQuantity(items, storedLines || []), poId)
-      if (!overOrder.ok) {
+      if (!overOrder.ok && !(allow_over_order === true && overOrder.code === "PO_OVER_ORDER")) {
         return NextResponse.json(
           { error: overOrder.error, code: overOrder.code, lines: overOrder.lines },
           { status: overOrder.status },
