@@ -81,6 +81,7 @@ import { StatusBadge } from "@/components/erp/status-badge"
 import { ApprovalSteps } from "@/components/erp/approval-steps"
 import { Money } from "@/components/erp/money"
 import { formatDate, formatMoney } from "@/lib/format"
+import { canEditSalesOrder } from "@/lib/so-edit-eligibility"
 import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
 
 // Declare SalesOrderModuleProps type
@@ -881,20 +882,10 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
   const canApproveSO = userRole === "ceo" || userRole === "admin"
 
-  // Sales reps can correct an order right after accountant approval (e.g. the accountant
-  // only approved some of the requested items). Once a delivery permit exists, downstream
-  // fulfillment has already started against those items, so editing is blocked from here.
-  const canEditRole = userRole === "sales-rep" || userRole === "admin"
-  // After a return the order stays editable (Batch 2) so an item can be exchanged without a new sales order. The
-  // server keeps delivered items as history and only accepts safe edits (lib/so-edit.ts).
+  // Sales Rep / Admin can edit any order except a cancelled or rejected one. Items already on a delivery permit are
+  // locked inside the edit dialog (and refused by the server); see lib/so-edit-eligibility.ts.
   const hasReturns = (order: SalesOrder) => Number((order as any).returnedQuantity || 0) > 0
-  const RETURN_EDITABLE_STATUSES = ["accountant_approved", "ready_for_delivery", "shipped", "delivered"]
-  const showEditButton = (order: SalesOrder) =>
-    canEditRole && (order.status === "accountant_approved" || (hasReturns(order) && RETURN_EDITABLE_STATUSES.includes(order.status)))
-  const canEditApprovedOrder = (order: SalesOrder) =>
-    canEditRole &&
-    ((order.status === "accountant_approved" && !(order as any).deliveryPermits?.length) ||
-      (hasReturns(order) && RETURN_EDITABLE_STATUSES.includes(order.status)))
+  const showEditButton = (order: SalesOrder) => canEditSalesOrder(userRole, order.status)
 
   const pendingShipmentOrders = salesOrders.filter((order) => order.status === "ready_for_delivery")
   const shippedOrders = salesOrders.filter((order) => order.status === "shipped")
@@ -1773,14 +1764,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             e.stopPropagation()
             setEditingOrder(order)
           }}
-          disabled={!canEditApprovedOrder(order)}
-          title={
-            canEditApprovedOrder(order)
-              ? hasReturns(order)
-                ? t("so.edit-this-order-after-a")
-                : t("so.edit-this-approved-order-items")
-              : t("so.cannot-edit-a-delivery-permit")
-          }
+          title={hasReturns(order) ? t("so.edit-this-order-after-a") : t("so.edit-this-approved-order-items")}
         >
           <Pencil className="w-4 h-4" /> {t("edit")}
         </Button>

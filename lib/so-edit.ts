@@ -8,6 +8,8 @@
 // and may NOT:
 //   * delete a line the customer still keeps some of, or turn a line into a different item, once that item is on
 //     a delivery permit,
+//   * change the quantity or price of, or delete, a line whose item is on a delivery permit and has no return
+//     (delivered / permitted items are locked; extra quantity goes on a new line, see lib/so-edit-eligibility.ts),
 //   * change the customer once delivery permits exist.
 // Nothing here writes; the PUT route calls validateSoEdit BEFORE it changes anything.
 import { isSOFullyDelivered } from "./delivery-status"
@@ -49,20 +51,22 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
     "load delivery permit items",
   ) as any[]
   const stored = must(
-    await db.from("sales_order_items").select("so_item_id, product_id, outsourced_name, quantity").eq("so_id", soId),
+    await db.from("sales_order_items").select("so_item_id, product_id, outsourced_name, quantity, unit_price").eq("so_id", soId),
     "load sales order items",
   ) as any[]
   const returns = returnedByKey(await loadReturnLines(db, permitIds))
 
   const onPermit = new Set<string>() // items that appear on any permit: their order lines are history
+  const names = new Map<string, string>() // item name as printed on the permit, for messages
   const delivered = new Map<string, number>()
   for (const item of permitItems) {
     const key = lineKey(item.product_id, item.item_name_snapshot)
     onPermit.add(key)
+    if (item.item_name_snapshot && !names.has(key)) names.set(key, item.item_name_snapshot)
     const permit = permits.find((p) => p.permit_id === item.permit_id)
     if (permit && DELIVERED_PERMIT_STATUSES.includes(permit.status)) delivered.set(key, (delivered.get(key) || 0) + (Number(item.quantity) || 0))
   }
-  const label = (key: string) => key.slice(2) || "this item"
+  const label = (key: string) => names.get(key) || key.slice(2) || "this item"
   const kept = (key: string) => Math.max(0, (delivered.get(key) || 0) - (returns.get(key) || 0))
 
   const incomingById = new Map<number, any>()
@@ -75,6 +79,17 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
     const key = lineKey(row.product_id, row.outsourced_name)
     if (!onPermit.has(key)) continue
     const incoming = incomingById.get(row.so_item_id)
+    if ((returns.get(key) || 0) <= EPS) {
+      // On a permit with no return: the line is locked.
+      const lockedError = `"${label(key)}" is on a delivery permit of ${soLabel}; its quantity and price cannot be changed and it cannot be removed. Add any extra quantity or a different item as a new line.`
+      if (!incoming || incomingKey(incoming) !== key) return { ok: false, status: 409, error: lockedError }
+      const price = incoming.unitPrice ?? incoming.unit_price
+      if (Math.abs((Number(incoming.quantity) || 0) - (Number(row.quantity) || 0)) > EPS) return { ok: false, status: 409, error: lockedError }
+      if (price !== undefined && price !== null && price !== "" && Math.abs(Number(price) - (Number(row.unit_price) || 0)) > EPS) {
+        return { ok: false, status: 409, error: lockedError }
+      }
+      continue
+    }
     if (!incoming) {
       if (kept(key) <= EPS) continue // fully returned: the line may go, its permit and return stay as history
       return { ok: false, status: 409, error: `"${label(key)}" is on a delivery permit of ${soLabel} and cannot be removed while the customer keeps ${kept(key)} of it. Lower the line to ${kept(key)} instead, and add any replacement as a new line.` }

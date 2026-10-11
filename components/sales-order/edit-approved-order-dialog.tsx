@@ -20,6 +20,7 @@ import { computeTotals } from "@/lib/print-totals"
 import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 import { useAppContext } from "@/lib/app-context"
 import { lineKey } from "@/lib/return-lines"
+import { isLineLocked } from "@/lib/so-edit-eligibility"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
@@ -638,6 +639,8 @@ ${renderTotalsBlock(printTotals)}
                 {items.map((item) => {
                   const poStatus = item.id ? itemPoStatus[item.id] : undefined
                   const stockLimit = item.itemType === "stock" ? getAvailableStock(item.productId) : null
+                  // On a delivery permit (and no return): the line is locked; extra quantity goes on a new line.
+                  const locked = isLineLocked(item)
                   return (
                     <div key={item.key} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end p-3 border rounded-md">
                       <div className="col-span-2 lg:col-span-12 text-xs text-muted-foreground">
@@ -702,6 +705,7 @@ ${renderTotalsBlock(printTotals)}
                           type="number"
                           min={item.onDeliveryPermit ? item.minQuantity || 0 : 1}
                           value={item.quantity}
+                          disabled={locked}
                           onChange={(e) => updateItem(item.key, { quantity: Number(e.target.value) || 0 })}
                         />
                       </div>
@@ -712,6 +716,7 @@ ${renderTotalsBlock(printTotals)}
                           min="0"
                           step="0.01"
                           value={item.unitPrice}
+                          disabled={locked}
                           onChange={(e) => updateItem(item.key, { unitPrice: Number(e.target.value) || 0 })}
                         />
                       </div>
@@ -727,9 +732,11 @@ ${renderTotalsBlock(printTotals)}
                           size="icon"
                           aria-label={t("action.remove-item")}
                           onClick={() => removeItem(item)}
-                          disabled={item.onDeliveryPermit && keptOf(item) > 0}
+                          disabled={locked || (item.onDeliveryPermit && keptOf(item) > 0)}
                           title={
-                            item.onDeliveryPermit
+                            locked
+                              ? t("so-edit.line-locked")
+                              : item.onDeliveryPermit
                               ? keptOf(item) > 0
                                 ? fill(t("so-edit.customer-keeps-hint"), { n: keptOf(item) })
                                 : t("so-edit.all-returned-hint")
@@ -747,6 +754,7 @@ ${renderTotalsBlock(printTotals)}
                               returned: item.returnedQuantity || 0,
                               kept: item.minQuantity || 0,
                             })}
+                            {locked && <>{" "}{t("so-edit.line-locked")}</>}
                           </Badge>
                         </div>
                       )}
