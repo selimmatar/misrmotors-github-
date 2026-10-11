@@ -278,6 +278,40 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "A valid numeric id is required" }, { status: 400 })
     }
 
+    // An invoice that has payments cannot be deleted: its supplier payments, ledger (balance) entries and paid
+    // schedule rows would be left pointing at nothing. Unpaid invoices are still deleted as before.
+    const { data: invoiceRows, error: readError } = await supabase
+      .from("accounts_payable")
+      .select("invoice_id, paid_amount, months_paid")
+      .eq("invoice_id", numericId)
+    if (readError) throw readError
+    const invoice = invoiceRows?.[0]
+    if (invoice) {
+      const { data: payments, error: paymentsError } = await supabase
+        .from("supplier_payments")
+        .select("payment_id")
+        .eq("invoice_id", numericId)
+        .limit(1)
+      if (paymentsError) throw paymentsError
+      const { data: schedules, error: schedulesError } = await supabase
+        .from("payment_schedules")
+        .select("schedule_id, paid_amount, status")
+        .eq("invoice_id", numericId)
+        .eq("schedule_type", "payable")
+      if (schedulesError) throw schedulesError
+      const paidSchedule = (schedules || []).some(
+        (row: any) => (Number(row.paid_amount) || 0) > 0 || row.status === "paid" || row.status === "partial",
+      )
+      const hasPayments =
+        (Number(invoice.paid_amount) || 0) > 0 || (Number(invoice.months_paid) || 0) > 0 || (payments || []).length > 0 || paidSchedule
+      if (hasPayments) {
+        return NextResponse.json(
+          { error: "This invoice already has payments recorded, so it cannot be deleted.", code: "AP_HAS_PAYMENTS" },
+          { status: 409 },
+        )
+      }
+    }
+
     const { error } = await supabase.from("accounts_payable").delete().eq("invoice_id", numericId)
     if (error) throw error
 

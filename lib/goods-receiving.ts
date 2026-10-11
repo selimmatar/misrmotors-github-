@@ -288,6 +288,32 @@ export function weightedAverageCost(oldQty: unknown, oldCost: unknown, recvQty: 
   return Math.round(((q * c + recvQty * recvCost) / (q + recvQty)) * 100) / 100
 }
 
+/**
+ * Landed-cost overhead per ordered unit, per product, from a cost-finalized PO's items:
+ * sum(allocated_overhead) / sum(ordered quantity) over the PO's lines of that product. The landed cost per unit of a
+ * receipt is then its raw unit cost + this overhead (shared by finalize-cost and by receipts after a finalize).
+ */
+export function landedOverheadPerUnitByProduct(
+  items: { product_id?: number | null; quantity?: unknown; allocated_overhead?: unknown }[],
+): Map<number, number> {
+  const overhead = new Map<number, number>()
+  const qty = new Map<number, number>()
+  for (const item of items || []) {
+    if (!item.product_id) continue
+    const id = Number(item.product_id)
+    overhead.set(id, (overhead.get(id) || 0) + (Number(item.allocated_overhead) || 0))
+    qty.set(id, (qty.get(id) || 0) + (Number(item.quantity) || 0))
+  }
+  const perUnit = new Map<number, number>()
+  for (const [id, o] of overhead) {
+    const q = qty.get(id) || 0
+    if (q > 0 && o > 0) perUnit.set(id, o / q)
+  }
+  return perUnit
+}
+export const landedUnitCost = (rawUnitCost: number, overheadPerUnit: number | undefined) =>
+  Math.round(((Number(rawUnitCost) || 0) + (overheadPerUnit || 0)) * 100) / 100
+
 async function addStock(
   db: Db,
   productId: number,
@@ -372,6 +398,7 @@ interface PoItem {
   outsourced_name: string | null
   item_name_snapshot: string | null
   source_so_item_id: number | null
+  allocated_overhead?: number | string | null
 }
 
 const sumByItem = (rows: any[]) => {
@@ -450,7 +477,7 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
   const { poId, lines } = parsed
 
   // ---- 1. The PO must exist and be open for receiving --------------------------------------------------
-  const po = must(await db.from("purchase_orders").select("po_id, po_number, status").eq("po_id", poId).maybeSingle(), "read purchase order")
+  const po = must(await db.from("purchase_orders").select("po_id, po_number, status, cost_finalized").eq("po_id", poId).maybeSingle(), "read purchase order")
   if (!po) return reject(404, "Purchase order not found")
   if (!RECEIVABLE_PO_STATUSES.includes(po.status)) {
     return reject(409, `Purchase order ${po.po_number} is "${po.status}" and cannot receive goods (only approved or partially received orders can).`, { code: "PO_NOT_RECEIVABLE", poStatus: po.status })
@@ -460,7 +487,7 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
   const items: PoItem[] = must(
     await db
       .from("purchase_order_items")
-      .select("po_item_id, quantity, unit_price, product_id, item_type, outsourced_name, item_name_snapshot, source_so_item_id")
+      .select("po_item_id, quantity, unit_price, product_id, item_type, outsourced_name, item_name_snapshot, source_so_item_id, allocated_overhead")
       .eq("po_id", poId),
     "read purchase order items",
   )
@@ -589,10 +616,15 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
   }
 
   // ---- 7. Inventory (stock lines only) and batches --------------------------------------------------------
+  // After the PO's cost was finalized (finalize-cost is allowed on a partially received PO), later receipts go into
+  // stock at the finalized landed cost per unit, like the batches finalize-cost updated; the GRN line keeps the raw cost.
+  const overheadPerUnit = po.cost_finalized ? landedOverheadPerUnitByProduct(items) : new Map<number, number>()
   for (let i = 0; i < lines.length; i++) {
     const row = lineRows[i]
     if (row.item_type === "outsourced" || !row.product_id) continue
-    await addStock(db, row.product_id, row.warehouse_id, row.quantity_received, Number(row.unit_cost) || 0, undo)
+    const rawCost = Number(row.unit_cost) || 0
+    const stockCost = po.cost_finalized ? landedUnitCost(rawCost, overheadPerUnit.get(Number(row.product_id))) : rawCost
+    await addStock(db, row.product_id, row.warehouse_id, row.quantity_received, stockCost, undo)
     const last = must(
       await db.from("inventory_batches").select("batch_sequence").eq("product_id", row.product_id).order("batch_sequence", { ascending: false }).limit(1).maybeSingle(),
       "read batch sequence",
@@ -606,8 +638,8 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
           po_number: po.po_number,
           quantity_received: row.quantity_received,
           quantity_available: row.quantity_received,
-          unit_cost: Number(row.unit_cost) || 0,
-          landed_cost_per_unit: Number(row.unit_cost) || 0,
+          unit_cost: rawCost,
+          landed_cost_per_unit: stockCost,
           received_date: today(),
           warehouse_id: row.warehouse_id,
           batch_sequence: (last?.batch_sequence || 0) + 1,

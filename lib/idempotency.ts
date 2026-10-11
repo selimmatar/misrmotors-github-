@@ -129,15 +129,16 @@ export function generateAuditIdempotencyKey(sessionId: string, productId: number
 }
 
 /**
- * Generate an idempotency key for delivery permit approval
+ * Generate an idempotency key for delivery permit approval.
+ * Stable per permit (no timestamp) so a repeated approval is recognised as the same operation.
  */
 export function generateDPApprovalIdempotencyKey(permitId: number): string {
-  return `dp_approve_${permitId}_${Date.now()}`
+  return `dp_approve_${permitId}`
 }
 
 /**
- * Generate an idempotency key for PO receive
+ * Generate an idempotency key for PO receive (stable per PO, no timestamp).
  */
 export function generatePOReceiveIdempotencyKey(poId: number): string {
-  return `po_receive_${poId}_${Date.now()}`
+  return `po_receive_${poId}`
 }

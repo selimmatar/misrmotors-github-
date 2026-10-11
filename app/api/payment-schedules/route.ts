@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
-import { checkIdempotency, completeIdempotency, generatePaymentIdempotencyKey } from "@/lib/idempotency"
+import { checkIdempotency, completeIdempotency } from "@/lib/idempotency"
 
 export const dynamic = "force-dynamic"
 
@@ -270,64 +270,198 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * After a schedule payment: add the paid amount to the linked AR invoice. Returns an error message when the invoice
- * could not be read or written (the caller must then NOT report success), or null. A schedule whose invoice row does
- * not exist is skipped as before. The amounts logic is unchanged.
- */
-async function applySchedulePaymentToInvoice(
-  supabase: any,
-  invoiceId: number,
-  amountToPay: number,
-  extraFields: Record<string, any> = {},
-): Promise<string | null> {
-  const { data: arInvoice, error: arReadError } = await withRetry(() =>
+const cents = (n: unknown) => Math.round((Number(n) || 0) * 100)
+const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+const whereValue = (query: any, column: string, value: unknown) =>
+  value === null || value === undefined ? query.is(column, null) : query.eq(column, value)
+
+type InvoiceOutcome =
+  | { ok: true }
+  | { ok: false; kind: "overpay" | "conflict"; status: 400 | 409; error: string }
+  | { ok: false; kind: "db"; error: string }
+
+const overpayMessage = (amountToPay: number, invoice: any) =>
+  `This payment of ${money(amountToPay)} would overpay the invoice: ${money(Number(invoice.collected_amount) || 0)} of ${money(
+    Number(invoice.amount) || 0,
+  )} is already collected (remaining ${money(Math.max(0, (Number(invoice.amount) || 0) - (Number(invoice.collected_amount) || 0)))}). Nothing was recorded.`
+
+async function readArInvoice(supabase: any, invoiceId: number): Promise<{ invoice: any; error: string | null }> {
+  const { data, error } = await withRetry(() =>
     supabase
       .from("accounts_receivable")
       .select("invoice_id, collected_amount, months_paid, installment_months, amount")
       .eq("invoice_id", invoiceId)
       .single(),
   )
-  if (arReadError && arReadError.code !== "PGRST116") {
-    console.error("Payment Schedule - could not read AR invoice", arReadError.message)
-    return `Could not read the invoice: ${arReadError.message}`
+  if (error && error.code !== "PGRST116") {
+    console.error("Payment Schedule - could not read AR invoice", error.message)
+    return { invoice: null, error: `Could not read the invoice: ${error.message}` }
   }
-  if (!arInvoice) return null
+  return { invoice: data || null, error: null }
+}
 
-  const newCollectedAmount = (arInvoice.collected_amount || 0) + amountToPay
-
-  const { data: paidSchedules, error: paidError } = await withRetry(() =>
-    supabase.from("payment_schedules").select("schedule_id").eq("invoice_id", arInvoice.invoice_id).eq("status", "paid"),
-  )
-  if (paidError) {
-    console.error("Payment Schedule - could not count paid schedules", paidError.message)
-    return `Could not read the paid schedules: ${paidError.message}`
+/** Refuses (before anything is written) a payment that would take the AR invoice above its total. */
+async function checkInvoiceCap(supabase: any, invoiceId: number, amountToPay: number): Promise<InvoiceOutcome> {
+  const { invoice, error } = await readArInvoice(supabase, invoiceId)
+  if (error) return { ok: false, kind: "db", error }
+  if (!invoice) return { ok: true }
+  if (cents(invoice.collected_amount) + cents(amountToPay) > cents(invoice.amount)) {
+    return { ok: false, kind: "overpay", status: 400, error: overpayMessage(amountToPay, invoice) }
   }
+  return { ok: true }
+}
 
-  const monthsPaid = paidSchedules?.length || 0
-  const isInvoiceFullyPaid = newCollectedAmount >= arInvoice.amount
+/**
+ * After a schedule payment: add the paid amount to the linked AR invoice. A schedule whose invoice row does not exist
+ * is skipped as before. The write is a compare-and-set on the collected_amount that was read (one re-read + retry when
+ * another payment got there first), and it never takes collected_amount above the invoice total.
+ */
+async function applySchedulePaymentToInvoice(
+  supabase: any,
+  invoiceId: number,
+  amountToPay: number,
+  extraFields: Record<string, any> = {},
+): Promise<InvoiceOutcome> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { invoice: arInvoice, error: readError } = await readArInvoice(supabase, invoiceId)
+    if (readError) return { ok: false, kind: "db", error: readError }
+    if (!arInvoice) return { ok: true }
 
-  const { error: arUpdateError } = await withRetry(() =>
-    supabase
-      .from("accounts_receivable")
-      .update({
-        collected_amount: newCollectedAmount,
-        months_paid: monthsPaid,
-        status: isInvoiceFullyPaid ? "paid" : monthsPaid > 0 ? "partially_paid" : "pending",
-        ...extraFields,
-      })
-      .eq("invoice_id", arInvoice.invoice_id),
-  )
-  if (arUpdateError) {
-    console.error("Payment Schedule - could not update AR invoice", arUpdateError.message)
-    return `Could not update the invoice: ${arUpdateError.message}`
+    if (cents(arInvoice.collected_amount) + cents(amountToPay) > cents(arInvoice.amount)) {
+      return { ok: false, kind: "overpay", status: 400, error: overpayMessage(amountToPay, arInvoice) }
+    }
+    const newCollectedAmount = money((Number(arInvoice.collected_amount) || 0) + amountToPay)
+
+    const { data: paidSchedules, error: paidError } = await withRetry(() =>
+      supabase.from("payment_schedules").select("schedule_id").eq("invoice_id", arInvoice.invoice_id).eq("status", "paid"),
+    )
+    if (paidError) {
+      console.error("Payment Schedule - could not count paid schedules", paidError.message)
+      return { ok: false, kind: "db", error: `Could not read the paid schedules: ${paidError.message}` }
+    }
+
+    const monthsPaid = paidSchedules?.length || 0
+    const isInvoiceFullyPaid = cents(newCollectedAmount) >= cents(arInvoice.amount)
+
+    const { data: updatedRows, error: arUpdateError } = await withRetry(() =>
+      whereValue(
+        supabase
+          .from("accounts_receivable")
+          .update({
+            collected_amount: newCollectedAmount,
+            months_paid: monthsPaid,
+            status: isInvoiceFullyPaid ? "paid" : monthsPaid > 0 ? "partially_paid" : "pending",
+            ...extraFields,
+          })
+          .eq("invoice_id", arInvoice.invoice_id),
+        "collected_amount",
+        arInvoice.collected_amount,
+      ).select("invoice_id"),
+    )
+    if (arUpdateError) {
+      console.error("Payment Schedule - could not update AR invoice", arUpdateError.message)
+      return { ok: false, kind: "db", error: `Could not update the invoice: ${arUpdateError.message}` }
+    }
+    if (Array.isArray(updatedRows) && updatedRows.length === 1) return { ok: true }
+    // another payment changed collected_amount since we read it: re-read and try once more
   }
-
-  return null
+  return {
+    ok: false,
+    kind: "conflict",
+    status: 409,
+    error: "The invoice was changed by another payment at the same moment. Nothing was recorded; reload and try again.",
+  }
 }
 
 const SCHEDULE_PAID_INVOICE_FAILED =
   "The payment was recorded on the schedule, but the invoice totals could NOT be updated. Do not repeat the payment; contact an administrator."
+
+/**
+ * Records `amountToPay` on schedule `current` and on its AR invoice. Shared by both payment paths of PUT.
+ *  1. refuses an AR overpayment before anything is written (400);
+ *  2. updates the schedule with a compare-and-set on the paid_amount that was read (409 when it changed);
+ *  3. adds the amount to the invoice (compare-and-set, see applySchedulePaymentToInvoice). If that is refused
+ *     (overpay / conflict) the schedule write is put back and the refusal is returned.
+ */
+async function recordSchedulePayment(
+  supabase: any,
+  current: any,
+  amountToPay: number,
+  fields: Record<string, any>,
+  isPayable: boolean,
+  invoiceExtraFields: Record<string, any> = {},
+): Promise<{ status: number; body: any }> {
+  const linkedInvoice = !isPayable && current.invoice_id
+  if (linkedInvoice) {
+    const cap = await checkInvoiceCap(supabase, current.invoice_id, amountToPay)
+    if (!cap.ok) {
+      return cap.kind === "db"
+        ? { status: 500, body: { error: cap.error, schedulePaid: false, invoiceUpdated: false } }
+        : { status: cap.status, body: { error: cap.error, code: cap.kind === "overpay" ? "INVOICE_OVERPAYMENT" : "INVOICE_CONFLICT" } }
+    }
+  }
+
+  const newPaidAmount = money((Number(current.paid_amount) || 0) + amountToPay)
+  const isFullyPaid = cents(newPaidAmount) >= cents(current.amount)
+  const { data: updatedRows, error: updateError } = await withRetry(() =>
+    whereValue(
+      supabase
+        .from("payment_schedules")
+        .update({ ...fields, paid_amount: newPaidAmount, status: isFullyPaid ? "paid" : "partial" })
+        .eq("schedule_id", current.schedule_id),
+      "paid_amount",
+      current.paid_amount,
+    ).select(),
+  )
+  if (updateError) {
+    console.error("Payment Schedule update error:", updateError.message)
+    return { status: 500, body: { error: updateError.message } }
+  }
+  const updated = Array.isArray(updatedRows) ? updatedRows[0] : null
+  if (!updated) {
+    return {
+      status: 409,
+      body: { error: "This schedule was changed by another payment at the same moment. Nothing was recorded; reload and try again.", code: "SCHEDULE_CONFLICT" },
+    }
+  }
+
+  if (linkedInvoice) {
+    const outcome = await applySchedulePaymentToInvoice(supabase, current.invoice_id, amountToPay, invoiceExtraFields)
+    if (!outcome.ok) {
+      if (outcome.kind === "db") {
+        return { status: 500, body: { error: SCHEDULE_PAID_INVOICE_FAILED, detail: outcome.error, schedulePaid: true, invoiceUpdated: false } }
+      }
+      // put the schedule back (guarded: only while it still holds what this request wrote)
+      const revert: Record<string, any> = { paid_amount: current.paid_amount ?? null, status: current.status ?? null }
+      for (const key of Object.keys(fields)) revert[key] = current[key] ?? null
+      const { data: reverted, error: revertError } = await withRetry(() =>
+        supabase
+          .from("payment_schedules")
+          .update(revert)
+          .eq("schedule_id", current.schedule_id)
+          .eq("paid_amount", newPaidAmount)
+          .select("schedule_id"),
+      )
+      if (revertError || !Array.isArray(reverted) || reverted.length !== 1) {
+        console.error("Payment Schedule - could not put the schedule back after the invoice refused the payment", revertError?.message)
+        return { status: 500, body: { error: SCHEDULE_PAID_INVOICE_FAILED, detail: outcome.error, schedulePaid: true, invoiceUpdated: false } }
+      }
+      return { status: outcome.status, body: { error: outcome.error, code: outcome.kind === "overpay" ? "INVOICE_OVERPAYMENT" : "INVOICE_CONFLICT" } }
+    }
+  }
+
+  return { status: 200, body: { message: "Payment recorded successfully", schedule: updated } }
+}
+
+const CLIENT_KEY = /^[A-Za-z0-9_.:-]{8,100}$/
+/**
+ * Deterministic idempotency key of a schedule payment (never the clock): a client-supplied idempotencyKey when one is
+ * sent, otherwise built from the request itself.
+ */
+function schedulePaymentKey(scheduleId: number, clientKey: unknown, fallback: string): string {
+  if (typeof clientKey === "string" && CLIENT_KEY.test(clientKey)) return `pay_${scheduleId}_key_${clientKey}`
+  return fallback
+}
 
 // PUT - Update payment schedule (mark as paid or activate schedules)
 export async function PUT(request: NextRequest) {
@@ -348,24 +482,24 @@ export async function PUT(request: NextRequest) {
       invoiceFileUrl,
       scheduleType,
       userId,
+      idempotencyKey: clientIdempotencyKey,
     } = body
 
     if (scheduleId && paidAmount && action !== "ACTIVATE" && action !== "LINK_INVOICE") {
-      // Generate idempotency key for this payment
-      const idempotencyKey = generatePaymentIdempotencyKey(
-        invoiceId || 0,
-        Number.parseInt(scheduleId),
-        paymentDate ? new Date(paymentDate).getTime() : Date.now(),
+      const scheduleIdNum = Number.parseInt(scheduleId)
+      const amountToPay = Number(paidAmount)
+      if (!Number.isFinite(amountToPay) || amountToPay <= 0) {
+        return NextResponse.json({ error: "paidAmount must be a positive amount" }, { status: 400 })
+      }
+      // Deterministic key: schedule + payment date + amount (or the client's idempotencyKey). A repeat of the same
+      // payment is recognised; the clock is never part of the key.
+      const idempotencyKey = schedulePaymentKey(
+        scheduleIdNum,
+        clientIdempotencyKey,
+        `pay_${invoiceId || 0}_${scheduleIdNum}_${new Date(paymentDate || new Date().toISOString().split("T")[0]).getTime()}_${cents(amountToPay)}`,
       )
 
-
-      const idempotencyCheck = await checkIdempotency(
-        "payment",
-        idempotencyKey,
-        "payment_schedules",
-        Number.parseInt(scheduleId),
-        userId,
-      )
+      const idempotencyCheck = await checkIdempotency("payment", idempotencyKey, "payment_schedules", scheduleIdNum, userId)
 
       if (!idempotencyCheck.success) {
         if (idempotencyCheck.isRetry) {
@@ -381,7 +515,7 @@ export async function PUT(request: NextRequest) {
       try {
         // Get current schedule
         const { data: current, error: fetchError } = await withRetry(() =>
-          supabase.from("payment_schedules").select("*").eq("schedule_id", Number.parseInt(scheduleId)).single(),
+          supabase.from("payment_schedules").select("*").eq("schedule_id", scheduleIdNum).single(),
         )
 
         if (fetchError || !current) {
@@ -395,55 +529,30 @@ export async function PUT(request: NextRequest) {
           return NextResponse.json({ error: "This schedule has already been paid in full" }, { status: 400 })
         }
 
-        const amountToPay = paidAmount || current.amount
-        const newPaidAmount = (current.paid_amount || 0) + amountToPay
-        const isFullyPaid = newPaidAmount >= current.amount
-
-        const { data: updated, error: updateError } = await withRetry(() =>
-          supabase
-            .from("payment_schedules")
-            .update({
-              paid_amount: newPaidAmount,
-              payment_date: paymentDate || new Date().toISOString().split("T")[0],
-              status: isFullyPaid ? "paid" : "partial",
-              receipt_url: receiptUrl || current.receipt_url,
-              notes: notes || current.notes,
-              invoice_file_url: invoiceFileUrl || current.invoice_file_url,
-              payment_idempotency_key: idempotencyKey,
-            })
-            .eq("schedule_id", Number.parseInt(scheduleId))
-            .select()
-            .single(),
-        )
-
-        if (updateError) {
-          console.error("Payment Schedule update error:", updateError.message)
-          await completeIdempotency("payment", idempotencyKey, false, updateError.message)
-          return NextResponse.json({ error: updateError.message }, { status: 500 })
-        }
-
-        // Update AR invoice if applicable
         const isPayable = scheduleType === "payable" || current.schedule_type === "payable"
-
-        if (!isPayable && current.invoice_id) {
-          const arError = await applySchedulePaymentToInvoice(supabase, current.invoice_id, amountToPay, {
-            last_payment_at: new Date().toISOString(),
-          })
-          if (arError) {
-            await completeIdempotency("payment", idempotencyKey, false, arError)
-            return NextResponse.json(
-              { error: SCHEDULE_PAID_INVOICE_FAILED, detail: arError, schedulePaid: true, invoiceUpdated: false },
-              { status: 500 },
-            )
-          }
-        }
-
-        await completeIdempotency("payment", idempotencyKey, true)
-
-        return NextResponse.json({
-          message: "Payment recorded successfully",
-          schedule: updated,
-        })
+        const result = await recordSchedulePayment(
+          supabase,
+          current,
+          amountToPay,
+          {
+            payment_date: paymentDate || new Date().toISOString().split("T")[0],
+            receipt_url: receiptUrl || current.receipt_url,
+            notes: notes || current.notes,
+            invoice_file_url: invoiceFileUrl || current.invoice_file_url,
+            payment_idempotency_key: idempotencyKey,
+          },
+          isPayable,
+          { last_payment_at: new Date().toISOString() },
+        )
+        await completeIdempotency(
+          "payment",
+          idempotencyKey,
+          // Once the schedule row holds the payment the key is done, even if the invoice was not updated: a retry of the
+          // same payment must not add it to the schedule again.
+          result.status === 200 || result.body.schedulePaid === true,
+          result.status === 200 ? undefined : result.body.detail || result.body.error,
+        )
+        return NextResponse.json(result.body, { status: result.status })
       } catch (error: any) {
         await completeIdempotency("payment", idempotencyKey, false, error.message)
         throw error
@@ -498,7 +607,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Schedules linked to invoice successfully" })
     }
 
-    // Handle individual payment recording without idempotency guard
+    // Handle individual payment recording ("pay in full", no paidAmount)
     if (!scheduleId) {
       return NextResponse.json({ error: "Schedule ID required" }, { status: 400 })
     }
@@ -535,48 +644,60 @@ export async function PUT(request: NextRequest) {
       })
     }
 
-    const amountToPay = paidAmount || current.amount
-    const newPaidAmount = (current.paid_amount || 0) + amountToPay
-    const isFullyPaid = newPaidAmount >= current.amount
+    // "Pay in full" (no paidAmount): pays what is still open on the schedule. Idempotent like the partial path:
+    // the key is the schedule itself (or the client's idempotencyKey), so a double submit is recorded once.
+    const idempotencyKey = schedulePaymentKey(
+      current.schedule_id,
+      clientIdempotencyKey,
+      `pay_full_${current.invoice_id || invoiceId || 0}_${current.schedule_id}`,
+    )
+    const idempotencyCheck = await checkIdempotency("payment", idempotencyKey, "payment_schedules", current.schedule_id, userId)
+    if (!idempotencyCheck.success) {
+      if (idempotencyCheck.isRetry) {
+        return NextResponse.json({
+          message: "Payment already recorded",
+          isDuplicate: true,
+          previousResult: idempotencyCheck.previousResult,
+        })
+      }
+      return NextResponse.json({ error: idempotencyCheck.error }, { status: 400 })
+    }
 
-    const { data: updated, error: updateError } = await withRetry(() =>
-      supabase
-        .from("payment_schedules")
-        .update({
-          paid_amount: newPaidAmount,
+    try {
+      const amountToPay = money(Math.max(0, (Number(current.amount) || 0) - (Number(current.paid_amount) || 0)))
+      if (current.status === "paid" || amountToPay <= 0) {
+        await completeIdempotency("payment", idempotencyKey, false, "Schedule already paid in full")
+        return NextResponse.json({ error: "This schedule has already been paid in full" }, { status: 400 })
+      }
+
+      // AP invoice updates are handled by the client to avoid confusion
+      const isPayable = scheduleType === "payable" || current.schedule_type === "payable"
+      const result = await recordSchedulePayment(
+        supabase,
+        current,
+        amountToPay,
+        {
           payment_date: paymentDate || new Date().toISOString().split("T")[0],
-          status: isFullyPaid ? "paid" : "partial",
           receipt_url: receiptUrl || current.receipt_url,
           notes: notes || current.notes,
           invoice_file_url: invoiceFileUrl || current.invoice_file_url,
-        })
-        .eq("schedule_id", Number.parseInt(scheduleId))
-        .select()
-        .single(),
-    )
-
-    if (updateError) {
-      console.error("Payment Schedule update error:", updateError.message)
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+          payment_idempotency_key: idempotencyKey,
+        },
+        isPayable,
+      )
+      await completeIdempotency(
+        "payment",
+        idempotencyKey,
+        // Once the schedule row holds the payment the key is done, even if the invoice was not updated: a retry of the
+        // same payment must not add it to the schedule again.
+        result.status === 200 || result.body.schedulePaid === true,
+        result.status === 200 ? undefined : result.body.detail || result.body.error,
+      )
+      return NextResponse.json(result.body, { status: result.status })
+    } catch (error: any) {
+      await completeIdempotency("payment", idempotencyKey, false, error.message)
+      throw error
     }
-
-    // AP invoice updates are handled by the client to avoid confusion
-    const isPayable = scheduleType === "payable" || current.schedule_type === "payable"
-
-    if (!isPayable && current.invoice_id) {
-      const arError = await applySchedulePaymentToInvoice(supabase, current.invoice_id, amountToPay)
-      if (arError) {
-        return NextResponse.json(
-          { error: SCHEDULE_PAID_INVOICE_FAILED, detail: arError, schedulePaid: true, invoiceUpdated: false },
-          { status: 500 },
-        )
-      }
-    }
-
-    return NextResponse.json({
-      message: "Payment recorded successfully",
-      schedule: updated,
-    })
   } catch (error) {
     console.error("Payment Schedule PUT exception:", error)
     return NextResponse.json({ error: "Failed to update payment schedule" }, { status: 500 })
