@@ -40,6 +40,7 @@ import type { PurchaseOrder, UserRole, PaymentDetails, PaymentType } from "@/lib
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
+import { describeOverOrderLines, type OverOrderLine } from "@/lib/po-over-order"
 
 interface PurchaseOrderModuleProps {
   userRole?: UserRole
@@ -781,7 +782,16 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         }),
       }
 
-      await addPurchaseOrder(newOrder)
+      try {
+        await addPurchaseOrder(newOrder)
+      } catch (error) {
+        // Over the sales order quantity: the user may confirm and order anyway (an unknown SO line is still refused)
+        const details = error as { code?: string; lines?: OverOrderLine[] }
+        if (details?.code !== "PO_OVER_ORDER" || !Array.isArray(details.lines)) throw error
+        const lines = describeOverOrderLines(details.lines, newOrder.items as any[], t("po.over-order.line"))
+        if (!confirm(fill(t("po.over-order.confirm"), { lines }))) return
+        await addPurchaseOrder(newOrder, { allowOverOrder: true })
+      }
 
       // Reset form
       resetForm()

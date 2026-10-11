@@ -3,6 +3,8 @@
 // releases its quantity. Known limit: this is a read-then-write check, so two concurrent requests can both pass;
 // closing that needs a database constraint, which is not part of this change.
 
+import { fill } from "./i18n-format"
+
 export type OverOrderLine = {
   sourceSoItemId: number
   soQty: number
@@ -126,4 +128,24 @@ export function linesWithIncreasedQuantity(items: any[], storedLines: any[]): an
     const k = soItemOf(l)
     return k === null || (requested.get(k) || 0) > (stored.get(k) || 0)
   })
+}
+
+// One line per over-ordered SO line for the "order anyway?" confirmation, named by the product on the PO line.
+// The template takes {product}, {needed}, {ordered} (already on other POs) and {requested} (this PO).
+export function describeOverOrderLines(
+  lines: OverOrderLine[],
+  items: Array<{ sourceSoItemId?: string | number | null; productName?: string | null }>,
+  template: string,
+): string {
+  return lines
+    .map((l) => {
+      const item = items.find((i) => i.sourceSoItemId != null && String(i.sourceSoItemId) === String(l.sourceSoItemId))
+      return fill(template, {
+        product: item?.productName || `#${l.sourceSoItemId}`,
+        needed: l.soQty,
+        ordered: l.alreadyOrdered,
+        requested: l.requested,
+      })
+    })
+    .join("\n")
 }
