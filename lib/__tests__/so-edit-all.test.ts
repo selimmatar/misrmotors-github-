@@ -1,4 +1,4 @@
-// Every sales order can be edited (Sales Rep / Admin), except cancelled and rejected ones. Items already on a delivery
+// Every sales order can be edited (Sales Rep / Admin / CEO), except cancelled and rejected ones. Items already on a delivery
 // permit are locked: their product, quantity and price cannot change and the line cannot be removed. Extra quantity
 // or a different item goes on a new line. A line with a return keeps the exchange rules of so-edit.test.ts.
 import test from "node:test"
@@ -7,14 +7,18 @@ import { FakeDb, type Row } from "./fake-db"
 import { validateSoEdit } from "../so-edit"
 import { canEditSalesOrder, isLineLocked } from "../so-edit-eligibility"
 
-test("A1. Sales Rep and Admin can edit an order in every status except cancelled / rejected", () => {
+test("A1. Sales Rep, Admin and CEO can edit an order in every status except cancelled / rejected", () => {
   const editable = ["draft", "pending_accountant", "accountant_approved", "ready_for_delivery", "shipped", "delivered"]
   for (const status of editable) {
     assert.equal(canEditSalesOrder("sales-rep", status), true, status)
     assert.equal(canEditSalesOrder("admin", status), true, status)
+    assert.equal(canEditSalesOrder("ceo", status), true, status)
   }
-  for (const status of ["cancelled", "rejected_quotation"]) assert.equal(canEditSalesOrder("admin", status), false, status)
-  for (const role of ["ceo", "accountant", "po-rep", "warehouse-rep"]) assert.equal(canEditSalesOrder(role, "draft"), false, role)
+  for (const status of ["cancelled", "rejected_quotation"]) {
+    assert.equal(canEditSalesOrder("admin", status), false, status)
+    assert.equal(canEditSalesOrder("ceo", status), false, status)
+  }
+  for (const role of ["accountant", "po-rep", "warehouse-rep"]) assert.equal(canEditSalesOrder(role, "draft"), false, role)
 })
 
 test("A2. a line on a delivery permit is locked unless it has a return (exchange)", () => {

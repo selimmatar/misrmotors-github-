@@ -882,7 +882,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
   const canApproveSO = userRole === "ceo" || userRole === "admin"
 
-  // Sales Rep / Admin can edit any order except a cancelled or rejected one. Items already on a delivery permit are
+  // Sales Rep / Admin / CEO can edit any order except a cancelled or rejected one. Items already on a delivery permit are
   // locked inside the edit dialog (and refused by the server); see lib/so-edit-eligibility.ts.
   const hasReturns = (order: SalesOrder) => Number((order as any).returnedQuantity || 0) > 0
   const showEditButton = (order: SalesOrder) => canEditSalesOrder(userRole, order.status)
