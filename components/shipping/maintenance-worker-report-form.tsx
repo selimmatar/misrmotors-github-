@@ -11,6 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CheckCircle, XCircle, DollarSign, Clock, Wrench } from "lucide-react"
 import type { MaintenanceWorkOrder } from "@/types/maintenance-workflow"
 import { MaintenanceMaterialsSelector, type MaterialItem } from "./maintenance-materials-selector"
+import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 
 interface MaintenanceWorkerReportFormProps {
   workOrder: MaintenanceWorkOrder
@@ -23,6 +25,7 @@ export function MaintenanceWorkerReportForm({
   onSuccess,
   onCancel,
 }: MaintenanceWorkerReportFormProps) {
+  const { t } = useI18n()
   const [findings, setFindings] = useState("")
   const [isSettled, setIsSettled] = useState<string>("yes")
   const [equipmentNeeded, setEquipmentNeeded] = useState("")
@@ -37,12 +40,12 @@ export function MaintenanceWorkerReportForm({
 
   const handleSubmit = async () => {
     if (!findings) {
-      setError("Please provide findings from the visit")
+      setError(t("maint.findings-required"))
       return
     }
 
     if (isSettled === "no" && !equipmentNeeded) {
-      setError("Please specify equipment needed")
+      setError(t("maint.equipment-required"))
       return
     }
 
@@ -129,10 +132,10 @@ export function MaintenanceWorkerReportForm({
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm">
               <Wrench className="w-4 h-4" />
-              <span className="font-medium">Work Order:</span> {workOrder.work_order_number}
+              <span className="font-medium">{t("maint.work-order-label")}</span> {workOrder.work_order_number}
             </div>
             <div className="text-sm">
-              <span className="font-medium">Task:</span> {workOrder.title}
+              <span className="font-medium">{t("maint.task-label")}</span> {workOrder.title}
             </div>
           </div>
         </CardContent>
@@ -146,32 +149,32 @@ export function MaintenanceWorkerReportForm({
 
       <div className="space-y-4">
         <div>
-          <Label htmlFor="findings">Visit Findings *</Label>
+          <Label htmlFor="findings">{t("maint.visit-findings")}</Label>
           <Textarea
             id="findings"
             value={findings}
             onChange={(e) => setFindings(e.target.value)}
-            placeholder="Describe what you found during the maintenance visit..."
+            placeholder={t("maint.findings-placeholder")}
             rows={4}
             required
           />
         </div>
 
         <div className="space-y-2">
-          <Label>Was the issue resolved? *</Label>
+          <Label>{t("maint.issue-resolved")}</Label>
           <RadioGroup value={isSettled} onValueChange={setIsSettled}>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="yes" id="settled-yes" />
               <Label htmlFor="settled-yes" className="font-normal cursor-pointer flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-green-700" />
-                Yes, issue is resolved
+                {t("maint.yes-resolved")}
               </Label>
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="no" id="settled-no" />
               <Label htmlFor="settled-no" className="font-normal cursor-pointer flex items-center gap-2">
                 <XCircle className="w-4 h-4 text-orange-700" />
-                No, additional work/equipment needed
+                {t("maint.no-additional-needed")}
               </Label>
             </div>
           </RadioGroup>
@@ -179,19 +182,19 @@ export function MaintenanceWorkerReportForm({
 
         {isSettled === "no" && (
           <div className="space-y-4 p-4 border rounded-lg bg-orange-50">
-            <h4 className="font-medium text-sm">Additional Requirements</h4>
+            <h4 className="font-medium text-sm">{t("maint.additional-requirements")}</h4>
             <div>
-              <Label htmlFor="equipment">Equipment/Materials Needed *</Label>
+              <Label htmlFor="equipment">{t("maint.equipment-materials-needed")}</Label>
               <Textarea
                 id="equipment"
                 value={equipmentNeeded}
                 onChange={(e) => setEquipmentNeeded(e.target.value)}
-                placeholder="List the equipment or materials required to complete the work..."
+                placeholder={t("maint.equipment-placeholder")}
                 rows={3}
               />
             </div>
             <div>
-              <Label htmlFor="equipment-cost">Estimated Equipment Cost (EGP)</Label>
+              <Label htmlFor="equipment-cost">{t("maint.estimated-equipment-cost")}</Label>
               <div className="relative">
                 <DollarSign className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -209,7 +212,7 @@ export function MaintenanceWorkerReportForm({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="labor-hours">Labor Hours</Label>
+            <Label htmlFor="labor-hours">{t("common.labor-hours")}</Label>
             <div className="relative">
               <Clock className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -223,7 +226,7 @@ export function MaintenanceWorkerReportForm({
             </div>
           </div>
           <div>
-            <Label htmlFor="labor-cost">Labor Cost (EGP)</Label>
+            <Label htmlFor="labor-cost">{t("common.labor-cost-egp")}</Label>
             <div className="relative">
               <DollarSign className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -249,30 +252,30 @@ export function MaintenanceWorkerReportForm({
             <CardContent className="pt-6 space-y-2">
               {(Number(laborCost) > 0) && (
                 <div className="flex justify-between text-sm">
-                  <span>Labor Cost:</span>
-                  <span>{Number(laborCost).toLocaleString()} EGP</span>
+                  <span>{t("maint.labor-cost-colon")}</span>
+                  <span>{Number(laborCost).toLocaleString()} {t("common.egp-2")}</span>
                 </div>
               )}
               {(Number(equipmentCost) > 0) && (
                 <div className="flex justify-between text-sm">
-                  <span>Equipment Cost:</span>
-                  <span>{Number(equipmentCost).toLocaleString()} EGP</span>
+                  <span>{t("maint.equipment-cost-colon")}</span>
+                  <span>{Number(equipmentCost).toLocaleString()} {t("common.egp-2")}</span>
                 </div>
               )}
               {materials.length > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Materials Cost ({materials.length} items):</span>
-                  <span>{materials.reduce((s, m) => s + m.totalCost, 0).toLocaleString()} EGP</span>
+                  <span>{fill(t("maint.materials-cost-items"), { n: materials.length })}</span>
+                  <span>{materials.reduce((s, m) => s + m.totalCost, 0).toLocaleString()} {t("common.egp-2")}</span>
                 </div>
               )}
               <div className="flex justify-between items-center pt-2 border-t font-semibold">
-                <span>Total Estimated Cost:</span>
+                <span>{t("maint.total-estimated-cost")}</span>
                 <span className="text-2xl font-bold">
                   {(
                     (Number(equipmentCost) || 0) + 
                     (Number(laborCost) || 0) + 
                     materials.reduce((s, m) => s + m.totalCost, 0)
-                  ).toLocaleString()} EGP
+                  ).toLocaleString()} {t("common.egp-2")}
                 </span>
               </div>
             </CardContent>
@@ -280,9 +283,9 @@ export function MaintenanceWorkerReportForm({
         )}
 
         <div className="space-y-2 p-4 border-2 border-dashed rounded-lg">
-          <Label htmlFor="pdf-upload" className="font-medium">Upload Completed Work Order PDF (Optional)</Label>
+          <Label htmlFor="pdf-upload" className="font-medium">{t("maint.upload-wo-pdf")}</Label>
           <p className="text-sm text-muted-foreground mb-2">
-            Upload the printed work order form with your handwritten notes and materials used
+            {t("maint.upload-hint")}
           </p>
           <Input
             id="pdf-upload"
@@ -293,7 +296,7 @@ export function MaintenanceWorkerReportForm({
           />
           {pdfFile && (
             <p className="text-sm text-green-700 mt-2">
-              File selected: {pdfFile.name}
+              {fill(t("maint.file-selected"), { name: pdfFile.name })}
             </p>
           )}
         </div>
@@ -301,10 +304,10 @@ export function MaintenanceWorkerReportForm({
 
       <div className="flex justify-end gap-2 pt-4 border-t">
         <Button variant="outline" onClick={onCancel} disabled={submitting}>
-          Cancel
+          {t("cancel")}
         </Button>
         <Button onClick={handleSubmit} disabled={submitting || uploading}>
-          {uploading ? "Uploading PDF..." : submitting ? "Submitting..." : "Submit Report"}
+          {uploading ? t("maint.uploading-pdf") : submitting ? t("common.submitting") : t("maint.submit-report")}
         </Button>
       </div>
     </div>

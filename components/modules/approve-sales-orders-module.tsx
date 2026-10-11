@@ -11,6 +11,7 @@ import { Money } from "@/components/erp/money"
 import { formatDate, formatMoney } from "@/lib/format"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import type { SalesOrder } from "@/lib/types"
 import { Eye, CheckCircle, XCircle, Loader2 } from "lucide-react"
 
@@ -45,11 +46,16 @@ export function ApproveSalesOrdersModule() {
         notes: comment ? `[Accountant ${action === "approve" ? "Approved" : "Rejected"}] ${comment}` : order.notes,
       })
 
-      alert(action === "approve" ? "Sales order approved successfully!" : "Sales order rejected.")
+      alert(action === "approve" ? t("approve-so.approved-success") : t("approve-so.rejected"))
       setActionDialog(null)
       setComment("")
     } catch (error) {
-      alert(`Failed to ${actionDialog.action} sales order: ${error instanceof Error ? error.message : "Unknown error"}`)
+      const reason = error instanceof Error ? error.message : t("approve-so.unknown-error")
+      alert(
+        actionDialog.action === "approve"
+          ? fill(t("approve-so.approve-failed"), { error: reason })
+          : fill(t("approve-so.reject-failed"), { error: reason }),
+      )
     } finally {
       setProcessing(false)
     }
@@ -84,7 +90,7 @@ export function ApproveSalesOrdersModule() {
                       <p className="font-semibold">{getCustomerName(order.customerId)}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{t("field.amount")} (EGP)</p>
+                      <p className="text-sm text-muted-foreground">{t("field.amount")} {t("common.egp")}</p>
                       <p className="font-semibold"><Money value={order.total} /></p>
                     </div>
                     <div>
@@ -99,7 +105,7 @@ export function ApproveSalesOrdersModule() {
                       onClick={() => { setActionDialog({ order, action: "approve" }); setComment(""); }}
                     >
                       <CheckCircle className="w-4 h-4" />
-                      Approve
+                      {t("action.approve")}
                     </Button>
                     <Button
                       size="sm"
@@ -108,7 +114,7 @@ export function ApproveSalesOrdersModule() {
                       onClick={() => { setActionDialog({ order, action: "reject" }); setComment(""); }}
                     >
                       <XCircle className="w-4 h-4" />
-                      Reject
+                      {t("action.reject")}
                     </Button>
                     <Button
                       size="sm"
@@ -132,22 +138,26 @@ export function ApproveSalesOrdersModule() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {actionDialog?.action === "approve" ? "Approve Sales Order" : "Reject Sales Order"}
+              {actionDialog?.action === "approve" ? t("approve-so.approve-title") : t("approve-so.reject-title")}
             </DialogTitle>
             <DialogDescription>
               {actionDialog?.action === "approve"
-                ? `Approve ${actionDialog?.order.soNumber} for ${formatMoney(actionDialog?.order.total || 0, language)} EGP?`
-                : `Reject ${actionDialog?.order.soNumber}? Please provide a reason.`}
+                ? fill(t("approve-so.approve-confirm"), {
+                    so: actionDialog?.order.soNumber ?? "",
+                    amount: formatMoney(actionDialog?.order.total || 0, language),
+                  })
+                : fill(t("approve-so.reject-confirm"), { so: actionDialog?.order.soNumber ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
               <Label htmlFor="comment">
-                Comment {actionDialog?.action === "reject" && <span className="text-destructive">*</span>}
+                {t("approve-so.comment")}{" "}
+                {actionDialog?.action === "reject" && <span className="text-destructive">*</span>}
               </Label>
               <Textarea
                 id="comment"
-                placeholder={actionDialog?.action === "approve" ? "Optional comment..." : "Reason for rejection..."}
+                placeholder={actionDialog?.action === "approve" ? t("approve-so.optional-comment") : t("approve-so.rejection-reason")}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={3}
@@ -157,7 +167,7 @@ export function ApproveSalesOrdersModule() {
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => { setActionDialog(null); setComment(""); }} disabled={processing}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               variant={actionDialog?.action === "approve" ? "default" : "destructive"}
@@ -172,7 +182,7 @@ export function ApproveSalesOrdersModule() {
               ) : (
                 <XCircle className="w-4 h-4" />
               )}
-              {processing ? "Processing..." : actionDialog?.action === "approve" ? "Approve" : "Reject"}
+              {processing ? t("common.processing") : actionDialog?.action === "approve" ? t("action.approve") : t("action.reject")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -213,14 +223,14 @@ export function ApproveSalesOrdersModule() {
                       <span>
                         {item.productName} ({t("field.quantity")}: {formatNumber(item.quantity)})
                       </span>
-                      <span className="font-semibold"><Money value={item.total} /> EGP</span>
+                      <span className="font-semibold"><Money value={item.total} /> {t("common.egp-2")}</span>
                     </div>
                   ))}
                 </div>
               </div>
               <div className="border-t pt-4">
                 <div className="flex justify-between">
-                  <span className="font-semibold">{t("field.total-amount")} (EGP)</span>
+                  <span className="font-semibold">{t("field.total-amount")} {t("common.egp")}</span>
                   <span className="text-lg font-bold"><Money value={selectedSalesOrder.total} /></span>
                 </div>
               </div>

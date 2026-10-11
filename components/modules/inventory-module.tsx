@@ -40,6 +40,7 @@ import {
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -361,17 +362,17 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       })
 
       if (response.ok) {
-        alert("Item restocked to warehouse successfully.")
+        alert(t("inv.restocked"))
         setRestockReturnedItemDialog(false)
         setSelectedRestockItem(null)
         await refreshInventory()
       } else {
         const error = await response.json()
-        alert("Error: " + (error.message || "Failed to restock item"))
+        alert(fill(t("inv.error-message"), { message: error.message || t("inv.restock-failed") }))
       }
     } catch (error) {
       console.error("Error restocking returned item:", error)
-      alert("Error: Failed to restock item")
+      alert(fill(t("inv.error-message"), { message: t("inv.restock-failed") }))
     } finally {
       setIsRestockingItem(false)
     }
@@ -403,7 +404,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       let body: any = await response.json().catch(() => ({}))
       // No supplier / no cost found: nothing was changed. Offer to remove the item WITHOUT a supplier credit.
       if (!response.ok && (body.code === "CREDIT_SUPPLIER_UNRESOLVED" || body.code === "CREDIT_AMOUNT_ZERO")) {
-        if (confirm(`${body.message || body.error}\n\nRemove without supplier credit?`)) {
+        if (confirm(fill(t("inv.confirm-write-off"), { message: body.message || body.error }))) {
           response = await send({ writeOffWithoutCredit: true })
           body = await response.json().catch(() => ({}))
         } else {
@@ -414,14 +415,14 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       if (response.ok) {
         alert(
           body.credit
-            ? `Returned item removed successfully. Supplier credit of ${body.credit.amount} was created.`
-            : "Returned item removed. NO supplier credit was created.",
+            ? fill(t("inv.removed-with-credit"), { amount: body.credit.amount })
+            : t("inv.removed-no-credit"),
         )
         setRemoveReturnedItemDialog(false)
         setSelectedReturnedItem(null)
         await refreshInventory()
       } else {
-        alert("Error: " + (body.message || body.error || "Failed to remove returned item"))
+        alert(fill(t("inv.error-message"), { message: body.message || body.error || t("inv.remove-failed") }))
       }
     } catch (error) {
       alert("Error removing returned item: " + String(error))
@@ -510,11 +511,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         setShowAddCategoryDialog(false)
       } else {
         const error = await response.json()
-        alert(error.error || "Failed to create category")
+        alert(error.error || t("common.failed-to-create-category"))
       }
     } catch (error) {
       console.error("Error creating category:", error)
-      alert("Failed to create category")
+      alert(t("common.failed-to-create-category"))
     } finally {
       setIsCreatingCategory(false)
     }
@@ -545,14 +546,14 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         setNewWarehouseLocation("")
         setNewWarehouseAddress("")
         setShowAddWarehouseDialog(false)
-        alert("Warehouse created successfully!")
+        alert(t("inv.warehouse-created"))
       } else {
         const error = await response.json()
-        alert(error.error || "Failed to create warehouse")
+        alert(error.error || t("inv.warehouse-create-failed"))
       }
     } catch (error) {
       console.error("Error creating warehouse:", error)
-      alert("Failed to create warehouse")
+      alert(t("inv.warehouse-create-failed"))
     } finally {
       setIsCreatingWarehouse(false)
     }
@@ -562,7 +563,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
   const outsourcedTag = (
     <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700 border-purple-200">
-      Outsourced
+      {t("common.outsourced-2")}
     </Badge>
   )
 
@@ -579,7 +580,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     <div className="flex flex-col gap-1">
       {item.isReturned && (
         <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs w-fit">
-          Returned
+          {t("common.returned")}
         </Badge>
       )}
       {item.quantity == null || Number(item.quantity) === 0 ? (
@@ -597,7 +598,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     item.isReturned ? (
       <Button variant="destructive" size="sm" onClick={() => handleRemoveReturnedItem(item)} className="gap-1">
         <X className="w-4 h-4" />
-        Remove
+        {t("action.remove")}
       </Button>
     ) : null
   const viewPhotosButton = (item: any) => (
@@ -628,11 +629,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     <>
       <Button variant="outline" size="sm" onClick={() => handleRestockReturnedItem(item)} className="gap-1">
         <Warehouse className="w-4 h-4" />
-        Restock to Warehouse
+        {t("inv.restock-to-warehouse")}
       </Button>
       <Button variant="destructive" size="sm" onClick={() => handleRemoveReturnedItem(item)} className="gap-1">
         <X className="w-4 h-4" />
-        Remove & Credit
+        {t("inv.remove-and-credit")}
       </Button>
     </>
   )
@@ -646,7 +647,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         actions={
           <>
             <Button variant="outline" onClick={() => setShowAddCategoryDialog(true)}>
-              + Category
+              {t("common.category")}
             </Button>
             <Button variant="outline" onClick={handleAnalyzeInventory} disabled={isAnalyzing}>
               {isAnalyzing ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Sparkles className="w-4 h-4 me-2" />}
@@ -665,7 +666,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
               <div>
                 <h3 className="font-semibold text-yellow-900">{t("inventory.low-stock-alert")}</h3>
                 <p className="text-sm text-yellow-700 mt-1">
-                  {formatNumber(lowStockItems.length)} {t("inventory.items-below-reorder")}
+                  {fill(t("inventory.items-below-reorder"), { count: formatNumber(lowStockItems.length) })}
                 </p>
               </div>
             </div>
@@ -677,7 +678,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         <div className="relative flex-1 min-w-[200px] max-w-[400px]">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder={t("inventory.search-placeholder") || "Search by name, SKU..."}
+            placeholder={t("inventory.search-placeholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="ps-9"
@@ -703,10 +704,10 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           <Package className="w-4 h-4 text-muted-foreground" />
           <Select value={warehouseFilter} onValueChange={setWarehouseFilter}>
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by Warehouse" />
+              <SelectValue placeholder={t("warehouse.filter")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Warehouses</SelectItem>
+              <SelectItem value="all">{t("warehouse.all")}</SelectItem>
               {(appWarehouses || []).map((wh: any) => (
                 <SelectItem key={wh.id} value={String(wh.id)}>
                   {wh.name}
@@ -722,7 +723,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           className="flex items-center gap-2"
         >
           <Warehouse className="w-4 h-4" />
-          Add Warehouse
+          {t("warehouse.add")}
         </Button>
       </div>
 
@@ -742,7 +743,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           </TabsTrigger>
           <TabsTrigger value="returns" className="gap-2">
             <RotateCcw className="w-4 h-4" />
-            Returns ({formatNumber(returnedItems.length)})
+            {fill(t("inv.returns-count"), { count: formatNumber(returnedItems.length) })}
           </TabsTrigger>
         </TabsList>
 
@@ -750,7 +751,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         <TabsContent value="on-hand" className="space-y-4">
           <KpiGrid>
             <KpiTile label={t("inventory.total-items")} value={formatNumber(filteredInventory.length)} />
-            <KpiTile label={`${t("inventory.total-value")} (EGP)`} value={<Money value={totalValue} />} />
+            <KpiTile label={`${t("inventory.total-value")} ${t("common.egp")}`} value={<Money value={totalValue} />} />
             <KpiTile label={t("inventory.low-stock")} value={formatNumber(lowStockItems.length)} />
             <KpiTile
               label={t("inventory.out-of-stock")}
@@ -775,20 +776,20 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                         <NumHead>{t("field.quantity")}</NumHead>
                         <NumHead>{t("inventory.on-hold")}</NumHead>
                         <NumHead>{t("inventory.reorder-point")}</NumHead>
-                        <NumHead>{t("field.unit-cost")} (EGP)</NumHead>
-                        <NumHead>{t("field.total-value")} (EGP)</NumHead>
+                        <NumHead>{t("field.unit-cost")} {t("common.egp")}</NumHead>
+                        <NumHead>{t("field.total-value")} {t("common.egp")}</NumHead>
                         <TableHead>{t("field.supplier")}</TableHead>
                         <TableHead>{t("field.so-number")}</TableHead>
                         {warehouseFilter !== "all" && <TableHead>{t("warehouse.warehouse")}</TableHead>}
                         <TableHead>{t("field.status")}</TableHead>
-                        <TableHead>Returned Items</TableHead>
+                        <TableHead>{t("inv.returned-items")}</TableHead>
                         <ActionsHead>{t("photo.photos")}</ActionsHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredInventory.map((item) => (
                         <TableRow key={item.id}>
-                          <IdCell>{renderProductName(item.productName || "Unknown", item.isOutsourced && outsourcedTag)}</IdCell>
+                          <IdCell>{renderProductName(item.productName || t("common.unknown"), item.isOutsourced && outsourcedTag)}</IdCell>
                           <TableCell>{item.sku}</TableCell>
                           <NumCell>{formatNumber(item.quantity)}</NumCell>
                           <NumCell className="text-sm text-muted-foreground">
@@ -807,7 +808,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                             <TableCell>
                               <Badge variant="outline" className="gap-1">
                                 <Warehouse className="w-3 h-3" />
-                                {item.warehouseName || item.location || "Main"}
+                                {item.warehouseName || item.location || t("inv.main-warehouse")}
                               </Badge>
                             </TableCell>
                           )}
@@ -823,7 +824,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 }
                 card={(item) => (
                   <ListCard
-                    id={renderProductName(item.productName || "Unknown", item.isOutsourced && outsourcedTag)}
+                    id={renderProductName(item.productName || t("common.unknown"), item.isOutsourced && outsourcedTag)}
                     amount={formatMoney(item.quantity * (item.unitCost ?? 0), language)}
                     party={item.sku}
                     status={renderStockStatus(item)}
@@ -832,7 +833,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                         {t("field.quantity")}: {formatNumber(item.quantity)} · {t("inventory.reorder-point")}: {formatNumber(item.reorderPoint)}
                         {item.supplierName ? ` · ${item.supplierName}` : ""}
                         {item.soNumber ? ` · ${item.soNumber}` : ""}
-                        {warehouseFilter !== "all" ? ` · ${item.warehouseName || item.location || "Main"}` : ""}
+                        {warehouseFilter !== "all" ? ` · ${item.warehouseName || item.location || t("inv.main-warehouse")}` : ""}
                       </>
                     }
                     actions={renderStockActions(item)}
@@ -866,8 +867,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                         <TableHead>{t("field.product-name")}</TableHead>
                         <TableHead>{t("field.sku")}</TableHead>
                         <NumHead>{t("field.quantity")}</NumHead>
-                        <NumHead>{t("field.unit-price")} (EGP)</NumHead>
-                        <NumHead>{t("field.total")} (EGP)</NumHead>
+                        <NumHead>{t("field.unit-price")} {t("common.egp")}</NumHead>
+                        <NumHead>{t("field.total")} {t("common.egp")}</NumHead>
                         <TableHead>{t("field.so-number")}</TableHead>
                         <TableHead>{t("field.customer")}</TableHead>
                         <TableHead>{t("field.status")}</TableHead>
@@ -973,8 +974,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                         <TableHead>{t("field.product-name")}</TableHead>
                         <TableHead>{t("field.sku")}</TableHead>
                         <NumHead>{t("field.quantity")}</NumHead>
-                        <NumHead>{t("field.unit-price")} (EGP)</NumHead>
-                        <NumHead>{t("field.total")} (EGP)</NumHead>
+                        <NumHead>{t("field.unit-price")} {t("common.egp")}</NumHead>
+                        <NumHead>{t("field.total")} {t("common.egp")}</NumHead>
                         <TableHead>{t("field.so-number")}</TableHead>
                         <TableHead>{t("field.customer")}</TableHead>
                         <TableHead>{t("inventory.sold-date")}</TableHead>
@@ -1023,11 +1024,10 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <RotateCcw className="w-5 h-5" />
-                Returned Items
+                {t("inv.returned-items")}
               </CardTitle>
               <CardDescription>
-                Items returned from customers currently held in the warehouse. Restock an item to add it back to
-                sellable stock, or remove it to write it off and add a credit to the supplier account.
+                {t("inv.returned-items-description")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1036,7 +1036,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 empty={
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <RotateCcw className="w-12 h-12 text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No returned items in inventory</p>
+                    <p className="text-muted-foreground">{t("inv.no-returned-items")}</p>
                   </div>
                 }
                 table={
@@ -1046,10 +1046,10 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                         <TableHead>{t("field.product-name")}</TableHead>
                         <TableHead>{t("field.sku")}</TableHead>
                         <NumHead>{t("field.quantity")}</NumHead>
-                        <NumHead>{t("field.unit-cost")} (EGP)</NumHead>
-                        <NumHead>Total Value (EGP)</NumHead>
-                        <TableHead>Supplier</TableHead>
-                        <TableHead>SO Number</TableHead>
+                        <NumHead>{t("field.unit-cost")} {t("common.egp")}</NumHead>
+                        <NumHead>{t("common.total-value-egp")}</NumHead>
+                        <TableHead>{t("field.supplier")}</TableHead>
+                        <TableHead>{t("so-number")}</TableHead>
                         <TableHead>{t("warehouse.warehouse")}</TableHead>
                         <ActionsHead>{t("field.actions")}</ActionsHead>
                       </TableRow>
@@ -1063,7 +1063,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                               <>
                                 {item.isOutsourced && outsourcedTag}
                                 <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 border-amber-200">
-                                  Returned
+                                  {t("common.returned")}
                                 </Badge>
                               </>,
                             )}
@@ -1088,7 +1088,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                       <>
                         {item.isOutsourced && outsourcedTag}
                         <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 border-amber-200">
-                          Returned
+                          {t("common.returned")}
                         </Badge>
                       </>,
                     )}
@@ -1227,31 +1227,31 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       <Dialog open={removeReturnedItemDialog} onOpenChange={setRemoveReturnedItemDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove Returned Item</DialogTitle>
+            <DialogTitle>{t("inv.remove-returned-title")}</DialogTitle>
           </DialogHeader>
           {selectedReturnedItem && (
             <div className="space-y-4">
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                 <p className="text-sm text-amber-900">
-                  <strong>Item:</strong> {selectedReturnedItem.productName}
+                  <strong>{t("inv.item-label")}</strong> {selectedReturnedItem.productName}
                 </p>
                 <p className="text-sm text-amber-900 mt-2">
-                  <strong>Quantity:</strong> {formatNumber(selectedReturnedItem.quantity)}
+                  <strong>{t("common.quantity")}</strong> {formatNumber(selectedReturnedItem.quantity)}
                 </p>
                 <p className="text-sm text-amber-900 mt-2">
-                  <strong>Unit Cost (EGP):</strong> <Money value={selectedReturnedItem.unitCost || 0} />
+                  <strong>{t("inv.unit-cost-egp-label")}</strong> <Money value={selectedReturnedItem.unitCost || 0} />
                 </p>
                 <p className="text-sm text-amber-900 mt-2 font-semibold">
-                  <strong>Total Credit (EGP):</strong> <Money value={(selectedReturnedItem.quantity || 0) * (selectedReturnedItem.unitCost || 0)} />
+                  <strong>{t("inv.total-credit-egp-label")}</strong> <Money value={(selectedReturnedItem.quantity || 0) * (selectedReturnedItem.unitCost || 0)} />
                 </p>
                 {selectedReturnedItem.supplierName && (
                   <p className="text-sm text-amber-900 mt-2">
-                    <strong>Supplier:</strong> {selectedReturnedItem.supplierName}
+                    <strong>{t("common.supplier")}</strong> {selectedReturnedItem.supplierName}
                   </p>
                 )}
               </div>
               <p className="text-sm text-muted-foreground">
-                This will remove the item from inventory and create a credit memo with the supplier for the total value.
+                {t("inv.remove-credit-note")}
               </p>
               <div className="flex flex-wrap gap-2 justify-end">
                 <Button
@@ -1259,7 +1259,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                   onClick={() => setRemoveReturnedItemDialog(false)}
                   disabled={isRemovingItem}
                 >
-                  Cancel
+                  {t("cancel")}
                 </Button>
                 <Button
                   variant="destructive"
@@ -1269,10 +1269,10 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                   {isRemovingItem ? (
                     <>
                       <Loader2 className="w-4 h-4 me-2 animate-spin" />
-                      Processing...
+                      {t("common.processing")}
                     </>
                   ) : (
-                    "Remove & Create Credit"
+                    t("inv.remove-create-credit")
                   )}
                 </Button>
               </div>
@@ -1285,29 +1285,28 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       <Dialog open={restockReturnedItemDialog} onOpenChange={setRestockReturnedItemDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Restock to Warehouse</DialogTitle>
+            <DialogTitle>{t("inv.restock-to-warehouse")}</DialogTitle>
           </DialogHeader>
           {selectedRestockItem && (
             <div className="space-y-4">
               <div className="bg-muted border border-border rounded-lg p-4">
                 <p className="text-sm text-foreground">
-                  <strong>Item:</strong> {selectedRestockItem.productName}
+                  <strong>{t("inv.item-label")}</strong> {selectedRestockItem.productName}
                 </p>
                 <p className="text-sm text-foreground mt-2">
-                  <strong>Quantity:</strong> {formatNumber(selectedRestockItem.quantity)}
+                  <strong>{t("common.quantity")}</strong> {formatNumber(selectedRestockItem.quantity)}
                 </p>
                 <p className="text-sm text-foreground mt-2">
-                  <strong>Unit Cost (EGP):</strong> <Money value={selectedRestockItem.unitCost || 0} />
+                  <strong>{t("inv.unit-cost-egp-label")}</strong> <Money value={selectedRestockItem.unitCost || 0} />
                 </p>
                 {selectedRestockItem.warehouseName && (
                   <p className="text-sm text-foreground mt-2">
-                    <strong>Warehouse:</strong> {selectedRestockItem.warehouseName}
+                    <strong>{t("inv.warehouse-label")}</strong> {selectedRestockItem.warehouseName}
                   </p>
                 )}
               </div>
               <p className="text-sm text-muted-foreground">
-                This will add the returned quantity back into sellable warehouse stock and remove it from the
-                Returns list. No supplier credit will be created.
+                {t("inv.restock-note")}
               </p>
               <div className="flex flex-wrap gap-2 justify-end">
                 <Button
@@ -1315,16 +1314,16 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                   onClick={() => setRestockReturnedItemDialog(false)}
                   disabled={isRestockingItem}
                 >
-                  Cancel
+                  {t("cancel")}
                 </Button>
                 <Button onClick={handleConfirmRestockReturnedItem} disabled={isRestockingItem}>
                   {isRestockingItem ? (
                     <>
                       <Loader2 className="w-4 h-4 me-2 animate-spin" />
-                      Processing...
+                      {t("common.processing")}
                     </>
                   ) : (
-                    "Restock to Warehouse"
+                    t("inv.restock-to-warehouse")
                   )}
                 </Button>
               </div>
@@ -1355,11 +1354,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.customer")}</p>
                   <p className="font-medium">
-                    {customers.find((c) => c.id === selectedSODetails.customerId)?.name || "Unknown"}
+                    {customers.find((c) => c.id === selectedSODetails.customerId)?.name || t("common.unknown")}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("field.total")} (EGP)</p>
+                  <p className="text-sm text-muted-foreground">{t("field.total")} {t("common.egp")}</p>
                   <p className="font-medium text-lg"><Money value={selectedSODetails.total} /></p>
                 </div>
                 <div>
@@ -1378,8 +1377,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                     <TableRow>
                       <TableHead>{t("field.product")}</TableHead>
                       <TableHead>{t("field.quantity")}</TableHead>
-                      <TableHead>{t("field.unit-price")} (EGP)</TableHead>
-                      <TableHead>{t("field.total")} (EGP)</TableHead>
+                      <TableHead>{t("field.unit-price")} {t("common.egp")}</TableHead>
+                      <TableHead>{t("field.total")} {t("common.egp")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1407,35 +1406,35 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Warehouse className="w-5 h-5" />
-              Add New Warehouse
+              {t("warehouse.add-new")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="warehouse-name">Warehouse Name *</Label>
+              <Label htmlFor="warehouse-name">{t("inv.warehouse-name-required")}</Label>
               <Input
                 id="warehouse-name"
                 value={newWarehouseName}
                 onChange={(e) => setNewWarehouseName(e.target.value)}
-                placeholder="e.g., Main Warehouse"
+                placeholder={t("inv.warehouse-name-placeholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="warehouse-location">Location</Label>
+              <Label htmlFor="warehouse-location">{t("warehouse.location")}</Label>
               <Input
                 id="warehouse-location"
                 value={newWarehouseLocation}
                 onChange={(e) => setNewWarehouseLocation(e.target.value)}
-                placeholder="e.g., North Wing"
+                placeholder={t("inv.location-placeholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="warehouse-address">Address</Label>
+              <Label htmlFor="warehouse-address">{t("address")}</Label>
               <Textarea
                 id="warehouse-address"
                 value={newWarehouseAddress}
                 onChange={(e) => setNewWarehouseAddress(e.target.value)}
-                placeholder="Full address..."
+                placeholder={t("inv.address-placeholder")}
                 rows={2}
               />
             </div>
@@ -1450,10 +1449,10 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 setNewWarehouseAddress("")
               }}
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button onClick={handleCreateWarehouse} disabled={!newWarehouseName.trim() || isCreatingWarehouse}>
-              {isCreatingWarehouse ? "Creating..." : "Create Warehouse"}
+              {isCreatingWarehouse ? t("common.creating") : t("warehouse.create")}
             </Button>
           </div>
         </DialogContent>
@@ -1463,16 +1462,16 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       <Dialog open={showAddCategoryDialog} onOpenChange={setShowAddCategoryDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Category</DialogTitle>
+            <DialogTitle>{t("common.create-new-category")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="category-name">Category Name *</Label>
+              <Label htmlFor="category-name">{t("common.category-name")}</Label>
               <Input
                 id="category-name"
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="e.g., Electronics, Food, etc."
+                placeholder={t("common.e-g-electronics-food-etc")}
               />
             </div>
           </div>
@@ -1484,10 +1483,10 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 setNewCategoryName("")
               }}
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button onClick={handleCreateCategory} disabled={!newCategoryName.trim() || isCreatingCategory}>
-              {isCreatingCategory ? "Creating..." : "Create Category"}
+              {isCreatingCategory ? t("common.creating") : t("common.create-category")}
             </Button>
           </div>
         </DialogContent>

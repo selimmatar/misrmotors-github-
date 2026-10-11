@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import type { CustomerInvoice } from "@/lib/types"
 import { isSinglePayment } from "@/lib/payment-type"
 import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, ChevronDown, Upload, Search } from "lucide-react"
@@ -199,8 +200,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   }
 
   // Retired: invoices are created strictly per APPROVED delivery permit (see handleCreateFromDPs).
-  const INVOICE_FROM_DP_ONLY_MESSAGE =
-    "Invoices are created from approved delivery permits. Use \"From Delivery Items\" and select the approved delivery permit(s)."
+  const INVOICE_FROM_DP_ONLY_MESSAGE = fill(t("ar.invoice-from-dp-only"), { option: t("ar.from-delivery-items") })
 
   const handleCreateFromSO = async () => {
     setSoSelectDialogOpen(false)
@@ -223,7 +223,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     if (uniqueTerms.length > 1) {
       return {
         valid: false,
-        message: `Cannot consolidate DPs with different payment terms: ${uniqueTerms.join(", ")}. Please select DPs with the same payment method.`,
+        message: fill(t("ar.cannot-consolidate-terms"), { terms: uniqueTerms.join(", ") }),
       }
     }
 
@@ -271,13 +271,13 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       }
 
       const result = await response.json()
-      alert(`Invoice created from ${selectedDPs.length} delivery permits`)
+      alert(fill(t("ar.invoice-created-from-dps"), { count: selectedDPs.length }))
       setDpSelectDialogOpen(false)
       setSelectedDPs([])
       await loadData()
     } catch (error) {
       console.error("Error creating invoice from DPs:", error)
-      alert("Failed to create invoice. Please try again.")
+      alert(t("ar.create-invoice-failed"))
     }
   }
 
@@ -755,13 +755,13 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         throw new Error(errorData.error || 'Failed to update invoice')
       }
 
-      alert(t("success.vat-invoice-uploaded") || "VAT Invoice Uploaded Successfully!")
+      alert(t("success.vat-invoice-uploaded"))
 
       // Refresh invoices
       fetchInvoices()
     } catch (error: any) {
       console.error("Error uploading VAT invoice:", error)
-      alert(t("error.upload-failed") || `Failed to upload VAT invoice: ${error.message}`)
+      alert(t("error.upload-failed"))
     }
   }
 
@@ -937,7 +937,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         amount: paymentAmount,
         paymentMethod: "installment_payment",
         receiptUrl,
-        label: `Month ${monthsPaidSoFar + 1}/${installmentMonths}`,
+        label: `Month ${monthsPaidSoFar + 1}/${installmentMonths}`, // sent to the server and stored in the payment description: keep English
         scope: `plain|${selectedInvoiceForPayment.id}|${paymentAmount}|${collectedSoFar}|${monthsPaidSoFar}`,
       })
 
@@ -1085,7 +1085,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           }}
         >
           <FileText className="w-4 h-4 me-2" />
-          {t("action.print-invoice") || "Print Invoice"}
+          {t("action.print-invoice")}
         </Button>
         {invoice.vatInvoiceUrl ? (
           <Button
@@ -1095,11 +1095,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               e.stopPropagation()
               window.open(invoice.vatInvoiceUrl, "_blank")
             }}
-            title="View VAT Invoice"
+            title={t("ar.view-vat-invoice")}
             className="bg-purple-50 hover:bg-purple-100"
           >
             <Eye className="w-4 h-4 me-1" />
-            VAT
+            {t("ar.vat")}
           </Button>
         ) : (
           (userRole === "accountant" || userRole === "ceo") && (
@@ -1110,11 +1110,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                 e.stopPropagation()
                 document.getElementById(`vat-invoice-upload-${invoice.id}`)?.click()
               }}
-              title="Upload VAT Invoice"
+              title={t("ar.upload-vat-invoice")}
               className="bg-purple-50 hover:bg-purple-100"
             >
               <Upload className="w-4 h-4 me-1" />
-              VAT
+              {t("ar.vat")}
               <input
                 id={`vat-invoice-upload-${invoice.id}`}
                 type="file"
@@ -1155,7 +1155,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                     onClick={() => alert(INVOICE_FROM_DP_ONLY_MESSAGE)}
                   >
                     <FileText className="w-4 h-4 me-2" />
-                    From Sales Order
+                    {t("ar.from-sales-order")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
@@ -1164,7 +1164,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                     }}
                   >
                     <FileText className="w-4 h-4 me-2" />
-                    From Delivery Items
+                    {t("ar.from-delivery-items")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1176,25 +1176,25 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       {/* Summary Cards */}
       <KpiGrid>
         <KpiTile
-          label={`${t("ar.total-receivable")} (EGP)`}
+          label={`${t("ar.total-receivable")} ${t("common.egp")}`}
           value={<Money value={totalReceivable} />}
           sub={`${allInvoices.length} ${t("ar.invoices")}`}
           onClick={() => handleWidgetClick("receivable")}
         />
         <KpiTile
-          label={`${t("ar.collected")} (EGP)`}
+          label={`${t("ar.collected")} ${t("common.egp")}`}
           value={<Money value={totalCollected} />}
           sub={`${allInvoices.filter((i) => (i.collectedAmount || 0) > 0).length} ${t("ar.invoices")}`}
           onClick={() => handleWidgetClick("collected")}
         />
         <KpiTile
-          label={`${t("ar.outstanding")} (EGP)`}
+          label={`${t("ar.outstanding")} ${t("common.egp")}`}
           value={<Money value={totalOutstanding} />}
           sub={`${allInvoices.filter((i) => (i.amount || 0) - (i.collectedAmount || 0) > 0).length} ${t("ar.invoices")}`}
           onClick={() => handleWidgetClick("outstanding")}
         />
         <KpiTile
-          label={`${t("ar.overdue")} (EGP)`}
+          label={`${t("ar.overdue")} ${t("common.egp")}`}
           value={<Money value={overdueAmount} />}
           sub={`${overdueInvoices.length} ${t("ar.invoices")}`}
           onClick={() => handleWidgetClick("overdue")}
@@ -1232,7 +1232,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
             <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search by invoice number, customer, or SO number..."
+              placeholder={t("ar.search-invoices-placeholder")}
               value={invoiceSearchQuery}
               onChange={(e) => setInvoiceSearchQuery(e.target.value)}
               className="ps-9"
@@ -1252,7 +1252,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>No invoices match your search</p>
+                  <p>{t("ar.no-invoices-match")}</p>
                 </div>
               )
             }
@@ -1280,9 +1280,9 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                     <TableHead>{t("payment.type")}</TableHead>
                     <TableHead>{t("ar.invoice-date")}</TableHead>
                     <TableHead>{t("ar.due-date")}</TableHead>
-                    <NumHead>{t("ar.total-amount")} (EGP)</NumHead>
-                    <NumHead>{t("ar.paid-amount")} (EGP)</NumHead>
-                    <NumHead>{t("ar.balance")} (EGP)</NumHead>
+                    <NumHead>{t("ar.total-amount")} {t("common.egp")}</NumHead>
+                    <NumHead>{t("ar.paid-amount")} {t("common.egp")}</NumHead>
+                    <NumHead>{t("ar.balance")} {t("common.egp")}</NumHead>
                     <TableHead>{t("ar.progress")}</TableHead>
                     <TableHead>{t("field.status")}</TableHead>
                     <ActionsHead />
@@ -1308,7 +1308,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         <TableCell>{getSONumber(invoice.soId, invoice)}</TableCell>
                         <TableCell>
                           <span className="px-2 py-1 rounded-full text-xs bg-primary/10 text-foreground capitalize">
-                            {paymentType}
+                            {t(`payment.${paymentType}`)}
                           </span>
                         </TableCell>
                         <TableCell>{formatDate(invoice.date, language)}</TableCell>
@@ -1355,16 +1355,16 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t("ar.total-amount")}</p>
-                  <p className="font-medium"><Money value={selectedInvoiceForSchedule.amount || 0} /> EGP</p>
+                  <p className="font-medium"><Money value={selectedInvoiceForSchedule.amount || 0} /> {t("common.egp-2")}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t("ar.paid-amount")}</p>
-                  <p className="font-medium text-green-700"><Money value={getTotalSchedulePaid()} /> EGP</p>
+                  <p className="font-medium text-green-700"><Money value={getTotalSchedulePaid()} /> {t("common.egp-2")}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t("ar.balance")}</p>
                   <p className="font-medium text-amber-700">
-                    <Money value={(selectedInvoiceForSchedule.amount || 0) - getTotalSchedulePaid()} /> EGP
+                    <Money value={(selectedInvoiceForSchedule.amount || 0) - getTotalSchedulePaid()} /> {t("common.egp-2")}
                   </p>
                 </div>
               </div>
@@ -1372,11 +1372,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>
-                    {t("field.paid")}: <Money value={getTotalSchedulePaid()} /> EGP
+                    {t("field.paid")}: <Money value={getTotalSchedulePaid()} /> {t("common.egp-2")}
                   </span>
                   <span>
                     {t("field.balance")}:{" "}
-                    <Money value={(selectedInvoiceForSchedule.amount || 0) - getTotalSchedulePaid()} /> EGP
+                    <Money value={(selectedInvoiceForSchedule.amount || 0) - getTotalSchedulePaid()} /> {t("common.egp-2")}
                   </span>
                 </div>
                 <Progress value={getScheduleProgress()} className="h-3" />
@@ -1389,8 +1389,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                 <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
                   <AlertCircle className="w-5 h-5 text-yellow-700" />
                   <p className="text-sm text-yellow-700">
-                    {t("ar.schedules-generated") ||
-                      "Payment schedule generated from order data. Actual schedule may vary."}
+                    {t("ar.schedules-generated")}
                   </p>
                 </div>
               )}
@@ -1414,8 +1413,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                       <tr className="border-b bg-muted/30">
                         <th className="text-start p-3">{t("ar.installment")}</th>
                         <th className="text-start p-3">{t("ar.due-date")}</th>
-                        <th className="text-start p-3">{t("ar.amount")} (EGP)</th>
-                        <th className="text-start p-3">{t("ar.paid-amount")} (EGP)</th>
+                        <th className="text-start p-3">{t("ar.amount")} {t("common.egp")}</th>
+                        <th className="text-start p-3">{t("ar.paid-amount")} {t("common.egp")}</th>
                         <th className="text-start p-3">{t("ar.payment-date")}</th>
                         <th className="text-start p-3">{t("field.status")}</th>
                         <th className="text-start p-3">{t("field.actions")}</th>
@@ -1510,7 +1509,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("ar.amount")}:</span>
-                  <span className="font-bold text-lg"><Money value={selectedScheduleForPayment.amount} /> EGP</span>
+                  <span className="font-bold text-lg"><Money value={selectedScheduleForPayment.amount} /> {t("common.egp-2")}</span>
                 </div>
               </div>
 
@@ -1550,9 +1549,9 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   <th className="text-start p-2">{t("ar.invoice-number")}</th>
                   <th className="text-start p-2">{t("ar.customer")}</th>
                   <th className="text-start p-2">{t("ar.due-date")}</th>
-                  <th className="text-start p-2">{t("ar.total-amount")} (EGP)</th>
-                  <th className="text-start p-2">{t("ar.paid-amount")} (EGP)</th>
-                  <th className="text-start p-2">{t("ar.balance")} (EGP)</th>
+                  <th className="text-start p-2">{t("ar.total-amount")} {t("common.egp")}</th>
+                  <th className="text-start p-2">{t("ar.paid-amount")} {t("common.egp")}</th>
+                  <th className="text-start p-2">{t("ar.balance")} {t("common.egp")}</th>
                   <th className="text-start p-2">{t("field.status")}</th>
                   <th className="text-start p-2">{t("field.actions")}</th>
                 </tr>
@@ -1627,18 +1626,18 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   <strong>{t("ar.customer")}:</strong> {getCustomerName(selectedInvoiceForPayment.customerId)}
                 </p>
                 <p>
-                  <strong>{t("ar.total-amount")}:</strong> <Money value={selectedInvoiceForPayment.amount || 0} /> EGP
+                  <strong>{t("ar.total-amount")}:</strong> <Money value={selectedInvoiceForPayment.amount || 0} /> {t("common.egp-2")}
                 </p>
                 <p>
                   <strong>{t("ar.paid-amount")}:</strong>{" "}
-                  <Money value={selectedInvoiceForPayment.collectedAmount || 0} /> EGP
+                  <Money value={selectedInvoiceForPayment.collectedAmount || 0} /> {t("common.egp-2")}
                 </p>
                 <p>
                   <strong>{t("ar.monthly-payment")}:</strong>{" "}
                   <Money
                     value={(selectedInvoiceForPayment.amount || 0) / getInstallmentMonths(selectedInvoiceForPayment)}
                   />{" "}
-                  EGP
+                  {t("common.egp-2")}
                 </p>
                 <p>
                   <strong>{t("ar.progress")}:</strong> {selectedInvoiceForPayment.monthsPaid || 0}/
@@ -1682,7 +1681,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           <DialogHeader className="border-b pb-4">
             <DialogTitle className="text-2xl">{t("ar.create-invoice")}</DialogTitle>
             <DialogDescription className="text-base mt-2">
-              Select a sales order to generate an invoice. Delivery permits associated with this order will be included automatically.
+              {t("ar.select-so-description")}
             </DialogDescription>
           </DialogHeader>
           
@@ -1723,11 +1722,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                             <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm ms-8">
                               <div>
                                 <span className="text-muted-foreground">{t("field.customer")}:</span>
-                                <span className="ms-2 font-medium">{so.customerName || "Unknown"}</span>
+                                <span className="ms-2 font-medium">{so.customerName || t("common.unknown")}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">{t("field.payment")}:</span>
-                                <span className="ms-2 font-medium capitalize">{so.paymentType || "Cash"}</span>
+                                <span className="ms-2 font-medium capitalize">{t(`payment.${so.paymentType || "cash"}`)}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">{t("field.date")}:</span>
@@ -1742,7 +1741,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                             </div>
                           </div>
                           <div className="text-end">
-                            <p className="text-2xl font-bold text-primary"><Money value={so.total || so.total_amount || 0} /> EGP</p>
+                            <p className="text-2xl font-bold text-primary"><Money value={so.total || so.total_amount || 0} /> {t("common.egp-2")}</p>
                             <p className="text-xs text-muted-foreground mt-1">{t("field.total")}</p>
                           </div>
                         </div>
@@ -1781,15 +1780,15 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.customer")}</p>
-                            <p className="font-semibold">{selectedSODetails?.customerName || "Unknown"}</p>
+                            <p className="font-semibold">{selectedSODetails?.customerName || t("common.unknown")}</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment-terms")}</p>
-                            <p className="font-semibold capitalize">{selectedSODetails?.paymentType || "Cash"}</p>
+                            <p className="font-semibold capitalize">{t(`payment.${selectedSODetails?.paymentType || "cash"}`)}</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
-                            <p className="font-bold text-lg text-primary"><Money value={selectedSODetails?.total || 0} /> EGP</p>
+                            <p className="font-bold text-lg text-primary"><Money value={selectedSODetails?.total || 0} /> {t("common.egp-2")}</p>
                           </div>
                         </div>
                       </CardContent>
@@ -1816,8 +1815,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                           <CardHeader className="bg-muted/30">
                             <CardTitle className="text-lg">
                               {isHybridCheque
-                                ? t("payment.down-payment-cheque") || "Down Payment Cheque"
-                                : t("payment.cheque-details") || "Cheque Details"}
+                                ? t("payment.down-payment-cheque")
+                                : t("payment.cheque-details")}
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="pt-6">
@@ -1825,7 +1824,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                               {chequeNumber && (
                                 <div>
                                   <p className="text-sm text-muted-foreground">
-                                    {t("payment.cheque-number") || "Cheque Number"}
+                                    {t("payment.cheque-number")}
                                   </p>
                                   <p className="font-semibold font-mono">{chequeNumber}</p>
                                 </div>
@@ -1833,7 +1832,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                               {chequeBank && (
                                 <div>
                                   <p className="text-sm text-muted-foreground">
-                                    {t("payment.bank-name") || "Bank Name"}
+                                    {t("payment.bank-name")}
                                   </p>
                                   <p className="font-semibold">{chequeBank}</p>
                                 </div>
@@ -1841,7 +1840,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                               {chequeDueDate && (
                                 <div>
                                   <p className="text-sm text-muted-foreground">
-                                    {t("payment.cheque-due-date") || "Cheque Due Date"}
+                                    {t("payment.cheque-due-date")}
                                   </p>
                                   <p className="font-semibold">{formatDate(chequeDueDate, language)}</p>
                                 </div>
@@ -1849,15 +1848,15 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                               {chequeAmount != null && chequeAmount > 0 && (
                                 <div>
                                   <p className="text-sm text-muted-foreground">
-                                    {t("payment.cheque-amount") || "Cheque Amount"}
+                                    {t("payment.cheque-amount")}
                                   </p>
-                                  <p className="font-semibold"><Money value={chequeAmount} /> EGP</p>
+                                  <p className="font-semibold"><Money value={chequeAmount} /> {t("common.egp-2")}</p>
                                 </div>
                               )}
                               {chequeNotes && (
                                 <div className="col-span-2">
                                   <p className="text-sm text-muted-foreground">
-                                    {t("payment.cheque-notes") || "Notes"}
+                                    {t("payment.cheque-notes")}
                                   </p>
                                   <p className="font-semibold">{chequeNotes}</p>
                                 </div>
@@ -1894,7 +1893,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                                   <div>
                                     <p className="font-medium">{dp.permitNo || `DP-${dp.id}`}</p>
                                     <p className="text-xs text-muted-foreground">
-                                      {dp.printedAt ? formatDate(dp.printedAt, language) : dp.createdAt ? formatDate(dp.createdAt, language) : "N/A"}
+                                      {dp.printedAt ? formatDate(dp.printedAt, language) : dp.createdAt ? formatDate(dp.createdAt, language) : t("label.na")}
                                     </p>
                                   </div>
                                 </div>
@@ -1920,11 +1919,11 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">{t("field.customer")}:</span>
-                            <span className="font-semibold">{selectedSODetails?.customerName || "Unknown"}</span>
+                            <span className="font-semibold">{selectedSODetails?.customerName || t("common.unknown")}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">{t("field.amount")}:</span>
-                            <span className="font-bold text-lg"><Money value={selectedSODetails?.total || 0} /> EGP</span>
+                            <span className="font-bold text-lg"><Money value={selectedSODetails?.total || 0} /> {t("common.egp-2")}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">{t("field.delivery-permits")}:</span>
@@ -1978,9 +1977,9 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           <DialogHeader>
             <DialogTitle>{t("ar.select-delivery-permits")}</DialogTitle>
             <DialogDescription>
-              Select one or more delivery permits to consolidate into an invoice
+              {t("ar.select-dps-description")}
               <br />
-              <span className="text-xs text-yellow-700">⚠️ All selected DPs must have the same payment terms</span>
+              <span className="text-xs text-yellow-700">{t("ar.dps-same-terms-warning")}</span>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 max-h-[400px] overflow-y-auto">
@@ -1994,7 +1993,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
               // Get customer and SO info
               const customerName = dp.customerName || getCustomerName(customerId) || "Unknown Customer"
-              const soNumber = dp.soNumber || getSONumber(salesOrderId) || "N/A"
+              const soNumber = dp.soNumber || getSONumber(salesOrderId) || t("label.na")
               const paymentType = getSOPaymentType(salesOrderId) || "Unknown"
 
               return (
@@ -2014,20 +2013,20 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   <div className="flex justify-between items-start">
                     <div className="space-y-1 flex-1">
                       <p className="font-semibold">{permitNo}</p>
-                      <p className="text-sm text-muted-foreground">Customer: {customerName}</p>
-                      <p className="text-sm text-muted-foreground">SO: {soNumber}</p>
+                      <p className="text-sm text-muted-foreground">{t("common.customer")} {customerName}</p>
+                      <p className="text-sm text-muted-foreground">{t("common.so")} {soNumber}</p>
                       <p className="text-sm text-muted-foreground">
-                        Date: {deliveryDate ? formatDate(deliveryDate, language) : "N/A"}
+                        {t("ar.date-label")} {deliveryDate ? formatDate(deliveryDate, language) : t("label.na")}
                       </p>
-                      <p className="text-xs text-muted-foreground">Payment: {paymentType}</p>
+                      <p className="text-xs text-muted-foreground">{t("ar.payment-label")} {t(`payment.${paymentType}`)}</p>
                       {/* Show returned items warning if any */}
                       {dp.returnedQuantity && Number(dp.returnedQuantity) > 0 && (
                         <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs">
                           <p className="text-amber-800 font-medium">
-                            ⚠️ {dp.returnedQuantity} item(s) returned from this delivery
+                            ⚠️ {fill(t("ar.items-returned-from-delivery"), { count: dp.returnedQuantity })}
                           </p>
                           <p className="text-amber-700 text-xs mt-1">
-                            You can exclude returned items or create a credit memo
+                            {t("ar.exclude-or-credit-memo")}
                           </p>
                         </div>
                       )}
@@ -2044,7 +2043,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               )
             })}
             {availableDPs.length === 0 && (
-              <p className="text-center text-muted-foreground py-8">No delivery permits available for invoicing</p>
+              <p className="text-center text-muted-foreground py-8">{t("ar.no-dps-for-invoicing")}</p>
             )}
           </div>
 
@@ -2053,7 +2052,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
             <div className="border-t pt-4 mt-4">
               <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-700" />
-                Items Returned from Selected Deliveries
+                {t("ar.items-returned-heading")}
               </h4>
               <div className="space-y-3 bg-amber-50 p-4 rounded-lg border border-amber-200">
                 {availableDPs
@@ -2063,7 +2062,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                       <div className="text-sm">
                         <p className="font-medium">{dp.permitNo || `DP-${dp.id}`}</p>
                         <p className="text-xs text-muted-foreground">
-                          {dp.returnedQuantity} item(s) returned
+                          {fill(t("ar.items-returned"), { count: dp.returnedQuantity })}
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -2077,7 +2076,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                             })
                           }
                         >
-                          Exclude from Invoice
+                          {t("ar.exclude-from-invoice")}
                         </Button>
                         <Button
                           size="sm"
@@ -2087,7 +2086,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                             setShowCreditMemoForm(true)
                           }}
                         >
-                          Create Credit Memo
+                          {t("ar.create-credit-memo")}
                         </Button>
                       </div>
                     </div>
@@ -2100,7 +2099,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               {t("button.cancel")}
             </Button>
             <Button onClick={handleCreateFromDPs} disabled={selectedDPs.length === 0}>
-              {t("button.create")} ({selectedDPs.length} selected)
+              {t("button.create")} ({fill(t("ar.count-selected"), { count: selectedDPs.length })})
             </Button>
           </DialogFooter>
         </DialogContent>

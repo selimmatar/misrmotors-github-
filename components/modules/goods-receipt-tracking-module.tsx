@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
@@ -66,7 +67,7 @@ export function GoodsReceiptTrackingModule() {
   }
 
   if (loading) {
-    return <div className="p-4">Loading goods receipts...</div>
+    return <div className="p-4">{t("grt.loading")}</div>
   }
 
   return (
@@ -74,7 +75,7 @@ export function GoodsReceiptTrackingModule() {
       <PageHeader
         group={t("group.inventory")}
         title={t("module.goods-receipt-tracking")}
-        subtitle="View all received POs, discrepancies, and adjusted quantities"
+        subtitle={t("grt.subtitle")}
       />
 
       {/* Filters */}
@@ -83,25 +84,25 @@ export function GoodsReceiptTrackingModule() {
           variant={filterStatus === "all" ? "default" : "outline"}
           onClick={() => setFilterStatus("all")}
         >
-          All ({receipts.length})
+          {fill(t("grt.filter-all"), { count: receipts.length })}
         </Button>
         <Button
           variant={filterStatus === "complete" ? "default" : "outline"}
           onClick={() => setFilterStatus("complete")}
         >
-          Complete ({receipts.filter((r) => r.status === "complete").length})
+          {fill(t("grt.filter-complete"), { count: receipts.filter((r) => r.status === "complete").length })}
         </Button>
         <Button
           variant={filterStatus === "discrepancy" ? "default" : "outline"}
           onClick={() => setFilterStatus("discrepancy")}
         >
-          Discrepancies ({receipts.filter((r) => r.status === "discrepancy").length})
+          {fill(t("grt.filter-discrepancies"), { count: receipts.filter((r) => r.status === "discrepancy").length })}
         </Button>
         <Button
           variant={filterStatus === "partial" ? "default" : "outline"}
           onClick={() => setFilterStatus("partial")}
         >
-          Partial ({receipts.filter((r) => r.status === "partial").length})
+          {fill(t("grt.filter-partial"), { count: receipts.filter((r) => r.status === "partial").length })}
         </Button>
       </div>
 
@@ -109,7 +110,7 @@ export function GoodsReceiptTrackingModule() {
       <div className="space-y-3">
         {filteredReceipts.length === 0 ? (
           <Card className="p-8 text-center text-muted-foreground">
-            No goods receipts found
+            {t("grt.no-receipts")}
           </Card>
         ) : (
           filteredReceipts.map((receipt) => (
@@ -122,30 +123,33 @@ export function GoodsReceiptTrackingModule() {
                     {receipt.lines.some((l) => l.discrepancyType) && (
                       <div className="flex items-center gap-1 text-red-700">
                         <AlertCircle className="w-4 h-4" />
-                        <span className="text-sm">Has Issues</span>
+                        <span className="text-sm">{t("grt.has-issues")}</span>
                       </div>
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
                     <div>
-                      <span className="text-muted-foreground">PO Number</span>
+                      <span className="text-muted-foreground">{t("po-number")}</span>
                       <p className="font-medium">{receipt.poNumber}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Receipt Date</span>
+                      <span className="text-muted-foreground">{t("grt.receipt-date")}</span>
                       <p className="font-medium">
                         {formatDate(receipt.receiptDate, language)}
                       </p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Items / Total Qty</span>
+                      <span className="text-muted-foreground">{t("grt.items-total-qty")}</span>
                       <p className="font-medium">
-                        {new Set(receipt.lines.map((l: any) => l.productId)).size} items / {receipt.lines.reduce((sum: number, l: any) => sum + (l.quantityReceived || 0), 0)} units
+                        {fill(t("grt.items-units"), {
+                          items: new Set(receipt.lines.map((l: any) => l.productId)).size,
+                          units: receipt.lines.reduce((sum: number, l: any) => sum + (l.quantityReceived || 0), 0),
+                        })}
                       </p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Discrepancies</span>
+                      <span className="text-muted-foreground">{t("inventory-audit.discrepancies")}</span>
                       <p className={`font-medium ${receipt.lines.filter((l) => l.discrepancyType).length > 0 ? 'text-red-700 text-lg' : ''}`}>
                         {receipt.lines.filter((l) => l.discrepancyType).length}
                       </p>
@@ -167,14 +171,14 @@ export function GoodsReceiptTrackingModule() {
                   }
                 >
                   <Eye className="w-4 h-4 me-1" />
-                  Details
+                  {t("details")}
                 </Button>
               </div>
 
               {/* Expandable Details */}
               {selectedReceipt?.id === receipt.id && (
                 <div className="mt-4 pt-4 border-t space-y-3">
-                  <h4 className="font-semibold text-sm">Items Received</h4>
+                  <h4 className="font-semibold text-sm">{t("grt.items-received")}</h4>
                   <div className="space-y-2">
                     {receipt.lines.map((line) => (
                       <div
@@ -193,28 +197,28 @@ export function GoodsReceiptTrackingModule() {
                                 </Badge>
                               )}
                             </div>
-                            <p className="text-sm text-muted-foreground mb-2">SKU: {line.sku}</p>
+                            <p className="text-sm text-muted-foreground mb-2">{t("common.sku-2")} {line.sku}</p>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-2">
                               <div>
-                                <span className="text-muted-foreground">Ordered</span>
-                                <p className="font-medium">{line.quantityOrdered} units</p>
+                                <span className="text-muted-foreground">{t("grt.ordered")}</span>
+                                <p className="font-medium">{fill(t("grt.units-count"), { count: line.quantityOrdered })}</p>
                               </div>
                               <div>
-                                <span className="text-muted-foreground">Received</span>
+                                <span className="text-muted-foreground">{t("po.status.received")}</span>
                                 <p className="font-medium text-blue-600">
-                                  {line.quantityReceived} units
+                                  {fill(t("grt.units-count"), { count: line.quantityReceived })}
                                 </p>
                               </div>
                               <div>
-                                <span className="text-muted-foreground">Warehouse</span>
-                                <p className="font-medium">{line.warehouseName || line.warehouse || "N/A"}</p>
+                                <span className="text-muted-foreground">{t("approval.warehouse")}</span>
+                                <p className="font-medium">{line.warehouseName || line.warehouse || t("grt.not-available")}</p>
                               </div>
                             </div>
 
                             {line.discrepancyNotes && (
                               <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                                <p className="font-medium text-yellow-900 mb-1">Issue Details:</p>
+                                <p className="font-medium text-yellow-900 mb-1">{t("grt.issue-details")}</p>
                                 <p className="text-yellow-800">{line.discrepancyNotes}</p>
                               </div>
                             )}

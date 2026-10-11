@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { UserIcon, Package, DollarSign, ShoppingCart, Warehouse, Shield } from "lucide-react"
 import type { User } from "@/lib/types"
 import type { StatusTone } from "@/lib/status-tone"
+import { useI18n } from "@/lib/i18n-context"
 
 const TONE_ICON: Record<StatusTone, string> = {
   neutral: "bg-tone-neutral-bg text-tone-neutral",
@@ -20,6 +21,7 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
+  const { t } = useI18n()
   const handleRoleSelection = (role: User["role"], name: string) => {
     const user: User = {
       id: `${role}-${Date.now()}`,
@@ -36,49 +38,56 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       role: "admin" as const,
       name: "Administrator",
       icon: Shield,
-      description: "System administration and user management",
+      labelKey: "login.role.admin",
+      descriptionKey: "login.desc.admin",
       tone: "danger" as StatusTone,
     },
     {
       role: "ceo" as const,
       name: "CEO / Owner",
       icon: UserIcon,
-      description: "Executive dashboard and approvals",
+      labelKey: "login.role.ceo",
+      descriptionKey: "login.desc.ceo",
       tone: "ready" as StatusTone,
     },
     {
       role: "accountant" as const,
       name: "Accountant",
       icon: DollarSign,
-      description: "Financial management and invoice approval",
+      labelKey: "login.role.accountant",
+      descriptionKey: "login.desc.accountant",
       tone: "done" as StatusTone,
     },
     {
       role: "sales-rep" as const,
       name: "Sales Representative",
       icon: ShoppingCart,
-      description: "Sales orders and customer management",
+      labelKey: "login.role.sales-rep",
+      descriptionKey: "login.desc.sales-rep",
       tone: "approved" as StatusTone,
     },
     {
       role: "po-rep" as const,
       name: "Purchasing Agent",
       icon: Package,
-      description: "Purchase orders and supplier management",
+      labelKey: "login.role.po-rep",
+      descriptionKey: "login.desc.po-rep",
       tone: "waiting" as StatusTone,
     },
     {
       role: "warehouse-rep" as const,
       name: "Warehouse Representative",
       icon: Warehouse,
-      description: "Inventory and warehouse operations",
+      labelKey: "login.role.warehouse-rep",
+      descriptionKey: "login.desc.warehouse-rep",
       tone: "neutral" as StatusTone,
     },
     {
       role: "shipment" as const,
       name: "Shipping & Operations",
       icon: Package,
-      description: "Delivery, shipment and operations management",
+      labelKey: "login.role.shipment",
+      descriptionKey: "login.desc.shipment",
       tone: "approved" as StatusTone,
     },
   ]
@@ -88,9 +97,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <Card className="w-full max-w-4xl">
         <CardHeader className="space-y-2 text-center">
           <div className="flex justify-center mb-4">
-            <img src="/images/image.png" alt="Misr Motors Logo" className="h-24 w-auto" />
+            <img src="/images/image.png" alt={t("frame.logo-alt")} className="h-24 w-auto" />
           </div>
-          <CardTitle className="text-3xl">Misr Motors</CardTitle>
+          <CardTitle className="text-3xl">{t("misr-motors")}</CardTitle>
           <CardDescription className="text-lg">Select your role to access the system</CardDescription>
         </CardHeader>
         <CardContent>
@@ -108,8 +117,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                     <Icon className="size-6" />
                   </span>
                   <div className="text-center">
-                    <div className="font-semibold text-base">{roleData.name}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{roleData.description}</div>
+                    <div className="font-semibold text-base">{t(roleData.labelKey)}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{t(roleData.descriptionKey)}</div>
                   </div>
                 </Button>
               )

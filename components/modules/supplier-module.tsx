@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useApp } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { ReportGenerator } from "@/components/report-generator"
 import type { Supplier, PurchaseOrder } from "@/lib/types"
 import { Plus, X, ChevronLeft, Trash2 } from "lucide-react"
@@ -177,7 +178,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
     if (invoices.length === 0) {
       return {
         status: "no_invoice",
-        label: "No Invoice",
+        label: t("supplier.status-no-invoice"),
         monthsPaid: 0,
         totalMonths: order.installments || 1,
         amountPaid: 0,
@@ -199,17 +200,17 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
     const amountDue = Math.max(0, (totalC - paidC) / 100)
 
     let status = "not_paid"
-    let label = "Not Paid"
+    let label = t("supplier.status-not-paid")
 
     if (paidC <= 0) {
       status = "not_paid"
-      label = "Not Paid"
+      label = t("supplier.status-not-paid")
     } else if (paidC < totalC) {
       status = "partially_paid"
-      label = "Partially Paid"
+      label = t("status.partially_paid")
     } else {
       status = "fully_paid"
-      label = "Fully Paid"
+      label = t("supplier.status-fully-paid")
     }
 
     return {
@@ -227,7 +228,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
   const handleMarkCreditsCredited = async (supplierId: string, creditIds: number[]) => {
     if (creditIds.length === 0 || markingCredits) return
     const total = (creditsDetail[supplierId] || []).filter((c: any) => creditIds.includes(c.credit_id)).reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0)
-    if (!confirm(`Mark ${creditIds.length} credit(s) totalling EGP ${total.toLocaleString()} as credited?\n\nThis only records that the supplier has credited you. It does not change any payable or payment.`)) return
+    if (!confirm(fill(t("supplier.confirm-mark-credited"), { count: creditIds.length, total: total.toLocaleString() }))) return
     setMarkingCredits(true)
     try {
       const response = await fetch("/api/supplier-credits", {
@@ -237,7 +238,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
       })
       const body: any = await response.json().catch(() => ({}))
       if (!response.ok) {
-        alert("Error: " + (body.message || "Failed to mark credits as credited"))
+        alert(fill(t("supplier.error-with-message"), { message: body.message || t("supplier.failed-mark-credited") }))
         return
       }
       const done: number[] = body.updated || []
@@ -247,7 +248,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
         return { ...prev, [supplierId]: Math.max(0, (prev[supplierId] || 0) - marked) }
       })
     } catch (error) {
-      alert("Error marking credits as credited: " + String(error))
+      alert(fill(t("supplier.error-marking-credited"), { error: String(error) }))
     } finally {
       setMarkingCredits(false)
     }
@@ -294,7 +295,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" onClick={() => setSelectedSupplier(null)} className="gap-2">
             <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
-            {t("action.back")} {t("supplier.title")}
+            {t("supplier.title")}
           </Button>
           {canAddSupplier && (
             <Button
@@ -317,43 +318,43 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div>
-                <p className="text-sm text-muted-foreground">{t("field.email")}</p>
+                <p className="text-sm text-muted-foreground">{t("email")}</p>
                 <p className="font-semibold">{selectedSupplier.email}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("field.phone")}</p>
+                <p className="text-sm text-muted-foreground">{t("phone")}</p>
                 <p className="font-semibold">
                   {selectedSupplier.countryCode} {selectedSupplier.phone}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("field.location")}</p>
+                <p className="text-sm text-muted-foreground">{t("warehouse.location")}</p>
                 <p className="font-semibold">
                   {selectedSupplier.city}, {selectedSupplier.country}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("field.address")}</p>
-                <p className="font-semibold">{selectedSupplier.address || "N/A"}</p>
+                <p className="text-sm text-muted-foreground">{t("address")}</p>
+                <p className="font-semibold">{selectedSupplier.address || t("supplier.not-available")}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("supplier.total-orders")}</p>
                 <p className="font-semibold text-lg">{supplierOrders.length}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("supplier.total-purchased")} (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("supplier.total-purchased")} {t("common.egp")}</p>
                 <p className="font-semibold text-lg text-blue-600"><Money value={totalSpent} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("supplier.total-paid")} (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("supplier.total-paid")} {t("common.egp")}</p>
                 <p className="font-semibold text-lg text-green-700"><Money value={totalPaid} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("supplier.balance-due")} (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("supplier.balance-due")} {t("common.egp")}</p>
                 <p className="font-semibold text-lg text-orange-700"><Money value={totalSpent - totalPaid} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Available Credit (EGP)</p>
+                <p className="text-sm text-muted-foreground">{t("supplier.available-credit-egp")}</p>
                 <p className="font-semibold text-lg text-green-700">
                   <Money value={supplierCredits[selectedSupplier.id] || 0} />
                 </p>
@@ -362,31 +363,31 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
 
             {/* Supplier Credits Section — always visible */}
             <div className="border-t pt-6 mt-2">
-              <h3 className="text-lg font-semibold mb-4">Account Credits from Returns</h3>
+              <h3 className="text-lg font-semibold mb-4">{t("supplier.account-credits")}</h3>
               {(!creditsDetail[selectedSupplier.id] || creditsDetail[selectedSupplier.id].length === 0) ? (
-                <p className="text-sm text-muted-foreground py-3">No return credits on this supplier account yet.</p>
+                <p className="text-sm text-muted-foreground py-3">{t("supplier.no-return-credits")}</p>
               ) : (
                 <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4">
                   <p className="text-sm text-green-700 dark:text-green-400 mb-3">
-                    Credits from returned items — deduct from future purchase orders.
+                    {t("supplier.credits-description")}
                   </p>
                   <div className="space-y-2">
                     {creditsDetail[selectedSupplier.id].map((credit: any, idx: number) => (
                       <div key={idx} className="flex justify-between items-start text-sm border-b border-green-200 dark:border-green-800 pb-2 last:border-0">
                         <div className="flex-1">
-                          <p className="font-medium text-green-900 dark:text-green-300">{credit.description || "Return Credit"}</p>
+                          <p className="font-medium text-green-900 dark:text-green-300">{credit.description || t("supplier.return-credit")}</p>
                           <p className="text-xs text-green-700 dark:text-green-500 mt-1">
                             {formatDate(credit.created_at, language)}
                             {credit.credit_type && ` • ${credit.credit_type}`}
-                            {credit.po_number && ` • PO ${credit.po_number}`}
-                            {credit.invoice_number && ` • AP ${credit.invoice_number}`}
-                            {credit.unapplied !== false && " • Unapplied"}
+                            {credit.po_number && <>{" "}{fill(t("supplier.credit-po"), { number: credit.po_number })}</>}
+                            {credit.invoice_number && <>{" "}{fill(t("supplier.credit-ap"), { number: credit.invoice_number })}</>}
+                            {credit.unapplied !== false && <>{" "}{t("supplier.credit-unapplied")}</>}
                           </p>
                           {credit.notes && <p className="text-xs text-green-700/80 dark:text-green-500/80 mt-0.5">{credit.notes}</p>}
                         </div>
                         <div className="ms-4 flex flex-col items-end gap-1">
                           <p className="font-semibold text-green-700 dark:text-green-400">
-                            <Money value={credit.amount} /> EGP
+                            <Money value={credit.amount} /> {t("common.egp-2")}
                           </p>
                           <Button
                             size="sm"
@@ -394,16 +395,16 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                             disabled={markingCredits}
                             onClick={() => handleMarkCreditsCredited(String(selectedSupplier.id), [credit.credit_id])}
                           >
-                            Mark credited
+                            {t("supplier.mark-credited")}
                           </Button>
                         </div>
                       </div>
                     ))}
                   </div>
                   <div className="border-t border-green-200 dark:border-green-800 mt-3 pt-3 flex justify-between items-center font-semibold">
-                    <span>Total Unapplied Credit:</span>
+                    <span>{t("supplier.total-unapplied-credit")}</span>
                     <span className="text-lg text-green-700 dark:text-green-400">
-                      <Money value={supplierCredits[selectedSupplier.id] || 0} /> EGP
+                      <Money value={supplierCredits[selectedSupplier.id] || 0} /> {t("common.egp-2")}
                     </span>
                   </div>
                   <div className="mt-3 flex justify-end">
@@ -417,7 +418,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                         )
                       }
                     >
-                      Mark all credited
+                      {t("supplier.mark-all-credited")}
                     </Button>
                   </div>
                 </div>
@@ -445,15 +446,15 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                             <p className="font-semibold">{formatDate(order.orderDate, language)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.total-amount")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("payment.total-amount")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={order.total} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount-paid")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-paid")} {t("common.egp")}</p>
                             <p className="font-semibold text-green-700"><Money value={paymentStatus.amountPaid} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount-due")} (EGP)</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-due")} {t("common.egp")}</p>
                             <p className="font-semibold text-orange-700"><Money value={paymentStatus.amountDue} /></p>
                           </div>
                           <div>
@@ -482,10 +483,10 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                                         {item.productName || getProductName(item.productId)}
                                       </span>
                                     </div>
-                                    <span className="font-semibold"><Money value={item.total} /> EGP</span>
+                                    <span className="font-semibold"><Money value={item.total} /> {t("common.egp-2")}</span>
                                   </div>
                                   <div className="text-xs text-muted-foreground mt-1">
-                                    {item.quantity} × <Money value={item.unitPrice} /> EGP {t("field.per-unit")}
+                                    {item.quantity} × <Money value={item.unitPrice} /> {t("common.egp-2")} {t("field.per-unit")}
                                   </div>
                                 </div>
                               ))}
@@ -543,14 +544,14 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
-                placeholder={t("supplier.name")}
+                placeholder={t("field.supplier-name")}
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
               <Input
                 type="email"
-                placeholder={t("field.email")}
+                placeholder={t("email")}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
@@ -574,7 +575,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                     </SelectContent>
                   </Select>
                   <Input
-                    placeholder={t("field.phone")}
+                    placeholder={t("phone")}
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     required
@@ -616,7 +617,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                 </SelectContent>
               </Select>
               <Input
-                placeholder={t("field.address")}
+                placeholder={t("address")}
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               />
@@ -666,11 +667,11 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           <p className="font-semibold">{supplier.name}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("field.email")}</p>
+                          <p className="text-sm text-muted-foreground">{t("email")}</p>
                           <p className="font-semibold text-sm">{supplier.email}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("field.location")}</p>
+                          <p className="text-sm text-muted-foreground">{t("warehouse.location")}</p>
                           <p className="font-semibold">
                             {supplier.city}, {supplier.country}
                           </p>

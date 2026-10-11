@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { DeliveryPermitCard } from "@/components/delivery-permit"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
@@ -303,21 +304,21 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                         <TableRow>
                           <TableHead>{t("field.product")}</TableHead>
                           <TableHead className="text-end">{t("field.quantity")}</TableHead>
-                          <TableHead className="text-end">{t("field.unit-price")} (EGP)</TableHead>
-                          <TableHead className="text-end">{t("field.total")} (EGP)</TableHead>
+                          <TableHead className="text-end">{t("field.unit-price")} {t("common.egp")}</TableHead>
+                          <TableHead className="text-end">{t("field.total")} {t("common.egp")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {permitToReview.items.map((item, index) => (
                           <TableRow key={index}>
                             <TableCell>
-                              {item.itemNameSnapshot || item.productName || `Product #${item.productId}`}
+                              {item.itemNameSnapshot || item.productName || fill(t("permit.product-number"), { id: String(item.productId) })}
                             </TableCell>
                             <TableCell className="text-end">
                               {item.quantity}
                               {Number((item as any).returnedQuantity) > 0 && (
                                 <span className="block text-xs text-red-700">
-                                  Returned {(item as any).returnedQuantity} · net {Number(item.quantity) - Number((item as any).returnedQuantity)}
+                                  {fill(t("permit.returned-net"), { returned: (item as any).returnedQuantity, net: Number(item.quantity) - Number((item as any).returnedQuantity) })}
                                 </span>
                               )}
                             </TableCell>
@@ -376,11 +377,11 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                     return (
                       <div className="border rounded bg-white">
                         {documentUrl.toLowerCase().includes(".pdf") ? (
-                          <iframe src={documentUrl} className="w-full h-[300px] rounded" title="Signed DP" />
+                          <iframe src={documentUrl} className="w-full h-[300px] rounded" title={t("permit.signed-dp")} />
                         ) : (
                           <img
                             src={documentUrl || "/placeholder.svg"}
-                            alt="Signed DP"
+                            alt={t("permit.signed-dp")}
                             className="w-full max-h-[300px] object-contain rounded"
                           />
                         )}

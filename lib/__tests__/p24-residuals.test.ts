@@ -42,5 +42,5 @@ test("clickable list card works from the keyboard", () => {
 
 test("warehouse delivery long action buttons wrap instead of pushing the page sideways", () => {
   const s = read("components/modules/warehouse-delivery-module.tsx")
-  assert.match(s, /className="flex-1 min-w-0 h-auto whitespace-normal bg-blue-600 hover:bg-blue-700"\s*>\s*<Warehouse className="w-4 h-4 me-2 shrink-0" \/>\s*Allocate Warehouses & Prepare/)
+  assert.match(s, /className="flex-1 min-w-0 h-auto whitespace-normal bg-blue-600 hover:bg-blue-700"\s*>\s*<Warehouse className="w-4 h-4 me-2 shrink-0" \/>\s*(Allocate Warehouses & Prepare|\{t\("wd\.allocate-prepare"\)\})/)
 })

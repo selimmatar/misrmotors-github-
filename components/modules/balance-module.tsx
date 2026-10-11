@@ -69,17 +69,17 @@ export function BalanceModule() {
       {/* Summary Cards */}
       <KpiGrid className="lg:grid-cols-3">
         <KpiTile
-          label={`${t("balance.current-balance")} (EGP)`}
+          label={[t("balance.current-balance"), t("common.egp")].join(" ")}
           value={<Money value={currentBalance} />}
           sub={currentBalance >= 0 ? t("balance.positive") : t("balance.negative")}
         />
         <KpiTile
-          label={`${t("balance.total-income")} (EGP)`}
+          label={[t("balance.total-income"), t("common.egp")].join(" ")}
           value={<Money value={totalIncome} />}
           sub={`${formatNumber(incomeEntries.length)} ${t("field.transactions")}`}
         />
         <KpiTile
-          label={`${t("balance.total-expenses")} (EGP)`}
+          label={[t("balance.total-expenses"), t("common.egp")].join(" ")}
           value={<Money value={totalExpenses} />}
           sub={`${formatNumber(expenseEntries.length)} ${t("field.transactions")}`}
         />
@@ -117,7 +117,7 @@ export function BalanceModule() {
                           <p className="font-semibold">{entry.referenceNumber}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("balance.amount")} (EGP)</p>
+                          <p className="text-sm text-muted-foreground">{t("balance.amount")} {t("common.egp")}</p>
                           <p
                             className={`font-semibold text-lg ${entry.amount > 0 ? "text-green-700" : "text-red-700"}`}
                           >
@@ -167,7 +167,7 @@ export function BalanceModule() {
                           <p className="font-semibold">{entry.referenceNumber}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("balance.amount")} (EGP)</p>
+                          <p className="text-sm text-muted-foreground">{t("balance.amount")} {t("common.egp")}</p>
                           <p className="font-semibold text-lg text-green-700">
                             <bdi>
                               +<Money value={entry.amount} />
@@ -214,7 +214,7 @@ export function BalanceModule() {
                           <p className="font-semibold">{entry.referenceNumber}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("balance.amount")} (EGP)</p>
+                          <p className="text-sm text-muted-foreground">{t("balance.amount")} {t("common.egp")}</p>
                           <p className="font-semibold text-lg text-red-700">
                             <bdi>
                               -<Money value={Math.abs(entry.amount)} />

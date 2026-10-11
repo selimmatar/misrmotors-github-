@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, RefreshCw } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { formatDateTime } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
@@ -28,6 +29,14 @@ interface HealthReport {
     healthy: boolean
   }
   checks: HealthCheck[]
+}
+
+// Display-only map: the category strings stay English in data.
+const CATEGORY_KEYS: Record<string, string> = {
+  Database: "system-health.database",
+  Tables: "system-health.tables",
+  APIs: "system-health.apis",
+  Workflows: "system-health.workflows",
 }
 
 export function SystemHealthModule() {
@@ -102,12 +111,12 @@ export function SystemHealthModule() {
     <div className="space-y-6">
       <PageHeader
         group={t("group.admin")}
-        title={t("system-health.title") || "System Health"}
-        subtitle={t("system-health.description") || "Monitor system health and data integrity"}
+        title={t("system-health.title")}
+        subtitle={t("system-health.description")}
         actions={
           <Button onClick={runHealthCheck} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <RefreshCw className="h-4 w-4 me-2" />}
-            {t("action.refresh") || "Refresh"}
+            {t("action.refresh")}
           </Button>
         }
       />
@@ -134,16 +143,16 @@ export function SystemHealthModule() {
                 ) : (
                   <XCircle className="h-6 w-6 text-red-700" />
                 )}
-                {report.summary.healthy ? "System Healthy" : "Issues Detected"}
+                {report.summary.healthy ? t("system-health.system-healthy") : t("system-health.issues-detected")}
               </CardTitle>
-              <CardDescription>Last checked: {formatDateTime(report.timestamp, language)}</CardDescription>
+              <CardDescription>{fill(t("health.last-checked-at"), { time: formatDateTime(report.timestamp, language) })}</CardDescription>
             </CardHeader>
             <CardContent>
               <KpiGrid>
-                <KpiTile label="Total Checks" value={report.summary.total} />
-                <KpiTile label="Passed" value={report.summary.passed} />
-                <KpiTile label="Failed" value={report.summary.failed} />
-                <KpiTile label="Warnings" value={report.summary.warnings} />
+                <KpiTile label={t("system-health.total-checks")} value={report.summary.total} />
+                <KpiTile label={t("system-health.passed")} value={report.summary.passed} />
+                <KpiTile label={t("system-health.failed")} value={report.summary.failed} />
+                <KpiTile label={t("system-health.warnings")} value={report.summary.warnings} />
               </KpiGrid>
             </CardContent>
           </Card>
@@ -153,9 +162,9 @@ export function SystemHealthModule() {
             Object.entries(groupedChecks).map(([category, checks]) => (
               <Card key={category}>
                 <CardHeader>
-                  <CardTitle>{category}</CardTitle>
+                  <CardTitle>{CATEGORY_KEYS[category] ? t(CATEGORY_KEYS[category]) : category}</CardTitle>
                   <CardDescription>
-                    {checks.filter((c) => c.status === "pass").length}/{checks.length} passed
+                    {fill(t("health.checks-passed"), { passed: checks.filter((c) => c.status === "pass").length, total: checks.length })}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -172,7 +181,7 @@ export function SystemHealthModule() {
                           </div>
                           <div className="flex items-center gap-3">
                             {check.duration && (
-                              <span className="text-sm text-muted-foreground">{check.duration}ms</span>
+                              <span className="text-sm text-muted-foreground">{fill(t("health.duration-ms"), { ms: check.duration })}</span>
                             )}
                             <StatusBadge status={check.status} />
                           </div>

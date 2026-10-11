@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { Plus, Trash2, Printer, Eye, Search, X } from "lucide-react"
 
 // Supplier from API (transformed format)
@@ -68,7 +69,6 @@ interface PORequest {
 export function PORequestModule() {
   const { toast } = useToast()
   const { t, language } = useI18n()
-  const isRTL = language === "ar"
 
   const [requests, setRequests] = useState<PORequest[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -124,22 +124,22 @@ export function PORequestModule() {
         setNewCategoryName("")
         setShowAddCategoryDialog(false)
         toast({
-          title: "Category Created",
-          description: `Category "${newCategory.category_name}" has been created successfully.`,
+          title: t("po-req.category-created"),
+          description: fill(t("po-req.category-created-desc"), { name: newCategory.category_name }),
         })
       } else {
         const error = await response.json()
         toast({
-          title: "Error",
-          description: error.error || "Failed to create category",
+          title: t("error"),
+          description: error.error || t("common.failed-to-create-category"),
           variant: "destructive",
         })
       }
     } catch (error) {
       console.error("Error creating category:", error)
       toast({
-        title: "Error",
-        description: "Failed to create category",
+        title: t("error"),
+        description: t("common.failed-to-create-category"),
         variant: "destructive",
       })
     } finally {
@@ -167,8 +167,8 @@ export function PORequestModule() {
     } catch (error) {
       console.error("Error fetching data:", error)
       toast({
-        title: isRTL ? "خطأ" : "Error",
-        description: isRTL ? "حدث خطأ أثناء تحميل البيانات" : "Error loading data",
+        title: t("error"),
+        description: t("po-req.error-loading-data"),
         variant: "destructive",
       })
     } finally {
@@ -195,8 +195,8 @@ export function PORequestModule() {
   const handleCreateRequest = async () => {
     if (!selectedSupplier) {
       toast({
-        title: isRTL ? "خطأ" : "Error",
-        description: isRTL ? "يرجى اختيار المورد" : "Please select a supplier",
+        title: t("error"),
+        description: t("po-req.please-select-a-supplier"),
         variant: "destructive",
       })
       return
@@ -205,8 +205,8 @@ export function PORequestModule() {
     const validItems = items.filter((item) => item.product_name.trim() && item.quantity > 0)
     if (validItems.length === 0) {
       toast({
-        title: isRTL ? "خطأ" : "Error",
-        description: isRTL ? "يرجى إضافة صنف واحد على الأقل" : "Please add at least one item",
+        title: t("error"),
+        description: t("common.please-add-at-least-one"),
         variant: "destructive",
       })
       return
@@ -231,8 +231,8 @@ export function PORequestModule() {
 
       if (response.ok) {
         toast({
-          title: isRTL ? "تم بنجاح" : "Success",
-          description: isRTL ? "تم إنشاء طلب عرض الأسعار بنجاح" : "Quotation request created successfully",
+          title: t("success"),
+          description: t("po-req.quotation-request-created"),
         })
         resetForm()
         setIsCreateDialogOpen(false)
@@ -240,16 +240,16 @@ export function PORequestModule() {
       } else {
         const error = await response.json()
         toast({
-          title: isRTL ? "خطأ" : "Error",
-          description: error.message || (isRTL ? "حدث خطأ أثناء إنشاء الطلب" : "Error creating request"),
+          title: t("error"),
+          description: error.message || (t("po-req.error-creating-request")),
           variant: "destructive",
         })
       }
     } catch (error) {
       console.error("Create request error:", error)
       toast({
-        title: isRTL ? "خطأ" : "Error",
-        description: isRTL ? "حدث خطأ أثناء إنشاء الطلب" : "Error creating request",
+        title: t("error"),
+        description: t("po-req.error-creating-request"),
         variant: "destructive",
       })
     }
@@ -270,13 +270,13 @@ export function PORequestModule() {
   const requestStatusLabel = (status: string): string | undefined => {
     switch (status) {
       case "pending":
-        return isRTL ? "في انتظار عرض السعر" : "Awaiting Quote"
+        return t("po-req.awaiting-quote")
       case "quoted":
-        return isRTL ? "تم استلام عرض السعر" : "Quote Received"
+        return t("po-req.quote-received")
       case "converted":
-        return isRTL ? "تم التحويل لأمر شراء" : "Converted to PO"
+        return t("po-req.converted-to-po")
       case "cancelled":
-        return isRTL ? "ملغي" : "Cancelled"
+        return t("status.cancelled")
       default:
         return undefined
     }
@@ -286,11 +286,11 @@ export function PORequestModule() {
     <>
       <Button variant="outline" size="sm" onClick={() => setSelectedRequest(request)} className="gap-1">
         <Eye className="w-4 h-4" />
-        {isRTL ? "عرض" : "View"}
+        {t("view")}
       </Button>
       <Button variant="outline" size="sm" onClick={() => handlePrint(request.request_id)} className="gap-1">
         <Printer className="w-4 h-4" />
-        {isRTL ? "طباعة" : "Print"}
+        {t("action.print")}
       </Button>
     </>
   )
@@ -306,16 +306,16 @@ export function PORequestModule() {
       {/* Header */}
       <PageHeader
         group={t("group.purchasing")}
-        title={isRTL ? "طلبات عروض الأسعار" : "PO Quotation Requests"}
-        subtitle={isRTL ? "إدارة طلبات عروض الأسعار من الموردين" : "Manage quotation requests from suppliers"}
+        title={t("po-req.title")}
+        subtitle={t("po-req.description")}
         actions={
           <>
             <Button variant="outline" onClick={() => setShowAddCategoryDialog(true)}>
-              + Category
+              {t("common.category")}
             </Button>
             <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
               <Plus className="w-4 h-4" />
-              {isRTL ? "طلب عرض سعر جديد" : "New Quotation Request"}
+              {t("po-req.new-quotation-request")}
             </Button>
           </>
         }
@@ -325,7 +325,7 @@ export function PORequestModule() {
       <div className="relative max-w-md">
         <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
-          placeholder={isRTL ? "بحث برقم الطلب أو اسم المورد..." : "Search by request number or supplier..."}
+          placeholder={t("po-req.search-placeholder")}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="ps-10"
@@ -337,10 +337,10 @@ export function PORequestModule() {
         rows={isLoading ? [] : filteredRequests}
         empty={
           isLoading ? (
-            <div className="py-8 text-center">{isRTL ? "جاري التحميل..." : "Loading..."}</div>
+            <div className="py-8 text-center">{t("loading")}</div>
           ) : (
             <div className="py-8 text-center text-muted-foreground">
-              {isRTL ? "لا توجد طلبات عروض أسعار" : "No quotation requests found"}
+              {t("po-req.no-requests-found")}
             </div>
           )
         }
@@ -350,11 +350,11 @@ export function PORequestModule() {
               <ErpTable>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{isRTL ? "رقم الطلب" : "Request No."}</TableHead>
-                    <TableHead>{isRTL ? "المورد" : "Supplier"}</TableHead>
-                    <TableHead>{isRTL ? "تاريخ الطلب" : "Request Date"}</TableHead>
-                    <TableHead>{isRTL ? "عدد الأصناف" : "Items"}</TableHead>
-                    <ActionsHead>{isRTL ? "الإجراءات" : "Actions"}</ActionsHead>
+                    <TableHead>{t("po-req.request-no")}</TableHead>
+                    <TableHead>{t("field.supplier")}</TableHead>
+                    <TableHead>{t("lost-sales.request-date")}</TableHead>
+                    <TableHead>{t("so.items")}</TableHead>
+                    <ActionsHead>{t("actions")}</ActionsHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -378,7 +378,7 @@ export function PORequestModule() {
             party={request.suppliers?.supplier_name || "-"}
             note={
               <>
-                {formatDate(request.request_date || request.created_at, language)} · {isRTL ? "عدد الأصناف" : "Items"}:{" "}
+                {formatDate(request.request_date || request.created_at, language)} · {t("so.items")}:{" "}
                 {request.po_request_items?.length || 0}
               </>
             }
@@ -391,17 +391,17 @@ export function PORequestModule() {
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isRTL ? "إنشاء طلب عرض سعر جديد" : "Create New Quotation Request"}</DialogTitle>
+            <DialogTitle>{t("po-req.create-new-request")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
             {/* Supplier Selection */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>{isRTL ? "المورد *" : "Supplier *"}</Label>
+                <Label>{t("po-req.supplier-required")}</Label>
                 <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
                   <SelectTrigger>
-                    <SelectValue placeholder={isRTL ? "اختر المورد" : "Select supplier"} />
+                    <SelectValue placeholder={t("common.select-supplier")} />
                   </SelectTrigger>
                   <SelectContent>
                     {suppliers.filter((supplier) => supplier.id && supplier.id.trim() !== "").map((supplier) => (
@@ -414,7 +414,7 @@ export function PORequestModule() {
               </div>
 
               <div className="space-y-2">
-                <Label>{isRTL ? "تاريخ التسليم المتوقع" : "Expected Delivery Date"}</Label>
+                <Label>{t("po-req.expected-delivery-date")}</Label>
                 <Input
                   type="date"
                   value={expectedDeliveryDate}
@@ -426,10 +426,10 @@ export function PORequestModule() {
             {/* Items Section - Custom Items Only */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-lg font-semibold">{isRTL ? "الأصناف المطلوبة" : "Required Items"}</Label>
+                <Label className="text-lg font-semibold">{t("po-req.required-items")}</Label>
                 <Button variant="outline" size="sm" onClick={handleAddItem} className="gap-1 bg-transparent">
                   <Plus className="w-4 h-4" />
-                  {isRTL ? "إضافة صنف" : "Add Item"}
+                  {t("action.add-item")}
                 </Button>
               </div>
 
@@ -438,16 +438,16 @@ export function PORequestModule() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[250px] text-start">
-                        {isRTL ? "اسم الصنف" : "Item Name"}
+                        {t("common.item-name")}
                       </TableHead>
                       <TableHead className="w-[100px] text-start">
-                        {isRTL ? "الكمية" : "Qty"}
+                        {t("common.qty")}
                       </TableHead>
                       <TableHead className="w-[100px] text-start">
-                        {isRTL ? "الوحدة" : "Unit"}
+                        {t("common.unit")}
                       </TableHead>
                       <TableHead className="text-start">
-                        {isRTL ? "ملاحظات" : "Notes"}
+                        {t("notes")}
                       </TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
@@ -459,7 +459,7 @@ export function PORequestModule() {
                           <Input
                             value={item.product_name}
                             onChange={(e) => handleItemChange(index, "product_name", e.target.value)}
-                            placeholder={isRTL ? "أدخل اسم الصنف" : "Enter item name"}
+                            placeholder={t("common.enter-item-name")}
                           />
                         </TableCell>
                         <TableCell>
@@ -474,14 +474,14 @@ export function PORequestModule() {
                           <Input
                             value={item.unit}
                             onChange={(e) => handleItemChange(index, "unit", e.target.value)}
-                            placeholder={isRTL ? "قطعة" : "pcs"}
+                            placeholder={t("common.pcs")}
                           />
                         </TableCell>
                         <TableCell>
                           <Input
                             value={item.notes}
                             onChange={(e) => handleItemChange(index, "notes", e.target.value)}
-                            placeholder={isRTL ? "ملاحظات..." : "Notes..."}
+                            placeholder={t("po-req.notes-placeholder")}
                           />
                         </TableCell>
                         <TableCell>
@@ -505,11 +505,11 @@ export function PORequestModule() {
 
             {/* Notes */}
             <div className="space-y-2">
-              <Label>{isRTL ? "ملاحظات إضافية" : "Additional Notes"}</Label>
+              <Label>{t("common.additional-notes")}</Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder={isRTL ? "أي ملاحظات إضافية للمورد..." : "Any additional notes for the supplier..."}
+                placeholder={t("po-req.supplier-notes-placeholder")}
                 rows={3}
               />
             </div>
@@ -517,9 +517,9 @@ export function PORequestModule() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-              {isRTL ? "إلغاء" : "Cancel"}
+              {t("cancel")}
             </Button>
-            <Button onClick={handleCreateRequest}>{isRTL ? "إنشاء الطلب" : "Create Request"}</Button>
+            <Button onClick={handleCreateRequest}>{t("po-req.create-request")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -530,7 +530,7 @@ export function PORequestModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>
-                {isRTL ? "تفاصيل طلب عرض السعر" : "Quotation Request Details"} - {selectedRequest?.request_number}
+                {t("po-req.request-details")} - {selectedRequest?.request_number}
               </span>
             </DialogTitle>
           </DialogHeader>
@@ -539,23 +539,23 @@ export function PORequestModule() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-muted-foreground">{isRTL ? "المورد" : "Supplier"}</Label>
+                  <Label className="text-muted-foreground">{t("field.supplier")}</Label>
                   <p className="font-medium">{selectedRequest.suppliers?.supplier_name || "-"}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">{isRTL ? "الحالة" : "Status"}</Label>
+                  <Label className="text-muted-foreground">{t("status")}</Label>
                   <div className="mt-1">
                     <StatusBadge status={selectedRequest.status} label={requestStatusLabel(selectedRequest.status)} />
                   </div>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">{isRTL ? "تاريخ الطلب" : "Request Date"}</Label>
+                  <Label className="text-muted-foreground">{t("lost-sales.request-date")}</Label>
                   <p className="font-medium">
                     {formatDate(selectedRequest.request_date || selectedRequest.created_at, language)}
                   </p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">{isRTL ? "تاريخ التسليم المتوقع" : "Expected Delivery"}</Label>
+                  <Label className="text-muted-foreground">{t("po-req.expected-delivery")}</Label>
                   <p className="font-medium">
                     {selectedRequest.expected_delivery_date
                       ? formatDate(selectedRequest.expected_delivery_date, language)
@@ -566,20 +566,20 @@ export function PORequestModule() {
 
               {selectedRequest.notes && (
                 <div>
-                  <Label className="text-muted-foreground">{isRTL ? "ملاحظات" : "Notes"}</Label>
+                  <Label className="text-muted-foreground">{t("notes")}</Label>
                   <p className="font-medium">{selectedRequest.notes}</p>
                 </div>
               )}
 
               <div>
-                <Label className="text-muted-foreground mb-2 block">{isRTL ? "الأصناف" : "Items"}</Label>
+                <Label className="text-muted-foreground mb-2 block">{t("so.items")}</Label>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{isRTL ? "الصنف" : "Item"}</TableHead>
-                      <TableHead>{isRTL ? "الكمية" : "Qty"}</TableHead>
-                      <TableHead>{isRTL ? "الوحدة" : "Unit"}</TableHead>
-                      <TableHead>{isRTL ? "ملاحظات" : "Notes"}</TableHead>
+                      <TableHead>{t("common.item")}</TableHead>
+                      <TableHead>{t("common.qty")}</TableHead>
+                      <TableHead>{t("common.unit")}</TableHead>
+                      <TableHead>{t("notes")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -600,10 +600,10 @@ export function PORequestModule() {
           <DialogFooter>
             <Button variant="outline" onClick={() => handlePrint(selectedRequest!.request_id)} className="gap-2">
               <Printer className="w-4 h-4" />
-              {isRTL ? "طباعة" : "Print"}
+              {t("action.print")}
             </Button>
             <Button variant="outline" onClick={() => setSelectedRequest(null)}>
-              {isRTL ? "إغلاق" : "Close"}
+              {t("close")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -613,16 +613,16 @@ export function PORequestModule() {
   <Dialog open={showAddCategoryDialog} onOpenChange={setShowAddCategoryDialog}>
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>{isRTL ? "إنشاء فئة جديدة" : "Create New Category"}</DialogTitle>
+        <DialogTitle>{t("common.create-new-category")}</DialogTitle>
       </DialogHeader>
       <div className="space-y-4 py-4">
         <div className="space-y-2">
-          <Label htmlFor="category-name">{isRTL ? "اسم الفئة *" : "Category Name *"}</Label>
+          <Label htmlFor="category-name">{t("common.category-name")}</Label>
           <Input
             id="category-name"
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.target.value)}
-            placeholder={isRTL ? "مثل: إلكترونيات، طعام، إلخ." : "e.g., Electronics, Food, etc."}
+            placeholder={t("common.e-g-electronics-food-etc")}
           />
         </div>
       </div>
@@ -634,10 +634,10 @@ export function PORequestModule() {
             setNewCategoryName("")
           }}
         >
-          {isRTL ? "إلغاء" : "Cancel"}
+          {t("cancel")}
         </Button>
         <Button onClick={handleCreateCategory} disabled={!newCategoryName.trim() || isCreatingCategory}>
-          {isCreatingCategory ? (isRTL ? "جاري الإنشاء..." : "Creating...") : (isRTL ? "إنشاء الفئة" : "Create Category")}
+          {isCreatingCategory ? (t("common.creating")) : (t("common.create-category"))}
         </Button>
       </DialogFooter>
     </DialogContent>

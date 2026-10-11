@@ -53,21 +53,25 @@ export function CEOChatAssistant() {
     {
       icon: DollarSign,
       text: "Financial position",
+      labelKey: "ceo.financial-position",
       color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
     },
     {
       icon: TrendingUp,
       text: "Cash flow projection",
+      labelKey: "ceo.cash-flow-projection",
       color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
     },
     {
       icon: Package,
       text: "Low stock alerts",
+      labelKey: "ceo.low-stock-alerts",
       color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
     },
     {
       icon: Users,
       text: "Top customers",
+      labelKey: "ceo.top-customers",
       color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
     },
   ]
@@ -117,12 +121,12 @@ export function CEOChatAssistant() {
 
         if (errorMessage.includes("API key") || response.status === 401) {
           setAiNotConfigured(true)
-          setChatError("Gemini API key not configured or invalid.")
+          setChatError(t("ceo.err-api-key"))
         } else if (response.status >= 500 || errorMessage.includes("temporarily unavailable")) {
           setServiceUnavailable(true)
-          setChatError("Gemini service is temporarily unavailable. Please try again.")
+          setChatError(t("ceo.err-service-unavailable"))
         } else if (response.status === 429) {
-          setChatError("Rate limit exceeded. Please wait and try again.")
+          setChatError(t("ceo.err-rate-limit"))
         } else {
           setChatError(errorMessage)
         }
@@ -134,7 +138,7 @@ export function CEOChatAssistant() {
 
       const reader = response.body?.getReader()
       if (!reader) {
-        setChatError("Failed to read response stream")
+        setChatError(t("ceo.err-read-stream"))
         setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
         setIsLoading(false)
         return
@@ -168,13 +172,13 @@ export function CEOChatAssistant() {
       }
 
       if (!fullContent.trim()) {
-        setChatError("No response received from AI")
+        setChatError(t("ceo.err-no-response"))
         setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
       }
     } catch (err) {
       console.error("Chat error:", err)
       setServiceUnavailable(true)
-      setChatError("Failed to connect to AI service. Please try again.")
+      setChatError(t("ceo.err-connect"))
       setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId))
     } finally {
       setIsLoading(false)
@@ -221,7 +225,7 @@ export function CEOChatAssistant() {
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground">Powered by Gemini with live data access</p>
+            <p className="text-xs text-muted-foreground">{t("ceo.powered-by-gemini")}</p>
           </div>
         </div>
       </div>
@@ -232,11 +236,11 @@ export function CEOChatAssistant() {
           {aiNotConfigured && (
             <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
               <Settings className="h-4 w-4 text-amber-700" />
-              <AlertTitle className="text-amber-800 dark:text-amber-400 text-sm">API Key Required</AlertTitle>
+              <AlertTitle className="text-amber-800 dark:text-amber-400 text-sm">{t("ceo.api-key-required")}</AlertTitle>
               <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs">
-                Add GEMINI_API_KEY in the Vars section to enable AI features.
+                {t("ceo.add-gemini-key")}
                 <Button variant="ghost" size="sm" className="ms-2 h-6 text-xs" onClick={handleRetry}>
-                  <RefreshCw className="h-3 w-3 me-1" /> Retry
+                  <RefreshCw className="h-3 w-3 me-1" /> {t("common.retry")}
                 </Button>
               </AlertDescription>
             </Alert>
@@ -244,11 +248,11 @@ export function CEOChatAssistant() {
           {serviceUnavailable && !aiNotConfigured && (
             <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800">
               <Clock className="h-4 w-4 text-blue-600" />
-              <AlertTitle className="text-blue-800 dark:text-blue-400 text-sm">Service Unavailable</AlertTitle>
+              <AlertTitle className="text-blue-800 dark:text-blue-400 text-sm">{t("ceo.service-unavailable")}</AlertTitle>
               <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
                 {chatError}
                 <Button variant="ghost" size="sm" className="ms-2 h-6 text-xs" onClick={handleRetry}>
-                  <RefreshCw className="h-3 w-3 me-1" /> Retry
+                  <RefreshCw className="h-3 w-3 me-1" /> {t("common.retry")}
                 </Button>
               </AlertDescription>
             </Alert>
@@ -259,7 +263,7 @@ export function CEOChatAssistant() {
               <AlertDescription className="text-xs flex items-center justify-between">
                 <span>{chatError}</span>
                 <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={handleRetry}>
-                  <RefreshCw className="h-3 w-3 me-1" /> Retry
+                  <RefreshCw className="h-3 w-3 me-1" /> {t("common.retry")}
                 </Button>
               </AlertDescription>
             </Alert>
@@ -274,10 +278,9 @@ export function CEOChatAssistant() {
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/10 to-indigo-500/10 flex items-center justify-center mb-4">
               <Bot className="w-8 h-8 text-blue-600/60" />
             </div>
-            <h3 className="font-medium text-lg mb-2">How can I help you today?</h3>
+            <h3 className="font-medium text-lg mb-2">{t("ceo.how-can-i-help")}</h3>
             <p className="text-sm text-muted-foreground mb-6 max-w-sm">
-              I'm powered by Google Gemini with real-time access to your financials, inventory, orders, and customer
-              data.
+              {t("ceo.powered-by-google-gemini")}
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {suggestedQuestions.map((q, idx) => (
@@ -288,7 +291,7 @@ export function CEOChatAssistant() {
                   className={`inline-flex items-center gap-1.5 max-md:min-h-11 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 ${q.color}`}
                 >
                   <q.icon className="w-3.5 h-3.5" />
-                  {q.text}
+                  {t(q.labelKey)}
                 </button>
               ))}
             </div>
@@ -356,7 +359,7 @@ export function CEOChatAssistant() {
           <Input
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder={aiNotConfigured ? "Add API key to start chatting..." : "Ask about your business..."}
+            placeholder={aiNotConfigured ? t("ceo.add-api-key-to-chat") : t("ceo.ask-about-business")}
             disabled={isLoading || aiNotConfigured}
             className="flex-1 rounded-xl bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-primary/50"
             autoComplete="off"

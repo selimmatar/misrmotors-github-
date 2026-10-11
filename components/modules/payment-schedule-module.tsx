@@ -16,6 +16,7 @@ import { StatusBadge } from "@/components/erp/status-badge"
 import { ErpTable, NumHead, NumCell } from "@/components/erp/data-table"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDate, formatMoney } from "@/lib/format"
+import { fill } from "@/lib/i18n-format"
 import { Calendar, ChevronDown, ChevronUp } from "lucide-react"
 import { InstallmentFields } from "@/components/payment/installment-fields"
 import useSWR from "swr"
@@ -130,7 +131,7 @@ export function PaymentScheduleModule() {
   
   const handleSubmitReschedule = async () => {
     if (!selectedOrder || !rescheduleData.reason) {
-      alert("Please provide a reason for the reschedule request")
+      alert(t("schedule.reason-required"))
       return
     }
     
@@ -155,14 +156,14 @@ export function PaymentScheduleModule() {
         }),
       })
       if (response.ok) {
-        alert("Reschedule request sent to CEO for approval. You will be notified once approved.")
+        alert(t("common.reschedule-request-sent-to-ceo"))
         setShowRescheduleDialog(false)
       } else {
         const error = await response.json()
-        alert(`Failed to submit request: ${error.error || "Unknown error"}`)
+        alert(fill(t("schedule.failed-to-submit-request"), { error: error.error || t("schedule.unknown-error") }))
       }
     } catch (error) {
-      alert("Failed to submit reschedule request")
+      alert(t("common.failed-to-submit-reschedule-request"))
     } finally {
       setIsSubmitting(false)
     }
@@ -173,19 +174,19 @@ export function PaymentScheduleModule() {
       <PageHeader
         group={t("group.finance")}
         title={t("module.payment-schedule")}
-        subtitle="Manage installment payment plans and reschedule requests"
+        subtitle={t("schedule.subtitle")}
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>Active Payment Schedules</CardTitle>
-          <CardDescription>Customer installment plans from sales orders</CardDescription>
+          <CardTitle>{t("schedule.active-payment-schedules")}</CardTitle>
+          <CardDescription>{t("schedule.customer-installment-plans")}</CardDescription>
         </CardHeader>
         <CardContent>
           {groupedSchedules.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              <p>No active payment schedules</p>
-              <p className="text-sm mt-2">Payment schedules will appear here when orders with installment payments are created</p>
+              <p>{t("common.no-active-payment-schedules")}</p>
+              <p className="text-sm mt-2">{t("schedule.schedules-appear-hint")}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -201,28 +202,28 @@ export function PaymentScheduleModule() {
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-semibold text-lg">{order.customerName}</p>
-                        <p className="text-sm text-muted-foreground">SO: {order.soNumber}</p>
+                        <p className="text-sm text-muted-foreground">{t("common.so")} {order.soNumber}</p>
                       </div>
                       <Badge variant={paidCount === order.schedules.length ? "default" : "secondary"}>
-                        {paidCount === order.schedules.length ? "Paid" : `${paidCount}/${order.schedules.length} Paid`}
+                        {paidCount === order.schedules.length ? t("ar.paid") : fill(t("schedule.n-of-total-paid"), { paid: paidCount, total: order.schedules.length })}
                       </Badge>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div>
-                        <p className="text-muted-foreground">Total Amount (EGP)</p>
+                        <p className="text-muted-foreground">{t("common.total-amount-egp")}</p>
                         <p className="font-semibold"><Money value={totalAmount} /></p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Installments</p>
-                        <p className="font-semibold">{order.schedules.length} payments</p>
+                        <p className="text-muted-foreground">{t("payment.installments")}</p>
+                        <p className="font-semibold">{order.schedules.length} {t("common.payments")}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Paid (EGP)</p>
+                        <p className="text-muted-foreground">{t("schedule.paid-egp")}</p>
                         <p className="font-semibold text-green-700"><Money value={paidAmount} /></p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Remaining (EGP)</p>
+                        <p className="text-muted-foreground">{t("common.remaining-egp")}</p>
                         <p className="font-semibold text-orange-700"><Money value={remaining} /></p>
                       </div>
                     </div>
@@ -235,7 +236,7 @@ export function PaymentScheduleModule() {
                       onClick={() => toggleExpanded(order.soId)}
                     >
                       {isExpanded ? <ChevronUp className="w-4 h-4 me-2" /> : <ChevronDown className="w-4 h-4 me-2" />}
-                      {isExpanded ? "Hide Schedule Details" : "View Schedule Details"}
+                      {isExpanded ? t("schedule.hide-details") : t("schedule.view-details")}
                     </Button>
                     
                     {isExpanded && (
@@ -244,17 +245,17 @@ export function PaymentScheduleModule() {
                           <TableHeader>
                             <TableRow className="text-muted-foreground">
                               <TableHead>#</TableHead>
-                              <TableHead>Due Date</TableHead>
-                              <NumHead>Amount (EGP)</NumHead>
-                              <NumHead>Paid (EGP)</NumHead>
-                              <TableHead className="text-end!">Status</TableHead>
+                              <TableHead>{t("field.due-date")}</TableHead>
+                              <NumHead>{t("common.amount-egp")}</NumHead>
+                              <NumHead>{t("schedule.paid-egp")}</NumHead>
+                              <TableHead className="text-end!">{t("status")}</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {order.schedules.map((schedule) => (
                               <TableRow key={schedule.id}>
                                 <TableCell>
-                                  {schedule.isDownPayment ? "DP" : schedule.installmentNumber}
+                                  {schedule.isDownPayment ? t("schedule.dp") : schedule.installmentNumber}
                                 </TableCell>
                                 <TableCell>
                                   {formatDate(schedule.dueDate, language)}
@@ -279,7 +280,7 @@ export function PaymentScheduleModule() {
                       disabled={paidCount === order.schedules.length}
                     >
                       <Calendar className="w-4 h-4 me-2" />
-                      Reschedule Payment Plan
+                      {t("common.reschedule-payment-plan")}
                     </Button>
                   </div>
                 )
@@ -293,9 +294,9 @@ export function PaymentScheduleModule() {
       <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Reschedule Payment Plan</DialogTitle>
+            <DialogTitle>{t("common.reschedule-payment-plan")}</DialogTitle>
             <DialogDescription>
-              Adjust the payment terms for {selectedOrder?.customerName} - {selectedOrder?.soNumber}
+              {fill(t("schedule.adjust-terms-for"), { name: selectedOrder?.customerName ?? "", so: selectedOrder?.soNumber ?? "" })}
             </DialogDescription>
           </DialogHeader>
           
@@ -303,18 +304,18 @@ export function PaymentScheduleModule() {
             <div className="space-y-6">
               {/* Current Plan Summary */}
               <div className="bg-muted/50 rounded-lg p-4">
-                <h4 className="font-semibold mb-2">Current Plan</h4>
+                <h4 className="font-semibold mb-2">{t("financial.current-plan")}</h4>
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
-                    <p className="text-muted-foreground">Total Amount (EGP)</p>
+                    <p className="text-muted-foreground">{t("common.total-amount-egp")}</p>
                     <p className="font-semibold"><Money value={selectedOrder.schedules.reduce((sum, s) => sum + s.amount, 0)} /></p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Installments</p>
-                    <p className="font-semibold">{selectedOrder.schedules.length} payments</p>
+                    <p className="text-muted-foreground">{t("payment.installments")}</p>
+                    <p className="font-semibold">{selectedOrder.schedules.length} {t("common.payments")}</p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">First Due Date</p>
+                    <p className="text-muted-foreground">{t("schedule.first-due-date")}</p>
                     <p className="font-semibold">{formatDate(selectedOrder.schedules[0]?.dueDate, language)}</p>
                   </div>
                 </div>
@@ -322,11 +323,11 @@ export function PaymentScheduleModule() {
               
               {/* New Plan Configuration */}
               <div className="space-y-4">
-                <h4 className="font-semibold">New Payment Terms</h4>
+                <h4 className="font-semibold">{t("schedule.new-payment-terms")}</h4>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Total Amount (EGP)</Label>
+                    <Label>{t("common.total-amount-egp")}</Label>
                     <Input
                       type="number"
                       value={rescheduleData.requestedAmount}
@@ -334,7 +335,7 @@ export function PaymentScheduleModule() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Payment Start Date</Label>
+                    <Label>{t("payment.payment-start-date")}</Label>
                     <Input
                       type="date"
                       value={rescheduleData.requestedDueDate}
@@ -355,22 +356,22 @@ export function PaymentScheduleModule() {
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <p className="text-muted-foreground">New Monthly Payment (EGP)</p>
+                      <p className="text-muted-foreground">{t("schedule.new-monthly-payment-egp")}</p>
                       <p className="font-semibold text-lg text-blue-600">
                         <Money value={rescheduleData.requestedAmount / rescheduleData.requestedMonths} />
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Number of Payments</p>
-                      <p className="font-semibold text-lg text-blue-600">{rescheduleData.requestedMonths} months</p>
+                      <p className="text-muted-foreground">{t("schedule.number-of-payments")}</p>
+                      <p className="font-semibold text-lg text-blue-600">{rescheduleData.requestedMonths} {t("months")}</p>
                     </div>
                   </div>
                 </div>
                 
                 <div className="space-y-2">
-                  <Label>Reason for Reschedule *</Label>
+                  <Label>{t("schedule.reason-for-reschedule")}</Label>
                   <Textarea
-                    placeholder="Please explain why this payment plan needs to be rescheduled..."
+                    placeholder={t("schedule.reason-placeholder")}
                     value={rescheduleData.reason}
                     onChange={(e) => setRescheduleData({ ...rescheduleData, reason: e.target.value })}
                     rows={3}
@@ -382,10 +383,10 @@ export function PaymentScheduleModule() {
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRescheduleDialog(false)} className="bg-transparent">
-              Cancel
+              {t("cancel")}
             </Button>
             <Button onClick={handleSubmitReschedule} disabled={isSubmitting || !rescheduleData.reason}>
-              {isSubmitting ? "Submitting..." : "Submit for CEO Approval"}
+              {isSubmitting ? t("common.submitting") : t("schedule.submit-for-ceo-approval")}
             </Button>
           </DialogFooter>
         </DialogContent>

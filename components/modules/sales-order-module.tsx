@@ -20,6 +20,7 @@ import { getSalesInsights } from "@/lib/ai-utils"
 import { getCitiesForCountry } from "@/lib/countries-data"
 import { ReportGenerator } from "@/components/report-generator"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import type {
   SalesOrder,
   UserRole,
@@ -168,7 +169,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
   const handleCreateCustomer = async () => {
     if (!customerFormData.name || !customerFormData.email || !customerFormData.phone) {
-      alert("Please fill in all required fields")
+      alert(t("common.please-fill-in-all-required"))
       return
     }
 
@@ -197,10 +198,10 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         city: "",
       })
       setShowCustomerForm(false)
-      alert("Customer created successfully!")
+      alert(t("so.customer-created-successfully"))
     } catch (error) {
       console.error("Error creating customer:", error)
-      alert("Failed to create customer. Please try again.")
+      alert(t("so.failed-to-create-customer-please"))
     }
   }
 
@@ -326,7 +327,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
   const fetchAiInsights = async () => {
     if (salesOrders.length === 0) {
-      alert("No sales data to analyze yet")
+      alert(t("so.no-sales-data-to-analyze"))
       return
     }
 
@@ -342,7 +343,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
       setShowAiInsights(true)
     } catch (error) {
       console.error("Failed to fetch AI insights:", error)
-      alert("Failed to generate AI insights. Please try again.")
+      alert(t("so.failed-to-generate-ai-insights"))
     } finally {
       setIsAnalyzing(false)
     }
@@ -447,7 +448,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     if (order) {
 
       // This function should not be called anymore as CEO doesn't approve SOs in new workflow
-      alert("Sales orders are now approved by the Accountant. Please use the Accountant module.")
+      alert(t("so.sales-orders-are-now-approved"))
     }
   }
 
@@ -615,7 +616,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
       const combinedItems = [...equipmentItems, ...maintenanceItems]
       for (const item of combinedItems) {
         if (!item.productId) {
-          alert("Please select a product for all items")
+          alert(t("so.please-select-a-product-for"))
           setIsSubmitting(false)
           return
         }
@@ -624,20 +625,20 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         const unitPrice = Number.parseFloat(item.unitPrice)
 
         if (!item.quantity || isNaN(quantity) || quantity <= 0) {
-          alert("Quantity must be a positive number")
+          alert(t("so.quantity-must-be-a-positive"))
           setIsSubmitting(false)
           return
         }
 
         if (!item.unitPrice || isNaN(unitPrice) || unitPrice < 0) {
-          alert("Unit price cannot be negative")
+          alert(t("so.unit-price-cannot-be-negative"))
           setIsSubmitting(false)
           return
         }
 
         const availableStock = inventory.find((inv) => inv.productId === item.productId)?.quantity ?? null
         if (availableStock !== null && quantity > availableStock) {
-          alert(`Only ${availableStock} in stock for this item. Please reduce the quantity.`)
+          alert(fill(t("so.only-in-stock-for-this"), { availableStock }))
           setIsSubmitting(false)
           return
         }
@@ -661,7 +662,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         // Treat items without item_type as stock items (default behavior)
         if (!item.item_type || item.item_type === "stock") {
           if (!item.productId || item.productId.trim() === "") {
-            alert("Please select a product for all stock items")
+            alert(t("so.please-select-a-product-for-2"))
             setIsSubmitting(false)
             return
           }
@@ -669,13 +670,13 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           const unitPrice = Number.parseFloat(item.unitPrice)
 
           if (!item.quantity || isNaN(quantity) || quantity <= 0) {
-            alert("Quantity must be a positive number for stock items")
+            alert(t("so.quantity-must-be-a-positive-2"))
             setIsSubmitting(false)
             return
           }
 
           if (!item.unitPrice || isNaN(unitPrice) || unitPrice < 0) {
-            alert("Unit price cannot be negative for stock items")
+            alert(t("so.unit-price-cannot-be-negative-2"))
             setIsSubmitting(false)
             return
           }
@@ -685,7 +686,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             inventory.find((inv) => inv.productId === item.productId && inv.warehouseId === warehouseId)
               ?.quantity ?? null
           if (availableStock !== null && quantity > availableStock) {
-            alert(`Only ${availableStock} in stock for this item. Please reduce the quantity.`)
+            alert(fill(t("so.only-in-stock-for-this"), { availableStock }))
             setIsSubmitting(false)
             return
           }
@@ -701,7 +702,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           })
         } else if (item.item_type === "outsourced") {
           if (!item.outsourced_name) {
-            alert("Please provide a name for outsourced items")
+            alert(t("so.please-provide-a-name-for"))
             setIsSubmitting(false)
             return
           }
@@ -709,13 +710,13 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           const unitPrice = Number.parseFloat(item.unitPrice)
 
           if (!item.quantity || isNaN(quantity) || quantity <= 0) {
-            alert("Quantity must be a positive number for outsourced items")
+            alert(t("so.quantity-must-be-a-positive-3"))
             setIsSubmitting(false)
             return
           }
 
           if (!item.unitPrice || isNaN(unitPrice) || unitPrice < 0) {
-            alert("Unit price cannot be negative for outsourced items")
+            alert(t("so.unit-price-cannot-be-negative-3"))
             setIsSubmitting(false)
             return
           }
@@ -863,13 +864,13 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
   const handlePrintInvoice = (order: SalesOrder) => {
     const invoice = customerInvoices.find((inv) => inv.soId === order.id)
     if (!invoice) {
-      alert("No invoice found for this sales order")
+      alert(t("so.no-invoice-found-for-this"))
       return
     }
 
     const invoiceId = invoice.id || invoice.invoice_id
     if (!invoiceId) {
-      alert("Invoice ID not found")
+      alert(t("so.invoice-id-not-found"))
       return
     }
 
@@ -1012,7 +1013,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                           }}
                         />
                         {equipmentStock !== null && (
-                          <p className="text-xs text-muted-foreground mt-1">{equipmentStock} in stock</p>
+                          <p className="text-xs text-muted-foreground mt-1">{equipmentStock} {t("common.in-stock")}</p>
                         )}
                       </div>
                     )
@@ -1109,7 +1110,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                           }}
                         />
                         {maintenanceStock !== null && (
-                          <p className="text-xs text-muted-foreground mt-1">{maintenanceStock} in stock</p>
+                          <p className="text-xs text-muted-foreground mt-1">{maintenanceStock} {t("common.in-stock")}</p>
                         )}
                       </div>
                     )
@@ -1162,7 +1163,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
               variant="outline"
             >
               <Plus className="w-4 h-4 me-2" />
-              Add from Inventory
+              {t("common.add-from-inventory")}
             </Button>
             <Button
               size="sm"
@@ -1182,7 +1183,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
               variant="secondary"
             >
               <Plus className="w-4 h-4 me-2" />
-              Add Outsourced Item
+              {t("common.add-outsourced-item")}
             </Button>
           </div>
         </div>
@@ -1205,9 +1206,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             return (
             <div key={index} className="border rounded-lg p-4 bg-gray-50 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">Item #{index + 1}</span>
+                <span className="text-sm font-medium text-gray-700">{t("so.item-number")}{index + 1}</span>
                 <Button size="sm" variant="destructive" onClick={() => handleRemoveItem(index)}>
-                  Remove
+                  {t("action.remove")}
                 </Button>
               </div>
               
@@ -1215,9 +1216,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs text-gray-600 mb-1">Item Name</Label>
+                      <Label className="text-xs text-gray-600 mb-1">{t("common.item-name")}</Label>
                       <Input
-                        placeholder="Enter item name"
+                        placeholder={t("common.enter-item-name")}
                         value={item.outsourced_name || ""}
                         onChange={(e) => {
                           const newItems = [...orderItems]
@@ -1227,9 +1228,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                       />
                     </div>
                     <div>
-                      <Label className="text-xs text-gray-600 mb-1">Unit</Label>
+                      <Label className="text-xs text-gray-600 mb-1">{t("common.unit")}</Label>
                       <Input
-                        placeholder="e.g., piece, kg"
+                        placeholder={t("so.e-g-piece-kg")}
                         value={item.outsourced_unit || "unit"}
                         onChange={(e) => {
                           const newItems = [...orderItems]
@@ -1240,9 +1241,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                     </div>
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-600 mb-1">Supplier Name (Internal Only)</Label>
+                    <Label className="text-xs text-gray-600 mb-1">{t("so.supplier-name-internal-only")}</Label>
                     <Input
-                      placeholder="Enter supplier name"
+                      placeholder={t("common.enter-supplier-name")}
                       value={item.supplier_name || ""}
                       onChange={(e) => {
                         const newItems = [...orderItems]
@@ -1256,7 +1257,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs text-gray-600 mb-1">Warehouse *</Label>
+                      <Label className="text-xs text-gray-600 mb-1">{t("so.warehouse-required")}</Label>
                       <select
                         className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         value={item.warehouseId || ""}
@@ -1267,16 +1268,16 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                           setOrderItems(newItems)
                         }}
                       >
-                        <option value="">Select Warehouse</option>
+                        <option value="">{t("warehouse.select-warehouse")}</option>
                         {(warehouses || []).map((wh: any) => (
                           <option key={wh.id} value={wh.id}>
-                            {wh.name || `Warehouse ${wh.id}`}
+                            {wh.name || fill(t("so.warehouse-number"), { id: wh.id })}
                           </option>
                         ))}
                       </select>
                     </div>
                     <div>
-                      <Label className="text-xs text-gray-600 mb-1">Product *</Label>
+                      <Label className="text-xs text-gray-600 mb-1">{t("common.product")}</Label>
                       <ProductSearchCombobox
                         products={products.map(p => ({
                           id: p.id,
@@ -1298,7 +1299,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                           setOrderItems(newItems)
                         }}
                         disabled={!item.warehouseId}
-                        placeholder={!item.warehouseId ? "Select warehouse first" : "Search product by name or SKU..."}
+                        placeholder={!item.warehouseId ? t("so.select-warehouse-first") : t("so.search-product-by-name-or")}
                       />
                     </div>
                   </div>
@@ -1307,7 +1308,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
               <div className="grid grid-cols-4 gap-3">
                 <div>
-                  <Label className="text-xs text-gray-600 mb-1">Quantity</Label>
+                  <Label className="text-xs text-gray-600 mb-1">{t("quantity")}</Label>
                   {(() => {
                     const stockLimit =
                       item.item_type === "outsourced"
@@ -1335,14 +1336,14 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                           }}
                         />
                         {stockLimit !== null && (
-                          <p className="text-xs text-muted-foreground mt-1">{stockLimit} in stock</p>
+                          <p className="text-xs text-muted-foreground mt-1">{stockLimit} {t("common.in-stock")}</p>
                         )}
                       </>
                     )
                   })()}
                 </div>
                 <div>
-                  <Label className="text-xs text-gray-600 mb-1">Cost Price</Label>
+                  <Label className="text-xs text-gray-600 mb-1">{t("so.cost-price")}</Label>
                   <Input
                     type="number"
                     placeholder="0.00"
@@ -1363,7 +1364,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-gray-600 mb-1">Markup %</Label>
+                  <Label className="text-xs text-gray-600 mb-1">{t("so.markup")}</Label>
                   <Input
                     type="number"
                     placeholder="0"
@@ -1380,7 +1381,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-gray-600 mb-1">Selling Price</Label>
+                  <Label className="text-xs text-gray-600 mb-1">{t("so.selling-price")}</Label>
                   <Input
                     type="number"
                     placeholder="0.00"
@@ -1405,7 +1406,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         {/* Add Item Button */}
         <Button type="button" onClick={handleAddItem} size="sm" className="gap-2">
           <Plus className="w-4 h-4" />
-          Add Item
+          {t("action.add-item")}
         </Button>
       </div>
     )
@@ -1454,7 +1455,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
   const handleApproveQuotation = async (order: SalesOrder) => {
     if (order.status !== "draft") {
-      alert("Only draft quotations can be approved")
+      alert(t("so.only-draft-quotations-can-be"))
       return
     }
     
@@ -1463,11 +1464,11 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         ...order,
         status: "pending_accountant",
       })
-      alert("Quotation sent to accountant for approval")
+      alert(t("so.quotation-sent-to-accountant-for"))
       setSelectedOrder(null)
     } catch (error) {
       console.error("Error approving quotation:", error)
-      alert("Failed to approve quotation")
+      alert(t("common.failed-to-approve-quotation"))
     }
   }
 
@@ -1475,20 +1476,20 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
     // Prevent DP creation for draft orders (unapproved quotations)
     if (order.status === "draft") {
-      alert("Cannot create delivery permit for draft quotations. Please approve the quotation first.")
+      alert(t("so.cannot-create-delivery-permit-for"))
       return
     }
 
     // Prevent DP creation if not approved by accountant
     if (order.status === "pending_accountant") {
-      alert("Cannot create delivery permit. Waiting for accountant approval.")
+      alert(t("so.cannot-create-delivery-permit-waiting"))
       return
     }
 
     // Allow DP creation for approved, delivered, or ready_for_delivery orders (for partial/multiple deliveries)
     const allowedStatuses = ["accountant_approved", "delivered", "ready_for_delivery", "out_for_delivery"]
     if (!allowedStatuses.includes(order.status)) {
-      alert("Order must be approved by accountant before creating delivery permit.")
+      alert(t("so.order-must-be-approved-by"))
       return
     }
 
@@ -1507,7 +1508,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
       )
     if (allItemsUnreceived) {
       alert(
-        `Cannot create delivery permit — none of the outsourced items on this order have been received yet.\n\nPlease create a purchase order and receive the goods first.`
+        t("so.cannot-create-delivery-permit-none") + "\n\n" + t("so.please-create-a-purchase-order")
       )
       return
     }
@@ -1614,7 +1615,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         if (quantity > 0) {
           // Only validate remaining quantity for non-outsourced items
           if (!isOutsourcedItem && quantity > remainingQty) {
-            alert(`Quantity for ${item.productName || item.product_name} exceeds remaining amount (${remainingQty}).`)
+            alert(fill(t("so.quantity-for-exceeds-remaining-amount"), { product: item.productName || item.product_name, remainingQty }))
             canSubmit = false
             break
           }
@@ -1641,7 +1642,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     }
 
     if (newDpItems.length === 0) {
-      alert("Please select at least one item with quantity to create a delivery permit.")
+      alert(t("so.please-select-at-least-one"))
       return
     }
 
@@ -1669,7 +1670,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
       }
 
       const data = await response.json()
-      alert(`Delivery Permit ${data.permitNo} created successfully!`)
+      alert(fill(t("so.delivery-permit-created-successfully"), { permitNo: data.permitNo }))
       setCreateDPDialogOpen(false)
       setSelectedSOForDP(null)
       setExistingDPsForSO([]) // Clear existing DPs as they will be re-fetched on next open
@@ -1678,7 +1679,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
       await loadData()
     } catch (error: any) {
       console.error("Error creating DP:", error)
-      alert(`Failed to create delivery permit: ${error.message}`)
+      alert(fill(t("so.failed-to-create-delivery-permit"), { message: error.message }))
     } finally {
       setIsSubmittingDP(false)
     }
@@ -1703,12 +1704,12 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 e.stopPropagation()
                 handlePrintSalesOrder(order)
               }}
-              title="Print Sales Order"
+              title={t("so.print-sales-order")}
             >
-              <Printer className="w-4 h-4" /> Print SO
+              <Printer className="w-4 h-4" /> {t("so.print-so")}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)} title="View Details">
-              <Eye className="w-4 h-4" /> View
+            <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)} title={t("action.view-details")}>
+              <Eye className="w-4 h-4" /> {t("view")}
             </Button>
       {getSODeliveryStatus(order) !== "delivered" && (
         <>
@@ -1718,17 +1719,17 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 variant="outline"
                 size="sm"
                 onClick={(e) => e.stopPropagation()}
-                title="Print a report of items not yet delivered to the customer"
+                title={t("so.print-a-report-of-items")}
               >
-                <PackageX className="w-4 h-4" /> Missing Items <ChevronDown className="w-3 h-3" />
+                <PackageX className="w-4 h-4" /> {t("so.missing-items")} <ChevronDown className="w-3 h-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, false)}>
-                Print with Unit Cost
+                {t("so.print-with-unit-cost")}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, true)}>
-                Print without Unit Cost (hide cost)
+                {t("so.print-without-unit-cost-hide")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1743,14 +1744,14 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         }}
         title={
           order.status === "draft" 
-            ? "Approve quotation first" 
+            ? t("so.approve-quotation-first") 
             : order.status === "pending_accountant"
-            ? "Waiting for accountant approval"
-            : "Create Delivery Permit"
+            ? t("so.waiting-for-accountant-approval")
+            : t("so.create-delivery-permit")
         }
         disabled={order.status === "draft" || order.status === "pending_accountant" || order.status === "pending" || order.status === "pending_ceo"}
       >
-        <FileText className="w-4 h-4" /> Create DP
+        <FileText className="w-4 h-4" /> {t("so.create-dp")}
       </Button>
       <Button
         variant="outline"
@@ -1759,9 +1760,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           e.stopPropagation()
           setSelectedOrder(order)
         }}
-        title="Manage Maintenance for this order"
+        title={t("so.manage-maintenance-for-this-order")}
       >
-        <Wrench className="w-4 h-4" /> Maintenance
+        <Wrench className="w-4 h-4" /> {t("common.maintenance")}
       </Button>
       {showEditButton(order) && (
         <Button
@@ -1775,12 +1776,12 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           title={
             canEditApprovedOrder(order)
               ? hasReturns(order)
-                ? "Edit this order after a return (keep delivered items, add the replacement as a new line)"
-                : "Edit this approved order (items, customer, payment terms)"
-              : "Cannot edit - a delivery permit has already been created for this order"
+                ? t("so.edit-this-order-after-a")
+                : t("so.edit-this-approved-order-items")
+              : t("so.cannot-edit-a-delivery-permit")
           }
         >
-          <Pencil className="w-4 h-4" /> Edit
+          <Pencil className="w-4 h-4" /> {t("edit")}
         </Button>
       )}
     </>
@@ -1803,7 +1804,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           onClick={() => setShowPendingOrdersDialog(true)}
         />
         <KpiTile
-          label={`${t("so.total-value")} (EGP)`}
+          label={t("common.total-value-egp")}
           value={<Money value={salesOrders.reduce((sum, so) => sum + so.total, 0)} />}
         />
       </KpiGrid>
@@ -1815,7 +1816,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
               {t("so.pending-orders")} ({pendingOrders.length})
             </DialogTitle>
             <DialogDescription className="sr-only">
-              List of sales orders awaiting approval or delivery
+              {t("so.list-of-sales-orders-awaiting")}
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4">
@@ -1830,7 +1831,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                     <th className="border p-2 text-start">{t("field.customer")}</th>
                     <th className="border p-2 text-start">{t("field.status")}</th>
                     <th className="border p-2 text-start">{t("field.date")}</th>
-                    <th className="border p-2 text-end">{t("field.total")} (EGP)</th>
+                    <th className="border p-2 text-end">{t("field.total")} {t("common.egp")}</th>
                     <th className="border p-2 text-center">{t("field.actions")}</th>
                   </tr>
                 </thead>
@@ -1902,7 +1903,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                     <TableHead className="p-2">{t("so.order-date")}</TableHead>
                     <TableHead className="p-2">{t("so.delivery-date")}</TableHead>
                     <NumHead className="p-2">{t("so.items")}</NumHead>
-                    <NumHead className="p-2">{t("so.total-amount")} (EGP)</NumHead>
+                    <NumHead className="p-2">{t("so.total-amount")} {t("common.egp")}</NumHead>
                     <TableHead className="p-2">{t("field.status")}</TableHead>
                     <ActionsHead className="p-2">{t("field.actions")}</ActionsHead>
                   </TableRow>
@@ -1953,7 +1954,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             <DialogTitle>{t("sales-orders.details")}: {selectedOrder?.soNumber}</DialogTitle>
             {selectedOrder && <ApprovalSteps status={selectedOrder.status} />}
             <DialogDescription className="sr-only">
-              Full details, pricing, payment, and maintenance history for this sales order
+              {t("so.full-details-pricing-payment-and")}
             </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
@@ -1961,15 +1962,15 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
               <TabsList className="h-auto w-full flex-wrap justify-start bg-muted p-1 mb-4">
                 <TabsTrigger value="details" className="data-[state=active]:bg-background">
                   <FileText className="w-4 h-4 me-2" />
-                  Order Details
+                  {t("sales-orders.details")}
                 </TabsTrigger>
                 <TabsTrigger value="maintenance" className="data-[state=active]:bg-background">
                   <Wrench className="w-4 h-4 me-2" />
-                  Maintenance
+                  {t("common.maintenance")}
                 </TabsTrigger>
                 <TabsTrigger value="approvals" className="data-[state=active]:bg-background relative">
                   <CheckCircle className="w-4 h-4 me-2" />
-                  Approve Reports
+                  {t("so.approve-reports")}
                   {pendingReportsCount > 0 && (
                     <span className="absolute -top-1 -end-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-700 text-white text-xs font-bold px-1">
                       {pendingReportsCount}
@@ -1990,7 +1991,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                   </div>
                   {selectedOrder.quotationRequestNumber && (
                     <div>
-                      <p className="text-sm text-muted-foreground">Request Number</p>
+                      <p className="text-sm text-muted-foreground">{t("so.request-number")}</p>
                       <p className="font-semibold">{selectedOrder.quotationRequestNumber}</p>
                     </div>
                   )}
@@ -2005,7 +2006,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                     {/* Show delivery permit fulfillment status */}
                     {selectedOrder.deliveryPermits && selectedOrder.deliveryPermits.length > 0 && (
                       <div className="mt-3 space-y-1">
-                        <p className="text-xs text-muted-foreground font-semibold">Delivery Status:</p>
+                        <p className="text-xs text-muted-foreground font-semibold">{t("common.delivery-status")}</p>
                         {selectedOrder.deliveryPermits.map((dp: any) => (
                           <div key={dp.permit_number || dp.permitNumber} className="text-xs flex items-center gap-1.5">
                             <span className="font-mono">{dp.permit_number || dp.permitNumber}</span>
@@ -2014,7 +2015,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                                 ? "bg-green-100 text-green-700"
                                 : "bg-yellow-100 text-yellow-700"
                             }`}>
-                              {dp.status === "SUBMITTED_SIGNED" || dp.status === "APPROVED" || dp.status === "DELIVERED" ? "✓ Delivered" : "⏳ Pending"}
+                              {dp.status === "SUBMITTED_SIGNED" || dp.status === "APPROVED" || dp.status === "DELIVERED" ? t("so.delivered") : t("so.pending")}
                             </span>
                           </div>
                         ))}
@@ -2023,7 +2024,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                   </div>
                   {selectedOrder.approvalDocumentUrl && (
                     <div className="col-span-2">
-                      <p className="text-sm text-muted-foreground mb-1">Approval Document</p>
+                      <p className="text-sm text-muted-foreground mb-1">{t("so.approval-document")}</p>
                       <a 
                         href={selectedOrder.approvalDocumentUrl} 
                         target="_blank" 
@@ -2031,7 +2032,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                         className="text-blue-600 hover:underline text-sm flex items-center gap-1"
                       >
                         <FileText className="w-4 h-4" />
-                        View Approval Document
+                        {t("so.view-approval-document")}
                       </a>
                     </div>
                   )}
@@ -2056,7 +2057,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 />
 
                 <div>
-                  <p className="text-sm text-muted-foreground mb-2">Items</p>
+                  <p className="text-sm text-muted-foreground mb-2">{t("so.items")}</p>
                   <div className="border rounded-lg p-4 space-y-3">
                     {selectedOrder.items.map((item, idx) => {
                       const isOutsourced = item.itemType === "outsourced" || item.item_type === "outsourced"
@@ -2072,7 +2073,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                               <span className="font-medium">{item.productName}</span>
                               {isOutsourced && (
                                 <Badge variant="secondary" className="text-xs">
-                                  Outsourced
+                                  {t("common.outsourced-2")}
                                 </Badge>
                               )}
                               {supplierName && (
@@ -2082,11 +2083,11 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                               )}
                             </div>
                             <div className="text-sm text-muted-foreground mt-1">
-                              Qty: {item.quantity} {item.outsourced_unit || item.outsourcedUnit || ""}
+                              {t("common.qty-2")} {item.quantity} {item.outsourced_unit || item.outsourcedUnit || ""}
                             </div>
                           </div>
                           <span className="font-semibold whitespace-nowrap">
-                            <Money value={item.total} /> EGP
+                            <Money value={item.total} /> {t("common.egp-2")}
                           </span>
                         </div>
                       )
@@ -2095,8 +2096,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 </div>
                 <div className="border-t pt-4">
                   <div className="flex justify-between">
-                    <span className="font-semibold">Total Amount</span>
-                    <span className="text-lg font-bold"><Money value={selectedOrder.total} /> EGP</span>
+                    <span className="font-semibold">{t("so.total-amount")}</span>
+                    <span className="text-lg font-bold"><Money value={selectedOrder.total} /> {t("common.egp-2")}</span>
                   </div>
                 </div>
               </TabsContent>
@@ -2131,11 +2132,11 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Create Delivery Permit for {selectedSOForDP?.soNumber || selectedSOForDP?.so_number}
+              {t("so.create-delivery-permit-for")} {selectedSOForDP?.soNumber || selectedSOForDP?.so_number}
             </DialogTitle>
             <DialogDescription>
-              Select quantities for delivery.{" "}
-              {existingDPsForSO.length > 0 && `${existingDPsForSO.length} DP(s) already created for this SO.`}
+              {t("so.select-quantities-for-delivery")}{" "}
+              {existingDPsForSO.length > 0 && fill(t("so.dp-s-already-created-for"), { count: existingDPsForSO.length })}
             </DialogDescription>
           </DialogHeader>
 
@@ -2143,47 +2144,47 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             {/* Warning banner for excluded unreceived outsourced items */}
             {(selectedSOForDP as any)?._excludedItems?.length > 0 && (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                <p className="font-semibold mb-1">Some items excluded — not received yet:</p>
+                <p className="font-semibold mb-1">{t("so.some-items-excluded-not-received")}</p>
                 <ul className="list-disc list-inside space-y-0.5">
                   {(selectedSOForDP as any)._excludedItems.map((item: any, i: number) => (
                     <li key={i}>
-                      {item.productName || item.outsourcedName || "Unnamed item"}
+                      {item.productName || item.outsourcedName || t("so.unnamed-item")}
                       {item.supplierName ? ` (${item.supplierName})` : ""}
                     </li>
                   ))}
                 </ul>
-                <p className="mt-1 text-xs">Create a purchase order and receive these goods to include them in a future delivery permit.</p>
+                <p className="mt-1 text-xs">{t("so.create-a-purchase-order-and")}</p>
               </div>
             )}
             <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
-              <h3 className="font-semibold text-sm">Delivery Information</h3>
+              <h3 className="font-semibold text-sm">{t("so.delivery-information")}</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="dp-recipient-name">Recipient Name</Label>
+                  <Label htmlFor="dp-recipient-name">{t("so.recipient-name")}</Label>
                   <Input
                     id="dp-recipient-name"
                     value={dpDeliveryInfo.recipientName}
                     onChange={(e) => setDpDeliveryInfo({ ...dpDeliveryInfo, recipientName: e.target.value })}
-                    placeholder="Enter recipient name"
+                    placeholder={t("so.enter-recipient-name")}
                   />
                 </div>
                 <div>
-                  <Label htmlFor="dp-recipient-phone">Recipient Phone</Label>
+                  <Label htmlFor="dp-recipient-phone">{t("so.recipient-phone")}</Label>
                   <Input
                     id="dp-recipient-phone"
                     value={dpDeliveryInfo.recipientPhone}
                     onChange={(e) => setDpDeliveryInfo({ ...dpDeliveryInfo, recipientPhone: e.target.value })}
-                    placeholder="Enter phone number"
+                    placeholder={t("so.enter-phone-number")}
                   />
                 </div>
               </div>
               <div>
-                <Label htmlFor="dp-delivery-address">Delivery Address</Label>
+                <Label htmlFor="dp-delivery-address">{t("so.delivery-address")}</Label>
                 <Input
                   id="dp-delivery-address"
                   value={dpDeliveryInfo.deliveryAddress}
                   onChange={(e) => setDpDeliveryInfo({ ...dpDeliveryInfo, deliveryAddress: e.target.value })}
-                  placeholder="Enter delivery address"
+                  placeholder={t("so.enter-delivery-address")}
                 />
               </div>
             </div>
@@ -2224,23 +2225,23 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 <div key={index} className={`border p-4 rounded ${isFullyDelivered ? "opacity-50 bg-gray-50" : ""}`}>
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <p className="font-medium">{item.productName || item.product_name || item.outsourced_name || "Unknown Item"}</p>
+                      <p className="font-medium">{item.productName || item.product_name || item.outsourced_name || t("common.unknown-item")}</p>
                       <p className="text-sm text-muted-foreground">
-                        {item.sku ? `SKU: ${item.sku}` : item.outsourced_name ? "(Outsourced)" : ""}
+                        {item.sku ? `${t("common.sku-2")} ${item.sku}` : item.outsourced_name ? t("common.outsourced") : ""}
                       </p>
                     </div>
                     <div className="text-end">
-                      <p className="text-sm text-muted-foreground">SO Qty: {item.quantity}</p>
-                      {deliveredQty > 0 && <p className="text-sm text-orange-700">Delivered: {deliveredQty}</p>}
+                      <p className="text-sm text-muted-foreground">{t("so.so-qty")} {item.quantity}</p>
+                      {deliveredQty > 0 && <p className="text-sm text-orange-700">{t("so.delivered-2")} {deliveredQty}</p>}
                       <p className={`text-sm font-medium ${isFullyDelivered ? "text-green-700" : "text-blue-600"}`}>
-                        Remaining: {remainingQty}
+                        {t("so.remaining")} {remainingQty}
                       </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium">Quantity for this DP</label>
+                      <label className="text-sm font-medium">{t("so.quantity-for-this-dp")}</label>
                       <Input
                         key={`${selectedSOForDP?.so_id || selectedSOForDP?.id}-${index}-${deliveredQty}`}
                         type="number"
@@ -2251,10 +2252,10 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                         disabled={isFullyDelivered}
                         className={isFullyDelivered ? "bg-gray-100" : ""}
                       />
-                      {isFullyDelivered && <p className="text-xs text-green-700 mt-1">Fully delivered</p>}
+                      {isFullyDelivered && <p className="text-xs text-green-700 mt-1">{t("so.fully-delivered")}</p>}
                     </div>
                     <div>
-                      <label className="text-sm font-medium">Unit Price</label>
+                      <label className="text-sm font-medium">{t("field.unit-price")}</label>
                       <Input type="number" value={item.unitPrice || item.unit_price} disabled className="bg-gray-50" />
                     </div>
                   </div>
@@ -2265,9 +2266,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDPDialogOpen(false)}>
-              Cancel
+              {t("cancel")}
             </Button>
-            <Button onClick={handleCreateDpFromDialog_alias} disabled={isSubmittingDP}>{isSubmittingDP ? "Creating..." : "Create Delivery Permit"}</Button>
+            <Button onClick={handleCreateDpFromDialog_alias} disabled={isSubmittingDP}>{isSubmittingDP ? t("common.creating") : t("so.create-delivery-permit")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

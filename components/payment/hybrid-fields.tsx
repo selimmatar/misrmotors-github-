@@ -293,7 +293,7 @@ export function HybridFields({
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
-                {t("payment.down-payment-due-date") || "Down Payment Due Date"}
+                {t("payment.down-payment-due-date")}
               </Label>
               <Input
                 type="date"

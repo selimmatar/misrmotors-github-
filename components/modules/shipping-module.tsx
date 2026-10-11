@@ -16,7 +16,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { PermitPreviewDialog } from "@/components/delivery-permit/permit-preview-dialog"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
-import { formatDate } from "@/lib/format"
+import { formatDate, returnReasonLabel } from "@/lib/format"
+import { fill } from "@/lib/i18n-format"
 import type { DeliveryPermit } from "@/lib/types"
 import { ShippingMaintenanceTab } from "@/components/shipping/maintenance-tab"
 
@@ -298,14 +299,14 @@ export function ShippingModule() {
     
     const itemsToReturn = returnItems.filter((item) => item.quantityReturned > 0)
     if (itemsToReturn.length === 0) {
-      alert("Please select at least one item to return")
+      alert(t("ship.select-return-item"))
       return
     }
     
     // Check all items have reasons
     const missingReasons = itemsToReturn.some((item) => !item.reason)
     if (missingReasons) {
-      alert("Please provide a reason for each item being returned")
+      alert(t("ship.return-reason-required"))
       return
     }
     
@@ -340,7 +341,7 @@ export function ShippingModule() {
       })
       
       if (response.ok) {
-        alert("Return request submitted successfully! Warehouse will process the return.")
+        alert(t("ship.return-submitted"))
         setShowReturnDialog(false)
         setSelectedPermitForReturn(null)
         setReturnCourierName("")
@@ -348,10 +349,10 @@ export function ShippingModule() {
         fetchPendingReturns()
       } else {
         const error = await response.json()
-        alert(`Failed to submit return: ${error.error || "Unknown error"}`)
+        alert(fill(t("ship.return-failed-with-error"), { error: error.error || t("ship.unknown-error") }))
       }
     } catch (error) {
-      alert("Failed to submit return request")
+      alert(t("ship.return-failed"))
     } finally {
       returnSubmitInFlight.current = false
       setSubmittingReturn(false)
@@ -378,7 +379,7 @@ export function ShippingModule() {
           </TabsTrigger>
           <TabsTrigger value="maintenance">
             <Wrench className="w-4 h-4 me-2" />
-            Maintenance
+            {t("common.maintenance")}
           </TabsTrigger>
         </TabsList>
 
@@ -449,7 +450,7 @@ export function ShippingModule() {
                           <div>
                             <Label className="flex items-center gap-2">
                               <User className="w-4 h-4" />
-                              {language === "ar" ? "اختر موظف العمليات" : "Select Operations Employee"}
+                              {t("ship.select-operations-employee")}
                             </Label>
                             <Select
                               value={selectedCouriers[permit.id] || ""}
@@ -458,12 +459,12 @@ export function ShippingModule() {
                               }
                             >
                               <SelectTrigger className="mt-1">
-                                <SelectValue placeholder={language === "ar" ? "اختر موظف..." : "Select employee..."} />
+                                <SelectValue placeholder={t("common.select-employee")} />
                               </SelectTrigger>
                               <SelectContent>
                                 {operationsEmployees.length === 0 ? (
                                   <SelectItem value="none" disabled>
-                                    {language === "ar" ? "لا يوجد موظفين عمليات" : "No operations employees"}
+                                    {t("ship.no-operations-employees")}
                                   </SelectItem>
                                 ) : (
                                   operationsEmployees.map((emp) => (
@@ -593,7 +594,7 @@ export function ShippingModule() {
                       <div className="flex flex-wrap gap-2 mb-4">
                         <Button variant="outline" size="sm" onClick={() => openReturnDialog(permit)} className="bg-transparent">
                           <RotateCcw className="w-4 h-4 me-2" />
-                          Return Items
+                          {t("ship.return-items")}
                         </Button>
                       </div>
 
@@ -707,7 +708,7 @@ export function ShippingModule() {
                     {/* Returns are accepted for permits that are out for delivery or delivered. */}
                     <Button size="sm" variant="outline" className="gap-2 bg-transparent" onClick={() => openReturnDialog(permit)}>
                       <RotateCcw className="w-4 h-4" />
-                      Return Items
+                      {t("ship.return-items")}
                     </Button>
                   </CardContent>
                 </Card>
@@ -722,8 +723,8 @@ export function ShippingModule() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <RotateCcw className="w-12 h-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No pending returns</p>
-                <p className="text-sm text-muted-foreground mt-1">Returns submitted will appear here until processed by warehouse</p>
+                <p className="text-muted-foreground">{t("ship.no-pending-returns")}</p>
+                <p className="text-sm text-muted-foreground mt-1">{t("ship.returns-appear-hint")}</p>
               </CardContent>
             </Card>
           ) : (
@@ -734,13 +735,13 @@ export function ShippingModule() {
                     <div className="flex items-start justify-between flex-wrap gap-2">
                       <div className="min-w-0 break-words">
                         <CardTitle className="flex items-center gap-2">
-                          Return #{returnReq.id}
+                          {fill(t("ship.return-number"), { id: returnReq.id })}
                           <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300">
-                            Pending Warehouse
+                            {t("ship.pending-warehouse")}
                           </Badge>
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
-                          SO: {returnReq.soNumber} | Customer: {returnReq.customerName}
+                          {fill(t("ship.so-customer"), { so: returnReq.soNumber, customer: returnReq.customerName })}
                         </p>
                       </div>
                       <div className="text-end text-sm text-muted-foreground">
@@ -750,16 +751,16 @@ export function ShippingModule() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      <p className="text-sm font-medium">Items to return:</p>
+                      <p className="text-sm font-medium">{t("ship.items-to-return")}</p>
                       
                       {returnReq.items?.map((item: any, idx: number) => (
                         <div key={idx} className="flex justify-between items-center text-sm bg-white rounded p-2">
                           <span>{item.productName} (x{item.quantityReturned})</span>
-                          <Badge variant="secondary">{item.reason}</Badge>
+                          <Badge variant="secondary">{returnReasonLabel(item.reason, t)}</Badge>
                         </div>
                       ))}
                       {returnReq.notes && (
-                        <p className="text-sm text-muted-foreground mt-2">Notes: {returnReq.notes}</p>
+                        <p className="text-sm text-muted-foreground mt-2">{fill(t("ship.notes-value"), { notes: returnReq.notes })}</p>
                       )}
                     </div>
                   </CardContent>
@@ -779,10 +780,10 @@ export function ShippingModule() {
       <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Return Items from Delivery</DialogTitle>
+            <DialogTitle>{t("ship.return-items-from-delivery")}</DialogTitle>
             <DialogDescription>
               {selectedPermitForReturn && (
-                <>SO: {selectedPermitForReturn.soNumber} | Customer: {selectedPermitForReturn.customerName}</>
+                <>{fill(t("ship.so-customer"), { so: selectedPermitForReturn.soNumber ?? "", customer: selectedPermitForReturn.customerName ?? "" })}</>
               )}
             </DialogDescription>
           </DialogHeader>
@@ -794,15 +795,15 @@ export function ShippingModule() {
                   <div className="flex items-start justify-between flex-wrap gap-2">
                     <div className="min-w-0 break-words">
                       <div className="flex items-center gap-2">
-                        <p className="font-semibold">{item.productName || "Unknown Item"}</p>
+                        <p className="font-semibold">{item.productName || t("common.unknown-item")}</p>
                         {item.isOutsourced && (
                           <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
-                            Outsourced
+                            {t("common.outsourced-2")}
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground">SKU: {item.sku || "N/A"}</p>
-                      <p className="text-sm">Max available: {item.maxQuantity}</p>
+                      <p className="text-sm text-muted-foreground">{t("common.sku-2")} {item.sku || t("label.na")}</p>
+                      <p className="text-sm">{fill(t("ship.max-available"), { max: item.maxQuantity })}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
@@ -830,31 +831,31 @@ export function ShippingModule() {
                   {item.quantityReturned > 0 && (
                     <div className="mt-4 space-y-3">
                       <div>
-                        <Label>Reason for Return *</Label>
+                        <Label>{t("ship.reason-for-return")}</Label>
                         <Select value={item.reason} onValueChange={(value) => updateReturnItemReason(index, value)}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select reason" />
+                            <SelectValue placeholder={t("ship.select-reason")} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="damaged">Damaged</SelectItem>
-                            <SelectItem value="wrong_item">Wrong Item</SelectItem>
-                            <SelectItem value="customer_refused">Customer Refused</SelectItem>
-                            <SelectItem value="excess_quantity">Excess Quantity</SelectItem>
-                            <SelectItem value="defective">Defective</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="damaged">{t("common.damaged")}</SelectItem>
+                            <SelectItem value="wrong_item">{t("common.wrong-item")}</SelectItem>
+                            <SelectItem value="customer_refused">{t("ship.reason-customer-refused")}</SelectItem>
+                            <SelectItem value="excess_quantity">{t("ship.reason-excess-quantity")}</SelectItem>
+                            <SelectItem value="defective">{t("ship.reason-defective")}</SelectItem>
+                            <SelectItem value="other">{t("hr.document-other")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div>
-                        <Label>Item Condition</Label>
+                        <Label>{t("ship.item-condition")}</Label>
                         <Select value={item.condition} onValueChange={(value) => updateReturnItemCondition(index, value)}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select condition" />
+                            <SelectValue placeholder={t("ship.select-condition")} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="good">Good - Can be restocked</SelectItem>
-                            <SelectItem value="damaged">Damaged - Needs inspection</SelectItem>
-                            <SelectItem value="defective">Defective - Cannot restock</SelectItem>
+                            <SelectItem value="good">{t("ship.condition-good")}</SelectItem>
+                            <SelectItem value="damaged">{t("ship.condition-damaged")}</SelectItem>
+                            <SelectItem value="defective">{t("ship.condition-defective")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -866,19 +867,19 @@ export function ShippingModule() {
             
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Courier Name *</Label>
+                <Label>{t("ship.courier-name")}</Label>
                 <Input
                   value={returnCourierName}
                   onChange={(e) => setReturnCourierName(e.target.value)}
-                  placeholder="Enter courier/driver name"
+                  placeholder={t("ship.enter-courier-name")}
                 />
               </div>
               <div>
-                <Label>Additional Notes</Label>
+                <Label>{t("common.additional-notes")}</Label>
                 <Textarea
                   value={returnNotes}
                   onChange={(e) => setReturnNotes(e.target.value)}
-                  placeholder="Any additional notes..."
+                  placeholder={t("ship.additional-notes-placeholder")}
                   rows={1}
                 />
               </div>
@@ -887,14 +888,14 @@ export function ShippingModule() {
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowReturnDialog(false)} className="bg-transparent">
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               onClick={handleSubmitReturn}
               disabled={submittingReturn || returnItems.every((item) => item.quantityReturned === 0)}
               className="bg-orange-600 hover:bg-orange-700"
             >
-              {submittingReturn ? "Submitting..." : "Submit Return Request"}
+              {submittingReturn ? t("common.submitting") : t("ship.submit-return-request")}
             </Button>
           </DialogFooter>
         </DialogContent>

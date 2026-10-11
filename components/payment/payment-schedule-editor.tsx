@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -119,6 +120,16 @@ export function PaymentScheduleEditor({
     onScheduleChange(updated)
   }
 
+  // Entry descriptions are stored (data); translate only where displayed.
+  const describeEntry = (entry: PaymentScheduleEntry) => {
+    if (entry.id === "down-payment") return t("payment.down-payment")
+    if (entry.id.startsWith("installment-")) {
+      return fill(t("pay.installment-of"), { n: entry.id.slice("installment-".length), total: installmentMonths })
+    }
+    if (entry.id.startsWith("entry-")) return t("pay.custom-entry")
+    return entry.description
+  }
+
   const totalScheduled = scheduleEntries.reduce((sum, entry) => sum + entry.amount, 0)
   const remainingAmount = totalAmount - totalScheduled
 
@@ -127,9 +138,9 @@ export function PaymentScheduleEditor({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Payment Schedule</CardTitle>
+            <CardTitle>{t("module.payment-schedule")}</CardTitle>
             <CardDescription>
-              Customize payment dates and amounts for each installment
+              {t("pay.customize-schedule")}
             </CardDescription>
           </div>
           <div className="flex gap-2">
@@ -141,14 +152,14 @@ export function PaymentScheduleEditor({
                 generateAutoSchedule()
               }}
             >
-              Auto Schedule
+              {t("pay.auto-schedule")}
             </Button>
             <Button
               variant={showManualEdit ? "default" : "outline"}
               size="sm"
               onClick={() => setShowManualEdit(true)}
             >
-              Manual Edit
+              {t("pay.manual-edit")}
             </Button>
           </div>
         </div>
@@ -158,16 +169,16 @@ export function PaymentScheduleEditor({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Description</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead className="text-right">Amount (EGP)</TableHead>
-                <TableHead className="w-10">Action</TableHead>
+                <TableHead>{t("description")}</TableHead>
+                <TableHead>{t("field.due-date")}</TableHead>
+                <TableHead className="text-right">{t("common.amount-egp")}</TableHead>
+                <TableHead className="w-10">{t("pay.action")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {scheduleEntries.map((entry) => (
                 <TableRow key={entry.id}>
-                  <TableCell className="font-medium">{entry.description}</TableCell>
+                  <TableCell className="font-medium">{describeEntry(entry)}</TableCell>
                   <TableCell>
                     {showManualEdit ? (
                       <Input
@@ -215,21 +226,21 @@ export function PaymentScheduleEditor({
         {/* Summary */}
         <div className="grid grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
           <div>
-            <Label className="text-xs text-muted-foreground">Total Amount</Label>
-            <div className="text-lg font-bold">{totalAmount.toFixed(2)} EGP</div>
+            <Label className="text-xs text-muted-foreground">{t("so.total-amount")}</Label>
+            <div className="text-lg font-bold">{totalAmount.toFixed(2)} {t("common.egp-2")}</div>
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">Total Scheduled</Label>
-            <div className="text-lg font-bold text-blue-600">{totalScheduled.toFixed(2)} EGP</div>
+            <Label className="text-xs text-muted-foreground">{t("payment.total-scheduled")}</Label>
+            <div className="text-lg font-bold text-blue-600">{totalScheduled.toFixed(2)} {t("common.egp-2")}</div>
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">Remaining</Label>
+            <Label className="text-xs text-muted-foreground">{t("field.remaining")}</Label>
             <div
               className={`text-lg font-bold ${
                 remainingAmount > 0.01 ? "text-red-700" : "text-green-700"
               }`}
             >
-              {remainingAmount.toFixed(2)} EGP
+              {remainingAmount.toFixed(2)} {t("common.egp-2")}
             </div>
           </div>
         </div>
@@ -237,14 +248,17 @@ export function PaymentScheduleEditor({
         {showManualEdit && (
           <Button onClick={addEntry} variant="outline" className="w-full">
             <Plus className="h-4 w-4 mr-2" />
-            Add Payment Entry
+            {t("pay.add-entry")}
           </Button>
         )}
 
         {Math.abs(remainingAmount) > 0.01 && (
           <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-            ⚠️ Total scheduled amount ({totalScheduled.toFixed(2)} EGP) does not match total amount (
-            {totalAmount.toFixed(2)} EGP). Difference: {remainingAmount.toFixed(2)} EGP
+            {fill(t("pay.schedule-mismatch"), {
+              scheduled: totalScheduled.toFixed(2),
+              total: totalAmount.toFixed(2),
+              diff: remainingAmount.toFixed(2),
+            })}
           </div>
         )}
       </CardContent>

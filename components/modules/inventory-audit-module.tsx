@@ -251,10 +251,10 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
               <Warehouse className="w-4 h-4 text-muted-foreground" />
               <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="All Warehouses" />
+                  <SelectValue placeholder={t("warehouse.all")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Warehouses</SelectItem>
+                  <SelectItem value="all">{t("warehouse.all")}</SelectItem>
                   {(warehouses || []).map((wh) => (
                     <SelectItem key={wh.id} value={wh.id.toString()}>
                       {wh.name}
@@ -274,7 +274,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
                   <TableRow>
                     <TableHead>{t("product.name")}</TableHead>
                     <TableHead>{t("product.sku")}</TableHead>
-                    <TableHead>Warehouse</TableHead>
+                    <TableHead>{t("approval.warehouse")}</TableHead>
                     <NumHead>{t("inventory-audit.system-quantity")}</NumHead>
                     <TableHead>{t("inventory-audit.physical-count")}</TableHead>
                     <TableHead>{t("inventory-audit.difference")}</TableHead>
@@ -289,7 +289,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
                       <TableCell>
                         <Badge variant="outline" className="gap-1">
                           <Warehouse className="w-3 h-3" />
-                          {item.warehouse_name || "Default"}
+                          {item.warehouse_name || t("warehouse.default")}
                         </Badge>
                       </TableCell>
                       <NumCell>{formatNumber(item.quantity)}</NumCell>
@@ -304,7 +304,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
             card={(item) => (
               <ListCard
                 id={item.productName}
-                party={`${item.sku} · ${item.warehouse_name || "Default"}`}
+                party={`${item.sku} · ${item.warehouse_name || t("warehouse.default")}`}
                 status={getDifferenceDisplay(item.quantity, item.physicalCount)}
                 note={`${t("inventory-audit.system-quantity")}: ${formatNumber(item.quantity)}`}
                 actions={renderRowActions(item)}

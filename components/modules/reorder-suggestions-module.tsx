@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/erp/page-header"
 import { ListCard, ResponsiveList } from "@/components/erp/responsive-list"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import {
   TrendingUp,
   TrendingDown,
@@ -143,14 +144,14 @@ export function ReorderSuggestionsModule() {
       if (!res.ok) throw new Error("Failed to apply updates")
 
       const result = await res.json()
-      alert(`Successfully updated ${result.updated} reorder points!`)
+      alert(fill(t("reorder.updated-success"), { count: result.updated }))
 
       // Refresh suggestions
       setSelectedItems(new Set())
       fetchSuggestions()
     } catch (error) {
       console.error("Error applying updates:", error)
-      alert("Failed to apply updates. Please try again.")
+      alert(t("reorder.apply-failed"))
     } finally {
       setApplying(false)
     }
@@ -341,7 +342,7 @@ export function ReorderSuggestionsModule() {
                 {isMobile && filteredSuggestions.length > 0 && (
                   <label className="flex items-center gap-2 text-sm">
                     {selectAllCheckbox}
-                    <span>Select all</span>
+                    <span>{t("a11y.select-all")}</span>
                   </label>
                 )}
                 <ResponsiveList

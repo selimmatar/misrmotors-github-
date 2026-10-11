@@ -39,6 +39,7 @@ import {
 import type { PurchaseOrder, UserRole, PaymentDetails, PaymentType } from "@/lib/types"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 
 interface PurchaseOrderModuleProps {
   userRole?: UserRole
@@ -46,6 +47,8 @@ interface PurchaseOrderModuleProps {
 
 export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderModuleProps) {
   const { t, formatNumber, language } = useI18n()
+  // PO currency code for display: EGP shows as the translated Egyptian-pound symbol, other codes stay as they are.
+  const currencyLabel = (code?: string | null) => (!code || /^egp$/i.test(code) ? t("common.egp-2") : code)
   const {
     purchaseOrders,
     setPurchaseOrders,
@@ -455,13 +458,13 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
   const handleApprove = async (id: string) => {
     if (!canApprovePO) {
-      alert("Only CEO or Admin can approve purchase orders")
+      alert(t("po.only-ceo-admin-approve"))
       return
     }
 
     const order = purchaseOrders.find((o) => o.id === id)
     if (!order) {
-      alert("Purchase order not found")
+      alert(t("po.not-found"))
       return
     }
 
@@ -473,10 +476,10 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
       setPurchaseOrders(purchaseOrders.map((o) => (o.id === id ? { ...o, status: "approved" as const } : o)))
 
-      alert(`Purchase order ${order.poNumber} has been approved and added to Accounts Payable`)
+      alert(fill(t("po.approved-added-ap"), { number: order.poNumber }))
     } catch (error) {
       console.error("Error approving PO:", error)
-      alert(`Failed to approve purchase order: ${error instanceof Error ? error.message : "please try again"}`)
+      alert(fill(t("po.approve-failed"), { message: error instanceof Error ? error.message : t("po.please-try-again") }))
     }
   }
 
@@ -982,13 +985,13 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
   const handleReject = async () => {
     if (!rejectingOrderId || !rejectionReason.trim()) {
-      alert("Please provide a rejection reason")
+      alert(t("permit.rejection-reason-required"))
       return
     }
 
     const order = purchaseOrders.find((o) => o.id === rejectingOrderId)
     if (!order) {
-      alert("Purchase order not found")
+      alert(t("po.not-found"))
       return
     }
 
@@ -1011,10 +1014,10 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       setRejectingOrderId(null)
       setRejectionReason("")
 
-      alert(`Purchase order ${order.poNumber} has been rejected`)
+      alert(fill(t("po.rejected-message"), { number: order.poNumber }))
     } catch (error) {
       console.error("Error rejecting PO:", error)
-      alert(`Failed to reject purchase order: ${error instanceof Error ? error.message : "please try again"}`)
+      alert(fill(t("po.reject-failed"), { message: error instanceof Error ? error.message : t("po.please-try-again") }))
     }
   }
 
@@ -1037,7 +1040,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       })
 
       if (response.ok) {
-        alert("Cost finalized successfully! Products are now ready for pricing review.")
+        alert(t("po.cost-finalized"))
         setCostFinalizeDialog(false)
         setSelectedPOForCost(null)
         setTaxAmount("")
@@ -1047,11 +1050,11 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         await loadData()
       } else {
         const error = await response.json()
-        alert(`Failed to finalize cost: ${error.error}`)
+        alert(fill(t("po.finalize-cost-failed-message"), { message: error.error }))
       }
     } catch (error) {
       console.error("Error finalizing cost:", error)
-      alert("Failed to finalize cost. Please try again.")
+      alert(t("po.finalize-cost-failed"))
     } finally {
       setFinalizingCost(false)
     }
@@ -1123,11 +1126,11 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             variant="default"
             size="sm"
             onClick={() => handleApprove(order.id)}
-            title="Approve PO"
+            title={t("po.approve-po")}
             className="bg-green-700 hover:bg-green-800 text-white"
           >
             <CheckCircle className="w-4 h-4 me-1" />
-            Approve
+            {t("action.approve")}
           </Button>
           <Button
             variant="destructive"
@@ -1136,10 +1139,10 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               setRejectingOrderId(order.id)
               setShowRejectModal(true)
             }}
-            title="Reject PO"
+            title={t("po.reject-po")}
           >
             <X className="w-4 h-4 me-1" />
-            Reject
+            {t("action.reject")}
           </Button>
         </>
       )}
@@ -1150,7 +1153,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           setViewDetailsOrder(order)
           setShowDetailsModal(true)
         }}
-        title="View Order Details"
+        title={t("po.view-order-details")}
         aria-label={t("action.view")}
       >
         <Eye className="w-4 h-4" />
@@ -1162,7 +1165,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           const printUrl = `${window.location.origin}/api/purchase-orders/pdf?poId=${order.id}`
           window.open(printUrl, "_blank")
         }}
-        title="Print PO"
+        title={t("po.print-po")}
         aria-label={t("action.print")}
       >
         <FileText className="w-4 h-4" />
@@ -1175,7 +1178,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     <div className="flex items-start gap-2">
       <AlertCircle className="w-4 h-4 text-red-700 mt-0.5 flex-shrink-0" />
       <div>
-        <span className="font-semibold text-red-900">Rejection Reason: </span>
+        <span className="font-semibold text-red-900">{t("po.rejection-reason-label")}{" "}</span>
         <span className="text-red-800">{order.rejectionReason}</span>
       </div>
     </div>
@@ -1214,9 +1217,9 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     <TableHead>{t("po.supplier")}</TableHead>
                     <TableHead>{t("po.order-date")}</TableHead>
                     <TableHead>{t("po.delivery-date")}</TableHead>
-                    <TableHead>Payment Terms</TableHead>
+                    <TableHead>{t("field.payment-terms")}</TableHead>
                     <NumHead>{t("po.items")}</NumHead>
-                    <NumHead>{t("po.total-amount")} (EGP)</NumHead>
+                    <NumHead>{t("po.total-amount")} {t("common.egp")}</NumHead>
                     <TableHead>{t("field.status")}</TableHead>
                     <ActionsHead />
                   </TableRow>
@@ -1231,7 +1234,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         <TableCell>{formatDate(order.deliveryDate, language)}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">
-                            {order.paymentType || order.paymentTerms || "Cash"}
+                            {order.paymentType || order.paymentTerms || t("payment.cash")}
                           </Badge>
                         </TableCell>
                         <NumCell>{formatNumber(order.items?.length || 0)}</NumCell>
@@ -1372,9 +1375,9 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   value={formData.currency}
                   onChange={(e) => setFormData({ ...formData, currency: e.target.value as "EGP" | "USD" | "EUR" })}
                 >
-                  <option value="EGP">EGP ({t("currency.egp")})</option>
-                  <option value="USD">USD ({t("currency.usd")})</option>
-                  <option value="EUR">EUR ({t("currency.eur")})</option>
+                  <option value="EGP">{t("currency.egp")}</option>
+                  <option value="USD">{t("currency.usd")}</option>
+                  <option value="EUR">{t("currency.eur")}</option>
                 </select>
               </div>
             </div>
@@ -1383,7 +1386,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             <div className="border-t pt-4">
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <FileText className="h-4 w-4" />
-                Purchase Order Source
+                {t("po.source")}
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 <label
@@ -1402,8 +1405,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     className="w-4 h-4"
                   />
                   <div>
-                    <span className="font-medium">Manual</span>
-                    <p className="text-xs text-muted-foreground">Add products manually</p>
+                    <span className="font-medium">{t("po.source-manual")}</span>
+                    <p className="text-xs text-muted-foreground">{t("po.source-manual-desc")}</p>
                   </div>
                 </label>
                 <label
@@ -1422,8 +1425,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     className="w-4 h-4"
                   />
                   <div>
-                    <span className="font-medium">From Sales Order</span>
-                    <p className="text-xs text-muted-foreground">Import outsourced items for this supplier</p>
+                    <span className="font-medium">{t("ar.from-sales-order")}</span>
+                    <p className="text-xs text-muted-foreground">{t("po.source-so-desc")}</p>
                   </div>
                 </label>
               </div>
@@ -1433,17 +1436,17 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   {!formData.supplierId ? (
                     <p className="text-sm text-amber-700 flex items-center gap-2">
                       <AlertCircle className="h-4 w-4" />
-                      Please select a supplier first to see their sales orders.
+                      {t("po.select-supplier-first")}
                     </p>
                   ) : (
                     <>
-                      <label className="text-sm font-medium">Sales Order Number</label>
+                      <label className="text-sm font-medium">{t("po.sales-order-number")}</label>
                       {(() => {
                         const allSupplierSOs = getSalesOrdersForSupplier(formData.supplierId)
                         if (allSupplierSOs.length === 0) {
                           return (
                             <p className="text-sm text-muted-foreground mt-1">
-                              No sales orders with outsourced items for this supplier.
+                              {t("po.no-outsourced-sos")}
                             </p>
                           )
                         }
@@ -1459,7 +1462,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                             {/* Type the sales order number to find it */}
                             <Input
                               className="mt-1"
-                              placeholder="Type the sales order number (e.g. SO-1024)"
+                              placeholder={t("po.type-so-number")}
                               value={soSearchTerm}
                               onChange={(e) => setSoSearchTerm(e.target.value)}
                             />
@@ -1476,7 +1479,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                               }}
                             >
                               <option value="">
-                                {availableSOs.length === 0 ? "No matching sales orders" : "Select a sales order"}
+                                {availableSOs.length === 0 ? t("po.no-matching-sos") : t("po.select-so")}
                               </option>
                               {availableSOs.map((so: any) => (
                                 <option key={so.id} value={so.id}>
@@ -1491,7 +1494,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       {selectedSourceSoId && orderItems.length > 0 && (
                         <p className="text-xs text-emerald-700 mt-2 flex items-center gap-1">
                           <CheckCircle className="h-3 w-3" />
-                          {orderItems.length} outsourced item(s) imported from the sales order.
+                          {fill(t("po.outsourced-imported"), { count: orderItems.length })}
                         </p>
                       )}
                     </>
@@ -1662,17 +1665,17 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       <div className="w-full border rounded px-3 py-2 bg-muted/50 min-w-0">
                         <div className="flex items-center gap-1.5 text-sm font-medium">
                           <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0">
-                            Outsourced
+                            {t("common.outsourced-2")}
                           </Badge>
                           <span className="truncate">{item.outsourcedName}</span>
                         </div>
                         {item.outsourcedUnit && (
-                          <p className="text-xs text-muted-foreground mt-0.5">Unit: {item.outsourcedUnit}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{fill(t("po.unit-label"), { unit: item.outsourcedUnit })}</p>
                         )}
                       </div>
                     ) : (
                       <Input
-                        placeholder="Product name"
+                        placeholder={t("po.product-name-placeholder")}
                         value={item.productName}
                         onChange={(e) => {
                           const newItems = [...orderItems]
@@ -1723,21 +1726,21 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       className="h-4 w-4 rounded border-gray-300"
                     />
                     <label htmlFor="poVatEnabled" className="text-sm font-medium">
-                      Add VAT (14%)
+                      {t("po.add-vat")}
                     </label>
                   </div>
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Subtotal (EGP)</span>
+                    <span className="text-muted-foreground">{t("po.subtotal-egp")}</span>
                     <span><Money value={orderTotal} /></span>
                   </div>
                   {vatEnabled && (
                     <div className="flex justify-between items-center text-sm">
-                      <span className="text-muted-foreground">VAT (14%) (EGP)</span>
+                      <span className="text-muted-foreground">{t("po.vat-egp")}</span>
                       <span><Money value={vatAmount} /></span>
                     </div>
                   )}
                   <div className="flex justify-between items-center font-semibold pt-2 border-t">
-                    <span>{t("field.total")} (EGP)</span>
+                    <span>{t("field.total")} {t("common.egp")}</span>
                     <span><Money value={grandTotal} /></span>
                   </div>
                 </div>
@@ -1771,33 +1774,33 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
           <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="text-2xl">Purchase Order Details - {viewDetailsOrder.poNumber}</DialogTitle>
+              <DialogTitle className="text-2xl">{fill(t("po.details-title"), { number: viewDetailsOrder.poNumber })}</DialogTitle>
             </DialogHeader>
             
             <div className="space-y-6">
               {/* Order Information */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h3 className="font-semibold mb-3 text-lg border-b pb-2">Order Information</h3>
+                  <h3 className="font-semibold mb-3 text-lg border-b pb-2">{t("po.order-information")}</h3>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">PO Number:</span>
+                      <span className="text-muted-foreground">{t("po.number-label")}</span>
                       <span className="font-medium">{viewDetailsOrder.poNumber}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Status:</span>
+                      <span className="text-muted-foreground">{t("po.status-label")}</span>
                       <StatusBadge status={viewDetailsOrder.status} label={t(`po.status.${viewDetailsOrder.status}`)} />
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Order Date:</span>
+                      <span className="text-muted-foreground">{t("po.order-date-label")}</span>
                       <span className="font-medium">{formatDate(viewDetailsOrder.orderDate, language)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Delivery Date:</span>
+                      <span className="text-muted-foreground">{t("po.delivery-date-label")}</span>
                       <span className="font-medium">{formatDate(viewDetailsOrder.deliveryDate, language)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Supplier:</span>
+                      <span className="text-muted-foreground">{t("common.supplier")}</span>
                       <span className="font-medium">{getSupplierName(viewDetailsOrder.supplierId)}</span>
                     </div>
                   </div>
@@ -1805,31 +1808,31 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
                 {/* Payment Information */}
                 <div>
-                  <h3 className="font-semibold mb-3 text-lg border-b pb-2">Payment Information</h3>
+                  <h3 className="font-semibold mb-3 text-lg border-b pb-2">{t("po.payment-information")}</h3>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Payment Type:</span>
+                      <span className="text-muted-foreground">{t("po.payment-type-label")}</span>
                       <Badge variant="outline">
-                        {viewDetailsOrder.paymentType === "hybrid" && "Hybrid Payment"}
-                        {viewDetailsOrder.paymentType === "installments" && "Installments"}
-                        {viewDetailsOrder.paymentType === "cash" && "Cash"}
-                        {viewDetailsOrder.paymentType === "bank_transfer" && "Bank Transfer"}
-                        {viewDetailsOrder.paymentType === "cheque" && "Cheque"}
-                        {!viewDetailsOrder.paymentType && (viewDetailsOrder.paymentTerms || "Cash")}
+                        {viewDetailsOrder.paymentType === "hybrid" && t("payment.hybrid-payment")}
+                        {viewDetailsOrder.paymentType === "installments" && t("payment.installments")}
+                        {viewDetailsOrder.paymentType === "cash" && t("payment.cash")}
+                        {viewDetailsOrder.paymentType === "bank_transfer" && t("payment.bank_transfer")}
+                        {viewDetailsOrder.paymentType === "cheque" && t("payment.cheque")}
+                        {!viewDetailsOrder.paymentType && (viewDetailsOrder.paymentTerms || t("payment.cash"))}
                       </Badge>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Amount (EGP):</span>
+                      <span className="text-muted-foreground">{t("po.total-amount-egp-label")}</span>
                       <span className="font-bold text-lg"><Money value={viewDetailsOrder.total} /></span>
                     </div>
                     {viewDetailsOrder.paymentType === "hybrid" && viewDetailsOrder.downPaymentAmount && (
                       <>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Down Payment (EGP):</span>
+                          <span className="text-muted-foreground">{t("po.down-payment-egp-label")}</span>
                           <span className="font-medium"><Money value={Number(viewDetailsOrder.downPaymentAmount)} /></span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Remaining (EGP):</span>
+                          <span className="text-muted-foreground">{t("po.remaining-egp-label")}</span>
                           <span className="font-medium">
                             <Money value={viewDetailsOrder.total - Number(viewDetailsOrder.downPaymentAmount)} />
                           </span>
@@ -1838,8 +1841,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     )}
                     {viewDetailsOrder.paymentType === "installments" && viewDetailsOrder.installments && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Installments:</span>
-                        <span className="font-medium">{viewDetailsOrder.installments} payments</span>
+                        <span className="text-muted-foreground">{t("po.installments-label")}</span>
+                        <span className="font-medium">{viewDetailsOrder.installments} {t("common.payments")}</span>
                       </div>
                     )}
                   </div>
@@ -1848,15 +1851,15 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
               {/* Items List */}
               <div>
-              <h3 className="font-semibold mb-3 text-lg border-b pb-2">Order Items</h3>
+              <h3 className="font-semibold mb-3 text-lg border-b pb-2">{t("po.order-items")}</h3>
               <div className="border rounded-lg overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead className="bg-muted">
                       <tr>
-                        <th className="text-start p-3 font-semibold">Product</th>
-                        <th className="text-start p-3 font-semibold">Quantity</th>
-                        <th className="text-start p-3 font-semibold">Unit Price (EGP)</th>
-                        <th className="text-start p-3 font-semibold">Total (EGP)</th>
+                        <th className="text-start p-3 font-semibold">{t("field.product")}</th>
+                        <th className="text-start p-3 font-semibold">{t("quantity")}</th>
+                        <th className="text-start p-3 font-semibold">{t("common.unit-price-egp")}</th>
+                        <th className="text-start p-3 font-semibold">{t("common.total-egp")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1876,18 +1879,18 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               {/* Payment Schedule (if installments or hybrid) */}
               {(viewDetailsOrder.paymentType === "installments" || viewDetailsOrder.paymentType === "hybrid") && (
                 <div>
-                  <h3 className="font-semibold mb-3 text-lg border-b pb-2">Payment Schedule</h3>
+                  <h3 className="font-semibold mb-3 text-lg border-b pb-2">{t("module.payment-schedule")}</h3>
                   <div className="space-y-2 text-sm">
                     {/* Down payment row for hybrid */}
                     {viewDetailsOrder.paymentType === "hybrid" && Number(viewDetailsOrder.downPaymentAmount) > 0 && (
                       <div className="flex justify-between p-3 bg-green-50 border border-green-200 rounded">
                         <div>
-                          <span className="font-semibold">Down Payment</span>
+                          <span className="font-semibold">{t("payment.down-payment")}</span>
                           {viewDetailsOrder.downPaymentDueDate && (
-                            <p className="text-xs text-muted-foreground">Due: {formatDate(viewDetailsOrder.downPaymentDueDate, language)}</p>
+                            <p className="text-xs text-muted-foreground">{fill(t("po.due-date"), { date: formatDate(viewDetailsOrder.downPaymentDueDate, language) })}</p>
                           )}
                         </div>
-                        <span className="font-bold text-green-700"><Money value={Number(viewDetailsOrder.downPaymentAmount)} /> EGP</span>
+                        <span className="font-bold text-green-700"><Money value={Number(viewDetailsOrder.downPaymentAmount)} /> {t("common.egp-2")}</span>
                       </div>
                     )}
 
@@ -1896,14 +1899,14 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       viewDetailsOrder.scheduleEntries.map((entry: any, i: number) => (
                         <div key={entry.id || i} className="flex justify-between p-3 bg-blue-50 border border-blue-200 rounded">
                           <div>
-                            <span>{entry.note || `Installment ${i + 1}`}</span>
+                            <span>{entry.note || fill(t("po.installment-n"), { n: i + 1 })}</span>
                             {entry.dueDate && (
                               <p className="text-xs text-muted-foreground">
-                                Due: {formatDate(entry.dueDate, language)}
+                                {fill(t("po.due-date"), { date: formatDate(entry.dueDate, language) })}
                               </p>
                             )}
                           </div>
-                          <span className="font-medium text-blue-700"><Money value={Number(entry.amount)} /> EGP</span>
+                          <span className="font-medium text-blue-700"><Money value={Number(entry.amount)} /> {t("common.egp-2")}</span>
                         </div>
                       ))
                     ) : (
@@ -1927,10 +1930,10 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                           return (
                             <div key={i} className="flex justify-between p-3 bg-blue-50 border border-blue-200 rounded">
                               <div>
-                                <span>Installment {i + 1} of {installmentCount}</span>
-                                {dueDate && <p className="text-xs text-muted-foreground">Due: {dueDate}</p>}
+                                <span>{fill(t("po.installment-of"), { n: i + 1, count: installmentCount })}</span>
+                                {dueDate && <p className="text-xs text-muted-foreground">{fill(t("po.due-date"), { date: dueDate })}</p>}
                               </div>
-                              <span className="font-medium text-blue-700"><Money value={monthlyAmt} /> EGP</span>
+                              <span className="font-medium text-blue-700"><Money value={monthlyAmt} /> {t("common.egp-2")}</span>
                             </div>
                           )
                         })
@@ -1943,7 +1946,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowDetailsModal(false)}>
-                Close
+                {t("close")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1954,21 +1957,21 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <Card className="w-full max-w-md mx-4">
             <CardHeader>
-              <CardTitle>Reject Purchase Order</CardTitle>
+              <CardTitle>{t("po.reject-title")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="text-sm font-medium">Rejection Reason</label>
+                <label className="text-sm font-medium">{t("permit.rejection-reason")}</label>
                 <textarea
                   className="w-full border rounded px-3 py-2 mt-1 min-h-[100px]"
-                  placeholder="Please provide a reason for rejecting this purchase order..."
+                  placeholder={t("po.rejection-placeholder")}
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
                 />
               </div>
               <div className="flex gap-2">
                 <Button onClick={handleReject} variant="destructive">
-                  Reject PO
+                  {t("po.reject-po")}
                 </Button>
                 <Button
                   variant="outline"
@@ -1978,7 +1981,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     setRejectionReason("")
                   }}
                 >
-                  Cancel
+                  {t("cancel")}
                 </Button>
               </div>
             </CardContent>
@@ -1990,19 +1993,18 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <Card className="w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
             <CardHeader>
-              <CardTitle>Finalize Purchase Order Cost</CardTitle>
+              <CardTitle>{t("po.finalize-title")}</CardTitle>
               <p className="text-sm text-muted-foreground mt-2">
-                Choose how to allocate tax and costs to items. Global allocation distributes proportionally; Per-Product
-                lets you set specific amounts.
+                {t("po.finalize-description")}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
               {selectedPOObject && (
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <h4 className="font-semibold text-sm">PO: {selectedPOObject.poNumber}</h4>
+                    <h4 className="font-semibold text-sm">{fill(t("po.po-colon"), { number: selectedPOObject.poNumber })}</h4>
                     <span className="text-sm text-muted-foreground">
-                      Supplier: {suppliers.find((s) => s.id === selectedPOObject.supplierId)?.name || "Unknown"}
+                      {t("common.supplier")} {suppliers.find((s) => s.id === selectedPOObject.supplierId)?.name || t("common.unknown")}
                     </span>
                   </div>
 
@@ -2017,7 +2019,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         }}
                         className="w-4 h-4"
                       />
-                      <span className="text-sm font-medium">Global Allocation (Proportional)</span>
+                      <span className="text-sm font-medium">{t("po.global-allocation")}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -2026,7 +2028,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         onChange={() => setPerProductTaxMode(true)}
                         className="w-4 h-4"
                       />
-                      <span className="text-sm font-medium">Per-Product Allocation</span>
+                      <span className="text-sm font-medium">{t("po.per-product-allocation")}</span>
                     </label>
                   </div>
 
@@ -2042,27 +2044,27 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                             <div>
                               <p className="font-medium text-sm">{item.productName}</p>
                               <p className="text-xs text-muted-foreground">
-                                Qty: {item.quantity} × {selectedPOObject.currency || "EGP"}{" "}
+                                {t("common.qty-2")} {item.quantity} × {currencyLabel(selectedPOObject.currency)}{" "}
                                 <Money value={Number(item.unitPrice)} />
                               </p>
                             </div>
                             <p className="font-semibold text-sm">
-                              {selectedPOObject.currency || "EGP"} <Money value={Number(item.total)} />
+                              {currencyLabel(selectedPOObject.currency)} <Money value={Number(item.total)} />
                             </p>
                           </div>
                         ))}
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t">
-                        <span className="font-medium">Subtotal (before tax)</span>
+                        <span className="font-medium">{t("po.subtotal-before-tax")}</span>
                         <span className="font-bold">
-                          {selectedPOObject.currency || "EGP"} <Money value={Number(selectedPOObject.total)} />
+                          {currencyLabel(selectedPOObject.currency)} <Money value={Number(selectedPOObject.total)} />
                         </span>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-sm font-medium">
-                            Tax Amount ({selectedPOObject?.currency || "EGP"})
+                            {fill(t("po.tax-amount-currency"), { currency: currencyLabel(selectedPOObject?.currency) })}
                           </label>
                           <Input
                             type="number"
@@ -2075,7 +2077,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         </div>
                         <div>
                           <label className="text-sm font-medium">
-                            Other Costs ({selectedPOObject?.currency || "EGP"})
+                            {fill(t("po.other-costs-currency"), { currency: currencyLabel(selectedPOObject?.currency) })}
                           </label>
                           <Input
                             type="number"
@@ -2085,22 +2087,22 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                             step="0.01"
                             className="mt-1"
                           />
-                          <p className="text-xs text-muted-foreground mt-1">Shipping, customs, etc.</p>
+                          <p className="text-xs text-muted-foreground mt-1">{t("po.shipping-customs")}</p>
                         </div>
                       </div>
 
                       <div className="bg-muted p-3 rounded-lg space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Additional Costs</span>
+                          <span className="text-muted-foreground">{t("po.additional-costs")}</span>
                           <span>
-                            {selectedPOObject?.currency || "EGP"}{" "}
+                            {currencyLabel(selectedPOObject?.currency)}{" "}
                             <Money value={(Number(taxAmount) || 0) + (Number(otherCosts) || 0)} />
                           </span>
                         </div>
                         <div className="flex justify-between font-bold text-lg pt-2 border-t">
-                          <span>Total Landed Cost</span>
+                          <span>{t("po.total-landed-cost")}</span>
                           <span>
-                            {selectedPOObject?.currency || "EGP"}{" "}
+                            {currencyLabel(selectedPOObject?.currency)}{" "}
                             <Money
                               value={(selectedPOObject?.total || 0) + (Number(taxAmount) || 0) + (Number(otherCosts) || 0)}
                             />
@@ -2114,10 +2116,10 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     <>
                       <div className="border rounded-lg overflow-hidden">
                         <div className="grid grid-cols-4 gap-2 bg-muted p-2 font-semibold text-sm sticky top-0">
-                          <div>Product</div>
-                          <div className="text-end">Subtotal</div>
-                          <div className="text-end">Tax</div>
-                          <div className="text-end">Other Costs</div>
+                          <div>{t("field.product")}</div>
+                          <div className="text-end">{t("field.subtotal")}</div>
+                          <div className="text-end">{t("po.tax")}</div>
+                          <div className="text-end">{t("po.other-costs")}</div>
                         </div>
                         <div className="max-h-64 overflow-y-auto">
                           {selectedPOObject.items?.map((item: any, index: number) => (
@@ -2127,12 +2129,12 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                             >
                               <div className="text-sm font-medium truncate">{item.productName}</div>
                               <div className="text-end text-sm">
-                                <Money value={Number(item.total)} /> {selectedPOObject?.currency || "EGP"}
+                                <Money value={Number(item.total)} /> {currencyLabel(selectedPOObject?.currency)}
                               </div>
                               <div>
                                 <Input
                                   type="number"
-                                  placeholder="Tax"
+                                  placeholder={t("po.tax")}
                                   value={productTaxes[item.id]?.tax || ""}
                                   onChange={(e) =>
                                     setProductTaxes({
@@ -2150,7 +2152,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                               <div>
                                 <Input
                                   type="number"
-                                  placeholder="Costs"
+                                  placeholder={t("po.costs")}
                                   value={productTaxes[item.id]?.otherCosts || ""}
                                   onChange={(e) =>
                                     setProductTaxes({
@@ -2172,27 +2174,27 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
                       <div className="bg-muted p-3 rounded-lg space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Total Tax Allocated</span>
+                          <span className="text-muted-foreground">{t("po.total-tax-allocated")}</span>
                           <span>
-                            {selectedPOObject?.currency || "EGP"}{" "}
+                            {currencyLabel(selectedPOObject?.currency)}{" "}
                             <Money
                               value={Object.values(productTaxes).reduce((sum, item) => sum + (Number(item.tax) || 0), 0)}
                             />
                           </span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Total Other Costs</span>
+                          <span className="text-muted-foreground">{t("po.total-other-costs")}</span>
                           <span>
-                            {selectedPOObject?.currency || "EGP"}{" "}
+                            {currencyLabel(selectedPOObject?.currency)}{" "}
                             <Money
                               value={Object.values(productTaxes).reduce((sum, item) => sum + (Number(item.otherCosts) || 0), 0)}
                             />
                           </span>
                         </div>
                         <div className="flex justify-between font-bold text-lg pt-2 border-t">
-                          <span>Grand Total</span>
+                          <span>{t("po.grand-total")}</span>
                           <span>
-                            {selectedPOObject?.currency || "EGP"}{" "}
+                            {currencyLabel(selectedPOObject?.currency)}{" "}
                             <Money
                               value={
                                 (selectedPOObject?.total || 0) +
@@ -2210,7 +2212,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
               <div className="flex gap-2">
                 <Button onClick={handleFinalizeCost} disabled={finalizingCost} className="flex-1">
-                  {finalizingCost ? "Finalizing..." : "Finalize Cost"}
+                  {finalizingCost ? t("po.finalizing") : t("po.finalize-cost")}
                 </Button>
                 <Button
                   variant="outline"
@@ -2223,7 +2225,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     setProductTaxes({})
                   }}
                 >
-                  Cancel
+                  {t("cancel")}
                 </Button>
               </div>
             </CardContent>

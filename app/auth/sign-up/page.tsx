@@ -11,8 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { useI18n } from "@/lib/i18n-context"
 
 export default function SignUpPage() {
+  const { t } = useI18n()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [repeatPassword, setRepeatPassword] = useState("")
@@ -27,7 +29,7 @@ export default function SignUpPage() {
     setError(null)
 
     if (password !== repeatPassword) {
-      setError("Passwords do not match")
+      setError(t("auth.passwords-do-not-match"))
       setIsLoading(false)
       return
     }
@@ -46,7 +48,7 @@ export default function SignUpPage() {
       if (error) throw error
       router.push("/auth/sign-up-success")
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred")
+      setError(error instanceof Error ? error.message : t("message.error"))
     } finally {
       setIsLoading(false)
     }
@@ -58,14 +60,14 @@ export default function SignUpPage() {
         <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl">Sign up</CardTitle>
-              <CardDescription>Create a new account</CardDescription>
+              <CardTitle className="text-2xl">{t("auth.sign-up")}</CardTitle>
+              <CardDescription>{t("auth.create-new-account")}</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSignUp}>
                 <div className="flex flex-col gap-6">
                   <div className="grid gap-2">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="email">{t("email")}</Label>
                     <Input
                       id="email"
                       type="email"
@@ -76,22 +78,22 @@ export default function SignUpPage() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="role">Role</Label>
+                    <Label htmlFor="role">{t("auth.role")}</Label>
                     <Select value={role} onValueChange={setRole}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select role" />
+                        <SelectValue placeholder={t("auth.select-role")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="ceo">CEO</SelectItem>
-                        <SelectItem value="sales">Sales Representative</SelectItem>
-                        <SelectItem value="purchasing">Purchasing Officer</SelectItem>
-                        <SelectItem value="accountant">Accountant</SelectItem>
-                        <SelectItem value="inventory">Inventory Manager</SelectItem>
+                        <SelectItem value="ceo">{t("auth.role-ceo")}</SelectItem>
+                        <SelectItem value="sales">{t("role.sales")}</SelectItem>
+                        <SelectItem value="purchasing">{t("auth.role-purchasing-officer")}</SelectItem>
+                        <SelectItem value="accountant">{t("role.accountant")}</SelectItem>
+                        <SelectItem value="inventory">{t("auth.role-inventory-manager")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="password">Password</Label>
+                    <Label htmlFor="password">{t("auth.password")}</Label>
                     <Input
                       id="password"
                       type="password"
@@ -101,7 +103,7 @@ export default function SignUpPage() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="repeat-password">Repeat Password</Label>
+                    <Label htmlFor="repeat-password">{t("auth.repeat-password")}</Label>
                     <Input
                       id="repeat-password"
                       type="password"
@@ -112,13 +114,13 @@ export default function SignUpPage() {
                   </div>
                   {error && <p className="text-sm text-red-700">{error}</p>}
                   <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading ? "Creating an account..." : "Sign up"}
+                    {isLoading ? t("auth.creating-account") : t("auth.sign-up")}
                   </Button>
                 </div>
                 <div className="mt-4 text-center text-sm">
-                  Already have an account?{" "}
+                  {t("auth.already-have-account")}{" "}
                   <Link href="/auth/login" className="underline underline-offset-4">
-                    Login
+                    {t("auth.login")}
                   </Link>
                 </div>
               </form>

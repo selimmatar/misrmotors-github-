@@ -428,7 +428,7 @@ export function AccountsPayableModule() {
     if (submittingRef.current) return null
     const amount = Number(payAmount)
     if (!Number.isFinite(amount) || amount <= 0) {
-      alert("Enter a payment amount greater than zero")
+      alert(t("ap.enter-payment-amount"))
       return null
     }
     submittingRef.current = true
@@ -677,7 +677,7 @@ export function AccountsPayableModule() {
           size="sm"
           variant="outline"
           onClick={() => handleViewPaymentDetails(invoice)}
-          title={t("ap.payment-details") || "Payment Details"}
+          title={t("ap.payment-details")}
         >
           <CreditCard className="w-4 h-4" />
         </Button>
@@ -700,7 +700,7 @@ export function AccountsPayableModule() {
         )}
         <Button size="sm" variant="outline" onClick={() => handleDownloadInvoicePDF(invoice)}>
           <FileText className="w-4 h-4 me-2" />
-          {t("action.print-invoice") || "Print Invoice"}
+          {t("action.print-invoice")}
         </Button>
       </>
     )
@@ -720,7 +720,7 @@ export function AccountsPayableModule() {
               <Money
                 value={overdueInvoices.reduce((sum, inv) => sum + (inv.amount || 0) - (inv.paidAmount || 0), 0)}
               />{" "}
-              EGP
+              {t("common.egp-2")}
             </>
           }
           onClick={() => openWidgetDialog("overdue")}
@@ -733,7 +733,7 @@ export function AccountsPayableModule() {
               <Money
                 value={dueSoonInvoices.reduce((sum, inv) => sum + (inv.amount || 0) - (inv.paidAmount || 0), 0)}
               />{" "}
-              EGP
+              {t("common.egp-2")}
             </>
           }
           onClick={() => openWidgetDialog("due-soon")}
@@ -743,7 +743,7 @@ export function AccountsPayableModule() {
           value={paidInvoices.length}
           sub={
             <>
-              <Money value={totalPaid} /> EGP
+              <Money value={totalPaid} /> {t("common.egp-2")}
             </>
           }
           onClick={() => openWidgetDialog("paid")}
@@ -770,9 +770,9 @@ export function AccountsPayableModule() {
                   <TableHead>{t("field.po-number")}</TableHead>
                   <TableHead>{t("field.payment-type")}</TableHead>
                   <TableHead>{t("field.due-date")}</TableHead>
-                  <NumHead>{t("field.amount")} (EGP)</NumHead>
-                  <NumHead>{t("field.paid")} (EGP)</NumHead>
-                  <NumHead>{t("field.balance")} (EGP)</NumHead>
+                  <NumHead>{t("field.amount")} {t("common.egp")}</NumHead>
+                  <NumHead>{t("field.paid")} {t("common.egp")}</NumHead>
+                  <NumHead>{t("field.balance")} {t("common.egp")}</NumHead>
                   <TableHead>{t("field.status")}</TableHead>
                   <ActionsHead />
                 </TableRow>
@@ -790,7 +790,7 @@ export function AccountsPayableModule() {
                       <TableCell>{getPONumber(invoice.poId)}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
-                          {paymentType}
+                          {t(`payment.${paymentType}`)}
                         </Badge>
                       </TableCell>
                       <TableCell>{formatDate(invoice.dueDate, language)}</TableCell>
@@ -836,10 +836,10 @@ export function AccountsPayableModule() {
                   size="sm"
                   variant="outline"
                   onClick={() => regenerateSchedulesForPO(selectedInvoiceForSchedule)}
-                  title="Recalculate payment schedule if amounts seem incorrect"
+                  title={t("ap.recalculate-title")}
                 >
                   <Calendar className="w-4 h-4 me-1" />
-                  Recalculate
+                  {t("ap.recalculate")}
                 </Button>
               )}
             </div>
@@ -863,7 +863,7 @@ export function AccountsPayableModule() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
-                  <p className="font-medium"><Money value={selectedInvoiceForSchedule.amount || 0} /> EGP</p>
+                  <p className="font-medium"><Money value={selectedInvoiceForSchedule.amount || 0} /> {t("common.egp-2")}</p>
                 </div>
               </div>
 
@@ -871,14 +871,14 @@ export function AccountsPayableModule() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>
-                    {t("field.paid")}: <Money value={selectedInvoiceForSchedule.paidAmount || 0} /> EGP
+                    {t("field.paid")}: <Money value={selectedInvoiceForSchedule.paidAmount || 0} /> {t("common.egp-2")}
                   </span>
                   <span>
                     {t("field.balance")}:{" "}
                     <Money
                       value={(selectedInvoiceForSchedule.amount || 0) - (selectedInvoiceForSchedule.paidAmount || 0)}
                     />{" "}
-                    EGP
+                    {t("common.egp-2")}
                   </span>
                 </div>
                 <Progress
@@ -907,8 +907,7 @@ export function AccountsPayableModule() {
                       <div className="flex items-center gap-2 text-yellow-700">
                         <AlertTriangle className="w-4 h-4" />
                         <span className="text-sm">
-                          {t("ap.schedules-generated-warning") ||
-                            "Payment schedule was generated from PO data. Click to save to database for accurate tracking."}
+                          {t("ap.schedules-generated-warning")}
                         </span>
                       </div>
                       <Button
@@ -919,7 +918,7 @@ export function AccountsPayableModule() {
                         }
                       >
                         <RefreshCw className="w-4 h-4 me-1" />
-                        {t("action.save-schedule") || "Save Schedule"}
+                        {t("action.save-schedule")}
                       </Button>
                     </div>
                   )}
@@ -928,8 +927,8 @@ export function AccountsPayableModule() {
                       <TableRow>
                         <TableHead className="w-[120px]">#</TableHead>
                         <TableHead>{t("field.due-date")}</TableHead>
-                        <TableHead className="text-end">{t("field.amount")} (EGP)</TableHead>
-                        <TableHead className="text-end">{t("field.paid")} (EGP)</TableHead>
+                        <TableHead className="text-end">{t("field.amount")} {t("common.egp")}</TableHead>
+                        <TableHead className="text-end">{t("field.paid")} {t("common.egp")}</TableHead>
                         <TableHead>{t("field.payment-date")}</TableHead>
                         <TableHead>{t("field.status")}</TableHead>
                         <TableHead>{t("field.actions")}</TableHead>
@@ -1007,7 +1006,7 @@ export function AccountsPayableModule() {
                                         window.open(schedule.receiptUrl, "_blank")
                                       }
                                     }}
-                                    title="View uploaded receipt"
+                                    title={t("ap.view-uploaded-receipt")}
                                   >
                                     <Eye className="w-4 h-4 me-1" />
                                     {t("action.view-receipt")}
@@ -1044,7 +1043,7 @@ export function AccountsPayableModule() {
                       ? t("payment.down-payment")
                       : `${t("payment.installment")} ${selectedScheduleForPayment.installmentNumber}`}
                   </span>
-                  <span className="font-medium"><Money value={selectedScheduleForPayment.amount} /> EGP</span>
+                  <span className="font-medium"><Money value={selectedScheduleForPayment.amount} /> {t("common.egp-2")}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("field.due-date")}</span>
@@ -1053,19 +1052,19 @@ export function AccountsPayableModule() {
               </div>
 
               <div className="space-y-2">
-                <Label>Amount</Label>
+                <Label>{t("amount")}</Label>
                 <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Payment method</Label>
+                <Label>{t("ap.payment-method")}</Label>
                 <Select value={payMethod} onValueChange={(v) => setPayMethod(v as any)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="cheque">Cheque</SelectItem>
-                    <SelectItem value="bank_transfer">Bank transfer</SelectItem>
+                    <SelectItem value="cash">{t("payment.cash")}</SelectItem>
+                    <SelectItem value="cheque">{t("payment.cheque")}</SelectItem>
+                    <SelectItem value="bank_transfer">{t("ap.bank-transfer")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1075,7 +1074,7 @@ export function AccountsPayableModule() {
                   checked={payAllowOverpayment}
                   onCheckedChange={(v) => setPayAllowOverpayment(v === true)}
                 />
-                <Label htmlFor="ap-allow-overpayment">Advance / overpayment (amount may exceed the remaining balance)</Label>
+                <Label htmlFor="ap-allow-overpayment">{t("ap.advance-overpayment")}</Label>
               </div>
 
               <div className="space-y-2">
@@ -1116,25 +1115,25 @@ export function AccountsPayableModule() {
                     <Money
                       value={(selectedInvoiceForPayment.amount || 0) - (selectedInvoiceForPayment.paidAmount || 0)}
                     />{" "}
-                    EGP
+                    {t("common.egp-2")}
                   </span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Amount</Label>
+                <Label>{t("amount")}</Label>
                 <Input type="number" min="0" step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Payment method</Label>
+                <Label>{t("ap.payment-method")}</Label>
                 <Select value={payMethod} onValueChange={(v) => setPayMethod(v as any)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="cheque">Cheque</SelectItem>
-                    <SelectItem value="bank_transfer">Bank transfer</SelectItem>
+                    <SelectItem value="cash">{t("payment.cash")}</SelectItem>
+                    <SelectItem value="cheque">{t("payment.cheque")}</SelectItem>
+                    <SelectItem value="bank_transfer">{t("ap.bank-transfer")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1144,7 +1143,7 @@ export function AccountsPayableModule() {
                   checked={payAllowOverpayment}
                   onCheckedChange={(v) => setPayAllowOverpayment(v === true)}
                 />
-                <Label htmlFor="ap-allow-overpayment">Advance / overpayment (amount may exceed the remaining balance)</Label>
+                <Label htmlFor="ap-allow-overpayment">{t("ap.advance-overpayment")}</Label>
               </div>
 
               <div className="space-y-2">
@@ -1180,7 +1179,7 @@ export function AccountsPayableModule() {
                 <TableHead>{t("ap.invoice-number")}</TableHead>
                 <TableHead>{t("field.supplier")}</TableHead>
                 <TableHead>{t("field.due-date")}</TableHead>
-                <TableHead className="text-end">{t("field.balance")} (EGP)</TableHead>
+                <TableHead className="text-end">{t("field.balance")} {t("common.egp")}</TableHead>
                 <TableHead>{t("field.actions")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -1218,7 +1217,7 @@ export function AccountsPayableModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CreditCard className="w-5 h-5" />
-              {t("ap.payment-details") || "Payment Details"}
+              {t("ap.payment-details")}
             </DialogTitle>
           </DialogHeader>
 
@@ -1247,7 +1246,7 @@ export function AccountsPayableModule() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.payment-type")}</p>
-                          <p className="font-medium capitalize">{bankDetails.paymentType}</p>
+                          <p className="font-medium capitalize">{bankDetails.paymentType ? t(`payment.${bankDetails.paymentType}`) : t("label.na")}</p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.supplier")}</p>
@@ -1255,11 +1254,11 @@ export function AccountsPayableModule() {
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
-                          <p className="font-medium"><Money value={selectedInvoiceForPaymentDetails.amount || 0} /> EGP</p>
+                          <p className="font-medium"><Money value={selectedInvoiceForPaymentDetails.amount || 0} /> {t("common.egp-2")}</p>
                         </div>
                         {/* Download PDF: uploaded payment receipt if available, otherwise generated invoice */}
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("action.download-pdf") || "Download PDF"}</p>
+                          <p className="text-sm text-muted-foreground">{t("action.download-pdf")}</p>
                           {paymentDetailsReceipts.length > 0 ? (
                             <div className="flex flex-col gap-1">
                               {paymentDetailsReceipts.map((receipt, index) => (
@@ -1271,8 +1270,8 @@ export function AccountsPayableModule() {
                                 >
                                   <FileText className="w-4 h-4 me-1" />
                                   {paymentDetailsReceipts.length > 1
-                                    ? `${t("action.view-receipt") || "Receipt"} ${index + 1}`
-                                    : t("action.view-receipt") || "View Receipt"}
+                                    ? `${t("action.view-receipt")} ${index + 1}`
+                                    : t("action.view-receipt")}
                                   {receipt.paymentDate ? ` (${formatDate(receipt.paymentDate, language)})` : ""}
                                 </Button>
                               ))}
@@ -1296,7 +1295,7 @@ export function AccountsPayableModule() {
                       <div className="space-y-4">
                         <h3 className="text-sm font-semibold flex items-center gap-2">
                           <FileText className="w-4 h-4" />
-                          {t("payment.cheque-details") || "Cheque Details"}
+                          {t("payment.cheque-details")}
                         </h3>
                         <div className="border rounded-lg p-4 space-y-3 bg-amber-50/50 border-amber-200">
                           {isChequePayment ? (
@@ -1305,12 +1304,12 @@ export function AccountsPayableModule() {
                                 <div className="flex justify-between items-center">
                                   <div>
                                     <p className="text-xs text-muted-foreground">
-                                      {t("payment.cheque-number") || "Cheque Number"}
+                                      {t("payment.cheque-number")}
                                     </p>
                                     <p className="font-medium font-mono">{bankDetails.chequeNumber}</p>
                                   </div>
                                   <Button
-                                    aria-label={`${t("a11y.finance.copy-value")} ${t("payment.cheque-number") || "Cheque Number"}`}
+                                    aria-label={`${t("a11y.finance.copy-value")} ${t("payment.cheque-number")}`}
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => copyToClipboard(bankDetails.chequeNumber)}
@@ -1323,12 +1322,12 @@ export function AccountsPayableModule() {
                                 <div className="flex justify-between items-center">
                                   <div>
                                     <p className="text-xs text-muted-foreground">
-                                      {t("payment.bank-name") || "Bank Name"}
+                                      {t("payment.bank-name")}
                                     </p>
                                     <p className="font-medium">{bankDetails.chequeBankName}</p>
                                   </div>
                                   <Button
-                                    aria-label={`${t("a11y.finance.copy-value")} ${t("payment.bank-name") || "Bank Name"}`}
+                                    aria-label={`${t("a11y.finance.copy-value")} ${t("payment.bank-name")}`}
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => copyToClipboard(bankDetails.chequeBankName)}
@@ -1340,7 +1339,7 @@ export function AccountsPayableModule() {
                               {bankDetails.chequeDueDate && (
                                 <div>
                                   <p className="text-xs text-muted-foreground">
-                                    {t("payment.cheque-due-date") || "Cheque Due Date"}
+                                    {t("payment.cheque-due-date")}
                                   </p>
                                   <p className="font-medium">{formatDate(bankDetails.chequeDueDate, language)}</p>
                                 </div>
@@ -1348,15 +1347,15 @@ export function AccountsPayableModule() {
                               {bankDetails.chequeAmount > 0 && (
                                 <div>
                                   <p className="text-xs text-muted-foreground">
-                                    {t("payment.cheque-amount") || "Cheque Amount"}
+                                    {t("payment.cheque-amount")}
                                   </p>
-                                  <p className="font-medium"><Money value={bankDetails.chequeAmount} /> EGP</p>
+                                  <p className="font-medium"><Money value={bankDetails.chequeAmount} /> {t("common.egp-2")}</p>
                                 </div>
                               )}
                               {bankDetails.chequeNotes && (
                                 <div>
                                   <p className="text-xs text-muted-foreground">
-                                    {t("payment.cheque-notes") || "Notes"}
+                                    {t("payment.cheque-notes")}
                                   </p>
                                   <p className="font-medium">{bankDetails.chequeNotes}</p>
                                 </div>
@@ -1365,18 +1364,18 @@ export function AccountsPayableModule() {
                           ) : (
                             <>
                               <p className="text-xs text-muted-foreground">
-                                {t("payment.down-payment-cheque") || "Down Payment Cheque"}
+                                {t("payment.down-payment-cheque")}
                               </p>
                               {bankDetails.downPaymentChequeNumber && (
                                 <div className="flex justify-between items-center">
                                   <div>
                                     <p className="text-xs text-muted-foreground">
-                                      {t("payment.cheque-number") || "Cheque Number"}
+                                      {t("payment.cheque-number")}
                                     </p>
                                     <p className="font-medium font-mono">{bankDetails.downPaymentChequeNumber}</p>
                                   </div>
                                   <Button
-                                    aria-label={`${t("a11y.finance.copy-value")} ${t("payment.cheque-number") || "Cheque Number"}`}
+                                    aria-label={`${t("a11y.finance.copy-value")} ${t("payment.cheque-number")}`}
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => copyToClipboard(bankDetails.downPaymentChequeNumber)}
@@ -1388,7 +1387,7 @@ export function AccountsPayableModule() {
                               {bankDetails.downPaymentChequeBank && (
                                 <div>
                                   <p className="text-xs text-muted-foreground">
-                                    {t("payment.bank-name") || "Bank Name"}
+                                    {t("payment.bank-name")}
                                   </p>
                                   <p className="font-medium">{bankDetails.downPaymentChequeBank}</p>
                                 </div>
@@ -1396,7 +1395,7 @@ export function AccountsPayableModule() {
                               {bankDetails.downPaymentChequeDueDate && (
                                 <div>
                                   <p className="text-xs text-muted-foreground">
-                                    {t("payment.cheque-due-date") || "Cheque Due Date"}
+                                    {t("payment.cheque-due-date")}
                                   </p>
                                   <p className="font-medium">{formatDate(bankDetails.downPaymentChequeDueDate, language)}</p>
                                 </div>
@@ -1412,19 +1411,19 @@ export function AccountsPayableModule() {
                       <div className="space-y-4">
                         <h3 className="text-sm font-semibold flex items-center gap-2">
                           <Building2 className="w-4 h-4" />
-                          {t("po.bank-details") || "Bank Details"}
+                          {t("po.bank-details")}
                         </h3>
                         <div className="border rounded-lg p-4 space-y-3">
                           {bankDetails.bankHolderName && (
                             <div className="flex justify-between items-center">
                               <div>
                                 <p className="text-xs text-muted-foreground">
-                                  {t("po.account-holder") || "Account Holder"}
+                                  {t("po.account-holder")}
                                 </p>
                                 <p className="font-medium">{bankDetails.bankHolderName}</p>
                               </div>
                               <Button
-                                aria-label={`${t("a11y.finance.copy-value")} ${t("po.account-holder") || "Account Holder"}`}
+                                aria-label={`${t("a11y.finance.copy-value")} ${t("po.account-holder")}`}
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => copyToClipboard(bankDetails.bankHolderName)}
@@ -1436,10 +1435,10 @@ export function AccountsPayableModule() {
                           {bankDetails.bankName && (
                             <div className="flex justify-between items-center">
                               <div>
-                                <p className="text-xs text-muted-foreground">{t("po.bank-name") || "Bank Name"}</p>
+                                <p className="text-xs text-muted-foreground">{t("po.bank-name")}</p>
                                 <p className="font-medium">{bankDetails.bankName}</p>
                               </div>
-                              <Button aria-label={`${t("a11y.finance.copy-value")} ${t("po.bank-name") || "Bank Name"}`} size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankName)}>
+                              <Button aria-label={`${t("a11y.finance.copy-value")} ${t("po.bank-name")}`} size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankName)}>
                                 <Copy className="w-4 h-4" />
                               </Button>
                             </div>
@@ -1448,12 +1447,12 @@ export function AccountsPayableModule() {
                             <div className="flex justify-between items-center">
                               <div>
                                 <p className="text-xs text-muted-foreground">
-                                  {t("po.account-number") || "Account Number"}
+                                  {t("po.account-number")}
                                 </p>
                                 <p className="font-medium font-mono">{bankDetails.bankAccountNumber}</p>
                               </div>
                               <Button
-                                aria-label={`${t("a11y.finance.copy-value")} ${t("po.account-number") || "Account Number"}`}
+                                aria-label={`${t("a11y.finance.copy-value")} ${t("po.account-number")}`}
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => copyToClipboard(bankDetails.bankAccountNumber)}
@@ -1465,10 +1464,10 @@ export function AccountsPayableModule() {
                           {bankDetails.bankIban && (
                             <div className="flex justify-between items-center">
                               <div>
-                                <p className="text-xs text-muted-foreground">{t("po.iban") || "IBAN"}</p>
+                                <p className="text-xs text-muted-foreground">{t("po.iban")}</p>
                                 <p className="font-medium font-mono text-sm">{bankDetails.bankIban}</p>
                               </div>
-                              <Button aria-label={`${t("a11y.finance.copy-value")} ${t("po.iban") || "IBAN"}`} size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankIban)}>
+                              <Button aria-label={`${t("a11y.finance.copy-value")} ${t("po.iban")}`} size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankIban)}>
                                 <Copy className="w-4 h-4" />
                               </Button>
                             </div>
@@ -1476,11 +1475,11 @@ export function AccountsPayableModule() {
                           {bankDetails.bankSwiftCode && (
                             <div className="flex justify-between items-center">
                               <div>
-                                <p className="text-xs text-muted-foreground">{t("po.swift-code") || "SWIFT Code"}</p>
+                                <p className="text-xs text-muted-foreground">{t("po.swift-code")}</p>
                                 <p className="font-medium font-mono">{bankDetails.bankSwiftCode}</p>
                               </div>
                               <Button
-                                aria-label={`${t("a11y.finance.copy-value")} ${t("po.swift-code") || "SWIFT Code"}`}
+                                aria-label={`${t("a11y.finance.copy-value")} ${t("po.swift-code")}`}
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => copyToClipboard(bankDetails.bankSwiftCode)}
@@ -1492,10 +1491,10 @@ export function AccountsPayableModule() {
                           {bankDetails.bankBranch && (
                             <div className="flex justify-between items-center">
                               <div>
-                                <p className="text-xs text-muted-foreground">{t("po.branch") || "Branch"}</p>
+                                <p className="text-xs text-muted-foreground">{t("po.branch")}</p>
                                 <p className="font-medium">{bankDetails.bankBranch}</p>
                               </div>
-                              <Button aria-label={`${t("a11y.finance.copy-value")} ${t("po.branch") || "Branch"}`} size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankBranch)}>
+                              <Button aria-label={`${t("a11y.finance.copy-value")} ${t("po.branch")}`} size="sm" variant="ghost" onClick={() => copyToClipboard(bankDetails.bankBranch)}>
                                 <Copy className="w-4 h-4" />
                               </Button>
                             </div>
@@ -1505,7 +1504,7 @@ export function AccountsPayableModule() {
                     ) : (
                       <div className="p-4 border border-dashed rounded-lg text-center text-muted-foreground">
                         <Building2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p>{t("ap.no-bank-details") || "No bank details available for this PO"}</p>
+                        <p>{t("ap.no-bank-details")}</p>
                       </div>
                     )}
 
@@ -1514,12 +1513,12 @@ export function AccountsPayableModule() {
                       <div className="space-y-4">
                         <h3 className="text-sm font-semibold flex items-center gap-2">
                           <DollarSign className="w-4 h-4" />
-                          {t("payment.down-payment") || "Down Payment"}
+                          {t("payment.down-payment")}
                         </h3>
                         <div className="border rounded-lg p-4 space-y-2">
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">{t("field.amount")}</span>
-                            <span className="font-medium"><Money value={bankDetails.downPaymentAmount} /> EGP</span>
+                            <span className="font-medium"><Money value={bankDetails.downPaymentAmount} /> {t("common.egp-2")}</span>
                           </div>
                           {bankDetails.downPaymentDueDate && (
                             <div className="flex justify-between">

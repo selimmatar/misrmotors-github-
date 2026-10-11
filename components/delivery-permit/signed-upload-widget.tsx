@@ -129,12 +129,12 @@ export function SignedUploadWidget({ permitId, onUploadComplete, existingFiles =
             {selectedFile ? (
               <div className="space-y-2">
                 {previewUrl ? (
-                  <img src={previewUrl || "/placeholder.svg"} alt="Preview" className="max-h-32 mx-auto rounded" />
+                  <img src={previewUrl || "/placeholder.svg"} alt={t("permit.preview")} className="max-h-32 mx-auto rounded" />
                 ) : (
                   <FileImage className="h-12 w-12 mx-auto text-primary" />
                 )}
                 <p className="text-sm font-medium">{selectedFile.name}</p>
-                <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} {t("common.mb")}</p>
                 <Button
                   variant="ghost"
                   size="sm"
