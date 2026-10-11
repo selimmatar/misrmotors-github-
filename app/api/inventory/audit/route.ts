@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     const inventoryUpdates = []
 
     for (const adjustment of adjustments) {
-      const { productId, systemQuantity, physicalCount, notes, warehouseId } = adjustment
+      const { productId, systemQuantity, physicalCount, notes, warehouseId, inventoryId } = adjustment
 
       if (physicalCount === null || physicalCount === undefined) {
         continue
@@ -97,9 +97,37 @@ export async function POST(request: Request) {
       if (difference !== 0) {
         inventoryUpdates.push({
           productId,
+          inventoryId: inventoryId || null,
           warehouseId: warehouseId || null,
           newQuantity: physicalCount,
         })
+      }
+    }
+
+    // A count belongs to one inventory row (one product in one warehouse). Check every update before writing anything:
+    // an inventoryId must be that product's row, and a product-only count is only safe when the product has one row.
+    for (const update of inventoryUpdates) {
+      if (update.inventoryId) {
+        const { data: rows, error } = await supabase
+          .from("inventory")
+          .select("inventory_id, product_id")
+          .eq("inventory_id", update.inventoryId)
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        if (!rows || rows.length === 0 || rows[0].product_id !== update.productId) {
+          return NextResponse.json(
+            { error: `Inventory row ${update.inventoryId} does not belong to product ${update.productId}. Nothing was saved.` },
+            { status: 400 },
+          )
+        }
+      } else if (!update.warehouseId) {
+        const { data: rows, error } = await supabase.from("inventory").select("inventory_id").eq("product_id", update.productId)
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        if ((rows || []).length > 1) {
+          return NextResponse.json(
+            { error: `Product ${update.productId} is stocked in more than one warehouse: choose the warehouse for this count. Nothing was saved.` },
+            { status: 400 },
+          )
+        }
       }
     }
 
@@ -122,10 +150,15 @@ export async function POST(request: Request) {
           quantity: update.newQuantity,
           last_updated: auditDate,
         })
-        .eq("product_id", update.productId)
 
-      if (update.warehouseId) {
-        query = query.eq("warehouse_id", update.warehouseId)
+      // inventoryId was checked above to be this product's row.
+      if (update.inventoryId) {
+        query = query.eq("inventory_id", update.inventoryId)
+      } else {
+        query = query.eq("product_id", update.productId)
+        if (update.warehouseId) {
+          query = query.eq("warehouse_id", update.warehouseId)
+        }
       }
 
       const { error: updateError } = await query

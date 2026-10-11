@@ -476,6 +476,8 @@ export async function PUT(request: NextRequest) {
     const soUpdates: any = {}
     // Batch 4E-stock: stock taken out of inventory by this APPROVE (undone if the permit cannot be approved).
     let stockMoves: StockMove[] = []
+    // APPROVE: the idempotency key to complete once the permit update has succeeded.
+    let approvalKey: string | null = null
 
     switch (action) {
       case "UPDATE_DETAILS":
@@ -651,8 +653,8 @@ export async function PUT(request: NextRequest) {
             if (deduction.state === "deducted") stockMoves = deduction.moves
           }
 
-          // After successful approval:
-          await completeIdempotency("dp_approval", dpApprovalKey, true)
+          // The approval is marked done only after the permit row is saved (below), so a failed save can be retried.
+          approvalKey = dpApprovalKey
           updates.approval_processing = false
         } catch (error: any) {
           if (stockMoves.length > 0) await abortDeduction(supabase, currentPermit, stockMoves, error.message)
@@ -722,6 +724,7 @@ export async function PUT(request: NextRequest) {
 
     if (updateError) {
       console.error("Delivery Permit update error:", updateError)
+      if (approvalKey) await completeIdempotency("dp_approval", approvalKey, false, updateError.message)
       if (stockMoves.length > 0) {
         const restored = await abortDeduction(supabase, currentPermit, stockMoves, updateError.message)
         return NextResponse.json(
@@ -736,6 +739,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
     if (stockMoves.length > 0) await finishDeduction(supabase, currentPermit, stockMoves, userId)
+    if (approvalKey) await completeIdempotency("dp_approval", approvalKey, true)
 
 
     // Update sales order if needed

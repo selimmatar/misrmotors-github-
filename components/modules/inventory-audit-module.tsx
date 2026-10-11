@@ -87,17 +87,18 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
     }
   }
 
-  const handlePhysicalCountChange = (productId: number, value: string) => {
+  // Counts and notes belong to one inventory row (a product in one warehouse), never to every row of the product.
+  const handlePhysicalCountChange = (inventoryId: number, value: string) => {
     const numValue = value === "" ? null : Number.parseInt(value, 10)
     setInventoryItems((prev) =>
       prev.map((item) =>
-        item.product_id === productId ? { ...item, physicalCount: isNaN(numValue as number) ? null : numValue } : item,
+        item.inventory_id === inventoryId ? { ...item, physicalCount: isNaN(numValue as number) ? null : numValue } : item,
       ),
     )
   }
 
-  const handleNotesChange = (productId: number, value: string) => {
-    setInventoryItems((prev) => prev.map((item) => (item.product_id === productId ? { ...item, notes: value } : item)))
+  const handleNotesChange = (inventoryId: number, value: string) => {
+    setInventoryItems((prev) => prev.map((item) => (item.inventory_id === inventoryId ? { ...item, notes: value } : item)))
   }
 
   const getDifference = (systemQty: number, physicalCount: number | null): number | null => {
@@ -132,7 +133,9 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
       setSuccessMessage(null)
 
       const adjustments = itemsWithCounts.map((item) => ({
+        inventoryId: item.inventory_id,
         productId: item.product_id,
+        warehouseId: item.warehouse_id,
         systemQuantity: item.quantity,
         physicalCount: item.physicalCount,
         notes: item.notes,
@@ -177,7 +180,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
       className="w-24"
       placeholder={t("inventory-audit.enter-count")}
       value={item.physicalCount === null ? "" : item.physicalCount}
-      onChange={(e) => handlePhysicalCountChange(item.product_id, e.target.value)}
+      onChange={(e) => handlePhysicalCountChange(item.inventory_id, e.target.value)}
       dir="ltr"
     />
   )
@@ -187,7 +190,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
       className="w-48"
       placeholder={t("inventory-audit.enter-notes")}
       value={item.notes}
-      onChange={(e) => handleNotesChange(item.product_id, e.target.value)}
+      onChange={(e) => handleNotesChange(item.inventory_id, e.target.value)}
     />
   )
   const renderRowActions = (item: InventoryAuditItem) => (
@@ -283,7 +286,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
                 </TableHeader>
                 <TableBody>
                   {filteredItems.map((item) => (
-                    <TableRow key={`${item.product_id}-${item.warehouse_id}`}>
+                    <TableRow key={item.inventory_id}>
                       <IdCell>{item.productName}</IdCell>
                       <TableCell className="text-muted-foreground">{item.sku}</TableCell>
                       <TableCell>
