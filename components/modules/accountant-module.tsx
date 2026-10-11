@@ -160,7 +160,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
           invoiceId: invoice.id,
           amount: paymentAmount,
           paymentMethod: "installment_payment",
-          label: fill(t("ar.month-of"), { a: monthsPaidSoFar + 1, b: installmentMonths }),
+          label: `Month ${monthsPaidSoFar + 1}/${installmentMonths}`, // sent to the server and stored in the payment description: keep English
           idempotencyKey: markReceivedAttemptRef.current.key,
         }),
       })
