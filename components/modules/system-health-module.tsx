@@ -3,9 +3,12 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, RefreshCw } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { formatDateTime } from "@/lib/format"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { StatusBadge } from "@/components/erp/status-badge"
 
 interface HealthCheck {
   name: string
@@ -28,7 +31,7 @@ interface HealthReport {
 }
 
 export function SystemHealthModule() {
-  const { t } = useI18n()
+  const { t, language } = useI18n()
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<HealthReport | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -79,19 +82,6 @@ export function SystemHealthModule() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pass":
-        return <Badge className="bg-green-100 text-green-800">PASS</Badge>
-      case "fail":
-        return <Badge className="bg-red-100 text-red-800">FAIL</Badge>
-      case "warn":
-        return <Badge className="bg-yellow-100 text-yellow-800">WARN</Badge>
-      default:
-        return null
-    }
-  }
-
   // Group checks by category
   const groupedChecks = report?.checks.reduce(
     (acc, check) => {
@@ -110,18 +100,17 @@ export function SystemHealthModule() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">{t("system-health.title") || "System Health"}</h2>
-          <p className="text-muted-foreground">
-            {t("system-health.description") || "Monitor system health and data integrity"}
-          </p>
-        </div>
-        <Button onClick={runHealthCheck} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-          {t("action.refresh") || "Refresh"}
-        </Button>
-      </div>
+      <PageHeader
+        group={t("group.admin")}
+        title={t("system-health.title") || "System Health"}
+        subtitle={t("system-health.description") || "Monitor system health and data integrity"}
+        actions={
+          <Button onClick={runHealthCheck} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <RefreshCw className="h-4 w-4 me-2" />}
+            {t("action.refresh") || "Refresh"}
+          </Button>
+        }
+      />
 
       {error && (
         <Card className="border-red-200 bg-red-50">
@@ -147,27 +136,15 @@ export function SystemHealthModule() {
                 )}
                 {report.summary.healthy ? "System Healthy" : "Issues Detected"}
               </CardTitle>
-              <CardDescription>Last checked: {new Date(report.timestamp).toLocaleString()}</CardDescription>
+              <CardDescription>Last checked: {formatDateTime(report.timestamp, language)}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-4 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold">{report.summary.total}</div>
-                  <div className="text-sm text-muted-foreground">Total Checks</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{report.summary.passed}</div>
-                  <div className="text-sm text-muted-foreground">Passed</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{report.summary.failed}</div>
-                  <div className="text-sm text-muted-foreground">Failed</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-yellow-600">{report.summary.warnings}</div>
-                  <div className="text-sm text-muted-foreground">Warnings</div>
-                </div>
-              </div>
+              <KpiGrid>
+                <KpiTile label="Total Checks" value={report.summary.total} />
+                <KpiTile label="Passed" value={report.summary.passed} />
+                <KpiTile label="Failed" value={report.summary.failed} />
+                <KpiTile label="Warnings" value={report.summary.warnings} />
+              </KpiGrid>
             </CardContent>
           </Card>
 
@@ -197,7 +174,7 @@ export function SystemHealthModule() {
                             {check.duration && (
                               <span className="text-sm text-muted-foreground">{check.duration}ms</span>
                             )}
-                            {getStatusBadge(check.status)}
+                            <StatusBadge status={check.status} />
                           </div>
                         </div>
                         <div className="px-3 pb-3 text-sm text-muted-foreground">{check.message}</div>

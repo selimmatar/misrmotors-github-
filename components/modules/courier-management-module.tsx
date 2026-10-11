@@ -7,11 +7,17 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { Money } from "@/components/erp/money"
+import { formatDate, formatMoney } from "@/lib/format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   User,
@@ -21,9 +27,7 @@ import {
   Car,
   Edit,
   Truck,
-  Package,
   CheckCircle,
-  Clock,
   ChevronRight,
   FileText,
 } from "lucide-react"
@@ -31,7 +35,7 @@ import type { DeliveryPermit } from "@/lib/types"
 
 export function CourierManagementModule() {
   const { user, couriers, setCouriers, refreshCouriers } = useAppContext()
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const [permits, setPermits] = useState<DeliveryPermit[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -153,11 +157,6 @@ export function CourierManagementModule() {
     setEditingCourier(courier)
   }
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return "-"
-    return new Date(dateString).toLocaleDateString(language === "ar" ? "ar-EG" : "en-US")
-  }
-
   // Get permits for a specific courier
   const getCourierPermits = (courierId: string) => {
     return permits.filter((p) => p.courierId === courierId)
@@ -174,33 +173,26 @@ export function CourierManagementModule() {
   const activeCouriers = couriers.filter((c: any) => c.isActive)
   const inactiveCouriers = couriers.filter((c: any) => !c.isActive)
 
-  const getStatusBadge = (status: string) => {
+  // Label for the permit status badge; other values use the default StatusBadge label.
+  const getPermitLabel = (status: string): string | undefined => {
     switch (status) {
       case "OUT_FOR_DELIVERY":
-        return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
-            <Truck className="w-3 h-3 mr-1" />
-            {t("permit.status.out-for-delivery")}
-          </Badge>
-        )
+        return t("permit.status.out-for-delivery")
       case "SUBMITTED_SIGNED":
-        return (
-          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
-            <Clock className="w-3 h-3 mr-1" />
-            {t("permit.status.submitted-signed")}
-          </Badge>
-        )
+        return t("permit.status.submitted-signed")
       case "APPROVED":
-        return (
-          <Badge variant="default" className="bg-green-600">
-            <CheckCircle className="w-3 h-3 mr-1" />
-            {t("permit.status.approved")}
-          </Badge>
-        )
+        return t("permit.status.approved")
       default:
-        return <Badge variant="secondary">{status}</Badge>
+        return undefined
     }
   }
+
+  const renderRowActions = (courier: any) => (
+    <Button variant="ghost" size="sm" onClick={() => openEditDialog(courier)}>
+      <Edit className="w-4 h-4 me-2" />
+      {t("action.edit")}
+    </Button>
+  )
 
   if (selectedCourier) {
     const upcomingShipments = getUpcomingShipments(selectedCourier.id)
@@ -208,66 +200,31 @@ export function CourierManagementModule() {
 
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => setSelectedCourier(null)}>
-            <ChevronRight className="w-4 h-4 rotate-180 mr-2" />
-            {t("action.back")}
-          </Button>
-          <div>
-            <h2 className="text-3xl font-bold flex items-center gap-3">
-              <User className="w-8 h-8" />
-              {selectedCourier.name}
-            </h2>
-            <p className="text-muted-foreground">
+        <PageHeader
+          group={t("group.operations")}
+          title={selectedCourier.name}
+          subtitle={
+            <>
               {selectedCourier.vehicleType && `${selectedCourier.vehicleType} • `}
               {selectedCourier.vehiclePlate}
-            </p>
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <Button variant="ghost" onClick={() => setSelectedCourier(null)}>
+              <ChevronRight className="w-4 h-4 rotate-180 rtl:rotate-0 me-2" />
+              {t("action.back")}
+            </Button>
+          }
+        />
 
-        <div className="grid md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-blue-100 rounded-full">
-                  <Truck className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{t("courier.active-deliveries")}</p>
-                  <p className="text-2xl font-bold">{formatNumber(upcomingShipments.length)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-green-100 rounded-full">
-                  <CheckCircle className="w-6 h-6 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{t("courier.completed-deliveries")}</p>
-                  <p className="text-2xl font-bold">{formatNumber(previousShipments.length)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-purple-100 rounded-full">
-                  <Package className="w-6 h-6 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{t("courier.total-deliveries")}</p>
-                  <p className="text-2xl font-bold">
-                    {formatNumber(upcomingShipments.length + previousShipments.length)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <KpiGrid>
+          <KpiTile label={t("courier.active-deliveries")} value={formatNumber(upcomingShipments.length)} />
+          <KpiTile label={t("courier.completed-deliveries")} value={formatNumber(previousShipments.length)} />
+          <KpiTile
+            label={t("courier.total-deliveries")}
+            value={formatNumber(upcomingShipments.length + previousShipments.length)}
+          />
+        </KpiGrid>
 
         <Card>
           <CardHeader>
@@ -339,9 +296,11 @@ export function CourierManagementModule() {
                           </p>
                           <p className="text-sm text-muted-foreground">{permit.deliveryAddress}</p>
                         </div>
-                        <div className="text-right">
-                          {getStatusBadge(permit.status)}
-                          <p className="text-lg font-bold mt-2">{formatCurrency(permit.soTotal || 0)}</p>
+                        <div className="text-end">
+                          <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
+                          <p className="text-lg font-bold mt-2">
+                            <Money value={permit.soTotal} /> EGP
+                          </p>
                         </div>
                       </div>
                     </CardContent>
@@ -360,30 +319,46 @@ export function CourierManagementModule() {
                 </CardContent>
               </Card>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("field.permit-no")}</TableHead>
-                    <TableHead>{t("field.customer")}</TableHead>
-                    <TableHead>{t("field.delivery-address")}</TableHead>
-                    <TableHead>{t("field.date")}</TableHead>
-                    <TableHead>{t("field.status")}</TableHead>
-                    <TableHead className="text-right">{t("field.total")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {previousShipments.map((permit) => (
-                    <TableRow key={permit.id}>
-                      <TableCell className="font-medium">{permit.permitNo}</TableCell>
-                      <TableCell>{permit.customerName}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{permit.deliveryAddress}</TableCell>
-                      <TableCell>{formatDate(permit.submittedSignedAt)}</TableCell>
-                      <TableCell>{getStatusBadge(permit.status)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(permit.soTotal || 0)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <ResponsiveList
+                rows={previousShipments}
+                table={
+                  <ErpTable>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t("field.permit-no")}</TableHead>
+                        <TableHead>{t("field.customer")}</TableHead>
+                        <TableHead>{t("field.delivery-address")}</TableHead>
+                        <TableHead>{t("field.date")}</TableHead>
+                        <TableHead>{t("field.status")}</TableHead>
+                        <NumHead>{t("field.total")} (EGP)</NumHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previousShipments.map((permit) => (
+                        <TableRow key={permit.id}>
+                          <IdCell>{permit.permitNo}</IdCell>
+                          <TableCell>{permit.customerName}</TableCell>
+                          <TableCell className="max-w-[200px] truncate">{permit.deliveryAddress}</TableCell>
+                          <TableCell>{formatDate(permit.submittedSignedAt, language)}</TableCell>
+                          <TableCell>
+                            <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
+                          </TableCell>
+                          <NumCell>{formatMoney(permit.soTotal, language)}</NumCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </ErpTable>
+                }
+                card={(permit) => (
+                  <ListCard
+                    id={permit.permitNo}
+                    amount={formatMoney(permit.soTotal, language)}
+                    party={permit.customerName}
+                    status={<StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />}
+                    note={[formatDate(permit.submittedSignedAt, language), permit.deliveryAddress].filter(Boolean).join(" · ")}
+                  />
+                )}
+              />
             )}
           </TabsContent>
         </Tabs>
@@ -393,98 +368,99 @@ export function CourierManagementModule() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold">{t("courier.management")}</h2>
-          <p className="text-muted-foreground mt-2">{t("courier.management-description")}</p>
-        </div>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button
-              onClick={() => {
-                resetForm()
-                setShowAddDialog(true)
-              }}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              {t("courier.add")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("courier.add")}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">{t("courier.name")} *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder={t("courier.name-placeholder")}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="phone">{t("field.phone")}</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+20..."
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="email">{t("field.email")}</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="vehicleType">{t("courier.vehicle-type")}</Label>
-                  <Input
-                    id="vehicleType"
-                    value={formData.vehicleType}
-                    onChange={(e) => setFormData({ ...formData, vehicleType: e.target.value })}
-                    placeholder={t("courier.vehicle-type-placeholder")}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="vehiclePlate">{t("courier.vehicle-plate")}</Label>
-                  <Input
-                    id="vehiclePlate"
-                    value={formData.vehiclePlate}
-                    onChange={(e) => setFormData({ ...formData, vehiclePlate: e.target.value })}
-                    placeholder="ABC-123"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="notes">{t("field.notes")}</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={2}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                {t("action.cancel")}
+      <PageHeader
+        group={t("group.operations")}
+        title={t("courier.management")}
+        subtitle={t("courier.management-description")}
+        actions={
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button
+                onClick={() => {
+                  resetForm()
+                  setShowAddDialog(true)
+                }}
+              >
+                <Plus className="w-4 h-4 me-2" />
+                {t("courier.add")}
               </Button>
-              <Button onClick={handleAddCourier} disabled={saving || !formData.name.trim()}>
-                {saving ? t("loading") : t("action.save")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t("courier.add")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="name">{t("courier.name")} *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder={t("courier.name-placeholder")}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="phone">{t("field.phone")}</Label>
+                    <Input
+                      id="phone"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      placeholder="+20..."
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="email">{t("field.email")}</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="vehicleType">{t("courier.vehicle-type")}</Label>
+                    <Input
+                      id="vehicleType"
+                      value={formData.vehicleType}
+                      onChange={(e) => setFormData({ ...formData, vehicleType: e.target.value })}
+                      placeholder={t("courier.vehicle-type-placeholder")}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="vehiclePlate">{t("courier.vehicle-plate")}</Label>
+                    <Input
+                      id="vehiclePlate"
+                      value={formData.vehiclePlate}
+                      onChange={(e) => setFormData({ ...formData, vehiclePlate: e.target.value })}
+                      placeholder="ABC-123"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="notes">{t("field.notes")}</Label>
+                  <Textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    rows={2}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                  {t("action.cancel")}
+                </Button>
+                <Button onClick={handleAddCourier} disabled={saving || !formData.name.trim()}>
+                  {saving ? t("loading") : t("action.save")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
       {/* Edit Dialog */}
       <Dialog open={!!editingCourier} onOpenChange={(open) => !open && setEditingCourier(null)}>
@@ -589,7 +565,7 @@ export function CourierManagementModule() {
                   <User className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">{t("courier.no-couriers")}</p>
                   <Button className="mt-4" onClick={() => setShowAddDialog(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
+                    <Plus className="w-4 h-4 me-2" />
                     {t("courier.add-first")}
                   </Button>
                 </CardContent>
@@ -670,33 +646,41 @@ export function CourierManagementModule() {
                 </CardContent>
               </Card>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("courier.name")}</TableHead>
-                    <TableHead>{t("field.phone")}</TableHead>
-                    <TableHead>{t("courier.vehicle-type")}</TableHead>
-                    <TableHead>{t("courier.vehicle-plate")}</TableHead>
-                    <TableHead className="text-right">{t("action.actions")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {inactiveCouriers.map((courier: any) => (
-                    <TableRow key={courier.id}>
-                      <TableCell className="font-medium">{courier.name}</TableCell>
-                      <TableCell>{courier.phone || "-"}</TableCell>
-                      <TableCell>{courier.vehicleType || "-"}</TableCell>
-                      <TableCell>{courier.vehiclePlate || "-"}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(courier)}>
-                          <Edit className="w-4 h-4 mr-2" />
-                          {t("action.edit")}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <ResponsiveList
+                rows={inactiveCouriers}
+                table={
+                  <ErpTable>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t("courier.name")}</TableHead>
+                        <TableHead>{t("field.phone")}</TableHead>
+                        <TableHead>{t("courier.vehicle-type")}</TableHead>
+                        <TableHead>{t("courier.vehicle-plate")}</TableHead>
+                        <ActionsHead>{t("action.actions")}</ActionsHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {inactiveCouriers.map((courier: any) => (
+                        <TableRow key={courier.id}>
+                          <IdCell>{courier.name}</IdCell>
+                          <TableCell>{courier.phone || "-"}</TableCell>
+                          <TableCell>{courier.vehicleType || "-"}</TableCell>
+                          <TableCell>{courier.vehiclePlate || "-"}</TableCell>
+                          <ActionsCell>{renderRowActions(courier)}</ActionsCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </ErpTable>
+                }
+                card={(courier: any) => (
+                  <ListCard
+                    id={courier.name}
+                    party={courier.phone || "-"}
+                    note={[courier.vehicleType, courier.vehiclePlate].filter(Boolean).join(" · ") || undefined}
+                    actions={renderRowActions(courier)}
+                  />
+                )}
+              />
             )}
           </TabsContent>
         </Tabs>

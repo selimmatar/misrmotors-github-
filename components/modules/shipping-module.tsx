@@ -6,7 +6,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Truck, Upload, CheckCircle, Eye, Package, FileText, Clock, User, Printer, RotateCcw, Minus, Plus, Wrench } from "lucide-react"
+import { Truck, Upload, CheckCircle, Eye, Package, User, Printer, RotateCcw, Minus, Plus, Wrench } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -14,6 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { PermitPreviewDialog } from "@/components/delivery-permit/permit-preview-dialog"
+import { PageHeader } from "@/components/erp/page-header"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { formatDate } from "@/lib/format"
 import type { DeliveryPermit } from "@/lib/types"
 import { ShippingMaintenanceTab } from "@/components/shipping/maintenance-tab"
 
@@ -35,7 +38,7 @@ interface ReturnItem {
 
 export function ShippingModule() {
   const { salesOrders, customers, user, couriers, refreshCouriers, products } = useAppContext()
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const [permits, setPermits] = useState<DeliveryPermit[]>([])
   const [loading, setLoading] = useState(true)
   const [uploadingFor, setUploadingFor] = useState<string | null>(null)
@@ -118,11 +121,6 @@ export function ShippingModule() {
     if (!customerId) return t("customer.unknown")
     const customer = customers.find((c) => c.id === customerId)
     return customer?.name || t("customer.unknown")
-  }
-
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return "-"
-    return new Date(dateString).toLocaleDateString(language === "ar" ? "ar-EG" : "en-US")
   }
 
   const handleMarkOutForDelivery = async (permit: DeliveryPermit) => {
@@ -214,45 +212,21 @@ export function ShippingModule() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
+  // Label for the permit status badge; other values use the default StatusBadge label.
+  const getPermitLabel = (status: string): string | undefined => {
     switch (status) {
       case "READY_FOR_PICKUP":
-        return (
-          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
-            <Package className="w-3 h-3 mr-1" />
-            {t("permit.status.ready-for-pickup")}
-          </Badge>
-        )
+        return t("permit.status.ready-for-pickup")
       case "PRINTED":
-        return (
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
-            <FileText className="w-3 h-3 mr-1" />
-            {t("permit.status.printed")}
-          </Badge>
-        )
+        return t("permit.status.printed")
       case "OUT_FOR_DELIVERY":
-        return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
-            <Truck className="w-3 h-3 mr-1" />
-            {t("permit.status.out-for-delivery")}
-          </Badge>
-        )
+        return t("permit.status.out-for-delivery")
       case "SUBMITTED_SIGNED":
-        return (
-          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
-            <Clock className="w-3 h-3 mr-1" />
-            {t("permit.status.submitted-signed")}
-          </Badge>
-        )
+        return t("permit.status.submitted-signed")
       case "APPROVED":
-        return (
-          <Badge variant="default" className="bg-green-600">
-            <CheckCircle className="w-3 h-3 mr-1" />
-            {t("permit.status.approved")}
-          </Badge>
-        )
+        return t("permit.status.approved")
       default:
-        return <Badge variant="secondary">{status}</Badge>
+        return undefined
     }
   }
 
@@ -386,10 +360,7 @@ export function ShippingModule() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold">{t("shipping.title")}</h2>
-        <p className="text-muted-foreground mt-2">{t("shipping.description")}</p>
-      </div>
+      <PageHeader group={t("group.operations")} title={t("shipping.title")} subtitle={t("shipping.description")} />
 
       <Tabs defaultValue="ready" className="space-y-4">
         <TabsList className="grid w-full grid-cols-5">
@@ -406,7 +377,7 @@ export function ShippingModule() {
             {t("returns.title")} ({formatNumber(pendingReturns.length)})
           </TabsTrigger>
           <TabsTrigger value="maintenance">
-            <Wrench className="w-4 h-4 mr-2" />
+            <Wrench className="w-4 h-4 me-2" />
             Maintenance
           </TabsTrigger>
         </TabsList>
@@ -433,7 +404,7 @@ export function ShippingModule() {
                       <div>
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
-                          {getStatusBadge(permit.status)}
+                          <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
                           {t("field.so-number")}: {permit.soNumber} | {t("field.customer")}: {permit.customerName}
@@ -520,7 +491,7 @@ export function ShippingModule() {
                               }}
                               className="flex-1"
                             >
-                              <Printer className="w-4 h-4 mr-2" />
+                              <Printer className="w-4 h-4 me-2" />
                               {t("action.print-dp")}
                             </Button>
                           </div>
@@ -530,7 +501,7 @@ export function ShippingModule() {
                               disabled={!selectedCouriers[permit.id]}
                               className="flex-1"
                             >
-                              <Truck className="w-4 h-4 mr-2" />
+                              <Truck className="w-4 h-4 me-2" />
                               {t("shipping.confirm-dispatch")}
                             </Button>
                             <Button
@@ -546,7 +517,7 @@ export function ShippingModule() {
                         </div>
                       ) : (
                         <Button onClick={() => setAssigningDriver(permit.id)} className="w-full">
-                          <Truck className="w-4 h-4 mr-2" />
+                          <Truck className="w-4 h-4 me-2" />
                           {t("shipping.mark-out-for-delivery")}
                         </Button>
                       )}
@@ -580,7 +551,7 @@ export function ShippingModule() {
                       <div>
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
-                          {getStatusBadge(permit.status)}
+                          <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
                           {t("field.so-number")}: {permit.soNumber} | {t("field.customer")}: {permit.customerName}
@@ -594,9 +565,9 @@ export function ShippingModule() {
                           </p>
                         )}
                       </div>
-                      <div className="text-right">
+                      <div className="text-end">
                         <p className="text-sm text-muted-foreground">
-                          {t("shipping.out-since")}: {formatDate(permit.outForDeliveryAt)}
+                          {t("shipping.out-since")}: {formatDate(permit.outForDeliveryAt, language)}
                         </p>
                       </div>
                     </div>
@@ -621,7 +592,7 @@ export function ShippingModule() {
                       {/* The customer may refuse an item when the driver arrives, so returns are allowed here too. */}
                       <div className="flex gap-2 mb-4">
                         <Button variant="outline" size="sm" onClick={() => openReturnDialog(permit)} className="bg-transparent">
-                          <RotateCcw className="w-4 h-4 mr-2" />
+                          <RotateCcw className="w-4 h-4 me-2" />
                           Return Items
                         </Button>
                       </div>
@@ -644,7 +615,7 @@ export function ShippingModule() {
                               disabled={!signedFile || uploading}
                               className="flex-1"
                             >
-                              <CheckCircle className="w-4 h-4 mr-2" />
+                              <CheckCircle className="w-4 h-4 me-2" />
                               {uploading ? t("loading") : t("shipping.confirm-delivery")}
                             </Button>
                             <Button
@@ -663,7 +634,7 @@ export function ShippingModule() {
                           onClick={() => setUploadingFor(permit.id)}
                           className="w-full bg-green-600 hover:bg-green-700"
                         >
-                          <Upload className="w-4 h-4 mr-2" />
+                          <Upload className="w-4 h-4 me-2" />
                           {t("shipping.upload-signed-permit")}
                         </Button>
                       )}
@@ -697,7 +668,7 @@ export function ShippingModule() {
                       <div>
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
-                          {getStatusBadge(permit.status)}
+                          <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
                           {t("field.so-number")}: {permit.soNumber} | {t("field.customer")}: {permit.customerName}
@@ -711,9 +682,9 @@ export function ShippingModule() {
                           </p>
                         )}
                       </div>
-                      <div className="text-right">
+                      <div className="text-end">
                         <p className="text-sm text-muted-foreground">
-                          {t("shipping.delivered-on")}: {formatDate(permit.submittedSignedAt)}
+                          {t("shipping.delivered-on")}: {formatDate(permit.submittedSignedAt, language)}
                         </p>
                       </div>
                     </div>
@@ -772,8 +743,8 @@ export function ShippingModule() {
                           SO: {returnReq.soNumber} | Customer: {returnReq.customerName}
                         </p>
                       </div>
-                      <div className="text-right text-sm text-muted-foreground">
-                        {new Date(returnReq.returnDate).toLocaleDateString()}
+                      <div className="text-end text-sm text-muted-foreground">
+                        {formatDate(returnReq.returnDate, language)}
                       </div>
                     </div>
                   </CardHeader>

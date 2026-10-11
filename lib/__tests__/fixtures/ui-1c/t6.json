@@ -1,0 +1,74 @@
+{
+  "task": "t6",
+  "modules": {
+    "components/modules/operations-management-module.tsx": {
+      "migrated": true,
+      "surface": {
+        "api": [
+          "\"/api/operations/employees"
+        ],
+        "handlers": [],
+        "ids": [],
+        "fetch": 1,
+        "iso": 0,
+        "t": 0,
+        "onClick": 2
+      },
+      "must": [
+        {
+          "re": "<ResponsiveList"
+        },
+        {
+          "re": "<KpiTile",
+          "min": 4
+        }
+      ]
+    },
+    "components/modules/maintenance-module.tsx": {
+      "migrated": true,
+      "surface": {
+        "api": [
+          "\"/api/hr/employees",
+          "\"/api/maintenance/convert-to-ar",
+          "\"/api/maintenance/reports",
+          "\"/api/maintenance/reports",
+          "\"/api/maintenance/work-orders",
+          "\"/api/maintenance/work-orders"
+        ],
+        "handlers": [
+          "handleConvertToAR",
+          "handleCreateReport",
+          "handleCreateWorkOrder"
+        ],
+        "ids": [
+          "id=\"customer_name\"",
+          "id=\"description\"",
+          "id=\"estimated_cost\"",
+          "id=\"labor_cost\"",
+          "id=\"labor_hours\"",
+          "id=\"location\"",
+          "id=\"materials_cost\"",
+          "id=\"parts_used\"",
+          "id=\"scheduled_date\"",
+          "id=\"title\"",
+          "id=\"work_performed\""
+        ],
+        "fetch": 6,
+        "iso": 0,
+        "t": 0,
+        "onClick": 7
+      },
+      "must": [
+        {
+          "re": "<ResponsiveList",
+          "min": 2
+        },
+        {
+          "re": "\\bp-6\\b",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    }
+  }
+}

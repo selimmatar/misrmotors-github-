@@ -8,6 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import type { Product } from "@/lib/types"
+import { PageHeader } from "@/components/erp/page-header"
+import { Money } from "@/components/erp/money"
+import { formatDateTime } from "@/lib/format"
 import { Plus, Trash2, Filter, Eye, ImageIcon, X, Search } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -23,7 +26,7 @@ interface ProductImage {
 }
 
 export function ProductModule() {
-  const { t, formatCurrency } = useI18n()
+  const { t, language } = useI18n()
   const { products, addProduct, deleteProduct } = useAppContext()
   const [showForm, setShowForm] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -143,30 +146,31 @@ export function ProductModule() {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">{t("product.title")}</h1>
-            <p className="text-muted-foreground mt-2">{t("product.description")}</p>
-          </div>
-          <Button onClick={() => setShowForm(!showForm)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            {t("product.add")}
-          </Button>
-        </div>
+        <PageHeader
+          group={t("group.purchasing")}
+          title={t("product.title")}
+          subtitle={t("product.description")}
+          actions={
+            <Button onClick={() => setShowForm(!showForm)} className="gap-2">
+              <Plus className="w-4 h-4" />
+              {t("product.add")}
+            </Button>
+          }
+        />
         
         <div className="flex gap-2">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder={t("product.search-placeholder") || "Search by product name or SKU..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
+              className="ps-9"
             />
           </div>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="w-[200px]">
-              <Filter className="w-4 h-4 mr-2" />
+              <Filter className="w-4 h-4 me-2" />
               <SelectValue placeholder={t("action.filter")} />
             </SelectTrigger>
             <SelectContent>
@@ -297,8 +301,8 @@ export function ProductModule() {
                     <p className="font-semibold">{product.category || "-"}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">{t("product.unit-price")}</p>
-                    <p className="font-semibold">{formatCurrency(product.unitPrice)}</p>
+                    <p className="text-sm text-muted-foreground">{t("product.unit-price")} (EGP)</p>
+                    <p className="font-semibold"><Money value={product.unitPrice} /></p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">{t("inventory.reorder-point")}</p>
@@ -369,7 +373,7 @@ export function ProductModule() {
                       <Button
                         size="icon"
                         variant="destructive"
-                        className="absolute top-1 right-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-1 end-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={(e) => {
                           e.stopPropagation()
                           handleDeleteImage(image.image_id)
@@ -378,7 +382,7 @@ export function ProductModule() {
                         <X className="w-3 h-3" />
                       </Button>
                       {image.po_number && (
-                        <div className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded">
+                        <div className="absolute bottom-1 start-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded">
                           {image.po_number}
                         </div>
                       )}
@@ -407,7 +411,7 @@ export function ProductModule() {
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
                           {t("field.uploaded")}:{" "}
-                          {new Date(productImages[selectedImageIndex].created_at).toLocaleString()}
+                          {formatDateTime(productImages[selectedImageIndex].created_at, language)}
                         </p>
                       </div>
                       <div className="flex justify-between mt-4">

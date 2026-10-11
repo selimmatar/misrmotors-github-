@@ -6,6 +6,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useI18n } from "@/lib/i18n-context"
+import { formatDate } from "@/lib/format"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { ErpTable, NumHead, NumCell, IdCell } from "@/components/erp/data-table"
+import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import {
@@ -16,7 +23,6 @@ import {
   ChevronRight,
   Clock,
   CheckCircle,
-  AlertCircle,
   Phone,
   Mail,
   Calendar,
@@ -73,6 +79,7 @@ interface DeliveryOrder {
 }
 
 export function OperationsManagementModule() {
+  const { t, language } = useI18n()
   const [employees, setEmployees] = useState<OperationsEmployee[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -115,72 +122,41 @@ export function OperationsManagementModule() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Operations Management</h2>
-          <p className="text-muted-foreground">Monitor operations employees, work orders, and delivery assignments</p>
-        </div>
-        <Button variant="outline" onClick={fetchEmployees}>
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        group={t("group.operations")}
+        title={t("module.operations-management")}
+        subtitle="Monitor operations employees, work orders, and delivery assignments"
+        actions={
+          <Button variant="outline" onClick={fetchEmployees}>
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Operations Team</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{employees.length}</div>
-            <p className="text-xs text-muted-foreground">Active employees</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Work Orders</CardTitle>
-            <Wrench className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalStats.activeWOs}</div>
-            <p className="text-xs text-muted-foreground">{totalStats.completedWOs} completed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Deliveries</CardTitle>
-            <Truck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalStats.activeDeliveries}</div>
-            <p className="text-xs text-muted-foreground">{totalStats.completedDeliveries} completed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Workload</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {employees.length > 0
-                ? ((totalStats.activeWOs + totalStats.activeDeliveries) / employees.length).toFixed(1)
-                : 0}
-            </div>
-            <p className="text-xs text-muted-foreground">Avg tasks per employee</p>
-          </CardContent>
-        </Card>
-      </div>
+      <KpiGrid>
+        <KpiTile label="Operations Team" value={employees.length} sub="Active employees" />
+        <KpiTile label="Active Work Orders" value={totalStats.activeWOs} sub={`${totalStats.completedWOs} completed`} />
+        <KpiTile label="Active Deliveries" value={totalStats.activeDeliveries} sub={`${totalStats.completedDeliveries} completed`} />
+        <KpiTile
+          label="Workload"
+          value={
+            employees.length > 0
+              ? ((totalStats.activeWOs + totalStats.activeDeliveries) / employees.length).toFixed(1)
+              : 0
+          }
+          sub="Avg tasks per employee"
+        />
+      </KpiGrid>
 
       {/* Search */}
       <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search employees..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9"
+          className="ps-9"
         />
       </div>
 
@@ -191,84 +167,98 @@ export function OperationsManagementModule() {
           <CardDescription>Click on an employee to view their assignments and history</CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">Loading...</div>
-          ) : filteredEmployees.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Users className="w-12 h-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No operations employees found</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Employees with an "Operations" position will appear here
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Position</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead className="text-center">Active WOs</TableHead>
-                  <TableHead className="text-center">Active Deliveries</TableHead>
-                  <TableHead className="text-center">Completed</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEmployees.map((emp) => {
-                  const totalActive = emp.stats.active_work_orders + emp.stats.active_deliveries
-                  return (
-                    <TableRow
-                      key={emp.employee_id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelectedEmployee(emp)}
-                    >
-                      <TableCell className="font-semibold">{emp.full_name}</TableCell>
-                      <TableCell className="text-muted-foreground">{emp.position_title}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-                          {emp.phone && <span>{emp.phone}</span>}
-                          {emp.email && <span>{emp.email}</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {emp.stats.active_work_orders > 0 ? (
-                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                            {emp.stats.active_work_orders}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">0</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {emp.stats.active_deliveries > 0 ? (
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                            {emp.stats.active_deliveries}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">0</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center text-muted-foreground">
-                        {emp.stats.completed_work_orders + emp.stats.completed_deliveries}
-                      </TableCell>
-                      <TableCell>
-                        {totalActive > 0 ? (
-                          <Badge className="bg-green-100 text-green-800 border-green-200">Busy</Badge>
-                        ) : (
-                          <Badge variant="secondary">Available</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          )}
+          <ResponsiveList
+            rows={loading ? [] : filteredEmployees}
+            empty={
+              loading ? (
+                <div className="flex items-center justify-center py-12 text-muted-foreground">Loading...</div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Users className="w-12 h-12 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No operations employees found</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Employees with an "Operations" position will appear here
+                  </p>
+                </div>
+              )
+            }
+            table={
+              <ErpTable>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Employee</TableHead>
+                    <TableHead>Position</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <NumHead>Active WOs</NumHead>
+                    <NumHead>Active Deliveries</NumHead>
+                    <NumHead>Completed</NumHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredEmployees.map((emp) => {
+                    const totalActive = emp.stats.active_work_orders + emp.stats.active_deliveries
+                    return (
+                      <TableRow
+                        key={emp.employee_id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelectedEmployee(emp)}
+                      >
+                        <IdCell>{emp.full_name}</IdCell>
+                        <TableCell className="text-muted-foreground">{emp.position_title}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                            {emp.phone && <span>{emp.phone}</span>}
+                            {emp.email && <span>{emp.email}</span>}
+                          </div>
+                        </TableCell>
+                        <NumCell>
+                          {emp.stats.active_work_orders > 0 ? (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                              {emp.stats.active_work_orders}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
+                        </NumCell>
+                        <NumCell>
+                          {emp.stats.active_deliveries > 0 ? (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              {emp.stats.active_deliveries}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
+                        </NumCell>
+                        <NumCell className="text-muted-foreground">
+                          {emp.stats.completed_work_orders + emp.stats.completed_deliveries}
+                        </NumCell>
+                        <TableCell>
+                          <StatusBadge status={totalActive > 0 ? "busy" : "available"} />
+                        </TableCell>
+                        <TableCell>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground rtl:rotate-180" />
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </ErpTable>
+            }
+            card={(emp) => {
+              const totalActive = emp.stats.active_work_orders + emp.stats.active_deliveries
+              return (
+                <ListCard
+                  id={emp.full_name}
+                  party={emp.position_title}
+                  status={<StatusBadge status={totalActive > 0 ? "busy" : "available"} />}
+                  note={`Active WOs: ${emp.stats.active_work_orders} · Active Deliveries: ${emp.stats.active_deliveries} · Completed: ${emp.stats.completed_work_orders + emp.stats.completed_deliveries}`}
+                  onClick={() => setSelectedEmployee(emp)}
+                />
+              )
+            }}
+          />
         </CardContent>
       </Card>
 
@@ -313,7 +303,7 @@ export function OperationsManagementModule() {
                     <p className="text-xs text-muted-foreground">Hire Date</p>
                     <p className="font-medium text-sm">
                       {selectedEmployee.hire_date
-                        ? new Date(selectedEmployee.hire_date).toLocaleDateString()
+                        ? formatDate(selectedEmployee.hire_date, language)
                         : "N/A"}
                     </p>
                   </div>
@@ -380,14 +370,14 @@ export function OperationsManagementModule() {
                             <TableCell className="font-medium">{wo.title}</TableCell>
                             <TableCell>{wo.customer_display}</TableCell>
                             <TableCell>
-                              <PriorityBadge priority={wo.priority} />
+                              <StatusBadge status={wo.priority} />
                             </TableCell>
                             <TableCell>
-                              <WOStatusBadge status={wo.status} />
+                              <StatusBadge status={wo.status} />
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {wo.scheduled_date
-                                ? new Date(wo.scheduled_date).toLocaleDateString()
+                                ? formatDate(wo.scheduled_date, language)
                                 : "Not scheduled"}
                             </TableCell>
                           </TableRow>
@@ -423,7 +413,7 @@ export function OperationsManagementModule() {
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {wo.completed_at
-                                ? new Date(wo.completed_at).toLocaleDateString()
+                                ? formatDate(wo.completed_at, language)
                                 : "N/A"}
                             </TableCell>
                           </TableRow>
@@ -455,7 +445,7 @@ export function OperationsManagementModule() {
                             <TableCell>{dp.customer_display}</TableCell>
                             <TableCell>{dp.recipient_name || "N/A"}</TableCell>
                             <TableCell>
-                              <DPStatusBadge status={dp.status} />
+                              <StatusBadge status={dp.status} />
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                               {dp.delivery_address || "N/A"}
@@ -489,11 +479,11 @@ export function OperationsManagementModule() {
                             <TableCell>{dp.customer_display}</TableCell>
                             <TableCell>{dp.recipient_name || "N/A"}</TableCell>
                             <TableCell>
-                              <DPStatusBadge status={dp.status} />
+                              <StatusBadge status={dp.status} />
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {dp.created_at
-                                ? new Date(dp.created_at).toLocaleDateString()
+                                ? formatDate(dp.created_at, language)
                                 : "N/A"}
                             </TableCell>
                           </TableRow>
@@ -518,54 +508,5 @@ function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message:
       <Icon className="h-10 w-10 text-muted-foreground mb-3" />
       <p className="text-muted-foreground">{message}</p>
     </div>
-  )
-}
-
-function PriorityBadge({ priority }: { priority: string }) {
-  const styles: Record<string, string> = {
-    urgent: "bg-red-100 text-red-800 border-red-200",
-    high: "bg-orange-100 text-orange-800 border-orange-200",
-    medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
-    low: "bg-green-100 text-green-800 border-green-200",
-  }
-  return (
-    <Badge variant="outline" className={styles[priority] || ""}>
-      {priority}
-    </Badge>
-  )
-}
-
-function WOStatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
-    in_progress: "bg-blue-100 text-blue-800 border-blue-200",
-    completed: "bg-green-100 text-green-800 border-green-200",
-  }
-  const labels: Record<string, string> = {
-    pending: "Pending",
-    in_progress: "In Progress",
-    completed: "Completed",
-  }
-  return (
-    <Badge variant="outline" className={styles[status] || ""}>
-      {labels[status] || status}
-    </Badge>
-  )
-}
-
-function DPStatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    DRAFT: "bg-gray-100 text-gray-800 border-gray-200",
-    ALLOCATED: "bg-blue-100 text-blue-800 border-blue-200",
-    READY_FOR_PICKUP: "bg-amber-100 text-amber-800 border-amber-200",
-    PRINTED: "bg-indigo-100 text-indigo-800 border-indigo-200",
-    OUT_FOR_DELIVERY: "bg-purple-100 text-purple-800 border-purple-200",
-    DELIVERED: "bg-green-100 text-green-800 border-green-200",
-    SUBMITTED_SIGNED: "bg-emerald-100 text-emerald-800 border-emerald-200",
-  }
-  return (
-    <Badge variant="outline" className={styles[status] || ""}>
-      {status.replace(/_/g, " ")}
-    </Badge>
   )
 }

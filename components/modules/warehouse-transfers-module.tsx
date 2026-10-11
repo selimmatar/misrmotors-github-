@@ -8,8 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
+import { PageHeader } from "@/components/erp/page-header"
+import { StatusBadge } from "@/components/erp/status-badge"
 import { useI18n } from "@/lib/i18n-context"
+import { formatDate } from "@/lib/format"
 import { useAppContext } from "@/lib/app-context"
 import { Plus, ArrowRight, Package, Trash2, CheckCircle, Eye, Loader2 } from "lucide-react"
 import type { UserRole } from "@/lib/types"
@@ -49,7 +51,7 @@ interface WarehouseTransfersModuleProps {
 }
 
 export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleProps) {
-  const { t, formatNumber, formatDate } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const { warehouses, inventory, refreshInventory } = useAppContext()
 
   const [transfers, setTransfers] = useState<Transfer[]>([])
@@ -209,25 +211,18 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-      pending: "secondary",
-      in_transit: "default",
-      completed: "outline",
-      cancelled: "destructive",
-    }
-    return <Badge variant={variants[status] || "secondary"}>{status.replace("_", " ").toUpperCase()}</Badge>
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Warehouse Transfers</h2>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Transfer
-        </Button>
-      </div>
+      <PageHeader
+        group={t("group.inventory")}
+        title={t("module.warehouse-transfers")}
+        actions={
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <Plus className="w-4 h-4 me-2" />
+            New Transfer
+          </Button>
+        }
+      />
 
       {loading ? (
         <div className="flex justify-center p-8">
@@ -249,7 +244,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="font-semibold">{transfer.transferNumber}</span>
-                      {getStatusBadge(transfer.status)}
+                      <StatusBadge status={transfer.status} />
                     </div>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <span>{transfer.fromWarehouseName}</span>
@@ -257,7 +252,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                       <span>{transfer.toWarehouseName}</span>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {transfer.items.length} item(s) | Created: {formatDate(transfer.createdAt)}
+                      {transfer.items.length} item(s) | Created: {formatDate(transfer.createdAt, language)}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -278,7 +273,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                         onClick={() => handleCompleteTransfer(transfer.id)}
                         disabled={actionLoading}
                       >
-                        <CheckCircle className="w-4 h-4 mr-1" />
+                        <CheckCircle className="w-4 h-4 me-1" />
                         Complete
                       </Button>
                     )}
@@ -370,7 +365,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                         <div>
                           <p className="font-medium">
                             {item.productName}
-                            {item.isOutsourced ? <span className="ml-2 text-xs text-amber-600">(Outsourced)</span> : null}
+                            {item.isOutsourced ? <span className="ms-2 text-xs text-amber-600">(Outsourced)</span> : null}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {item.sku ? `SKU: ${item.sku} | ` : ""}Qty: {item.quantity} (Avail: {item.availableQty})
@@ -408,7 +403,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
               onClick={handleCreateTransfer}
               disabled={actionLoading || !fromWarehouseId || !toWarehouseId || transferItems.length === 0}
             >
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
               Create Transfer
             </Button>
           </DialogFooter>
@@ -426,7 +421,7 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="font-semibold text-lg">{selectedTransfer.transferNumber}</span>
-                {getStatusBadge(selectedTransfer.status)}
+                <StatusBadge status={selectedTransfer.status} />
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -440,12 +435,12 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                 </div>
                 <div>
                   <p className="text-muted-foreground">Created</p>
-                  <p>{formatDate(selectedTransfer.createdAt)}</p>
+                  <p>{formatDate(selectedTransfer.createdAt, language)}</p>
                 </div>
                 {selectedTransfer.completedAt && (
                   <div>
                     <p className="text-muted-foreground">Completed</p>
-                    <p>{formatDate(selectedTransfer.completedAt)}</p>
+                    <p>{formatDate(selectedTransfer.completedAt, language)}</p>
                   </div>
                 )}
               </div>
@@ -478,8 +473,8 @@ export function WarehouseTransfersModule({ userRole }: WarehouseTransfersModuleP
                   onClick={() => handleCompleteTransfer(selectedTransfer.id)}
                   disabled={actionLoading}
                 >
-                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  <CheckCircle className="w-4 h-4 mr-2" />
+                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
+                  <CheckCircle className="w-4 h-4 me-2" />
                   Complete Transfer
                 </Button>
               )}

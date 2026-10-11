@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useI18n } from "@/lib/i18n-context"
+import { PageHeader } from "@/components/erp/page-header"
 import { Trash2, UserPlus } from "lucide-react"
 import {
   Dialog,
@@ -102,16 +103,14 @@ export function UserManagementModule() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">{t("user.title")}</h2>
-          <p className="text-muted-foreground">{t("user.description")}</p>
-        </div>
-
+      <PageHeader
+        group={t("group.admin")}
+        title={t("module.user-management")}
+        actions={
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
           <DialogTrigger asChild>
             <Button>
-              <UserPlus className="mr-2 h-4 w-4" />
+              <UserPlus className="me-2 h-4 w-4" />
               {t("user.add")}
             </Button>
           </DialogTrigger>
@@ -175,7 +174,8 @@ export function UserManagementModule() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       <Card>
         <CardHeader>

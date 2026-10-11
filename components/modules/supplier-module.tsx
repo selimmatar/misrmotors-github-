@@ -14,18 +14,22 @@ import { SupplierProductsSection } from "@/components/supplier/supplier-products
 import { COUNTRIES, getCitiesForCountry } from "@/lib/countries-data"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { PageHeader } from "@/components/erp/page-header"
+import { Money } from "@/components/erp/money"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { formatDate } from "@/lib/format"
 
 interface SupplierModuleProps {
   userRole?: string
 }
 
 export function SupplierModule({ userRole }: SupplierModuleProps) {
-  const { t } = useI18n()
+  const { t, language } = useI18n()
   const { suppliers, addSupplier, purchaseOrders, supplierInvoices, deleteSupplier, products } = useApp()
   const [showForm, setShowForm] = useState(false)
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
   const [supplierPayments, setSupplierPayments] = useState<any[]>([])
-  const [orderInvoices, setOrderInvoices] = useState<Record<string, any>>({})
+  const [orderInvoices, setOrderInvoices] = useState<Record<string, any[]>>({})
   const [supplierCredits, setSupplierCredits] = useState<Record<string, number>>({})
   const [creditsDetail, setCreditsDetail] = useState<Record<string, any[]>>({})
   const [markingCredits, setMarkingCredits] = useState(false)
@@ -72,9 +76,10 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
         const response = await fetch("/api/accounts-payable")
         if (response.ok) {
           const invoices = await response.json()
-          const invoiceMap: Record<string, any> = {}
+          // A purchase order can have several AP invoices: keep them all.
+          const invoiceMap: Record<string, any[]> = {}
           invoices.forEach((inv: any) => {
-            invoiceMap[inv.poId] = inv
+            (invoiceMap[inv.poId] ||= []).push(inv)
           })
           setOrderInvoices(invoiceMap)
         }
@@ -166,24 +171,13 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
     return payment ? payment.amount : 0
   }
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      draft: "bg-gray-100 text-gray-800",
-      pending: "bg-yellow-100 text-yellow-800",
-      approved: "bg-blue-100 text-blue-800",
-      rejected: "bg-red-100 text-red-800",
-      received: "bg-green-100 text-green-800",
-    }
-    return colors[status] || "bg-gray-100 text-gray-800"
-  }
-
   const getOrderPaymentStatus = (order: PurchaseOrder) => {
-    const invoice = orderInvoices[order.id]
+    const invoices = orderInvoices[order.id] || []
 
-    if (!invoice) {
+    if (invoices.length === 0) {
       return {
-        status: "No Invoice",
-        color: "bg-gray-100 text-gray-800",
+        status: "no_invoice",
+        label: "No Invoice",
         monthsPaid: 0,
         totalMonths: order.installments || 1,
         amountPaid: 0,
@@ -192,29 +186,35 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
       }
     }
 
-    const monthsPaid = invoice.monthsPaid || 0
-    const totalMonths = invoice.installmentMonths || 1
-    const amountPaid = invoice.paidAmount || 0
-    const totalAmount = invoice.amount || order.total
-    const amountDue = totalAmount - amountPaid
+    // Paid status is measured on money across every invoice against the ORDER total (in piastres, so float sums
+    // don't leave a phantom balance); months are shown for information only.
+    const monthsPaid = Math.max(0, ...invoices.map((inv: any) => Number(inv.monthsPaid) || 0))
+    const totalMonths = Math.max(0, ...invoices.map((inv: any) => Number(inv.installmentMonths) || 0)) || 1
+    const amountPaid = invoices.reduce((sum: number, inv: any) => sum + (Number(inv.paidAmount) || 0), 0)
+    const invoiced = invoices.reduce((sum: number, inv: any) => sum + (Number(inv.amount) || 0), 0)
+    // the order total, not the invoiced sum: historical duplicate AP rows each carry the full total
+    const totalAmount = Number(order.total) || invoiced
+    const paidC = Math.round(amountPaid * 100)
+    const totalC = Math.round(totalAmount * 100)
+    const amountDue = Math.max(0, (totalC - paidC) / 100)
 
-    let status = "Not Paid"
-    let color = "bg-red-100 text-red-800"
+    let status = "not_paid"
+    let label = "Not Paid"
 
-    if (monthsPaid === 0 && amountPaid === 0) {
-      status = "Not Paid"
-      color = "bg-red-100 text-red-800"
-    } else if (monthsPaid > 0 && monthsPaid < totalMonths) {
-      status = "Partially Paid"
-      color = "bg-yellow-100 text-yellow-800"
-    } else if (monthsPaid >= totalMonths || amountPaid >= totalAmount) {
-      status = "Fully Paid"
-      color = "bg-green-100 text-green-800"
+    if (paidC <= 0) {
+      status = "not_paid"
+      label = "Not Paid"
+    } else if (paidC < totalC) {
+      status = "partially_paid"
+      label = "Partially Paid"
+    } else {
+      status = "fully_paid"
+      label = "Fully Paid"
     }
 
     return {
       status,
-      color,
+      label,
       monthsPaid,
       totalMonths,
       amountPaid,
@@ -293,7 +293,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" onClick={() => setSelectedSupplier(null)} className="gap-2">
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
             {t("action.back")} {t("supplier.title")}
           </Button>
           {canAddSupplier && (
@@ -341,21 +341,21 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                 <p className="font-semibold text-lg">{supplierOrders.length}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("supplier.total-purchased")}</p>
-                <p className="font-semibold text-lg text-blue-600">${totalSpent.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">{t("supplier.total-purchased")} (EGP)</p>
+                <p className="font-semibold text-lg text-blue-600"><Money value={totalSpent} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("supplier.total-paid")}</p>
-                <p className="font-semibold text-lg text-green-600">${totalPaid.toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">{t("supplier.total-paid")} (EGP)</p>
+                <p className="font-semibold text-lg text-green-600"><Money value={totalPaid} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">{t("supplier.balance-due")}</p>
-                <p className="font-semibold text-lg text-orange-600">${(totalSpent - totalPaid).toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">{t("supplier.balance-due")} (EGP)</p>
+                <p className="font-semibold text-lg text-orange-600"><Money value={totalSpent - totalPaid} /></p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Available Credit</p>
+                <p className="text-sm text-muted-foreground">Available Credit (EGP)</p>
                 <p className="font-semibold text-lg text-green-600">
-                  ${(supplierCredits[selectedSupplier.id] || 0).toLocaleString()}
+                  <Money value={supplierCredits[selectedSupplier.id] || 0} />
                 </p>
               </div>
             </div>
@@ -376,7 +376,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                         <div className="flex-1">
                           <p className="font-medium text-green-900 dark:text-green-300">{credit.description || "Return Credit"}</p>
                           <p className="text-xs text-green-700 dark:text-green-500 mt-1">
-                            {new Date(credit.created_at).toLocaleDateString()}
+                            {formatDate(credit.created_at, language)}
                             {credit.credit_type && ` • ${credit.credit_type}`}
                             {credit.po_number && ` • PO ${credit.po_number}`}
                             {credit.invoice_number && ` • AP ${credit.invoice_number}`}
@@ -384,9 +384,9 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           </p>
                           {credit.notes && <p className="text-xs text-green-700/80 dark:text-green-500/80 mt-0.5">{credit.notes}</p>}
                         </div>
-                        <div className="ml-4 flex flex-col items-end gap-1">
+                        <div className="ms-4 flex flex-col items-end gap-1">
                           <p className="font-semibold text-green-700 dark:text-green-400">
-                            EGP {Number(credit.amount).toLocaleString()}
+                            <Money value={credit.amount} /> EGP
                           </p>
                           <Button
                             size="sm"
@@ -403,7 +403,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                   <div className="border-t border-green-200 dark:border-green-800 mt-3 pt-3 flex justify-between items-center font-semibold">
                     <span>Total Unapplied Credit:</span>
                     <span className="text-lg text-green-700 dark:text-green-400">
-                      EGP {(supplierCredits[selectedSupplier.id] || 0).toLocaleString()}
+                      <Money value={supplierCredits[selectedSupplier.id] || 0} /> EGP
                     </span>
                   </div>
                   <div className="mt-3 flex justify-end">
@@ -442,27 +442,23 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.date")}</p>
-                            <p className="font-semibold">{order.orderDate}</p>
+                            <p className="font-semibold">{formatDate(order.orderDate, language)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
-                            <p className="font-semibold">${order.total.toLocaleString()}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.total-amount")} (EGP)</p>
+                            <p className="font-semibold"><Money value={order.total} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount-paid")}</p>
-                            <p className="font-semibold text-green-600">${paymentStatus.amountPaid.toLocaleString()}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-paid")} (EGP)</p>
+                            <p className="font-semibold text-green-600"><Money value={paymentStatus.amountPaid} /></p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t("field.amount-due")}</p>
-                            <p className="font-semibold text-orange-600">${paymentStatus.amountDue.toLocaleString()}</p>
+                            <p className="text-sm text-muted-foreground">{t("field.amount-due")} (EGP)</p>
+                            <p className="font-semibold text-orange-600"><Money value={paymentStatus.amountDue} /></p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment-status")}</p>
-                            <span
-                              className={`inline-block px-2 py-1 rounded text-xs font-semibold ${paymentStatus.color}`}
-                            >
-                              {paymentStatus.status}
-                            </span>
+                            <StatusBadge status={paymentStatus.status} label={paymentStatus.label} />
                             {order.paymentTerms === "installment" && (
                               <p className="text-xs text-muted-foreground mt-1">
                                 {paymentStatus.monthsPaid}/{paymentStatus.totalMonths} {t("supplier.months")}
@@ -471,11 +467,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.order-status")}</p>
-                            <span
-                              className={`inline-block px-2 py-1 rounded text-xs font-semibold ${getStatusColor(order.status)}`}
-                            >
-                              {order.status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
-                            </span>
+                            <StatusBadge status={order.status} />
                           </div>
                         </div>
                         {order.items.length > 0 && (
@@ -490,10 +482,10 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                                         {item.productName || getProductName(item.productId)}
                                       </span>
                                     </div>
-                                    <span className="font-semibold">${item.total?.toLocaleString() || "0"}</span>
+                                    <span className="font-semibold"><Money value={item.total} /> EGP</span>
                                   </div>
                                   <div className="text-xs text-muted-foreground mt-1">
-                                    {item.quantity} × ${item.unitPrice?.toLocaleString() || "0"} {t("field.per-unit")}
+                                    {item.quantity} × <Money value={item.unitPrice} /> EGP {t("field.per-unit")}
                                   </div>
                                 </div>
                               ))}
@@ -524,25 +516,25 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">{t("supplier.title")}</h1>
-          <p className="text-muted-foreground mt-2">{t("supplier.description")}</p>
-        </div>
-        <div className="flex gap-2">
-          <ReportGenerator type="suppliers" userRole={userRole || "po-rep"} />
-          {!showForm && canAddSupplier && (
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              {t("supplier.add")}
-            </Button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        group={t("group.purchasing")}
+        title={t("module.suppliers")}
+        actions={
+          <>
+            <ReportGenerator type="suppliers" userRole={userRole || "po-rep"} />
+            {!showForm && canAddSupplier && (
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="me-2 h-4 w-4" />
+                {t("supplier.add")}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {showForm && (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex items-center justify-between">
             <CardTitle>{t("supplier.add-new")}</CardTitle>
             <Button variant="ghost" size="icon" onClick={() => setShowForm(false)}>
               <X className="h-4 w-4" />

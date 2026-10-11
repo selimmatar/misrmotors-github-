@@ -6,7 +6,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Package, Truck, CheckCircle, FileText, RefreshCw, Printer, Eye, X, Warehouse, Plus, MapPin, Phone, User, RotateCcw } from "lucide-react"
+import { Package, Truck, CheckCircle, RefreshCw, Printer, Eye, X, Warehouse, Plus, MapPin, Phone, User, RotateCcw } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -14,6 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { PageHeader } from "@/components/erp/page-header"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { formatDate } from "@/lib/format"
 import type { DeliveryPermit } from "@/lib/types"
 
 interface WarehouseAvailability {
@@ -40,7 +43,7 @@ interface ItemAllocation {
 
 export function WarehouseDeliveryModule() {
   const { user, warehouses, refreshInventory } = useAppContext()
-  const { t, formatNumber, formatCurrency, language, formatDate } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const [permits, setPermits] = useState<DeliveryPermit[]>([])
   const [loading, setLoading] = useState(true)
   const [previewPermit, setPreviewPermit] = useState<DeliveryPermit | null>(null)
@@ -266,61 +269,37 @@ export function WarehouseDeliveryModule() {
     setShowPreview(true)
   }
 
-  const getStatusBadge = (status: string) => {
+  // Label for the permit status badge. READY_FOR_SHIPMENT and unknown values use the default StatusBadge label.
+  const getPermitLabel = (status: string): string | undefined => {
     switch (status) {
       case "DRAFT":
-        return (
-          <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-300">
-            <FileText className="w-3 h-3 mr-1" />
-            {t("permit.status.draft")}
-          </Badge>
-        )
-      case "READY_FOR_SHIPMENT":
-        return (
-          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
-            <Warehouse className="w-3 h-3 mr-1" />
-            Ready for Shipment
-          </Badge>
-        )
+        return t("permit.status.draft")
       case "READY_FOR_PICKUP":
-        return (
-          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
-            <Package className="w-3 h-3 mr-1" />
-            {t("permit.status.ready-for-pickup")}
-          </Badge>
-        )
+        return t("permit.status.ready-for-pickup")
       case "OUT_FOR_DELIVERY":
-        return (
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
-            <Truck className="w-3 h-3 mr-1" />
-            {t("permit.status.out-for-delivery")}
-          </Badge>
-        )
+        return t("permit.status.out-for-delivery")
       case "SUBMITTED_SIGNED":
+        return t("permit.status.submitted-signed")
       case "APPROVED":
-        return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-            <CheckCircle className="w-3 h-3 mr-1" />
-            {t("permit.status.completed")}
-          </Badge>
-        )
+        return t("permit.status.completed")
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return undefined
     }
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">{t("warehouse.delivery-management")}</h2>
-          <p className="text-muted-foreground">{t("warehouse.delivery-description")}</p>
-        </div>
-        <Button variant="outline" onClick={fetchPermits} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          {t("action.refresh")}
-        </Button>
-      </div>
+      <PageHeader
+        group={t("group.operations")}
+        title={t("warehouse.delivery-management")}
+        subtitle={t("warehouse.delivery-description")}
+        actions={
+          <Button variant="outline" onClick={fetchPermits} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 me-2 ${loading ? "animate-spin" : ""}`} />
+            {t("action.refresh")}
+          </Button>
+        }
+      />
 
       <Tabs defaultValue="pending" className="space-y-4">
         <TabsList className="grid w-full grid-cols-5">
@@ -363,15 +342,15 @@ export function WarehouseDeliveryModule() {
                       <div>
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
-                          {getStatusBadge(permit.status)}
+                          <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
                           {t("field.so-number")}: {permit.soNumber} | {t("field.customer")}: {permit.customerName}
                         </p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-end">
                         <p className="text-sm text-muted-foreground">
-                          {t("field.date")}: {formatDate(permit.createdAt || "")}
+                          {t("field.date")}: {formatDate(permit.createdAt || "", language)}
                         </p>
                       </div>
                     </div>
@@ -404,15 +383,15 @@ export function WarehouseDeliveryModule() {
                           onClick={() => openAllocationDialog(permit)}
                           className="flex-1 bg-blue-600 hover:bg-blue-700"
                         >
-                          <Warehouse className="w-4 h-4 mr-2" />
+                          <Warehouse className="w-4 h-4 me-2" />
                           Allocate Warehouses & Prepare
                         </Button>
                         <Button variant="outline" onClick={() => handleViewPermit(permit)}>
-                          <Eye className="w-4 h-4 mr-2" />
+                          <Eye className="w-4 h-4 me-2" />
                           {t("action.view")}
                         </Button>
                         <Button variant="outline" onClick={() => handlePrint(permit)}>
-                          <Printer className="w-4 h-4 mr-2" />
+                          <Printer className="w-4 h-4 me-2" />
                           {t("action.print")}
                         </Button>
                       </div>
@@ -446,15 +425,15 @@ export function WarehouseDeliveryModule() {
                       <div>
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
-                          {getStatusBadge(permit.status)}
+                          <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
                           {t("field.so-number")}: {permit.soNumber} | {t("field.customer")}: {permit.customerName}
                         </p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-end">
                         <p className="text-sm text-muted-foreground">
-                          {t("field.date")}: {formatDate(permit.createdAt || "")}
+                          {t("field.date")}: {formatDate(permit.createdAt || "", language)}
                         </p>
                       </div>
                     </div>
@@ -542,14 +521,14 @@ export function WarehouseDeliveryModule() {
                                   </div>
                                   {/* Show warehouse allocations or supplier name */}
                                   {itemGroup.length > 1 && (
-                                    <div className="flex flex-wrap gap-1 pl-4">
+                                    <div className="flex flex-wrap gap-1 ps-4">
                                       {itemGroup.map((item: any, wIdx: number) => {
                                         const whId = String(item.warehouseId || '')
                                         return (
                                           <Badge key={wIdx} variant="outline" className={`text-xs ${isOutsourced ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-blue-50'}`}>
                                             {isOutsourced ? (
                                               <>
-                                                <span className="mr-1">Supplier:</span>
+                                                <span className="me-1">Supplier:</span>
                                                 {whId.startsWith('supplier_') 
                                                   ? (item.supplierName || "External Supplier")
                                                   : (warehouses.find(w => w.id === item.warehouseId)?.name || `WH-${item.warehouseId}`)
@@ -557,7 +536,7 @@ export function WarehouseDeliveryModule() {
                                               </>
                                             ) : (
                                               <>
-                                                <Warehouse className="w-3 h-3 mr-1" />
+                                                <Warehouse className="w-3 h-3 me-1" />
                                                 {warehouses.find(w => w.id === item.warehouseId)?.name || `WH-${item.warehouseId}`}: {formatNumber(item.allocatedQuantity || item.quantity)} {item.unitSnapshot}
                                               </>
                                             )}: {formatNumber(item.allocatedQuantity || item.quantity)} {item.unitSnapshot}
@@ -567,14 +546,14 @@ export function WarehouseDeliveryModule() {
                                     </div>
                                   )}
                                   {itemGroup.length === 1 && itemGroup[0].warehouseId && (
-                                    <div className="pl-4">
+                                    <div className="ps-4">
                                       {(() => {
                                         const whId = String(itemGroup[0].warehouseId || '')
                                         return (
                                           <Badge variant="outline" className={`text-xs ${isOutsourced ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-blue-50'}`}>
                                             {isOutsourced ? (
                                               <>
-                                                <span className="mr-1">Supplier:</span>
+                                                <span className="me-1">Supplier:</span>
                                                 {whId.startsWith('supplier_') 
                                                   ? (itemGroup[0].supplierName || "External Supplier")
                                                   : (warehouses.find(w => w.id === itemGroup[0].warehouseId)?.name || `WH-${itemGroup[0].warehouseId}`)
@@ -582,7 +561,7 @@ export function WarehouseDeliveryModule() {
                                               </>
                                             ) : (
                                               <>
-                                                <Warehouse className="w-3 h-3 mr-1" />
+                                                <Warehouse className="w-3 h-3 me-1" />
                                                 {warehouses.find(w => w.id === itemGroup[0].warehouseId)?.name || `WH-${itemGroup[0].warehouseId}`}
                                               </>
                                             )}
@@ -603,15 +582,15 @@ export function WarehouseDeliveryModule() {
                           onClick={() => handleMarkReady(permit)}
                           className="flex-1 bg-green-600 hover:bg-green-700"
                         >
-                          <CheckCircle className="w-4 h-4 mr-2" />
+                          <CheckCircle className="w-4 h-4 me-2" />
                           Mark as Picked Up / Ready for Delivery
                         </Button>
                         <Button variant="outline" onClick={() => handleViewPermit(permit)}>
-                          <Eye className="w-4 h-4 mr-2" />
+                          <Eye className="w-4 h-4 me-2" />
                           {t("action.view")}
                         </Button>
                         <Button variant="outline" onClick={() => handlePrint(permit)}>
-                          <Printer className="w-4 h-4 mr-2" />
+                          <Printer className="w-4 h-4 me-2" />
                           {t("action.print")}
                         </Button>
                       </div>
@@ -645,7 +624,7 @@ export function WarehouseDeliveryModule() {
                       <div>
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
-                          {getStatusBadge(permit.status)}
+                          <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
                           {t("field.so-number")}: {permit.soNumber} | {t("field.customer")}: {permit.customerName}
@@ -656,11 +635,11 @@ export function WarehouseDeliveryModule() {
                   <CardContent>
                     <div className="flex gap-2">
                       <Button variant="outline" onClick={() => handleViewPermit(permit)}>
-                        <Eye className="w-4 h-4 mr-2" />
+                        <Eye className="w-4 h-4 me-2" />
                         {t("action.view")}
                       </Button>
                       <Button variant="outline" onClick={() => handlePrint(permit)}>
-                        <Printer className="w-4 h-4 mr-2" />
+                        <Printer className="w-4 h-4 me-2" />
                         {t("action.print")}
                       </Button>
                     </div>
@@ -702,7 +681,7 @@ export function WarehouseDeliveryModule() {
                           SO: {returnReq.soNumber || "N/A"} | Customer: {returnReq.customerName || "Unknown"}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Courier: {returnReq.courierName || "N/A"} | Initiated by: {returnReq.initiatedBy || returnReq.returnedBy || "shipping"} on {returnReq.createdAt ? new Date(returnReq.createdAt).toLocaleDateString() : "N/A"}
+                          Courier: {returnReq.courierName || "N/A"} | Initiated by: {returnReq.initiatedBy || returnReq.returnedBy || "shipping"} on {returnReq.createdAt ? formatDate(returnReq.createdAt, language) : "N/A"}
                         </p>
                       </div>
                     </div>
@@ -714,9 +693,9 @@ export function WarehouseDeliveryModule() {
                         <div key={idx} className="flex justify-between items-center text-sm bg-white rounded p-3 border">
                           <div>
                             <span className="font-medium">{item.productName || "Unknown Item"}</span>
-                            <span className="text-muted-foreground ml-2">x{item.quantityReturned}</span>
+                            <span className="text-muted-foreground ms-2">x{item.quantityReturned}</span>
                             {item.isOutsourced && (
-                              <Badge variant="outline" className="ml-2 bg-purple-50 text-purple-700 border-purple-300">
+                              <Badge variant="outline" className="ms-2 bg-purple-50 text-purple-700 border-purple-300">
                                 Outsourced
                               </Badge>
                             )}
@@ -747,7 +726,7 @@ export function WarehouseDeliveryModule() {
                           setShowReturnProcessDialog(true)
                         }}
                       >
-                        <Warehouse className="w-4 h-4 mr-2" />
+                        <Warehouse className="w-4 h-4 me-2" />
                         Assign Warehouses & Process Return
                       </Button>
                     </div>
@@ -780,7 +759,7 @@ export function WarehouseDeliveryModule() {
                       <div>
                         <CardTitle className="flex items-center gap-2">
                           {permit.permitNo}
-                          {getStatusBadge(permit.status)}
+                          <StatusBadge status={permit.status} label={getPermitLabel(permit.status)} />
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">
                           {t("field.so-number")}: {permit.soNumber} | {t("field.customer")}: {permit.customerName}
@@ -790,7 +769,7 @@ export function WarehouseDeliveryModule() {
                   </CardHeader>
                   <CardContent>
                     <Button variant="outline" onClick={() => handleViewPermit(permit)}>
-                      <Eye className="w-4 h-4 mr-2" />
+                      <Eye className="w-4 h-4 me-2" />
                       {t("action.view")}
                     </Button>
                   </CardContent>
@@ -823,7 +802,7 @@ export function WarehouseDeliveryModule() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("field.item")}</TableHead>
-                    <TableHead className="text-right">{t("field.quantity")}</TableHead>
+                    <TableHead className="text-end">{t("field.quantity")}</TableHead>
                     <TableHead>{t("field.unit")}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -831,7 +810,7 @@ export function WarehouseDeliveryModule() {
                   {(previewPermit.items || []).map((item: any, idx: number) => (
                     <TableRow key={idx}>
                       <TableCell>{item.itemNameSnapshot}</TableCell>
-                      <TableCell className="text-right">{formatNumber(item.quantity)}</TableCell>
+                      <TableCell className="text-end">{formatNumber(item.quantity)}</TableCell>
                       <TableCell>{item.unitSnapshot}</TableCell>
                     </TableRow>
                   ))}
@@ -1053,7 +1032,7 @@ export function WarehouseDeliveryModule() {
                                   }}
                                   className="h-7 text-xs"
                                 >
-                                  <Plus className="w-3 h-3 mr-1" />
+                                  <Plus className="w-3 h-3 me-1" />
                                   Split to Another Warehouse ({availableForSplit.length} available)
                                 </Button>
                               ) : (
@@ -1102,7 +1081,7 @@ export function WarehouseDeliveryModule() {
                   disabled={savingAllocation}
                   className="bg-green-600 hover:bg-green-700"
                 >
-                  <CheckCircle className="w-4 h-4 mr-2" />
+                  <CheckCircle className="w-4 h-4 me-2" />
                   {savingAllocation ? "Saving..." : "Save & Mark Ready for Shipment"}
                 </Button>
               </div>
@@ -1245,7 +1224,7 @@ export function WarehouseDeliveryModule() {
                   disabled={processingReturn}
                   className="bg-green-600 hover:bg-green-700"
                 >
-                  <CheckCircle className="w-4 h-4 mr-2" />
+                  <CheckCircle className="w-4 h-4 me-2" />
                   {processingReturn ? "Processing..." : "Process Return & Update Inventory"}
                 </Button>
               </div>

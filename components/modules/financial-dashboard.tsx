@@ -11,7 +11,12 @@ import { analyzeFinancials } from "@/lib/ai-utils"
 import { useI18n } from "@/lib/i18n-context"
 import type { User } from "@/lib/types"
 import { useState, useEffect } from "react"
-import { Sparkles, TrendingUp, AlertTriangle, CheckCircle2, CheckCircle } from "lucide-react"
+import { Sparkles, TrendingUp, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { Money } from "@/components/erp/money"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { formatDate } from "@/lib/format"
 
 const BarChart = dynamic(() => import("recharts").then((mod) => mod.BarChart), { ssr: false })
 const Bar = dynamic(() => import("recharts").then((mod) => mod.Bar), { ssr: false })
@@ -401,17 +406,6 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
 
   const salesRepStats = [
     {
-      id: "total-sales",
-      label: t("financial.total-sales-revenue"),
-      value: formatCurrency(totalSalesRevenue),
-      change: `${salesOrders.length} ${t("financial.total-orders")}`,
-      color: "bg-blue-50 border-blue-200 text-blue-700",
-      onClick: () => {
-        const event = new CustomEvent("navigate-to-module", { detail: "sales-orders" })
-        window.dispatchEvent(event)
-      },
-    },
-    {
       id: "pending-orders",
       label: t("financial.pending-orders"),
       value: pendingSalesOrders.length.toString(),
@@ -436,13 +430,6 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
   ]
 
   const warehouseStats = [
-    {
-      id: "inventory-value",
-      label: t("financial.total-inventory-value"),
-      value: formatCurrency(totalInventoryValue),
-      change: `${inventory.length} ${t("financial.products")}`,
-      onClick: showInventoryDetails,
-    },
     {
       id: "low-stock",
       label: t("financial.low-stock-items"),
@@ -539,21 +526,6 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
     }
   }, [salesOrders, pendingSalesOrders.length])
 
-  const getHealthColor = (status: string) => {
-    switch (status) {
-      case "excellent":
-        return "text-green-600 bg-green-50"
-      case "good":
-        return "text-blue-600 bg-blue-50"
-      case "fair":
-        return "text-yellow-600 bg-yellow-50"
-      case "poor":
-        return "text-red-600 bg-red-50"
-      default:
-        return "text-gray-600 bg-gray-50"
-    }
-  }
-
   const totalPayable = supplierInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0)
   const totalPaid = supplierInvoices
     .filter((inv) => inv.status === "paid")
@@ -568,20 +540,6 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
 
   const quickStats = [
     {
-      id: "total-revenue",
-      label: t("financial.total-revenue"),
-      value: formatCurrency(totalSalesRevenue),
-      change: `${customerInvoices.length} ${t("financial.invoices")}`,
-      color: "bg-blue-50 border-blue-200 text-blue-700",
-    },
-    {
-      id: "inventory-value",
-      label: t("financial.inventory-value"),
-      value: formatCurrency(totalInventoryValue),
-      change: `${inventory.length} ${t("financial.products")}`,
-      color: "bg-purple-50 border-purple-200 text-purple-700",
-    },
-    {
       id: "pending-orders",
       label: t("financial.pending-orders"),
       value: pendingSalesOrders.length.toString(),
@@ -593,65 +551,59 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
       id: "overdue",
       label: t("financial.overdue-invoices"),
       value: overdueInvoices.length.toString(),
-      change: formatCurrency(overdueInvoices.reduce((sum, inv) => sum + (inv.amount - (inv.collectedAmount || 0)), 0)),
+      change: (
+        <>
+          <Money value={overdueInvoices.reduce((sum, inv) => sum + (inv.amount - (inv.collectedAmount || 0)), 0)} /> EGP
+        </>
+      ),
       color: "bg-red-50 border-red-200 text-red-700",
     },
   ]
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">{t("financial.title")}</h1>
-          <p className="text-muted-foreground">{t("financial.description")}</p>
-        </div>
-        <Button onClick={fetchAiInsights} disabled={isAnalyzing}>
-          {isAnalyzing ? t("message.loading") : t("financial.ai-analysis")}
-        </Button>
-      </div>
+      <PageHeader
+        group={t("group.overview")}
+        title={t("financial.title")}
+        subtitle={t("financial.description")}
+        actions={
+          <Button onClick={fetchAiInsights} disabled={isAnalyzing}>
+            {isAnalyzing ? t("message.loading") : t("financial.ai-analysis")}
+          </Button>
+        }
+      />
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-green-800">{t("financial.total-revenue")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-900">{formatCurrency(totalRevenue)}</div>
-            <p className="text-xs text-green-700">{t("financial.from-sales")}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-800">{t("financial.total-expenses")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-900">{formatCurrency(totalExpenses)}</div>
-            <p className="text-xs text-red-700">{t("financial.from-purchases")}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-blue-800">{t("financial.gross-profit")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-900">{formatCurrency(grossProfit)}</div>
-            <p className="text-xs text-blue-700">
-              {t("financial.margin")}: {formatNumber(profitMargin)}%
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-purple-800">{t("financial.inventory-value")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-900">{formatCurrency(inventoryValue)}</div>
-            <p className="text-xs text-purple-700">
-              {formatNumber(inventory.length)} {t("financial.items")}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <KpiGrid>
+        <KpiTile
+          label={`${t("financial.total-revenue")} (EGP)`}
+          value={<Money value={totalRevenue} />}
+          sub={t("financial.from-sales")}
+          onClick={
+            user.role === "sales-rep"
+              ? () => {
+                  const event = new CustomEvent("navigate-to-module", { detail: "sales-orders" })
+                  window.dispatchEvent(event)
+                }
+              : undefined
+          }
+        />
+        <KpiTile
+          label={`${t("financial.total-expenses")} (EGP)`}
+          value={<Money value={totalExpenses} />}
+          sub={t("financial.from-purchases")}
+        />
+        <KpiTile
+          label={`${t("financial.gross-profit")} (EGP)`}
+          value={<Money value={grossProfit} />}
+          sub={`${t("financial.margin")}: ${formatNumber(profitMargin)}%`}
+        />
+        <KpiTile
+          label={`${t("financial.inventory-value")} (EGP)`}
+          value={<Money value={inventoryValue} />}
+          sub={`${formatNumber(inventory.length)} ${t("financial.items")}`}
+          onClick={user.role === "warehouse-rep" ? showInventoryDetails : undefined}
+        />
+      </KpiGrid>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -662,16 +614,16 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
           <CardContent>
             <div className="space-y-4">
               <div className="flex justify-between">
-                <span>{t("financial.total-invoiced")}</span>
-                <span className="font-bold">{formatCurrency(totalReceivable)}</span>
+                <span>{t("financial.total-invoiced")} (EGP)</span>
+                <span className="font-bold"><Money value={totalReceivable} /></span>
               </div>
               <div className="flex justify-between">
-                <span>{t("financial.collected")}</span>
-                <span className="font-bold text-green-600">{formatCurrency(totalCollected)}</span>
+                <span>{t("financial.collected")} (EGP)</span>
+                <span className="font-bold text-green-600"><Money value={totalCollected} /></span>
               </div>
               <div className="flex justify-between">
-                <span>{t("financial.outstanding")}</span>
-                <span className="font-bold text-yellow-600">{formatCurrency(totalOutstanding)}</span>
+                <span>{t("financial.outstanding")} (EGP)</span>
+                <span className="font-bold text-yellow-600"><Money value={totalOutstanding} /></span>
               </div>
             </div>
           </CardContent>
@@ -685,16 +637,16 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
           <CardContent>
             <div className="space-y-4">
               <div className="flex justify-between">
-                <span>{t("financial.total-invoiced")}</span>
-                <span className="font-bold">{formatCurrency(totalPayable)}</span>
+                <span>{t("financial.total-invoiced")} (EGP)</span>
+                <span className="font-bold"><Money value={totalPayable} /></span>
               </div>
               <div className="flex justify-between">
-                <span>{t("financial.paid")}</span>
-                <span className="font-bold text-green-600">{formatCurrency(totalPaid)}</span>
+                <span>{t("financial.paid")} (EGP)</span>
+                <span className="font-bold text-green-600"><Money value={totalPaid} /></span>
               </div>
               <div className="flex justify-between">
-                <span>{t("financial.outstanding")}</span>
-                <span className="font-bold text-yellow-600">{formatCurrency(totalUnpaid)}</span>
+                <span>{t("financial.outstanding")} (EGP)</span>
+                <span className="font-bold text-yellow-600"><Money value={totalUnpaid} /></span>
               </div>
             </div>
           </CardContent>
@@ -709,10 +661,10 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                 <Sparkles className="w-5 h-5 text-primary" />
                 <CardTitle>{t("financial.ai-health-analysis")}</CardTitle>
               </div>
-              <Badge className={getHealthColor(aiAnalysis.financialHealth.status)}>
-                {aiAnalysis.financialHealth.status.toUpperCase()} - {t("financial.score")}:{" "}
-                {aiAnalysis.financialHealth.score}/100
-              </Badge>
+              <StatusBadge
+                status={aiAnalysis.financialHealth.status}
+                label={`${aiAnalysis.financialHealth.status.toUpperCase()} - ${t("financial.score")}: ${aiAnalysis.financialHealth.score}/100`}
+              />
             </div>
             <CardDescription>{aiAnalysis.financialHealth.insights}</CardDescription>
           </CardHeader>
@@ -730,9 +682,9 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                 </p>
               </div>
               <div className="p-4 rounded-lg bg-background border">
-                <p className="text-sm text-muted-foreground">{t("financial.working-capital")}</p>
+                <p className="text-sm text-muted-foreground">{t("financial.working-capital")} (EGP)</p>
                 <p className="text-2xl font-bold">
-                  {formatCurrency(aiAnalysis.financialHealth.keyMetrics.workingCapital)}
+                  <Money value={aiAnalysis.financialHealth.keyMetrics.workingCapital} />
                 </p>
               </div>
             </div>
@@ -748,12 +700,12 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
               </div>
               <div className="grid grid-cols-2 gap-4 mt-3">
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("financial.next-month")}</p>
-                  <p className="text-xl font-bold">{formatCurrency(aiAnalysis.cashFlowPrediction.nextMonth)}</p>
+                  <p className="text-sm text-muted-foreground">{t("financial.next-month")} (EGP)</p>
+                  <p className="text-xl font-bold"><Money value={aiAnalysis.cashFlowPrediction.nextMonth} /></p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("financial.next-quarter")}</p>
-                  <p className="text-xl font-bold">{formatCurrency(aiAnalysis.cashFlowPrediction.nextQuarter)}</p>
+                  <p className="text-sm text-muted-foreground">{t("financial.next-quarter")} (EGP)</p>
+                  <p className="text-xl font-bold"><Money value={aiAnalysis.cashFlowPrediction.nextQuarter} /></p>
                 </div>
               </div>
               <p className="text-sm text-muted-foreground mt-2">{aiAnalysis.cashFlowPrediction.reasoning}</p>
@@ -778,8 +730,8 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">{risk.recommendation}</p>
                       </div>
-                      <div className="text-right ml-4">
-                        <p className="font-semibold">{formatCurrency(risk.amount)}</p>
+                      <div className="text-end ms-4">
+                        <p className="font-semibold"><Money value={risk.amount} /> EGP</p>
                         <p className="text-xs text-muted-foreground">
                           {risk.daysOverdue} {t("financial.days-overdue")}
                         </p>
@@ -809,96 +761,39 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <KpiGrid>
         {user.role === "po-rep"
           ? poRepStats.map((stat) => (
-              <Card
-                key={stat.id}
-                className={`cursor-pointer transition-all hover:shadow-lg border-2 ${stat.color}`}
-                onClick={stat.onClick}
-              >
-                <CardContent className="pt-6">
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">{stat.label}</p>
-                    <p className="text-3xl font-bold">{stat.value}</p>
-                    <p className="text-xs font-medium">{stat.change}</p>
-                  </div>
-                </CardContent>
-              </Card>
+              <KpiTile key={stat.id} label={stat.label} value={stat.value} sub={stat.change} onClick={stat.onClick} />
             ))
           : user.role === "sales-rep"
             ? salesRepStats.map((stat) => (
-                <Card
-                  key={stat.id}
-                  className={`cursor-pointer transition-all hover:shadow-lg border-2 ${stat.color}`}
-                  onClick={stat.onClick}
-                >
-                  <CardContent className="pt-6">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">{stat.label}</p>
-                      <p className="text-3xl font-bold">{stat.value}</p>
-                      <p className="text-xs font-medium">{stat.change}</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                <KpiTile key={stat.id} label={stat.label} value={stat.value} sub={stat.change} onClick={stat.onClick} />
               ))
             : user.role === "warehouse-rep"
               ? warehouseStats.map((stat, index) => (
-                  <Card
-                    key={index}
-                    className={`cursor-pointer transition-all hover:shadow-lg hover:ring-2 hover:ring-primary border-2 ${stat.color}`}
-                    onClick={stat.onClick}
-                  >
-                    <CardContent className="pt-6">
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">{stat.label}</p>
-                        <p className="text-2xl font-bold">{stat.value}</p>
-                        <p className="text-xs text-blue-600">{stat.change}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <KpiTile key={index} label={stat.label} value={stat.value} sub={stat.change} onClick={stat.onClick} />
                 ))
               : quickStats.map((stat, index) => (
-                  <Card
-                    key={index}
-                    className="cursor-pointer transition-all hover:shadow-lg hover:ring-2 hover:ring-primary"
-                    onClick={stat.onClick}
-                  >
-                    <CardContent className="pt-6">
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground">{stat.label}</p>
-                        <p className="text-3xl font-bold">{stat.value}</p>
-                        <p className="text-xs text-blue-600">{stat.change}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <KpiTile key={index} label={stat.label} value={stat.value} sub={stat.change} onClick={stat.onClick} />
                 ))}
 
         {user.role === "accountant" && (
-          <Card
-            className="cursor-pointer transition-all hover:shadow-lg hover:ring-2 hover:ring-orange-500 border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-transparent"
+          <KpiTile
+            label={t("financial.approve-sales-orders")}
+            value={pendingSalesOrders.length}
+            sub={
+              pendingSalesOrders.length === 1
+                ? t("financial.order-pending-approval")
+                : t("financial.orders-pending-approval")
+            }
             onClick={() => {
               const event = new CustomEvent("navigate-to-module", { detail: "approve-sales-orders" })
               window.dispatchEvent(event)
             }}
-          >
-            <CardContent className="pt-6">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-orange-600" />
-                  <p className="text-sm text-muted-foreground font-medium">{t("financial.approve-sales-orders")}</p>
-                </div>
-                <p className="text-3xl font-bold text-orange-600">{pendingSalesOrders.length}</p>
-                <p className="text-xs text-orange-600 font-medium">
-                  {pendingSalesOrders.length === 1
-                    ? t("financial.order-pending-approval")
-                    : t("financial.orders-pending-approval")}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          />
         )}
-      </div>
+      </KpiGrid>
 
       {/* CEO Payment Reschedule Approvals */}
       {user.role === "ceo" && (
@@ -939,9 +834,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                           <p className="text-sm text-muted-foreground">SO: {request.soNumber || "N/A"}</p>
                           <p className="text-sm text-muted-foreground">Invoice: {request.invoiceNumber}</p>
                         </div>
-                        <Badge variant="outline" className="border-amber-500 text-amber-700">
-                          Pending
-                        </Badge>
+                        <StatusBadge status="pending" label="Pending" />
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-3">
                         <div>
@@ -959,12 +852,12 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                         {request.requestedAmount && request.requestedAmount !== request.currentAmount && (
                           <>
                             <div>
-                              <p className="text-muted-foreground">Current Amount</p>
-                              <p className="font-semibold">{formatCurrency(request.currentAmount)}</p>
+                              <p className="text-muted-foreground">Current Amount (EGP)</p>
+                              <p className="font-semibold"><Money value={request.currentAmount} /></p>
                             </div>
                             <div>
-                              <p className="text-muted-foreground">Requested Amount</p>
-                              <p className="font-semibold text-blue-600">{formatCurrency(request.requestedAmount)}</p>
+                              <p className="text-muted-foreground">Requested Amount (EGP)</p>
+                              <p className="font-semibold text-blue-600"><Money value={request.requestedAmount} /></p>
                             </div>
                           </>
                         )}
@@ -972,17 +865,17 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                           <>
                             <div>
                               <p className="text-muted-foreground">Current Due Date</p>
-                              <p className="font-semibold">{request.currentDueDate}</p>
+                              <p className="font-semibold">{formatDate(request.currentDueDate, language)}</p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">Requested Due Date</p>
-                              <p className="font-semibold text-blue-600">{request.requestedDueDate}</p>
+                              <p className="font-semibold text-blue-600">{formatDate(request.requestedDueDate, language)}</p>
                             </div>
                           </>
                         )}
                         <div>
                           <p className="text-muted-foreground">Request Date</p>
-                          <p className="font-semibold">{new Date(request.createdAt).toLocaleDateString()}</p>
+                          <p className="font-semibold">{formatDate(request.createdAt, language)}</p>
                         </div>
                       </div>
                       <div className="mb-3">
@@ -996,7 +889,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                           disabled={loadingReschedule}
                           className="bg-green-600 hover:bg-green-700"
                         >
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          <CheckCircle2 className="w-4 h-4 me-2" />
                           Approve
                         </Button>
                         <Button
@@ -1030,20 +923,20 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("financial.product")}</TableHead>
-                    <TableHead className="text-right">{t("financial.quantity")}</TableHead>
-                    <TableHead className="text-right">{t("financial.unit-price")}</TableHead>
-                    <TableHead className="text-right">{t("financial.total-value")}</TableHead>
+                    <TableHead className="text-end">{t("financial.quantity")}</TableHead>
+                    <TableHead className="text-end">{t("financial.unit-price")} (EGP)</TableHead>
+                    <TableHead className="text-end">{t("financial.total-value")} (EGP)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {detailDialogData?.items.map((item: any, index: number) => (
                     <TableRow key={index}>
                       <TableCell className="font-medium">{item.productName || item.name}</TableCell>
-                      <TableCell className="text-right">{item.quantity}</TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(item.unitPrice || item.unitCost || 0)}
+                      <TableCell className="text-end">{item.quantity}</TableCell>
+                      <TableCell className="text-end">
+                        <Money value={item.unitPrice || item.unitCost || 0} />
                       </TableCell>
-                      <TableCell className="text-right font-semibold">{formatCurrency(item.totalValue || 0)}</TableCell>
+                      <TableCell className="text-end font-semibold"><Money value={item.totalValue || 0} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1054,16 +947,16 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("financial.product")}</TableHead>
-                    <TableHead className="text-right">{t("financial.units-sold")}</TableHead>
-                    <TableHead className="text-right">{t("financial.total-revenue")}</TableHead>
+                    <TableHead className="text-end">{t("financial.units-sold")}</TableHead>
+                    <TableHead className="text-end">{t("financial.total-revenue")} (EGP)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {detailDialogData?.items.map((item: any, index: number) => (
                     <TableRow key={index}>
                       <TableCell className="font-medium">{item.productName}</TableCell>
-                      <TableCell className="text-right">{item.totalQuantity}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatCurrency(item.totalRevenue)}</TableCell>
+                      <TableCell className="text-end">{item.totalQuantity}</TableCell>
+                      <TableCell className="text-end font-semibold"><Money value={item.totalRevenue} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1075,8 +968,8 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                   <TableRow>
                     <TableHead>{t("financial.rank")}</TableHead>
                     <TableHead>{t("financial.product")}</TableHead>
-                    <TableHead className="text-right">{t("financial.units-sold")}</TableHead>
-                    <TableHead className="text-right">{t("financial.total-revenue")}</TableHead>
+                    <TableHead className="text-end">{t("financial.units-sold")}</TableHead>
+                    <TableHead className="text-end">{t("financial.total-revenue")} (EGP)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1084,8 +977,8 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableRow key={index}>
                       <TableCell className="font-medium">{index + 1}</TableCell>
                       <TableCell className="font-medium">{item.productName}</TableCell>
-                      <TableCell className="text-right">{item.totalQuantity}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatCurrency(item.totalRevenue)}</TableCell>
+                      <TableCell className="text-end">{item.totalQuantity}</TableCell>
+                      <TableCell className="text-end font-semibold"><Money value={item.totalRevenue} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1098,7 +991,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableHead>{t("financial.invoice-number")}</TableHead>
                     <TableHead>{t("financial.supplier")}</TableHead>
                     <TableHead>{t("financial.due-date")}</TableHead>
-                    <TableHead className="text-right">{t("financial.amount")}</TableHead>
+                    <TableHead className="text-end">{t("financial.amount")} (EGP)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1106,9 +999,9 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableRow key={index}>
                       <TableCell className="font-medium">{item.invoiceNumber}</TableCell>
                       <TableCell>{item.supplierName || t("financial.unknown")}</TableCell>
-                      <TableCell>{item.dueDate}</TableCell>
-                      <TableCell className="text-right font-semibold text-red-600">
-                        {formatCurrency(item.amount)}
+                      <TableCell>{formatDate(item.dueDate, language)}</TableCell>
+                      <TableCell className="text-end font-semibold text-red-600">
+                        <Money value={item.amount} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1122,7 +1015,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableHead>{t("financial.invoice-number")}</TableHead>
                     <TableHead>{t("financial.customer")}</TableHead>
                     <TableHead>{t("financial.due-date")}</TableHead>
-                    <TableHead className="text-right">{t("financial.amount")}</TableHead>
+                    <TableHead className="text-end">{t("financial.amount")} (EGP)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1130,9 +1023,9 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableRow key={index}>
                       <TableCell className="font-medium">{item.invoiceNumber}</TableCell>
                       <TableCell>{item.customerName || t("financial.unknown")}</TableCell>
-                      <TableCell>{item.dueDate}</TableCell>
-                      <TableCell className="text-right font-semibold text-red-600">
-                        {formatCurrency((item.amount || 0) - (item.collectedAmount || 0))}
+                      <TableCell>{formatDate(item.dueDate, language)}</TableCell>
+                      <TableCell className="text-end font-semibold text-red-600">
+                        <Money value={(item.amount || 0) - (item.collectedAmount || 0)} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1146,7 +1039,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableHead>{t("field.so-number")}</TableHead>
                     <TableHead>{t("field.status")}</TableHead>
                     <TableHead>{t("field.order-date")}</TableHead>
-                    <TableHead className="text-right">{t("field.total")}</TableHead>
+                    <TableHead className="text-end">{t("field.total")} (EGP)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1154,10 +1047,10 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                     <TableRow key={index}>
                       <TableCell className="font-medium">{item.soNumber}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{item.status}</Badge>
+                        <StatusBadge status={item.status} />
                       </TableCell>
-                      <TableCell>{item.orderDate}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatCurrency(item.total)}</TableCell>
+                      <TableCell>{formatDate(item.orderDate, language)}</TableCell>
+                      <TableCell className="text-end font-semibold"><Money value={item.total} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

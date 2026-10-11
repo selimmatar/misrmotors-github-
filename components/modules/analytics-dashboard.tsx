@@ -27,9 +27,7 @@ import {
   Loader2,
   BarChart3,
   Activity,
-  Zap,
   ArrowRight,
-  Eye,
   Building2,
   Lightbulb,
   ChevronDown,
@@ -37,6 +35,9 @@ import {
 import dynamic from "next/dynamic"
 import type { UserRole } from "@/lib/types"
 import { useI18n } from "@/lib/i18n-context"
+import { PageHeader } from "@/components/erp/page-header"
+import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
+import { Money } from "@/components/erp/money"
 
 const BarChart = dynamic(() => import("recharts").then((mod) => mod.BarChart), { ssr: false })
 const Bar = dynamic(() => import("recharts").then((mod) => mod.Bar), { ssr: false })
@@ -95,7 +96,7 @@ function DetailDialog({
 }
 
 export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
-  const { t, formatNumber, formatCurrency } = useI18n()
+  const { t, formatNumber } = useI18n()
 
   const visibleTabs = roleVisibleTabs[userRole]
   const [activeTab, setActiveTab] = useState(visibleTabs[0] || "executive")
@@ -285,8 +286,10 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Total Revenue</p>
-                <p className="text-2xl font-bold">{formatCurrency(kpiData?.revenue?.total || 0)}</p>
+                <p className="text-sm text-muted-foreground">Total Revenue (EGP)</p>
+                <p className="text-2xl font-bold">
+                  <Money value={kpiData?.revenue?.total || 0} />
+                </p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Growth Trend</p>
@@ -298,7 +301,9 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
               {salesData?.topCustomers?.slice(0, 5).map((customer: any, idx: number) => (
                 <div key={idx} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                   <span className="font-medium">{customer.customerName}</span>
-                  <span className="text-emerald-500 font-bold">{formatCurrency(customer.totalSpent || 0)}</span>
+                  <span className="text-emerald-500 font-bold">
+                    <Money value={customer.totalSpent || 0} /> EGP
+                  </span>
                 </div>
               ))}
             </div>
@@ -309,8 +314,10 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Gross Profit</p>
-                <p className="text-2xl font-bold">{formatCurrency(kpiData?.grossProfit?.total || 0)}</p>
+                <p className="text-sm text-muted-foreground">Gross Profit (EGP)</p>
+                <p className="text-2xl font-bold">
+                  <Money value={kpiData?.grossProfit?.total || 0} />
+                </p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Profit Margin</p>
@@ -332,16 +339,22 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Net Cash Position</p>
-                <p className="text-2xl font-bold">{formatCurrency(kpiData?.cashPosition?.total || 0)}</p>
+                <p className="text-sm text-muted-foreground">Net Cash Position (EGP)</p>
+                <p className="text-2xl font-bold">
+                  <Money value={kpiData?.cashPosition?.total || 0} />
+                </p>
               </div>
               <div className="p-4 bg-emerald-500/10 rounded-lg">
-                <p className="text-sm text-muted-foreground">Receivables (AR)</p>
-                <p className="text-2xl font-bold text-emerald-500">{formatCurrency(kpiData?.cashPosition?.ar || 0)}</p>
+                <p className="text-sm text-muted-foreground">Receivables (AR) (EGP)</p>
+                <p className="text-2xl font-bold text-emerald-500">
+                  <Money value={kpiData?.cashPosition?.ar || 0} />
+                </p>
               </div>
               <div className="p-4 bg-red-500/10 rounded-lg">
-                <p className="text-sm text-muted-foreground">Payables (AP)</p>
-                <p className="text-2xl font-bold text-red-500">{formatCurrency(kpiData?.cashPosition?.ap || 0)}</p>
+                <p className="text-sm text-muted-foreground">Payables (AP) (EGP)</p>
+                <p className="text-2xl font-bold text-red-500">
+                  <Money value={kpiData?.cashPosition?.ap || 0} />
+                </p>
               </div>
             </div>
           </div>
@@ -351,8 +364,10 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-muted/50 rounded-lg">
-                <p className="text-sm text-muted-foreground">Total Value</p>
-                <p className="text-2xl font-bold">{formatCurrency(kpiData?.inventory?.value || 0)}</p>
+                <p className="text-sm text-muted-foreground">Total Value (EGP)</p>
+                <p className="text-2xl font-bold">
+                  <Money value={kpiData?.inventory?.value || 0} />
+                </p>
               </div>
               <div className="p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Turnover Rate</p>
@@ -393,17 +408,16 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">{t("analytics.title")}</h2>
-          {/* Translated description */}
-          <p className="text-muted-foreground">{t("analytics.sales-overview")}</p>
-        </div>
-        <Button onClick={loadAllAnalytics} variant="outline">
-          <Activity className="h-4 w-4 mr-2" />
-          Refresh Data
-        </Button>
-      </div>
+      <PageHeader
+        group={t("group.overview")}
+        title={t("module.analytics")}
+        actions={
+          <Button onClick={loadAllAnalytics} variant="outline">
+            <Activity className="h-4 w-4 me-2" />
+            Refresh Data
+          </Button>
+        }
+      />
 
       <DetailDialog
         open={detailDialog.open}
@@ -429,87 +443,34 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
 
         {visibleTabs.includes("executive") && (
           <TabsContent value="executive" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card
-                className="border-primary/20 cursor-pointer hover:border-primary/50 transition-colors group"
+            <KpiGrid>
+              <KpiTile
+                label={`${t("analytics.total-revenue")} (EGP)`}
+                value={<Money value={kpiData?.revenue?.total || 0} />}
+                sub={`${kpiData?.revenue?.trend || "0%"} ${t("analytics.from-last-month")}`}
                 onClick={() => openDetail("revenue", t("analytics.revenue-details"), t("analytics.revenue-breakdown"))}
-              >
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{t("analytics.total-revenue")}</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-primary" />
-                    <Eye className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(kpiData?.revenue?.total || 0)}</div>
-                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3 text-emerald-500" />
-                    {kpiData?.revenue?.trend || "0%"} {t("analytics.from-last-month")}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card
-                className="border-emerald-500/20 cursor-pointer hover:border-emerald-500/50 transition-colors group"
+              />
+              <KpiTile
+                label={`${t("analytics.gross-profit")} (EGP)`}
+                value={<Money value={kpiData?.grossProfit?.total || 0} />}
+                sub={`${t("analytics.margin")}: ${formatNumber(kpiData?.grossProfit?.margin || 0)}%`}
                 onClick={() => openDetail("profit", t("analytics.profit-analysis"), t("analytics.profit-details"))}
-              >
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{t("analytics.gross-profit")}</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-emerald-500" />
-                    <Eye className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(kpiData?.grossProfit?.total || 0)}</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("analytics.margin")}: {formatNumber(kpiData?.grossProfit?.margin || 0)}%
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card
-                className="border-amber-500/20 cursor-pointer hover:border-amber-500/50 transition-colors group"
+              />
+              <KpiTile
+                label={`${t("analytics.cash-position")} (EGP)`}
+                value={<Money value={kpiData?.cashPosition?.total || 0} />}
+                sub={`${t("analytics.accounts-receivable")}: ${formatNumber(kpiData?.cashPosition?.ar || 0)} | ${t("analytics.accounts-payable")}: ${formatNumber(kpiData?.cashPosition?.ap || 0)}`}
                 onClick={() => openDetail("cash", t("analytics.cash-position"), t("analytics.cash-overview"))}
-              >
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{t("analytics.cash-position")}</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-amber-500" />
-                    <Eye className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(kpiData?.cashPosition?.total || 0)}</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("analytics.accounts-receivable")}: {formatNumber(kpiData?.cashPosition?.ar || 0)} |{" "}
-                    {t("analytics.accounts-payable")}: {formatNumber(kpiData?.cashPosition?.ap || 0)}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card
-                className="border-indigo-500/20 cursor-pointer hover:border-indigo-500/50 transition-colors group"
+              />
+              <KpiTile
+                label={`${t("analytics.inventory-value")} (EGP)`}
+                value={<Money value={kpiData?.inventory?.value || 0} />}
+                sub={`${t("analytics.turnover")}: ${formatNumber(kpiData?.inventory?.turnover || 0)}x`}
                 onClick={() =>
                   openDetail("inventory", t("analytics.inventory-overview"), t("analytics.inventory-details"))
                 }
-              >
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{t("analytics.inventory-value")}</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-indigo-500" />
-                    <Eye className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{formatCurrency(kpiData?.inventory?.value || 0)}</div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("analytics.turnover")}: {formatNumber(kpiData?.inventory?.turnover || 0)}x
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
+              />
+            </KpiGrid>
 
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
@@ -521,9 +482,11 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
                     <div className="flex items-center gap-2">
                       <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Avg Order Value</span>
+                      <span className="text-sm font-medium">Avg Order Value (EGP)</span>
                     </div>
-                    <span className="text-sm font-bold">{formatCurrency(kpiData?.orders?.avgValue || 0)}</span>
+                    <span className="text-sm font-bold">
+                      <Money value={kpiData?.orders?.avgValue || 0} />
+                    </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
                     <div className="flex items-center gap-2">
@@ -595,7 +558,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                     !kpiData?.orders?.pendingCount &&
                     !inventoryData?.slowMoving?.length && (
                       <div className="flex items-center justify-center p-8 text-muted-foreground">
-                        <CheckCircle className="h-5 w-5 mr-2 text-emerald-500" />
+                        <CheckCircle className="h-5 w-5 me-2 text-emerald-500" />
                         All systems operating normally
                       </div>
                     )}
@@ -746,35 +709,23 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
         {/* Inventory Analytics */}
         {visibleTabs.includes("inventory") && (
           <TabsContent value="inventory" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card className="cursor-pointer hover:border-emerald-500/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">A Items (High Value)</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-emerald-500">{inventoryData?.abcAnalysis?.aItems || 0}</div>
-                  <p className="text-xs text-muted-foreground mt-1">80% of inventory value</p>
-                </CardContent>
-              </Card>
-              <Card className="cursor-pointer hover:border-amber-500/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">B Items (Medium)</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-amber-500">{inventoryData?.abcAnalysis?.bItems || 0}</div>
-                  <p className="text-xs text-muted-foreground mt-1">15% of inventory value</p>
-                </CardContent>
-              </Card>
-              <Card className="cursor-pointer hover:border-gray-500/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">C Items (Low Value)</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{inventoryData?.abcAnalysis?.cItems || 0}</div>
-                  <p className="text-xs text-muted-foreground mt-1">5% of inventory value</p>
-                </CardContent>
-              </Card>
-            </div>
+            <KpiGrid>
+              <KpiTile
+                label="A Items (High Value)"
+                value={inventoryData?.abcAnalysis?.aItems || 0}
+                sub="80% of inventory value"
+              />
+              <KpiTile
+                label="B Items (Medium)"
+                value={inventoryData?.abcAnalysis?.bItems || 0}
+                sub="15% of inventory value"
+              />
+              <KpiTile
+                label="C Items (Low Value)"
+                value={inventoryData?.abcAnalysis?.cItems || 0}
+                sub="5% of inventory value"
+              />
+            </KpiGrid>
 
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
@@ -800,7 +751,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                       ))
                     ) : (
                       <div className="flex items-center justify-center p-8 text-muted-foreground">
-                        <CheckCircle className="h-5 w-5 mr-2 text-emerald-500" />
+                        <CheckCircle className="h-5 w-5 me-2 text-emerald-500" />
                         No high-risk items
                       </div>
                     )}
@@ -822,7 +773,9 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                             <p className="font-medium">{item.productName}</p>
                             <p className="text-xs text-muted-foreground">Stock: {item.quantity}</p>
                           </div>
-                          <Badge variant="outline">{formatCurrency(item.totalValue || 0)}</Badge>
+                          <Badge variant="outline">
+                            <Money value={item.totalValue || 0} /> EGP
+                          </Badge>
                         </div>
                       ))
                     ) : (
@@ -850,29 +803,29 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   <div className="space-y-4">
                     <div className="p-4 bg-emerald-500/10 rounded-lg">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Accounts Receivable</span>
+                        <span className="text-sm font-medium">Accounts Receivable (EGP)</span>
                         <span className="text-xl font-bold text-emerald-500">
-                          {formatCurrency(kpiData?.cashPosition?.ar || 0)}
+                          <Money value={kpiData?.cashPosition?.ar || 0} />
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">Money owed to you</p>
                     </div>
                     <div className="p-4 bg-red-500/10 rounded-lg">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Accounts Payable</span>
+                        <span className="text-sm font-medium">Accounts Payable (EGP)</span>
                         <span className="text-xl font-bold text-red-500">
-                          {formatCurrency(kpiData?.cashPosition?.ap || 0)}
+                          <Money value={kpiData?.cashPosition?.ap || 0} />
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">Money you owe</p>
                     </div>
                     <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Net Position</span>
+                        <span className="text-sm font-medium">Net Position (EGP)</span>
                         <span
                           className={`text-xl font-bold ${(kpiData?.cashPosition?.total || 0) >= 0 ? "text-emerald-500" : "text-red-500"}`}
                         >
-                          {formatCurrency(kpiData?.cashPosition?.total || 0)}
+                          <Money value={kpiData?.cashPosition?.total || 0} />
                         </span>
                       </div>
                     </div>
@@ -888,13 +841,15 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardContent>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                      <span className="text-sm font-medium">Total Revenue</span>
-                      <span className="font-bold">{formatCurrency(kpiData?.revenue?.total || 0)}</span>
+                      <span className="text-sm font-medium">Total Revenue (EGP)</span>
+                      <span className="font-bold">
+                        <Money value={kpiData?.revenue?.total || 0} />
+                      </span>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                      <span className="text-sm font-medium">Gross Profit</span>
+                      <span className="text-sm font-medium">Gross Profit (EGP)</span>
                       <span className="font-bold text-emerald-500">
-                        {formatCurrency(kpiData?.grossProfit?.total || 0)}
+                        <Money value={kpiData?.grossProfit?.total || 0} />
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
@@ -920,25 +875,12 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
         {/* Operations Analytics */}
         {visibleTabs.includes("operations") && (
           <TabsContent value="operations" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card className="border-blue-500/20">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Active Suppliers</CardTitle>
-                  <Building2 className="h-4 w-4 text-blue-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{supplierData?.scorecard?.length || 0}</div>
-                  <p className="text-xs text-muted-foreground mt-1">Verified partners</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-emerald-500/20">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Supplier Performance</CardTitle>
-                  <CheckCircle className="h-4 w-4 text-emerald-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-emerald-500">
+            <KpiGrid>
+              <KpiTile label="Active Suppliers" value={supplierData?.scorecard?.length || 0} sub="Verified partners" />
+              <KpiTile
+                label="Supplier Performance"
+                value={
+                  <>
                     {supplierData?.scorecard?.length > 0
                       ? Math.round(
                           supplierData.scorecard.reduce((sum: number, s: any) => sum + s.overallScore, 0) /
@@ -946,18 +888,14 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         )
                       : 0}
                     %
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">Average quality score</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-indigo-500/20">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">On-Time Delivery</CardTitle>
-                  <Activity className="h-4 w-4 text-indigo-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-indigo-500">
+                  </>
+                }
+                sub="Average quality score"
+              />
+              <KpiTile
+                label="On-Time Delivery"
+                value={
+                  <>
                     {supplierData?.scorecard?.length > 0
                       ? Math.round(
                           supplierData.scorecard.reduce((sum: number, s: any) => sum + s.onTimeRate, 0) /
@@ -965,27 +903,23 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                         )
                       : 0}
                     %
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">Delivery reliability</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-amber-500/20">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Procurement</CardTitle>
-                  <ShoppingCart className="h-4 w-4 text-amber-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {formatCurrency(
+                  </>
+                }
+                sub="Delivery reliability"
+              />
+              <KpiTile
+                label="Total Procurement (EGP)"
+                value={
+                  <Money
+                    value={
                       supplierData?.scorecard?.reduce((sum: number, s: any) => sum + (s.totalPurchaseValue || 0), 0) ||
-                        0,
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">Total purchase value</p>
-                </CardContent>
-              </Card>
-            </div>
+                      0
+                    }
+                  />
+                }
+                sub="Total purchase value"
+              />
+            </KpiGrid>
 
             <Card>
               <CardHeader>
@@ -1104,8 +1038,10 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                             <p className="font-bold">{supplier.orderCount}</p>
                           </div>
                           <div>
-                            <p className="text-muted-foreground">Purchase Value</p>
-                            <p className="font-bold">{formatCurrency(supplier.totalPurchaseValue || 0)}</p>
+                            <p className="text-muted-foreground">Purchase Value (EGP)</p>
+                            <p className="font-bold">
+                              <Money value={supplier.totalPurchaseValue || 0} />
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -1145,19 +1081,19 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                   <DropdownMenuLabel>Get AI Recommendations For</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => generateAIActions("sales")} className="cursor-pointer">
-                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    <ShoppingCart className="h-4 w-4 me-2" />
                     Sales Strategy
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => generateAIActions("inventory")} className="cursor-pointer">
-                    <Package className="h-4 w-4 mr-2" />
+                    <Package className="h-4 w-4 me-2" />
                     Inventory Management
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => generateAIActions("financial")} className="cursor-pointer">
-                    <DollarSign className="h-4 w-4 mr-2" />
+                    <DollarSign className="h-4 w-4 me-2" />
                     Financial Optimization
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => generateAIActions("operations")} className="cursor-pointer">
-                    <Building2 className="h-4 w-4 mr-2" />
+                    <Building2 className="h-4 w-4 me-2" />
                     Operations Efficiency
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -1219,7 +1155,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardContent>
                   <Button variant="outline" className="w-full bg-transparent" disabled={predicting}>
                     {predicting && predictions?.type === "demand" ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <Loader2 className="h-4 w-4 animate-spin me-2" />
                     ) : null}
                     Generate Forecast
                   </Button>
@@ -1240,7 +1176,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardContent>
                   <Button variant="outline" className="w-full bg-transparent" disabled={predicting}>
                     {predicting && predictions?.type === "pricing" ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <Loader2 className="h-4 w-4 animate-spin me-2" />
                     ) : null}
                     Get Recommendations
                   </Button>
@@ -1261,7 +1197,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                 <CardContent>
                   <Button variant="outline" className="w-full bg-transparent" disabled={predicting}>
                     {predicting && predictions?.type === "churn" ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <Loader2 className="h-4 w-4 animate-spin me-2" />
                     ) : null}
                     Analyze Churn Risk
                   </Button>
@@ -1344,7 +1280,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                                   )}
                                 </div>
                               </div>
-                              <div className="text-right">
+                              <div className="text-end">
                                 <p className="text-xs text-muted-foreground">Predicted Demand</p>
                                 <span className="text-lg font-bold">{pred.predictedDemand} units</span>
                                 <p className="text-xs text-muted-foreground mt-1">
@@ -1363,14 +1299,14 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                           <div key={idx} className="p-4 bg-muted/50 rounded-lg border">
                             <div className="flex items-center justify-between mb-2">
                               <p className="text-sm font-medium">{rec.productName}</p>
-                              <div className="text-right">
+                              <div className="text-end">
                                 <span className="text-sm line-through text-muted-foreground">
-                                  EGP {rec.currentPrice}
+                                  <Money value={rec.currentPrice} /> EGP
                                 </span>
-                                <span className="ml-2 text-sm font-bold text-emerald-500">
-                                  EGP {rec.suggestedPrice}
+                                <span className="ms-2 text-sm font-bold text-emerald-500">
+                                  <Money value={rec.suggestedPrice} /> EGP
                                 </span>
-                                <Badge variant="outline" className="ml-2">
+                                <Badge variant="outline" className="ms-2">
                                   {(((rec.suggestedPrice - rec.currentPrice) / rec.currentPrice) * 100).toFixed(1)}%
                                 </Badge>
                               </div>
@@ -1394,11 +1330,14 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                               </p>
                             </div>
                             <div>
-                              <p className="text-sm text-muted-foreground">Potential Revenue at Risk</p>
+                              <p className="text-sm text-muted-foreground">Potential Revenue at Risk (EGP)</p>
                               <p className="text-2xl font-bold">
-                                {formatCurrency(
-                                  predictions.data.atRisk.reduce((sum: number, c: any) => sum + (c.totalSpent || 0), 0),
-                                )}
+                                <Money
+                                  value={predictions.data.atRisk.reduce(
+                                    (sum: number, c: any) => sum + (c.totalSpent || 0),
+                                    0,
+                                  )}
+                                />
                               </p>
                             </div>
                             <div>
@@ -1414,7 +1353,7 @@ export function AnalyticsDashboard({ userRole }: AnalyticsDashboardProps) {
                                 <div>
                                   <p className="text-sm font-medium">{cust.customerName}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    Lifetime Value: {formatCurrency(cust.totalSpent || 0)}
+                                    Lifetime Value: <Money value={cust.totalSpent || 0} /> EGP
                                   </p>
                                 </div>
                                 <Badge

@@ -9,6 +9,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { formatDate } from "@/lib/format"
+import { PageHeader } from "@/components/erp/page-header"
+import { StatusBadge } from "@/components/erp/status-badge"
+import { Money } from "@/components/erp/money"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   CheckCircle,
@@ -67,7 +71,7 @@ interface WarehouseType {
 }
 
 export function GoodsReceiptModule() {
-  const { t, formatNumber, formatCurrency, language } = useI18n()
+  const { t, formatNumber, language } = useI18n()
   const { purchaseOrders, updatePurchaseOrder, products, suppliers, loadData, user, warehouses: warehousesFromContext } = useAppContext()
 
   const [showRejectModal, setShowRejectModal] = useState(false)
@@ -124,7 +128,7 @@ export function GoodsReceiptModule() {
     const daysRemaining = Math.ceil((etaDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
     return {
-      date: etaDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      date: formatDate(etaDate, language),
       daysRemaining,
     }
   }
@@ -389,13 +393,11 @@ export function GoodsReceiptModule() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">{t("gr.title")}</h1>
-        <p className="text-muted-foreground mt-2">{t("gr.description")}</p>
-        <p className="text-sm font-semibold mt-2 text-blue-600">
-          {formatNumber(approvedPOs.length)} {t("gr.awaiting-receipt")}
-        </p>
-      </div>
+      <PageHeader
+        group={t("group.inventory")}
+        title={t("module.goods-receipt")}
+        subtitle={`${formatNumber(approvedPOs.length)} ${t("gr.awaiting-receipt")}`}
+      />
 
       {approvedPOs.length === 0 ? (
         <Card className="border-yellow-200 bg-yellow-50">
@@ -451,11 +453,13 @@ export function GoodsReceiptModule() {
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold">{formatCurrency(po.total)}</p>
-                      <span className="inline-block px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-800 mt-1">
-                        {t(`po.status.${po.status}`)}
-                      </span>
+                    <div className="text-end">
+                      <p className="text-2xl font-bold">
+                        <Money value={po.total} /> EGP
+                      </p>
+                      <div className="mt-1">
+                        <StatusBadge status={po.status} label={t(`po.status.${po.status}`)} />
+                      </div>
                     </div>
                   </div>
                 </CardHeader>
@@ -470,10 +474,12 @@ export function GoodsReceiptModule() {
                               <p className="font-medium text-sm">{item.productName}</p>
                               <p className="text-xs text-muted-foreground">
                                 {t("field.quantity")}: {formatNumber(item.quantity)} {t("gr.units")} @{" "}
-                                {formatCurrency(item.unitPrice)}/{t("gr.unit")}
+                                <Money value={item.unitPrice} /> EGP/{t("gr.unit")}
                               </p>
                             </div>
-                            <p className="font-semibold text-sm">{formatCurrency(item.total)}</p>
+                            <p className="font-semibold text-sm">
+                              <Money value={item.total} /> EGP
+                            </p>
                           </div>
                         ))}
                       </div>
@@ -745,7 +751,7 @@ export function GoodsReceiptModule() {
                                   disabled={warehouses.length < 2}
                                   title={warehouses.length < 2 ? "Add more warehouses to enable splitting" : ""}
                                 >
-                                  <Plus className="w-3 h-3 mr-1" />
+                                  <Plus className="w-3 h-3 me-1" />
                                   Split to Another Warehouse
                                 </Button>
                               </div>
@@ -845,7 +851,7 @@ export function GoodsReceiptModule() {
                                     {!itemPhotos.find(p => p.productId === line.productId)?.uploaded && (
                                       <button
                                         onClick={() => removePhoto(line.productId)}
-                                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
+                                        className="absolute -top-1 -end-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
                                       >
                                         <X className="w-3 h-3" />
                                       </button>
