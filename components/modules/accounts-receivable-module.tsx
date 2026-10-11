@@ -1308,7 +1308,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         <TableCell>{getSONumber(invoice.soId, invoice)}</TableCell>
                         <TableCell>
                           <span className="px-2 py-1 rounded-full text-xs bg-primary/10 text-foreground capitalize">
-                            {paymentType}
+                            {t(`payment.${paymentType}`)}
                           </span>
                         </TableCell>
                         <TableCell>{formatDate(invoice.date, language)}</TableCell>
@@ -1726,7 +1726,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                               </div>
                               <div>
                                 <span className="text-muted-foreground">{t("field.payment")}:</span>
-                                <span className="ms-2 font-medium capitalize">{so.paymentType || t("payment.cash")}</span>
+                                <span className="ms-2 font-medium capitalize">{t(`payment.${so.paymentType || "cash"}`)}</span>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">{t("field.date")}:</span>
@@ -1784,7 +1784,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.payment-terms")}</p>
-                            <p className="font-semibold capitalize">{selectedSODetails?.paymentType || t("payment.cash")}</p>
+                            <p className="font-semibold capitalize">{t(`payment.${selectedSODetails?.paymentType || "cash"}`)}</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">{t("field.total-amount")}</p>
@@ -2018,7 +2018,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                       <p className="text-sm text-muted-foreground">
                         {t("ar.date-label")} {deliveryDate ? formatDate(deliveryDate, language) : t("label.na")}
                       </p>
-                      <p className="text-xs text-muted-foreground">{t("ar.payment-label")} {paymentType}</p>
+                      <p className="text-xs text-muted-foreground">{t("ar.payment-label")} {t(`payment.${paymentType}`)}</p>
                       {/* Show returned items warning if any */}
                       {dp.returnedQuantity && Number(dp.returnedQuantity) > 0 && (
                         <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs">

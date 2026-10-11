@@ -790,7 +790,7 @@ export function AccountsPayableModule() {
                       <TableCell>{getPONumber(invoice.poId)}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
-                          {paymentType}
+                          {t(`payment.${paymentType}`)}
                         </Badge>
                       </TableCell>
                       <TableCell>{formatDate(invoice.dueDate, language)}</TableCell>
