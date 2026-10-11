@@ -4,7 +4,7 @@ import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { moneyCell } from "@/lib/print-html"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
-import { VAT_RATE, computeInvoiceAmount, computeWholeOrderAmount, loadSoInvoicingState, round2 } from "@/lib/invoicing"
+import { VAT_RATE, computeWholeOrderAmount, dpInvoicePrintTotals, loadSoInvoicingState, round2, soDiscountBase } from "@/lib/invoicing"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 
 export const dynamic = "force-dynamic"
@@ -194,15 +194,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     //  - Whole-sales-order invoice: the stored amount (the sales order total) is authoritative.
     const soSubtotal = Number(so.subtotal) || 0
     const soDiscount = Number(so.discount_amount) || 0
-    const discountRate = soSubtotal > 0 ? soDiscount / soSubtotal : 0
     const VAT_RATE_PDF = 1 + VAT_RATE
 
-    const totalWithVat = isDpBasedInvoice
-      ? computeInvoiceAmount(rawItemsTotal, soSubtotal, soDiscount)
-      : round2(Number(invoice.amount) || 0)
-    // Rounded to cents so the piastre column never shows 100 (e.g. 899.9999 -> "899 / 100").
-    const subtotalBeforeVat = round2(isDpBasedInvoice ? rawItemsTotal * (1 - discountRate) : totalWithVat / VAT_RATE_PDF)
-    const vatAmount = round2(totalWithVat - subtotalBeforeVat)
+    let totalWithVat: number
+    let subtotalBeforeVat: number
+    let vatAmount: number
+    if (isDpBasedInvoice) {
+      const printed = dpInvoicePrintTotals(rawItemsTotal, soDiscountBase(so.sales_order_items || [], soSubtotal), soDiscount, invoice.amount)
+      ;({ totalWithVat, subtotalBeforeVat, vatAmount } = printed)
+    } else {
+      totalWithVat = round2(Number(invoice.amount) || 0)
+      // Rounded to cents so the piastre column never shows 100 (e.g. 899.9999 -> "899 / 100").
+      subtotalBeforeVat = round2(totalWithVat / VAT_RATE_PDF)
+      vatAmount = round2(totalWithVat - subtotalBeforeVat)
+    }
 
     // Fetch logo and convert to base64 for embedding in HTML
     let logoDataUrl = ""

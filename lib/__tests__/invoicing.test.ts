@@ -5,7 +5,7 @@
 //     --module commonjs --target es2020 --skipLibCheck --esModuleInterop && node --test /tmp/inv-test/__tests__/invoicing.test.js
 import test from "node:test"
 import assert from "node:assert/strict"
-import { computeInvoiceAmount, createDpInvoices, createSoInvoice, round2 } from "../invoicing"
+import { computeInvoiceAmount, createDpInvoices, createSoInvoice, dpInvoicePrintTotals, round2, soDiscountBase } from "../invoicing"
 
 // ---------------------------------------------------------------------------------------------------------
 // Minimal in-memory Supabase stand-in (only the calls lib/invoicing.ts makes)
@@ -374,4 +374,57 @@ test("existing over-invoiced SO (INV-2 priced at the whole SO, linked to DP4) ac
   assert.equal(extra.status, 409)
   assert.equal(invoicesOf(db).length, 2) // historical rows untouched
   assert.equal(invoicesOf(db)[0].amount, 1038725.19)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// Discount base: sales_orders.subtotal is stored AFTER the discount by the sales-order screen and the
+// quotation-convert dialog, and BEFORE it by the quotation approve route. The discount rate is taken from the
+// order's own (pre-discount) line items so both shapes invoice the same.
+// ---------------------------------------------------------------------------------------------------------
+const pricedSoItems = [{ so_id: 1, product_id: 7, outsourced_name: null, quantity: 100, unit_price: 10000, total: 1000000 }]
+
+test("ID1. 10% discount, subtotal stored after discount: delivering everything invoices the SO total", async () => {
+  const db = baseDb({
+    sales_orders: [{ ...SO1, subtotal: 900000, discount_amount: 100000, total: 1026000 }],
+    sales_order_items: pricedSoItems,
+  })
+  const res = await createDpInvoices(db, [1, 2, 3]) // 40 + 35 + 25 = all 100 units
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(res.body.invoices[0].amount, 1026000)
+})
+
+test("ID2. 50% discount, subtotal stored after discount: a partial delivery is half price plus VAT, not 0", async () => {
+  const db = baseDb({
+    sales_orders: [{ ...SO1, subtotal: 500000, discount_amount: 500000, total: 570000 }],
+    sales_order_items: pricedSoItems,
+  })
+  const res = await createDpInvoices(db, [1]) // 40 units = 400,000 before discount
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(res.body.invoices[0].amount, 228000)
+})
+
+test("ID3. subtotal stored before discount (quotation path): amounts unchanged", async () => {
+  const db = baseDb({
+    sales_orders: [{ ...SO1, subtotal: 1000000, discount_amount: 100000, total: 1026000 }],
+    sales_order_items: pricedSoItems,
+  })
+  const res = await createDpInvoices(db, [1])
+  assert.equal(res.body.invoices[0].amount, 410400) // 400,000 x 0.9 x 1.14, same as before the fix
+})
+
+test("ID4. soDiscountBase: line items when priced, the stored subtotal when the lines carry no price", () => {
+  assert.equal(soDiscountBase(pricedSoItems, 900000), 1000000)
+  assert.equal(soDiscountBase([{ quantity: 3, unit_price: 100 }, { quantity: 2, total: 50 }], 1), 350)
+  assert.equal(soDiscountBase([{ quantity: 40 }], 929757.6), 929757.6)
+  assert.equal(soDiscountBase([], 929757.6), 929757.6)
+})
+
+test("ID5. PDF totals: a correct invoice prints as before; one stored under the old formula prints its stored amount", () => {
+  // Correct invoice: same figures the PDF printed before the fix.
+  assert.deepEqual(dpInvoicePrintTotals(400000, 1000000, 100000, 410400), { totalWithVat: 410400, subtotalBeforeVat: 360000, vatAmount: 50400 })
+  // Invoice created before the fix on an after-discount subtotal (stored 101,333.33): the document keeps
+  // matching the ledger instead of printing a different figure.
+  assert.deepEqual(dpInvoicePrintTotals(1000000, 1000000, 100000, 101333.33), { totalWithVat: 101333.33, subtotalBeforeVat: 88888.89, vatAmount: 12444.44 })
+  // No stored amount: the computed figure.
+  assert.deepEqual(dpInvoicePrintTotals(400000, 1000000, 100000, null), { totalWithVat: 410400, subtotalBeforeVat: 360000, vatAmount: 50400 })
 })

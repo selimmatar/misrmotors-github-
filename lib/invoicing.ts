@@ -51,6 +51,30 @@ export const computeInvoiceAmount = (rawItemsTotal: number, soSubtotal: number, 
 export const itemRawTotal = (item: { total?: any; quantity?: any; unit_price?: any }) =>
   item.total != null ? Number(item.total) : Number(item.quantity || 0) * Number(item.unit_price || 0)
 
+// What the sales order's discount_amount is a share of: the order's pre-discount line total. sales_orders.subtotal
+// cannot be used for that - the sales-order screen and the quotation-convert dialog store it AFTER the discount,
+// the quotation approve route BEFORE it. The stored subtotal is only the fallback for lines that carry no price.
+export function soDiscountBase(soItems: { total?: any; quantity?: any; unit_price?: any }[], soSubtotal: number) {
+  const gross = soItems.reduce((sum, item) => sum + itemRawTotal(item), 0)
+  return gross > 0 ? gross : Number(soSubtotal) || 0
+}
+
+// Totals printed on a delivery-permit invoice. The printed total must equal the stored invoice amount: when the
+// stored amount differs from today's price (an invoice created under the earlier discount rule), the document
+// prints the stored amount and splits it into pre-VAT and VAT.
+export function dpInvoicePrintTotals(rawItemsTotal: number, discountBase: number, soDiscountAmount: number, storedAmount: number | null | undefined) {
+  const computed = computeInvoiceAmount(rawItemsTotal, discountBase, soDiscountAmount)
+  const stored = storedAmount == null ? NaN : Number(storedAmount)
+  if (Number.isFinite(stored) && Math.abs(stored - computed) > MONEY_TOLERANCE) {
+    const totalWithVat = round2(stored)
+    const subtotalBeforeVat = round2(totalWithVat / (1 + VAT_RATE))
+    return { totalWithVat, subtotalBeforeVat, vatAmount: round2(totalWithVat - subtotalBeforeVat) }
+  }
+  const discountRate = discountBase > 0 ? soDiscountAmount / discountBase : 0
+  const subtotalBeforeVat = round2(rawItemsTotal * (1 - discountRate))
+  return { totalWithVat: computed, subtotalBeforeVat, vatAmount: round2(computed - subtotalBeforeVat) }
+}
+
 // Same line matching as isSOFullyDelivered in the delivery-permits route: by product, else by name.
 // (Defined in return-lines.ts so returns and invoicing can never disagree on what "the same line" means.)
 export { lineKey }
@@ -108,7 +132,7 @@ function invoiceShare(state: SoInvoicingState, inv: SoInvoicingState["invoices"]
     const raw = state.permits
       .filter((p) => inv.permit_ids.includes(p.permit_id))
       .reduce((sum, p) => sum + p.items.reduce((s, it) => s + itemRawTotal(it), 0), 0)
-    return netInvoiceValue(raw, state.so.subtotal, state.so.discount_amount)
+    return netInvoiceValue(raw, soDiscountBase(state.soItems, state.so.subtotal), state.so.discount_amount)
   }
   return Number(inv.amount) || 0
 }
@@ -314,7 +338,7 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
   const newValue = newPermits.reduce((sum, p) => {
     const net = netByPermit.get(p.permit_id) || []
     const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)
-    return sum + netInvoiceValue(raw, state.so.subtotal, state.so.discount_amount)
+    return sum + netInvoiceValue(raw, soDiscountBase(state.soItems, state.so.subtotal), state.so.discount_amount)
   }, 0)
   // The order total less the value of what was returned (nothing was credited on existing invoices, so returned
   // goods that were already billed are not billed again).
