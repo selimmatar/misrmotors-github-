@@ -217,7 +217,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                   </div>
 
                   {/* Cost Breakdown */}
-                  <div className="grid grid-cols-3 gap-4 pt-3 border-t">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t">
                     <div className="p-3 bg-muted rounded-md text-center">
                       <p className="text-xs text-muted-foreground">{t("common.labor-cost-egp")}</p>
                       <p className="text-lg font-bold"><Money value={selectedOrder.labor_cost || 0} /></p>
@@ -253,7 +253,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
               </Card>
 
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="invoice-amount">{t("mi.invoice-amount-egp")}</Label>
                     <Input

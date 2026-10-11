@@ -580,7 +580,7 @@ ${renderTotalsBlock(printTotals)}
           {/* Customer & delivery info */}
           <div className="border rounded-lg p-4 space-y-4">
             <h3 className="font-semibold text-sm">{t("so-edit.customer-delivery")}</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t("field.customer")}</Label>
                 <Select value={customerId} onValueChange={setCustomerId} disabled={hasDeliveryHistory}>
@@ -617,9 +617,9 @@ ${renderTotalsBlock(printTotals)}
 
           {/* Items */}
           <div className="border rounded-lg p-4 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-semibold text-sm">{t("so.items")}</h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => addItem("stock")}>
                   <Package className="h-4 w-4 mr-2" />
                   {t("common.add-from-inventory")}
@@ -639,17 +639,17 @@ ${renderTotalsBlock(printTotals)}
                   const poStatus = item.id ? itemPoStatus[item.id] : undefined
                   const stockLimit = item.itemType === "stock" ? getAvailableStock(item.productId) : null
                   return (
-                    <div key={item.key} className="grid grid-cols-12 gap-3 items-end p-3 border rounded-md">
-                      <div className="col-span-1 text-center text-xs text-muted-foreground">
+                    <div key={item.key} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end p-3 border rounded-md">
+                      <div className="col-span-2 lg:col-span-12 text-xs text-muted-foreground">
                         {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
                       </div>
                       {item.itemType === "stock" && item.onDeliveryPermit ? (
-                        <div className="col-span-4 space-y-1">
+                        <div className="col-span-2 lg:col-span-6 space-y-1">
                           <Label className="text-xs">{t("field.product")}</Label>
                           <div className="text-sm font-medium pt-2">{item.productName}</div>
                         </div>
                       ) : item.itemType === "stock" ? (
-                        <div className="col-span-4 space-y-1">
+                        <div className="col-span-2 lg:col-span-6 space-y-1">
                           <Label className="text-xs">{t("field.product")}</Label>
                           <ProductSearchCombobox
                             products={products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
@@ -664,7 +664,7 @@ ${renderTotalsBlock(printTotals)}
                         </div>
                       ) : (
                         <>
-                          <div className="col-span-2 space-y-1">
+                          <div className="col-span-2 lg:col-span-3 space-y-1">
                             <Label className="text-xs">{t("common.item-name")}</Label>
                             <Input
                               value={item.productName}
@@ -672,7 +672,7 @@ ${renderTotalsBlock(printTotals)}
                               onChange={(e) => updateItem(item.key, { productName: e.target.value })}
                             />
                           </div>
-                          <div className="col-span-2 space-y-1">
+                          <div className="col-span-2 lg:col-span-3 space-y-1">
                             <Label className="text-xs">{t("field.supplier")}</Label>
                             <Select
                               value={item.supplierName || ""}
@@ -696,7 +696,7 @@ ${renderTotalsBlock(printTotals)}
                           </div>
                         </>
                       )}
-                      <div className="col-span-2 space-y-1">
+                      <div className="col-span-1 lg:col-span-1 space-y-1">
                         <Label className="text-xs">{t("quantity")}</Label>
                         <Input
                           type="number"
@@ -705,7 +705,7 @@ ${renderTotalsBlock(printTotals)}
                           onChange={(e) => updateItem(item.key, { quantity: Number(e.target.value) || 0 })}
                         />
                       </div>
-                      <div className="col-span-2 space-y-1">
+                      <div className="col-span-1 lg:col-span-2 space-y-1">
                         <Label className="text-xs">{t("field.unit-price")}</Label>
                         <Input
                           type="number"
@@ -715,13 +715,13 @@ ${renderTotalsBlock(printTotals)}
                           onChange={(e) => updateItem(item.key, { unitPrice: Number(e.target.value) || 0 })}
                         />
                       </div>
-                      <div className="col-span-2 space-y-1">
+                      <div className="col-span-1 lg:col-span-2 space-y-1">
                         <Label className="text-xs">{t("total")}</Label>
                         <div className="text-sm font-medium pt-2 whitespace-nowrap">
                           {formatCurrency(item.quantity * item.unitPrice)}
                         </div>
                       </div>
-                      <div className="col-span-1 flex justify-end">
+                      <div className="col-span-1 lg:col-span-1 flex justify-end">
                         <Button
                           variant="destructive"
                           size="icon"
@@ -740,8 +740,8 @@ ${renderTotalsBlock(printTotals)}
                         </Button>
                       </div>
                       {item.onDeliveryPermit && (
-                        <div className="col-span-12">
-                          <Badge variant="outline" className="gap-1 text-blue-700 border-blue-300 bg-blue-50">
+                        <div className="col-span-2 lg:col-span-12">
+                          <Badge variant="outline" className="gap-1 whitespace-normal h-auto text-start text-blue-700 border-blue-300 bg-blue-50">
                             {fill(t("so-edit.delivery-summary"), {
                               delivered: item.deliveredQuantity || 0,
                               returned: item.returnedQuantity || 0,
@@ -751,8 +751,8 @@ ${renderTotalsBlock(printTotals)}
                         </div>
                       )}
                       {poStatus && (
-                        <div className="col-span-12">
-                          <Badge variant="outline" className="gap-1 text-amber-700 border-amber-300 bg-amber-50">
+                        <div className="col-span-2 lg:col-span-12">
+                          <Badge variant="outline" className="gap-1 whitespace-normal h-auto text-start text-amber-700 border-amber-300 bg-amber-50">
                             <AlertTriangle className="h-3 w-3" />
                             {fill(t("so-edit.already-sourced"), { po: poStatus.poNumber, status: poStatus.status })}
                           </Badge>
