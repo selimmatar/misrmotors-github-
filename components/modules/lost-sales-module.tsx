@@ -101,7 +101,7 @@ export function LostSalesModule() {
       setSummary(summaryData)
     } catch (err) {
       console.error("Error fetching lost sales:", err)
-      setError("Failed to load lost sales data. Please try again.")
+      setError(t("lost-sales.load-failed"))
     } finally {
       setLoading(false)
     }
@@ -123,7 +123,7 @@ export function LostSalesModule() {
 
   const handleAddLostSale = async () => {
     if (!newLostSale.requestedItemName.trim()) {
-      setError("Product name is required")
+      setError(t("lost-sales.product-required"))
       return
     }
 
@@ -150,7 +150,7 @@ export function LostSalesModule() {
       await fetchData()
     } catch (err) {
       console.error("Error adding lost sale:", err)
-      setError("Failed to add lost sale. Please try again.")
+      setError(t("lost-sales.add-failed"))
     } finally {
       setLoading(false)
     }
@@ -168,7 +168,7 @@ export function LostSalesModule() {
       await fetchData()
     } catch (err) {
       console.error("Error deleting lost sale:", err)
-      setError("Failed to delete lost sale. Please try again.")
+      setError(t("lost-sales.delete-failed"))
     } finally {
       setLoading(false)
     }
