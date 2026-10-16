@@ -27,6 +27,8 @@ const PK: Record<string, string> = {
   accounts_payable: "invoice_id",
   payment_schedules: "schedule_id",
   supplier_payments: "payment_id",
+  customer_payments: "payment_id",
+  customer_credits: "credit_id",
   balance_entries: "entry_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).

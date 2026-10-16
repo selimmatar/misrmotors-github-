@@ -21,7 +21,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import type { CustomerInvoice } from "@/lib/types"
 import { isSinglePayment } from "@/lib/payment-type"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, ChevronDown, Upload, Search } from "lucide-react"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, ChevronDown, Upload, Search, Wallet } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/erp/page-header"
@@ -32,6 +32,7 @@ import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDate, formatMoney } from "@/lib/format"
+import { CustomerCreditDialog } from "@/components/payment/customer-credit-dialog"
 
 interface PaymentScheduleEntry {
   id: string
@@ -62,6 +63,10 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<CustomerInvoice | null>(null)
   const [paymentReceiptFile, setPaymentReceiptFile] = useState<File | null>(null)
+  // amount typed in the Record Payment dialog (prefilled with the installment) and an optional bank/cheque reference
+  const [paymentAmountInput, setPaymentAmountInput] = useState("")
+  const [paymentReference, setPaymentReference] = useState("")
+  const [creditDialogInvoice, setCreditDialogInvoice] = useState<CustomerInvoice | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [listFilter, setListFilter] = useState<"all" | "pending" | "partially_paid" | "paid" | "overdue">("all")
   const [widgetDialogOpen, setWidgetDialogOpen] = useState(false)
@@ -774,6 +779,9 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     receiptUrl?: string
     scheduleId?: string
     label?: string
+    referenceNumber?: string
+    /** already confirmed by the user before the receipt upload */
+    allowOverpayment?: boolean
     scope: string
   }) => {
     if (!paymentAttemptRef.current || paymentAttemptRef.current.scope !== params.scope) {
@@ -784,23 +792,55 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       paymentAttemptRef.current = { scope: params.scope, key: `ui-${unique}` }
     }
 
-    const response = await fetch("/api/accounts-receivable/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        invoiceId: params.invoiceId,
-        amount: params.amount,
-        paymentMethod: params.paymentMethod,
-        receiptUrl: params.receiptUrl,
-        scheduleId: params.scheduleId,
-        label: params.label,
-        idempotencyKey: paymentAttemptRef.current.key,
-      }),
-    })
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok || !data?.success) {
-      const error: any = new Error(data?.error || `Payment failed (HTTP ${response.status})`)
-      error.status = response.status
+    // An amount above the remaining balance needs a confirmation (the extra becomes customer credit); a payment that
+    // looks like one already recorded (same receipt or reference) is refused by the server and resent on confirm.
+    // Both refusals leave the idempotency key retryable, so the same key is resent.
+    let allowOverpayment = params.allowOverpayment === true
+    let confirmDuplicate = false
+    let response: Response | null = null
+    let data: any = {}
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await fetch("/api/accounts-receivable/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoiceId: params.invoiceId,
+          amount: params.amount,
+          paymentMethod: params.paymentMethod,
+          receiptUrl: params.receiptUrl,
+          scheduleId: params.scheduleId,
+          label: params.label,
+          ...(params.referenceNumber?.trim() ? { referenceNumber: params.referenceNumber.trim() } : {}),
+          allowOverpayment,
+          ...(confirmDuplicate ? { confirmDuplicate: true } : {}),
+          idempotencyKey: paymentAttemptRef.current.key,
+        }),
+      })
+      data = await response.json().catch(() => ({}))
+      if (data?.code === "OVERPAYMENT" && !allowOverpayment) {
+        if (!confirm(fill(t("ar.overpayment-credit-confirm"), { excess: formatMoney(Number(data.excess) || 0, language) }))) {
+          return null
+        }
+        allowOverpayment = true
+        continue
+      }
+      if (data?.code === "DUPLICATE_PAYMENT" && !confirmDuplicate) {
+        const existing = data.existingPayment || {}
+        const ok = confirm(
+          fill(t("ap.duplicate-payment-confirm"), {
+            date: existing.paymentDate ? formatDate(existing.paymentDate, language) : "-",
+            amount: formatMoney(Number(existing.amount) || 0, language),
+          }),
+        )
+        if (!ok) return null
+        confirmDuplicate = true
+        continue
+      }
+      break
+    }
+    if (!response || !response.ok || !data?.success) {
+      const error: any = new Error(data?.error || `Payment failed (HTTP ${response?.status})`)
+      error.status = response?.status
       error.partialFailure = !!data?.partialFailure
       throw error
     }
@@ -811,6 +851,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       success: true
       isDuplicate?: boolean
       invoice: { collectedAmount: number; balance: number; monthsPaid: number; status: string }
+      credit?: { id: string; amount: number }
     }
   }
 
@@ -871,6 +912,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         label: paymentLabel,
         scope: `schedule|${invoiceId}|${selectedScheduleForPayment.id}|${paymentAmount}|${selectedInvoiceForSchedule.collectedAmount || 0}|${selectedInvoiceForSchedule.monthsPaid || 0}`,
       })
+      if (!result) return // the user did not confirm
 
       await loadData()
 
@@ -904,6 +946,20 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       alert(t("ar.upload-receipt-required"))
       return
     }
+    const paymentAmount = Math.round((Number(paymentAmountInput) || 0) * 100) / 100
+    if (!(paymentAmount > 0)) {
+      alert(t("ap.enter-payment-amount"))
+      return
+    }
+    const remainingBalance =
+      Math.round(((selectedInvoiceForPayment.amount || 0) - (selectedInvoiceForPayment.collectedAmount || 0)) * 100) / 100
+    // Confirmed before the receipt is uploaded: the extra above the remaining balance becomes customer credit.
+    let allowOverpayment = false
+    if (remainingBalance > 0 && paymentAmount > remainingBalance + 0.005) {
+      const excess = Math.round((paymentAmount - remainingBalance) * 100) / 100
+      if (!confirm(fill(t("ar.overpayment-credit-confirm"), { excess: formatMoney(excess, language) }))) return
+      allowOverpayment = true
+    }
 
     if (paymentInFlightRef.current) return
     paymentInFlightRef.current = true
@@ -919,27 +975,22 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       if (!uploadResponse.ok) throw new Error("Upload failed")
       const { url: receiptUrl } = await uploadResponse.json()
 
-      // Same installment amount as before (invoice amount / installment months), rounded to cents. It is
-      // limited to the remaining balance so that rounding on the final installment cannot over-collect;
-      // the server still validates the amount and rejects anything above the remaining balance.
       const installmentMonths = getInstallmentMonths(selectedInvoiceForPayment)
-      const invoiceAmount = selectedInvoiceForPayment.amount || 0
       const collectedSoFar = selectedInvoiceForPayment.collectedAmount || 0
       const monthsPaidSoFar = selectedInvoiceForPayment.monthsPaid || 0
-      const remaining = Math.round((invoiceAmount - collectedSoFar) * 100) / 100
-      const installmentAmount = Math.round((invoiceAmount / installmentMonths) * 100) / 100
-      const isFinalInstallment = monthsPaidSoFar + 1 >= installmentMonths
-      const paymentAmount =
-        remaining > 0.005 ? (isFinalInstallment ? remaining : Math.min(installmentAmount, remaining)) : installmentAmount
 
-      await submitArPayment({
+      // The server validates the amount; anything above the remaining balance needs allowOverpayment.
+      const result = await submitArPayment({
         invoiceId: selectedInvoiceForPayment.id,
         amount: paymentAmount,
         paymentMethod: "installment_payment",
         receiptUrl,
+        referenceNumber: paymentReference,
+        allowOverpayment,
         label: `Month ${monthsPaidSoFar + 1}/${installmentMonths}`, // sent to the server and stored in the payment description: keep English
         scope: `plain|${selectedInvoiceForPayment.id}|${paymentAmount}|${collectedSoFar}|${monthsPaidSoFar}`,
       })
+      if (!result) return // the user did not confirm
 
       await loadData()
 
@@ -1046,6 +1097,17 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     return paymentSchedules.reduce((sum, s) => sum + (s.paidAmount || 0), 0)
   }
 
+  // The installment the Record Payment dialog suggests (invoice amount / installment months, rounded to cents). It is
+  // limited to the remaining balance so that rounding on the final installment cannot over-collect.
+  const suggestedPaymentAmount = (invoice: CustomerInvoice) => {
+    const installmentMonths = getInstallmentMonths(invoice)
+    const invoiceAmount = invoice.amount || 0
+    const remaining = Math.round((invoiceAmount - (invoice.collectedAmount || 0)) * 100) / 100
+    const installmentAmount = Math.round((invoiceAmount / installmentMonths) * 100) / 100
+    const isFinalInstallment = (invoice.monthsPaid || 0) + 1 >= installmentMonths
+    return remaining > 0.005 ? (isFinalInstallment ? remaining : Math.min(installmentAmount, remaining)) : installmentAmount
+  }
+
   // The row's actions, shared by the table's actions cell and the phone card.
   const renderRowActions = (invoice: CustomerInvoice) => {
     const status = getInvoiceStatus(invoice)
@@ -1070,10 +1132,26 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               e.stopPropagation()
               setSelectedInvoiceForPayment(invoice)
               setPaymentReceiptFile(null)
+              setPaymentAmountInput(String(suggestedPaymentAmount(invoice)))
+              setPaymentReference("")
               setPaymentDialogOpen(true)
             }}
           >
             <DollarSign className="w-4 h-4" />
+          </Button>
+        )}
+        {status !== "paid" && (userRole === "accountant" || userRole === "ceo") && (
+          <Button
+            aria-label={`${t("ar.credit.use")} ${invoice.invoiceNumber}`}
+            title={t("ar.credit.use")}
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation()
+              setCreditDialogInvoice(invoice)
+            }}
+          >
+            <Wallet className="w-4 h-4" />
           </Button>
         )}
         <Button
@@ -1610,6 +1688,13 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         </DialogContent>
       </Dialog>
 
+      <CustomerCreditDialog
+        open={!!creditDialogInvoice}
+        onOpenChange={(open) => !open && setCreditDialogInvoice(null)}
+        invoice={creditDialogInvoice}
+        onApplied={loadData}
+      />
+
       {/* Record Payment Dialog */}
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
         <DialogContent>
@@ -1643,6 +1728,21 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   <strong>{t("ar.progress")}:</strong> {selectedInvoiceForPayment.monthsPaid || 0}/
                   {getInstallmentMonths(selectedInvoiceForPayment)} {t("ar.months")}
                 </p>
+              </div>
+              <div>
+                <Label>{t("ar.payment-amount")}</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={paymentAmountInput}
+                  onChange={(e) => setPaymentAmountInput(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>{t("ap.reference-number")}</Label>
+                <Input maxLength={50} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} />
               </div>
               <div>
                 <Label>{t("ar.upload-receipt")}</Label>

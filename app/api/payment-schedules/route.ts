@@ -491,6 +491,9 @@ async function payLinkedReceivable(
       receiptUrl: body.receiptUrl || null,
       paymentMethod: body.paymentMethod,
       label: `Installment ${current.installment_number ?? current.schedule_id}`,
+      allowOverpayment: body.allowOverpayment === true,
+      confirmDuplicate: body.confirmDuplicate === true,
+      referenceNumber: body.referenceNumber,
     },
     { scheduleFields },
   )
@@ -506,6 +509,7 @@ async function payLinkedReceivable(
         schedule,
         invoice: result.body.invoice,
         payment: result.body.payment,
+        ...(result.body.credit ? { credit: result.body.credit } : {}),
         schedulePaid: true,
         invoiceUpdated: true,
       },

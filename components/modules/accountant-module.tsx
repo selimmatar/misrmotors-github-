@@ -25,6 +25,7 @@ import { StatusBadge } from "@/components/erp/status-badge"
 import { formatDate } from "@/lib/format"
 import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
 import { salesOrderPaymentMethod } from "@/lib/payment-type"
+import { CUSTOMER_CREDIT_PAYMENT_METHOD } from "@/lib/credit-apply"
 
 export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
   const { t, formatNumber, language } = useI18n()
@@ -66,6 +67,8 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
 
         const paymentsByCustomer: Record<string, number> = {}
         data.forEach((payment: any) => {
+          // customer credit used on an invoice is not cash: the overpayment that raised it was already counted
+          if ((payment.paymentMethod ?? payment.payment_method) === CUSTOMER_CREDIT_PAYMENT_METHOD) return
           const customerId = payment.customer_id?.toString() || payment.customerId
           if (customerId) {
             paymentsByCustomer[customerId] = (paymentsByCustomer[customerId] || 0) + Number(payment.amount)

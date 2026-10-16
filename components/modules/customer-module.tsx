@@ -18,6 +18,8 @@ import { Money } from "@/components/erp/money"
 import { formatDate } from "@/lib/format"
 import type { Customer, SalesOrder } from "@/lib/types"
 import { Plus, ChevronLeft, Search } from "lucide-react"
+import { CustomerCreditsCard } from "@/components/accounting/customer-credits-card"
+import { CUSTOMER_CREDIT_PAYMENT_METHOD } from "@/lib/credit-apply"
 
 interface CustomerPayment {
   customerId: string
@@ -62,6 +64,8 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
           const payments = await response.json()
           const paymentsByCustomer: Record<string, number> = {}
           payments.forEach((payment: any) => {
+            // cash only: customer credit used on an invoice is not new money (its overpayment was already counted)
+            if ((payment.paymentMethod ?? payment.payment_method) === CUSTOMER_CREDIT_PAYMENT_METHOD) return
             const customerId = payment.customer_id?.toString() || payment.customerId
             if (!paymentsByCustomer[customerId]) {
               paymentsByCustomer[customerId] = 0
@@ -230,6 +234,8 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                 <p className="font-semibold text-lg"><Money value={totalSpent - totalPaid} /></p>
               </div>
             </div>
+
+            <CustomerCreditsCard customerId={selectedCustomer.id} reloadKey={customerInvoices.length} />
 
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold mb-4">{t("customer.purchase-history")}</h3>

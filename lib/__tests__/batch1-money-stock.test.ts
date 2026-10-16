@@ -21,6 +21,8 @@ import * as rescheduleRoute from "../../app/api/reschedule-requests/route"
 import * as scheduleRoute from "../../app/api/payment-schedules/route"
 import * as auditRoute from "../../app/api/inventory/audit/route"
 import * as dpRoute from "../../app/api/delivery-permits/route"
+import * as applyCreditRoute from "../../app/api/accounts-receivable/apply-credit/route"
+import * as customerCreditsRoute from "../../app/api/customer-credits/route"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -809,4 +811,251 @@ test("R m11. a stock count that cannot be put back after a failure says which ro
   assert.doesNotMatch(r.body.error, /Nothing was saved/)
   assert.match(r.body.error, /could not be put back/)
   assert.deepEqual(r.body.notRestored, [{ inventoryId: 1, productId: 7, warehouseId: 1 }])
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// Phase 2. Customer credits: AR overpayment, duplicate warning, using credit on an invoice, customer card
+// ---------------------------------------------------------------------------------------------------------
+const custCredit = (credit_id: number, amount: number, extra: Row = {}): Row => ({
+  credit_id, customer_id: 3, amount, status: "active", credit_type: "overpayment", invoice_id: 9, reference_type: "ar_payment",
+  reference_id: 1, notes: "Overpayment on INV-9", used_at: null, used_in_invoice_id: null, created_at: "2026-10-01T00:00:00Z", ...extra,
+})
+const creditDb = (credits: Row[] = [custCredit(1, 80)], invoice: Row = {}) => {
+  const db = new FakeDb({
+    accounts_receivable: [arRow(invoice), arRow({ invoice_id: 9, invoice_number: "INV-9", status: "paid", collected_amount: 300 })],
+    customer_credits: credits, customer_payments: [], balance_entries: [], idempotency_log: [], payment_schedules: [],
+  })
+  useDb(db)
+  return db
+}
+const applyCredit = (credits: Row[], key = apKey(), invoiceId = 5) =>
+  call(applyCreditRoute.POST, "POST", { invoiceId, idempotencyKey: key, credits })
+const ar5 = (db: FakeDb) => db.tables.accounts_receivable.find((r) => r.invoice_id === 5)!
+
+test("P2 B. an AR payment above the balance is refused with OVERPAYMENT until it is confirmed; nothing is written", async () => {
+  const db = creditDb([], { collected_amount: 250, status: "partially_paid" })
+  const r = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 80, idempotencyKey: apKey() })
+  assert.equal(r.status, 409)
+  assert.equal(r.body.code, "OVERPAYMENT")
+  assert.equal(r.body.remaining, 50)
+  assert.equal(r.body.excess, 30)
+  assert.match(r.body.error, /exceeds/)
+  assert.equal(ar5(db).collected_amount, 250)
+  for (const t of ["customer_payments", "balance_entries", "customer_credits"]) assert.equal(db.tables[t].length, 0, t)
+})
+
+test("P2 B. a confirmed AR overpayment caps the invoice, keeps the full cash and saves the excess as customer credit", async () => {
+  const db = creditDb([], { collected_amount: 250, status: "partially_paid" })
+  const r = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 80, idempotencyKey: apKey(), allowOverpayment: true })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(ar5(db).collected_amount, 300)
+  assert.equal(ar5(db).status, "paid")
+  assert.equal(db.tables.customer_payments[0].amount, 80)
+  assert.equal(db.tables.balance_entries[0].amount, 80)
+  assert.equal(db.tables.customer_credits.length, 1)
+  const credit = db.tables.customer_credits[0]
+  assert.equal(credit.customer_id, 3)
+  assert.equal(credit.amount, 30)
+  assert.equal(credit.status, "active")
+  assert.equal(credit.credit_type, "overpayment")
+  assert.equal(credit.reference_type, "ar_payment")
+  assert.equal(credit.reference_id, db.tables.customer_payments[0].payment_id)
+  assert.equal(credit.invoice_id, 5)
+  assert.equal(credit.notes, "Overpayment on INV-5")
+  assert.deepEqual(r.body.credit, { id: String(credit.credit_id), amount: 30 })
+})
+
+test("P2 B. a failed customer credit insert is a partial failure and the key is parked", async () => {
+  const db = creditDb([], { collected_amount: 250, status: "partially_paid" })
+  db.failOn["customer_credits:insert"] = "credits down"
+  const key = apKey()
+  const r = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 80, idempotencyKey: key, allowOverpayment: true })
+  assert.equal(r.status, 500)
+  assert.equal(r.body.partialFailure, true)
+  assert.equal(r.body.failedStep, "customer_credits")
+  const again = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 80, idempotencyKey: key, allowOverpayment: true })
+  assert.equal(again.status, 409)
+  assert.equal(db.tables.customer_payments.length, 1)
+})
+
+test("P2 B. a schedule payment that overpays behaves the same; the schedule gets only the invoice part", async () => {
+  const db = linkedScheduleDb(undefined, { collected_amount: 250, status: "partially_paid" })
+  db.tables.customer_credits = []
+  const refused = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 100, invoiceId: 5 })
+  assert.equal(refused.status, 409)
+  assert.equal(refused.body.code, "OVERPAYMENT")
+  const r = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 100, invoiceId: 5, allowOverpayment: true })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.accounts_receivable[0].collected_amount, 300)
+  assert.equal(db.tables.payment_schedules[0].paid_amount, 50)
+  assert.equal(db.tables.customer_payments[0].amount, 100)
+  assert.equal(db.tables.customer_credits[0].amount, 50)
+  assert.equal(r.body.credit.amount, 50)
+})
+
+test("P2 B. a payment with a receipt or reference already on the invoice needs confirmDuplicate", async () => {
+  const db = creditDb([])
+  db.tables.customer_payments.push({ payment_id: 41, invoice_id: 5, amount: 50, payment_date: "2026-10-01", receipt_url: "https://blob.test/r1.pdf", reference_number: "BANK-77" })
+  for (const extra of [{ receiptUrl: "https://blob.test/r1.pdf" }, { referenceNumber: "BANK-77" }]) {
+    const r = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 50, idempotencyKey: apKey(), ...extra })
+    assert.equal(r.status, 409, JSON.stringify(extra))
+    assert.equal(r.body.code, "DUPLICATE_PAYMENT")
+    assert.deepEqual(r.body.existingPayment, { id: "41", paymentDate: "2026-10-01", amount: 50 })
+  }
+  assert.equal(db.tables.customer_payments.length, 1)
+  const ok = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 50, idempotencyKey: apKey(), referenceNumber: "BANK-77", confirmDuplicate: true })
+  assert.equal(ok.status, 200, JSON.stringify(ok.body))
+  assert.equal(db.tables.customer_payments[1].reference_number, "BANK-77")
+  // a payment with neither a receipt nor a reference is never treated as a duplicate
+  assert.equal((await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 50, idempotencyKey: apKey() })).status, 200)
+})
+
+test("P2 C. using part of a credit splits it, raises the invoice, writes one customer_credit payment and no ledger row", async () => {
+  const db = creditDb([custCredit(1, 80), custCredit(2, 20)])
+  const r = await applyCredit([{ creditId: 1, amount: 50 }, { creditId: 2, amount: 20 }])
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(r.body.applied, 70)
+  assert.equal(ar5(db).collected_amount, 70)
+  assert.equal(ar5(db).status, "partially_paid")
+  assert.equal(ar5(db).months_paid, 0)
+  const [c1, c2, rest] = db.tables.customer_credits
+  assert.deepEqual([c1.status, c1.amount, c1.used_in_invoice_id], ["used", 50, 5])
+  assert.ok(c1.used_at)
+  assert.deepEqual([c2.status, c2.amount, c2.used_in_invoice_id], ["used", 20, 5])
+  assert.deepEqual([rest.status, rest.amount, rest.customer_id, rest.used_in_invoice_id], ["active", 30, 3, null])
+  assert.equal(rest.notes, "Remainder of credit #1 after 50.00 was applied to INV-5")
+  assert.equal(db.tables.customer_payments.length, 1)
+  assert.equal(db.tables.customer_payments[0].payment_method, "customer_credit")
+  assert.equal(db.tables.customer_payments[0].amount, 70)
+  assert.equal(db.tables.balance_entries.length, 0)
+})
+
+test("P2 C. credits above the remaining balance, of another customer or already used are refused; nothing changes", async () => {
+  const cases: [Row[], Row[], string][] = [
+    [[custCredit(1, 80)], [{ creditId: 1, amount: 60 }], "CREDIT_EXCEEDS_TOTAL"],
+    [[custCredit(1, 80, { customer_id: 4 })], [{ creditId: 1, amount: 10 }], "CREDIT_NOT_AVAILABLE"],
+    [[custCredit(1, 80, { status: "used" })], [{ creditId: 1, amount: 10 }], "CREDIT_NOT_AVAILABLE"],
+    [[custCredit(1, 8)], [{ creditId: 1, amount: 10 }], "CREDIT_AMOUNT_INVALID"],
+  ]
+  for (const [credits, selection, code] of cases) {
+    const db = creditDb(credits, { collected_amount: 250, status: "partially_paid" })
+    const before = JSON.stringify(db.tables.customer_credits)
+    const r = await applyCredit(selection)
+    assert.equal(r.status, 409, code)
+    assert.equal(r.body.code, code)
+    assert.equal(JSON.stringify(db.tables.customer_credits), before, code)
+    assert.equal(ar5(db).collected_amount, 250, code)
+    assert.equal(db.tables.customer_payments.length, 0, code)
+  }
+  const db = creditDb()
+  assert.equal((await applyCredit([])).status, 400)
+  assert.equal(db.tables.customer_credits[0].status, "active")
+})
+
+test("P2 C. a credit used elsewhere between read and write is refused and the other credits are put back", async () => {
+  const db = creditDb([custCredit(1, 40), custCredit(2, 40)])
+  let n = 0
+  const from = db.from.bind(db)
+  ;(db as any).from = (name: string) => {
+    if (name === "customer_credits" && ++n === 3) db.tables.customer_credits[1].amount = 39 // before the 2nd reserve
+    return from(name)
+  }
+  const r = await applyCredit([{ creditId: 1, amount: 40 }, { creditId: 2, amount: 39 }])
+  assert.equal(r.status, 409, JSON.stringify(r.body))
+  assert.equal(db.tables.customer_credits[0].status, "active")
+  assert.equal(db.tables.customer_credits[0].amount, 40)
+  assert.equal(db.tables.customer_credits[0].used_in_invoice_id, null)
+  assert.equal(ar5(db).collected_amount, 0)
+})
+
+test("P2 C. a failed invoice update or payment row puts the credits (and the invoice) back", async () => {
+  for (const op of ["accounts_receivable:update", "customer_payments:insert"]) {
+    const db = creditDb([custCredit(1, 80)])
+    if (op === "accounts_receivable:update") db.failOn[op] = "down"
+    else db.failOn[op] = "down"
+    const key = apKey()
+    const r = await applyCredit([{ creditId: 1, amount: 50 }], key)
+    assert.equal(r.status, 500, op)
+    assert.notEqual(r.body.partialFailure, true, op)
+    assert.equal(db.tables.customer_credits.length, 1, op)
+    assert.deepEqual([db.tables.customer_credits[0].status, db.tables.customer_credits[0].amount], ["active", 80], op)
+    assert.equal(ar5(db).collected_amount, 0, op)
+    assert.equal(ar5(db).status, "pending", op)
+    assert.equal(db.tables.customer_payments.length, 0, op)
+    // the key was rejected before anything stayed written, so it can be retried
+    delete db.failOn[op]
+    assert.equal((await applyCredit([{ creditId: 1, amount: 50 }], key)).status, 200, op)
+  }
+})
+
+test("P2 C. applying the same credit request twice is idempotent", async () => {
+  const db = creditDb([custCredit(1, 80)])
+  const key = apKey()
+  assert.equal((await applyCredit([{ creditId: 1, amount: 80 }], key)).status, 200)
+  const again = await applyCredit([{ creditId: 1, amount: 80 }], key)
+  assert.equal(again.status, 200)
+  assert.equal(again.body.isDuplicate, true)
+  assert.equal(ar5(db).collected_amount, 80)
+  assert.equal(db.tables.customer_payments.length, 1)
+  assert.equal(db.tables.customer_credits.length, 1)
+})
+
+test("P2 C. a credit cannot be used on a paid invoice", async () => {
+  const db = creditDb([custCredit(1, 80)], { collected_amount: 300, status: "paid" })
+  const r = await applyCredit([{ creditId: 1, amount: 10 }])
+  assert.equal(r.status, 409)
+  assert.equal(db.tables.customer_credits[0].status, "active")
+})
+
+test("P2 D. GET customer-credits lists a customer's open credits and, with include=used, the used ones with their invoice", async () => {
+  const db = creditDb([
+    custCredit(1, 80),
+    custCredit(2, 20, { status: "used", used_in_invoice_id: 5, used_at: "2026-10-05T00:00:00Z" }),
+    custCredit(3, 15, { customer_id: 4 }),
+  ])
+  void db
+  const open = await call(customerCreditsRoute.GET, "GET", undefined, "http://test.local/api/customer-credits?customer_id=3")
+  assert.equal(open.status, 200)
+  assert.deepEqual(open.body.map((c: any) => c.credit_id), [1])
+  assert.equal(open.body[0].invoice_number, "INV-9")
+  assert.equal(open.body[0].unapplied, true)
+  const all = await call(customerCreditsRoute.GET, "GET", undefined, "http://test.local/api/customer-credits?customer_id=3&include=used")
+  assert.deepEqual(all.body.map((c: any) => c.credit_id), [1, 2])
+  assert.equal(all.body[1].used_in_invoice_number, "INV-5")
+  assert.equal(all.body[1].unapplied, false)
+  const every = await call(customerCreditsRoute.GET, "GET", undefined, "http://test.local/api/customer-credits")
+  assert.deepEqual(every.body.map((c: any) => c.credit_id).sort(), [1, 3])
+  assert.equal((await call(customerCreditsRoute.GET, "GET", undefined, "http://test.local/api/customer-credits?customer_id=x")).status, 400)
+})
+
+test("P2 UI. the receivables screen confirms an overpayment and a duplicate, and offers the customer credit dialog", () => {
+  const ar = src("components/modules/accounts-receivable-module.tsx")
+  assert.match(ar, /ar\.overpayment-credit-confirm/)
+  assert.match(ar, /code === "OVERPAYMENT"/)
+  assert.match(ar, /code === "DUPLICATE_PAYMENT"/)
+  assert.match(ar, /confirmDuplicate/)
+  assert.match(ar, /referenceNumber/)
+  assert.match(ar, /<CustomerCreditDialog/)
+  const dialog = src("components/payment/customer-credit-dialog.tsx")
+  assert.match(dialog, /\/api\/accounts-receivable\/apply-credit/)
+  assert.match(dialog, /\/api\/customer-credits\?customer_id=/)
+  assert.match(dialog, /idempotencyKey/)
+  // the supplier PO form and the customer dialog share one credit list
+  assert.match(src("components/supplier/supplier-credit-picker.tsx"), /CreditPickerList/)
+  assert.match(dialog, /CreditPickerList/)
+})
+
+test("P2 UI. customer credit is never counted as cash paid; the customer card lists open and used credits", () => {
+  for (const file of ["components/modules/accountant-module.tsx", "components/modules/customer-module.tsx"]) {
+    assert.match(src(file), /=== CUSTOMER_CREDIT_PAYMENT_METHOD\) return/, file)
+  }
+  assert.match(src("components/modules/customer-module.tsx"), /<CustomerCreditsCard/)
+  const card = src("components/accounting/customer-credits-card.tsx")
+  assert.match(card, /include=used/)
+  assert.match(card, /parseRemainderNote/)
+  assert.match(card, /customer\.credit-used-on-invoice/)
+  const i18n = src("lib/i18n-context.tsx")
+  for (const key of ["ar.overpayment-credit-confirm", "ar.credit.use", "ar.credit.apply", "customer.credits", "customer.credit-remainder-note", "customer.open-credit"]) {
+    assert.equal(i18n.split(`"${key}":`).length - 1, 2, key)
+  }
 })

@@ -4,7 +4,7 @@
 //
 // recordArPayment() owns, in this order:
 //   1. an idempotency claim (idempotency_log, plain INSERT guarded by the table's UNIQUE constraint)
-//   2. validation (invoice exists, not already paid, amount valid, amount <= remaining balance)
+//   2. validation (invoice exists, not already paid, amount valid, amount <= remaining balance unless confirmed)
 //   3. a guarded UPDATE of accounts_receivable (compare-and-swap on the previously read collected_amount and amount)
 //   4. the customer_payments row, the balance_entries row and (for a persisted schedule) the schedule row
 //
@@ -12,6 +12,13 @@
 // keeps the invoice from being over-collected; if a later step fails the failure is reported as a partial
 // failure (HTTP 500, partialFailure: true) and the idempotency row is parked as `partial_failure` so the
 // same key cannot be replayed into a second AR increase.
+//
+// Duplicates: a payment whose receipt or reference (referenceNumber) matches a payment already recorded on the
+// invoice is refused with 409 DUPLICATE_PAYMENT unless the request carries confirmDuplicate: true.
+// Overpayments: a payment above the remaining balance is refused with 409 OVERPAYMENT unless the request carries
+// allowOverpayment: true. Confirmed, the invoice is capped at its amount (status paid), the payment and ledger rows
+// keep the full cash amount, and the excess becomes one active customer_credits row (credit_type "overpayment").
+import { computeArStatus } from "./ar-status"
 
 export type ArPaymentResult = { status: number; body: Record<string, any> }
 export type ArPaymentOptions = {
@@ -36,7 +43,7 @@ function parseAmount(raw: unknown): number | null {
   return null
 }
 
-function mapInvoice(row: any) {
+export function mapArInvoice(row: any) {
   const amount = Number(row.amount) || 0
   const collected = Number(row.collected_amount) || 0
   return {
@@ -79,6 +86,12 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
   const paymentMethod =
     typeof body?.paymentMethod === "string" && body.paymentMethod.trim() ? body.paymentMethod.trim() : "bank_transfer"
   const label = typeof body?.label === "string" && body.label.trim() ? body.label.trim().slice(0, 80) : null
+  const allowOverpayment = body?.allowOverpayment === true
+  const confirmDuplicate = body?.confirmDuplicate === true
+  // Optional bank / cheque reference typed by the user. It is checked for duplicates and saved as the payment's
+  // reference_number; without it the generated <invoice>-PAY-<n> reference is used.
+  const clientReference = typeof body?.referenceNumber === "string" ? body.referenceNumber.trim() : ""
+  if (clientReference.length > 50) return fail(400, "referenceNumber must be at most 50 characters")
 
   // scheduleId: only a persisted schedule (integer id) is written to payment_schedules; client-side
   // generated ids ("gen-...") are ignored here.
@@ -123,7 +136,7 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
           success: true,
           isDuplicate: true,
           message: "This payment was already recorded",
-          invoice: current ? mapInvoice(current) : null,
+          invoice: current ? mapArInvoice(current) : null,
         },
       }
     }
@@ -167,6 +180,29 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
   let invoiceUpdated = false
 
   try {
+    // ---- Duplicate check: same receipt or same reference already recorded on this invoice ------------
+    if (!confirmDuplicate && (receiptUrl || clientReference)) {
+      const { data: existing, error: existingError } = await supabase
+        .from("customer_payments")
+        .select("payment_id, payment_date, amount, receipt_url, reference_number")
+        .eq("invoice_id", invoiceId)
+      if (existingError) {
+        console.error("AR payment - existing payments read failed:", existingError.message)
+        return await reject(500, "Could not check the existing payments. Nothing was recorded.")
+      }
+      const match = (existing || []).find(
+        (p: any) =>
+          (receiptUrl !== null && p.receipt_url && String(p.receipt_url).trim() === receiptUrl.trim()) ||
+          (clientReference !== "" && p.reference_number && String(p.reference_number).trim() === clientReference),
+      )
+      if (match) {
+        return await reject(409, "This looks like a payment that is already recorded on this invoice", {
+          code: "DUPLICATE_PAYMENT",
+          existingPayment: { id: match.payment_id?.toString(), paymentDate: match.payment_date, amount: Number(match.amount) || 0 },
+        })
+      }
+    }
+
     // ---- Optional persisted schedule: validate before touching the invoice ----------------------
     let schedule: any = null
     if (scheduleId !== null) {
@@ -185,6 +221,7 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
     let invoice: any = null
     let newCollected = 0
     let newMonthsPaid = 0
+    let excess = 0
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const { data: row, error: readError } = await supabase
@@ -207,15 +244,19 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
       if (row.status === "paid" || remaining <= CURRENCY_TOLERANCE) {
         return await reject(409, "This invoice is already fully paid", { remaining: Math.max(remaining, 0) })
       }
-      if (paymentAmount > remaining + CURRENCY_TOLERANCE) {
-        return await reject(409, `Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}`, {
-          remaining,
-        })
+      const isOverpayment = paymentAmount > remaining + CURRENCY_TOLERANCE
+      if (isOverpayment && !allowOverpayment) {
+        return await reject(
+          409,
+          `Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}. Confirm it to save the extra as customer credit.`,
+          { code: "OVERPAYMENT", remaining, excess: round2(paymentAmount - remaining), overpayment: true },
+        )
       }
 
-      newCollected = round2(collected + paymentAmount)
+      // The invoice never goes above its amount; the excess is saved as customer credit after the payment rows.
+      excess = isOverpayment ? round2(paymentAmount - remaining) : 0
+      newCollected = isOverpayment ? invoiceAmount : round2(collected + paymentAmount)
       newMonthsPaid = (row.months_paid || 0) + 1
-      const isFullyPaid = round2(invoiceAmount - newCollected) <= CURRENCY_TOLERANCE
 
       // UPDATE ... WHERE invoice_id = ? AND collected_amount = <value we just read>
       let update = supabase
@@ -223,7 +264,7 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
         .update({
           collected_amount: newCollected,
           months_paid: newMonthsPaid,
-          status: isFullyPaid ? "paid" : "partially_paid",
+          status: computeArStatus({ amount: invoiceAmount, collectedAmount: newCollected }),
           last_payment_at: new Date().toISOString(),
         })
         .eq("invoice_id", invoiceId)
@@ -254,18 +295,18 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
     // ---- From here the invoice HAS been increased. Failures below are partial failures. -------------
     invoiceUpdated = true
     const invoiceNumber: string = invoice.invoice_number
-    const referenceNumber = `${invoiceNumber}-PAY-${newMonthsPaid}`
+    const referenceNumber = clientReference || `${invoiceNumber}-PAY-${newMonthsPaid}`
     const description = `AR Payment - ${invoiceNumber} (Payment ${newMonthsPaid}${label ? `: ${label}` : ""})`
     const completed: string[] = ["accounts_receivable"]
 
     const partial = async (step: string, message: string) => {
-      const detail = `PARTIAL: invoice ${invoiceId} collected_amount increased by ${paymentAmount.toFixed(2)} (months_paid ${newMonthsPaid}) but ${step} failed: ${message}. Completed: ${completed.join(", ")}`
+      const detail = `PARTIAL: invoice ${invoiceId} collected_amount increased by ${round2(paymentAmount - excess).toFixed(2)} (months_paid ${newMonthsPaid}) but ${step} failed: ${message}. Completed: ${completed.join(", ")}`
       console.error("AR payment -", detail)
       await finish("partial_failure", detail)
       return fail(
         500,
         `The payment was applied to the invoice but "${step}" could not be recorded. Do not repeat the payment; contact an administrator.`,
-        { partialFailure: true, completed, failedStep: step, invoice: mapInvoice(invoice) },
+        { partialFailure: true, completed, failedStep: step, invoice: mapArInvoice(invoice) },
       )
     }
 
@@ -297,6 +338,30 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
     if (balanceError) return await partial("balance_entries", balanceError.message)
     completed.push("balance_entries")
 
+    // Confirmed overpayment: the excess is an open credit for this customer, usable on a later invoice.
+    let credit: { id: string | undefined; amount: number } | undefined
+    if (excess > CURRENCY_TOLERANCE) {
+      const note = `Overpayment on ${invoiceNumber}`
+      const { data: creditRow, error: creditError } = await supabase
+        .from("customer_credits")
+        .insert({
+          customer_id: invoice.customer_id,
+          amount: excess,
+          status: "active",
+          credit_type: "overpayment",
+          reference_type: "ar_payment",
+          reference_id: paymentRow?.payment_id ?? null,
+          invoice_id: invoiceId,
+          description: note,
+          notes: note,
+        })
+        .select("credit_id")
+        .single()
+      if (creditError) return await partial("customer_credits", creditError.message)
+      completed.push("customer_credits")
+      credit = { id: creditRow?.credit_id?.toString(), amount: excess }
+    }
+
     if (schedule) {
       // Compare-and-swap on the schedule's paid_amount (re-read once when another payment of the same schedule got
       // there first), so two payments of one schedule are both added.
@@ -312,7 +377,8 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
           if (freshError || !fresh) return await partial("payment_schedules", freshError?.message || "schedule not found")
           scheduleRow = fresh
         }
-        const newPaid = round2((Number(scheduleRow.paid_amount) || 0) + paymentAmount)
+        // only the part that went to the invoice counts on the schedule (the excess is customer credit)
+        const newPaid = round2((Number(scheduleRow.paid_amount) || 0) + paymentAmount - excess)
         const scheduleDone = newPaid >= round2(Number(scheduleRow.amount) || 0) - CURRENCY_TOLERANCE
         let scheduleUpdate = supabase
           .from("payment_schedules")
@@ -343,13 +409,14 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
       status: 200,
       body: {
         success: true,
-        invoice: mapInvoice(invoice),
+        invoice: mapArInvoice(invoice),
         payment: {
           id: paymentRow?.payment_id?.toString(),
           amount: paymentAmount,
           referenceNumber,
           paymentMethod,
         },
+        ...(credit ? { credit } : {}),
       },
     }
   } catch (error: any) {
