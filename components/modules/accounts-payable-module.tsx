@@ -17,7 +17,7 @@ import { StatusBadge } from "@/components/erp/status-badge"
 import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { formatDate, formatMoney } from "@/lib/format"
-import { Checkbox } from "@/components/ui/checkbox"
+import { fill } from "@/lib/i18n-format"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   DollarSign,
@@ -72,7 +72,7 @@ export function AccountsPayableModule() {
   // Payment form (shared by both payment dialogs). The idempotency key is generated once per dialog open.
   const [payAmount, setPayAmount] = useState("")
   const [payMethod, setPayMethod] = useState<"cash" | "cheque" | "bank_transfer">("bank_transfer")
-  const [payAllowOverpayment, setPayAllowOverpayment] = useState(false)
+  const [payReference, setPayReference] = useState("")
   const payKeyRef = useRef<string>("")
   const submittingRef = useRef(false)
   // Removed: const [invoiceUploadDialogOpen, setInvoiceUploadDialogOpen] = useState(false)
@@ -418,18 +418,27 @@ export function AccountsPayableModule() {
   const openPaymentForm = (defaultAmount: number) => {
     setPayAmount(String(Math.max(Math.round(defaultAmount * 100) / 100, 0)))
     setPayMethod("bank_transfer")
-    setPayAllowOverpayment(false)
+    setPayReference("")
     payKeyRef.current = `apui_${crypto.randomUUID()}`
   }
 
   // Both dialogs pay through the server endpoint, which validates the amount, applies it to the invoice
   // and writes the ledger rows. The browser never computes paid amounts or statuses.
-  const submitPayment = async (invoiceId: string, file: File, scheduleId?: string): Promise<any | null> => {
+  // An amount above the remaining balance is confirmed first (the extra becomes supplier credit); a payment that
+  // looks like one already recorded (same receipt or reference) is refused by the server and resent on confirm.
+  const submitPayment = async (invoiceId: string, file: File, remaining: number, scheduleId?: string): Promise<any | null> => {
     if (submittingRef.current) return null
     const amount = Number(payAmount)
     if (!Number.isFinite(amount) || amount <= 0) {
       alert(t("ap.enter-payment-amount"))
       return null
+    }
+    const confirmOverpayment = (excess: number) =>
+      confirm(fill(t("ap.overpayment-credit-confirm"), { excess: formatMoney(excess, language) }))
+    let allowOverpayment = false
+    if (remaining > 0 && amount > remaining + 0.005) {
+      if (!confirmOverpayment(Math.round((amount - remaining) * 100) / 100)) return null
+      allowOverpayment = true
     }
     submittingRef.current = true
     setIsUploading(true)
@@ -441,27 +450,50 @@ export function AccountsPayableModule() {
       if (!uploadResponse.ok) throw new Error("Receipt upload failed")
       const { url: receiptUrl } = await uploadResponse.json()
 
-      const response = await fetch("/api/accounts-payable/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invoiceId: Number(invoiceId),
-          amount,
-          paymentMethod: payMethod,
-          receiptUrl,
-          allowOverpayment: payAllowOverpayment,
-          // only saved (numeric-id) schedule rows are sent; generated "gen-" rows have no database row
-          ...(scheduleId && /^\d+$/.test(scheduleId) ? { scheduleId: Number(scheduleId) } : {}),
-          idempotencyKey: payKeyRef.current,
-        }),
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) {
+      let confirmDuplicate = false
+      // at most one resend per confirmation (overpayment, duplicate)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const response = await fetch("/api/accounts-payable/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            invoiceId: Number(invoiceId),
+            amount,
+            paymentMethod: payMethod,
+            receiptUrl,
+            ...(payReference.trim() ? { referenceNumber: payReference.trim() } : {}),
+            allowOverpayment,
+            ...(confirmDuplicate ? { confirmDuplicate: true } : {}),
+            // only saved (numeric-id) schedule rows are sent; generated "gen-" rows have no database row
+            ...(scheduleId && /^\d+$/.test(scheduleId) ? { scheduleId: Number(scheduleId) } : {}),
+            idempotencyKey: payKeyRef.current,
+          }),
+        })
+        const result = await response.json().catch(() => ({}))
+        if (response.ok) return result
+        // the refusals below leave the idempotency key retryable, so the same key is resent
+        if (result.code === "OVERPAYMENT" && !allowOverpayment) {
+          if (!confirmOverpayment(Number(result.excess) || 0)) return null
+          allowOverpayment = true
+          continue
+        }
+        if (result.code === "DUPLICATE_PAYMENT" && !confirmDuplicate) {
+          const existing = result.existingPayment || {}
+          const ok = confirm(
+            fill(t("ap.duplicate-payment-confirm"), {
+              date: existing.paymentDate ? formatDate(existing.paymentDate, language) : "-",
+              amount: formatMoney(Number(existing.amount) || 0, language),
+            }),
+          )
+          if (!ok) return null
+          confirmDuplicate = true
+          continue
+        }
         alert(result.error || t("message.error"))
         if (result.partialFailure) await loadData()
         return null
       }
-      return result
+      return null
     } catch (error) {
       console.error("Error recording payment:", error)
       alert(t("message.error"))
@@ -480,7 +512,8 @@ export function AccountsPayableModule() {
       return
     }
 
-    const result = await submitPayment(String(invoiceId), schedulePaymentFile, selectedScheduleForPayment.id)
+    const remaining = (selectedInvoiceForSchedule.amount || 0) - (selectedInvoiceForSchedule.paidAmount || 0)
+    const result = await submitPayment(String(invoiceId), schedulePaymentFile, remaining, selectedScheduleForPayment.id)
     if (!result) return
 
     const inv = result.invoice
@@ -507,7 +540,8 @@ export function AccountsPayableModule() {
 
   const handleRecordPayment = async () => {
     if (!selectedInvoiceForPayment || !paymentReceiptFile) return
-    const result = await submitPayment(selectedInvoiceForPayment.id, paymentReceiptFile)
+    const remaining = (selectedInvoiceForPayment.amount || 0) - (selectedInvoiceForPayment.paidAmount || 0)
+    const result = await submitPayment(selectedInvoiceForPayment.id, paymentReceiptFile, remaining)
     if (!result) return
     await loadData()
     setPaymentDialogOpen(false)
@@ -1068,13 +1102,9 @@ export function AccountsPayableModule() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="ap-allow-overpayment"
-                  checked={payAllowOverpayment}
-                  onCheckedChange={(v) => setPayAllowOverpayment(v === true)}
-                />
-                <Label htmlFor="ap-allow-overpayment">{t("ap.advance-overpayment")}</Label>
+              <div className="space-y-2">
+                <Label>{t("ap.reference-number")}</Label>
+                <Input value={payReference} maxLength={50} onChange={(e) => setPayReference(e.target.value)} />
               </div>
 
               <div className="space-y-2">
@@ -1137,13 +1167,9 @@ export function AccountsPayableModule() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="ap-allow-overpayment"
-                  checked={payAllowOverpayment}
-                  onCheckedChange={(v) => setPayAllowOverpayment(v === true)}
-                />
-                <Label htmlFor="ap-allow-overpayment">{t("ap.advance-overpayment")}</Label>
+              <div className="space-y-2">
+                <Label>{t("ap.reference-number")}</Label>
+                <Input value={payReference} maxLength={50} onChange={(e) => setPayReference(e.target.value)} />
               </div>
 
               <div className="space-y-2">

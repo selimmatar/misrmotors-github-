@@ -7,9 +7,17 @@
 //   4. the supplier_payments row and the balance_entries row (both results are checked)
 //
 // Steps 3 and 4 are not one database transaction. The guarded update in step 3 keeps two concurrent payments from
-// both being applied against the same balance; if step 4 fails the failure is reported as a partial failure
-// (HTTP 500, partialFailure: true) and the idempotency row is parked as `partial_failure`, so the same key can
-// never be replayed into a second increase. accounts_payable.balance is a generated column and is never written.
+// both being applied against the same balance. If the supplier_payments insert fails the invoice update is put back
+// (guarded on the values just written) and the key stays retryable; any other failure in step 4 is reported as a
+// partial failure (HTTP 500, partialFailure: true) and the idempotency row is parked as `partial_failure`, so the
+// same key can never be replayed into a second increase. accounts_payable.balance is a generated column and is
+// never written.
+//
+// Duplicates (BIZ-P-11): a payment whose receipt_url, or non-empty reference number, is already on a supplier_payments
+// row of the same invoice is refused with 409 DUPLICATE_PAYMENT unless the request carries confirmDuplicate: true.
+// Overpayments: a payment above the remaining balance is refused with 409 OVERPAYMENT unless the request carries
+// allowOverpayment: true. Confirmed, the invoice is capped at its amount (status paid), the payment and ledger rows
+// keep the full cash amount, and the excess becomes one active supplier_credits row (credit_type "overpayment").
 //
 // Historical rows are never modified by this function except the invoice being paid, and only when it is a
 // valid unpaid invoice: a row with status `paid` (including the historical `paid` rows with paid_amount 0) or a
@@ -126,6 +134,12 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
   if (!receiptUrl) return reply(400, "A payment receipt (receiptUrl) is required")
 
   const allowOverpayment = body?.allowOverpayment === true
+  const confirmDuplicate = body?.confirmDuplicate === true
+
+  // Optional: the supplier's own reference (cheque / transfer number). Used for the duplicate check and as the
+  // payment's reference_number; without it the generated <invoice>-PAY-<n> reference is used.
+  const clientReference = typeof body?.referenceNumber === "string" ? body.referenceNumber.trim() : ""
+  if (clientReference.length > 50) return reply(400, "referenceNumber must be at most 50 characters")
 
   // Optional: the payable schedule row this payment is for (generated "gen-" rows have no id and are not sent).
   let scheduleId: number | null = null
@@ -217,10 +231,35 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
   let invoiceUpdated = false
 
   try {
+    // ---- Duplicate check: same receipt or same reference already recorded on this invoice ------------
+    if (!confirmDuplicate) {
+      const { data: existing, error: existingError } = await supabase
+        .from("supplier_payments")
+        .select("payment_id, payment_date, amount, receipt_url, reference_number")
+        .eq("invoice_id", invoiceId)
+      if (existingError) {
+        console.error("AP payment - existing payments read failed:", existingError.message)
+        return await reject(500, "Could not check the existing payments. Nothing was recorded.")
+      }
+      const match = (existing || []).find(
+        (p: any) =>
+          (p.receipt_url && String(p.receipt_url).trim() === receiptUrl) ||
+          (clientReference !== "" && p.reference_number && String(p.reference_number).trim() === clientReference),
+      )
+      if (match) {
+        return await reject(409, "This looks like a payment that is already recorded on this invoice", {
+          code: "DUPLICATE_PAYMENT",
+          existingPayment: { id: match.payment_id?.toString(), paymentDate: match.payment_date, amount: Number(match.amount) || 0 },
+        })
+      }
+    }
+
     // ---- Guarded update of accounts_payable (compare-and-swap, at most one retry) -------------------
     let invoice: any = null
+    let previous: any = null
     let newPaid = 0
     let newMonthsPaid = 0
+    let excess = 0
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const { data: row, error: readError } = await supabase.from("accounts_payable").select("*").eq("invoice_id", invoiceId).maybeSingle()
@@ -244,15 +283,18 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
       if (row.status === "paid" || remaining <= CURRENCY_TOLERANCE) {
         return await reject(409, "This invoice is already marked as paid", { remaining: Math.max(remaining, 0) })
       }
-      if (paymentAmount > remaining + CURRENCY_TOLERANCE && !allowOverpayment) {
+      const isOverpayment = paymentAmount > remaining + CURRENCY_TOLERANCE
+      if (isOverpayment && !allowOverpayment) {
         return await reject(
           409,
-          `Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}. Confirm it as an advance / overpayment to record it.`,
-          { remaining, overpayment: true },
+          `Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}. Confirm it to save the extra as supplier credit.`,
+          { code: "OVERPAYMENT", remaining, excess: round2(paymentAmount - remaining), overpayment: true },
         )
       }
 
-      newPaid = round2(oldPaid + paymentAmount)
+      // The invoice never goes above its amount; the excess is saved as supplier credit after the payment rows.
+      excess = isOverpayment ? round2(paymentAmount - remaining) : 0
+      newPaid = isOverpayment ? invoiceAmount : round2(oldPaid + paymentAmount)
       newMonthsPaid = (row.months_paid || 0) + 1
       const isFullyPaid = round2(invoiceAmount - newPaid) <= CURRENCY_TOLERANCE
 
@@ -277,6 +319,7 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
       }
       if (updatedRows && updatedRows.length === 1) {
         invoice = updatedRows[0]
+        previous = row
         break
       }
       // 0 rows: another request changed the invoice between our read and write. Loop re-reads and re-validates.
@@ -291,7 +334,7 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
     // ---- From here the invoice HAS been increased. Failures below are partial failures. ---------------
     invoiceUpdated = true
     const invoiceNumber: string = invoice.invoice_number
-    const referenceNumber = `${invoiceNumber}-PAY-${newMonthsPaid}`
+    const referenceNumber = clientReference || `${invoiceNumber}-PAY-${newMonthsPaid}`
     const completed: string[] = ["accounts_payable"]
 
     const partial = async (step: string, message: string): Promise<ApPaymentResult> => {
@@ -319,7 +362,29 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
       })
       .select("payment_id")
       .single()
-    if (paymentError) return await partial("supplier_payments", paymentError.message)
+    if (paymentError) {
+      // Put the invoice back, guarded on the values written above so a later payment is never undone.
+      const { data: restored, error: restoreError } = await supabase
+        .from("accounts_payable")
+        .update({
+          paid_amount: previous.paid_amount,
+          months_paid: previous.months_paid ?? 0,
+          status: previous.status,
+          last_payment_at: previous.last_payment_at ?? null,
+          payment_receipt_url: previous.payment_receipt_url ?? null,
+        })
+        .eq("invoice_id", invoiceId)
+        .eq("paid_amount", invoice.paid_amount)
+        .eq("status", invoice.status)
+        .eq("months_paid", newMonthsPaid)
+        .select("invoice_id")
+      if (!restoreError && restored && restored.length === 1) {
+        console.error(`AP payment - supplier_payments insert failed for invoice ${invoiceId}; invoice restored:`, paymentError.message)
+        invoiceUpdated = false
+        return await reject(500, "Could not record the payment. Nothing was recorded; please retry.")
+      }
+      return await partial("supplier_payments", paymentError.message)
+    }
     completed.push("supplier_payments")
 
     // Same convention as the existing AP ledger rows: ap_payment, negative amount, reference_id = po_id.
@@ -336,11 +401,35 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
     if (balanceError) return await partial("balance_entries", balanceError.message)
     completed.push("balance_entries")
 
+    // Confirmed overpayment: the excess is an open credit for this supplier, usable on a later PO.
+    let credit: { id: string | undefined; amount: number } | undefined
+    if (excess > CURRENCY_TOLERANCE) {
+      const note = `Overpayment on ${invoiceNumber}`
+      const { data: creditRow, error: creditError } = await supabase
+        .from("supplier_credits")
+        .insert({
+          supplier_id: invoice.supplier_id ?? null,
+          amount: excess,
+          status: "active",
+          credit_type: "overpayment",
+          reference_type: "ap_payment",
+          reference_id: paymentRow?.payment_id ?? null,
+          invoice_id: invoiceId,
+          description: note,
+          notes: note,
+        })
+        .select("credit_id")
+        .single()
+      if (creditError) return await partial("supplier_credits", creditError.message)
+      completed.push("supplier_credits")
+      credit = { id: creditRow?.credit_id?.toString(), amount: excess }
+    }
+
     // Mark the matching payable schedule row. The payment is already fully recorded, so a problem here is reported
     // as scheduleUpdated:false and never fails or un-does the payment.
     let scheduleUpdated: boolean | undefined
     if (scheduleId !== null) {
-      scheduleUpdated = await markScheduleRow(supabase, scheduleId, invoiceId, invoice.po_id, paymentAmount, paymentDate, receiptUrl)
+      scheduleUpdated = await markScheduleRow(supabase, scheduleId, invoiceId, invoice.po_id, round2(paymentAmount - excess), paymentDate, receiptUrl)
     }
 
     await finish("completed")
@@ -352,6 +441,7 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
         invoice: mapInvoice(invoice),
         payment: { id: paymentRow?.payment_id?.toString(), amount: paymentAmount, referenceNumber, paymentMethod },
         ...(scheduleUpdated === undefined ? {} : { scheduleUpdated }),
+        ...(credit ? { credit } : {}),
       },
     }
   } catch (error: any) {

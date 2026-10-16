@@ -298,6 +298,9 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
     const supplierOrders = getSupplierOrders(selectedSupplier.id)
     const totalSpent = getSupplierTotalSpent(selectedSupplier.id)
     const totalPaid = getSupplierTotalPaid(selectedSupplier.id)
+    // Sum of the per-order amounts due (never negative): payments include cash that went to supplier credit
+    // (overpayments), so total spent minus total paid can go below zero.
+    const balanceDue = supplierOrders.reduce((sum, order) => sum + getOrderPaymentStatus(order).amountDue, 0)
 
     return (
       <div className="space-y-6">
@@ -360,7 +363,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("supplier.balance-due")} {t("common.egp")}</p>
-                <p className="font-semibold text-lg text-orange-700"><Money value={totalSpent - totalPaid} /></p>
+                <p className="font-semibold text-lg text-orange-700"><Money value={balanceDue} /></p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("supplier.available-credit-egp")}</p>

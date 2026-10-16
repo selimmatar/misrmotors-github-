@@ -71,18 +71,19 @@ cat > "$OUT/tsconfig.json" <<JSON
     "$REPO/lib/__tests__/reports-views.test.ts",
     "$REPO/lib/__tests__/connections.test.ts",
     "$REPO/lib/__tests__/so-edit-all.test.ts",
-    "$REPO/lib/__tests__/supplier-credit-po.test.ts"
+    "$REPO/lib/__tests__/supplier-credit-po.test.ts",
+    "$REPO/lib/__tests__/batch1-money-stock.test.ts"
   ]
 }
 JSON
 "$REPO/node_modules/.bin/tsc" -p "$OUT/tsconfig.json" > "$OUT/tsc.log" 2>&1
-echo "compiled (tsc reported $(grep -c 'error TS' "$OUT/tsc.log") error line(s); new-file errors: $(grep 'error TS' "$OUT/tsc.log" | grep -E 'lib/(format|i18n-fallback|i18n-format|status-tone|approval-steps|nav-groups|returns|return-lines|so-edit|delivery-status|invoicing|print-totals|print-html|missing-items|missing-items-html|so-print-html|goods-receiving|ap-payments|po-status|po-over-order|stock-hold|dp-stock|dp-planned|customer-dp-chip|__tests__|dp-transitions|ap-mark-paid|ar-status|enums|parse-id|html-escape|upload-allowlist|supplier-credit-status|supplier-credit-apply)|components/layout/nav-config|finalize-cost/route|warehouse-transfers/complete/route' | wc -l))"
+echo "compiled (tsc reported $(grep -c 'error TS' "$OUT/tsc.log") error line(s); new-file errors: $(grep 'error TS' "$OUT/tsc.log" | grep -E 'lib/(format|i18n-fallback|i18n-format|status-tone|approval-steps|nav-groups|returns|return-lines|so-edit|delivery-status|invoicing|print-totals|print-html|missing-items|missing-items-html|so-print-html|goods-receiving|ap-payments|ar-payments|po-status|po-over-order|stock-hold|dp-stock|dp-planned|customer-dp-chip|__tests__|dp-transitions|ap-mark-paid|ar-status|enums|parse-id|html-escape|upload-allowlist|supplier-credit-status|supplier-credit-apply)|components/layout/nav-config|finalize-cost/route|warehouse-transfers/complete/route' | wc -l))"
 export NODE_PATH="$REPO/node_modules"
 export REPO_ROOT="$REPO"
 export HARDENING_GOLDEN_DIR="$REPO/lib/__tests__/fixtures/hardening"
 status=0
 for run in $(seq 1 "$REPEAT"); do
-  for suite in payment-type invoicing returns invoicing-returns so-edit routes print-totals missing-items print-routes print-theme goods-receiving accounts-payable-payments po-status po-over-order costing transfers legacy-paths supplier-credits stock-hold review-fixes leftovers workflow-fixes consistency-fixes hardening decisions removals format status-badge approval-steps sidebar-groups ui-frame erp-blocks module-migration module-migration-1c a11y-scan p24-frame p24-sales p24-customers p24-finance p24-purchasing p24-inventory p24-overview p24-keys p24-residuals i18n-format i18n-coverage i18n-review-fixes toasts-arabic logic-fixes logic-fixes-b reports-views connections so-edit-all supplier-credit-po; do
+  for suite in payment-type invoicing returns invoicing-returns so-edit routes print-totals missing-items print-routes print-theme goods-receiving accounts-payable-payments po-status po-over-order costing transfers legacy-paths supplier-credits stock-hold review-fixes leftovers workflow-fixes consistency-fixes hardening decisions removals format status-badge approval-steps sidebar-groups ui-frame erp-blocks module-migration module-migration-1c a11y-scan p24-frame p24-sales p24-customers p24-finance p24-purchasing p24-inventory p24-overview p24-keys p24-residuals i18n-format i18n-coverage i18n-review-fixes toasts-arabic logic-fixes logic-fixes-b reports-views connections so-edit-all supplier-credit-po batch1-money-stock; do
     result="$(node --test "$OUT/out/lib/__tests__/$suite.test.js" 2>&1)"
     line="$(echo "$result" | grep -E '^# (tests|pass|fail)' | tr '\n' ' ')"
     echo "run $run  $suite: $line"

@@ -230,10 +230,7 @@
       "handleViewPaymentDetails",
       "handleViewSchedule"
     ],
-    "ids": [
-      "id=\"ap-allow-overpayment\"",
-      "id=\"ap-allow-overpayment\""
-    ],
+    "ids": [],
     "fetch": 8,
     "iso": 6,
     "t": 106,

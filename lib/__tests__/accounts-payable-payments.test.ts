@@ -46,7 +46,8 @@ const pay = (invoiceId: number, amount: unknown, extra: Row = {}) =>
     invoiceId,
     amount,
     paymentMethod: "bank_transfer",
-    receiptUrl: "https://blob.test/receipt.pdf",
+    // a new upload per payment (the same receipt twice on one invoice is a duplicate warning)
+    receiptUrl: `https://blob.test/receipt-${++k}.pdf`,
     idempotencyKey: newKey(),
     ...extra,
   })
@@ -59,11 +60,11 @@ test("P1. partial payment: invoice partially_paid, one payment row, one ledger r
   assert.equal(row(db, 1).paid_amount, 400)
   assert.equal(row(db, 1).status, "partially_paid")
   assert.equal(row(db, 1).months_paid, 1)
-  assert.equal(row(db, 1).payment_receipt_url, "https://blob.test/receipt.pdf")
+  assert.match(row(db, 1).payment_receipt_url, /^https:\/\/blob\.test\/receipt-\d+\.pdf$/)
   assert.equal(db.tables.supplier_payments.length, 1)
   assert.equal(db.tables.supplier_payments[0].amount, 400)
   assert.equal(db.tables.supplier_payments[0].payment_method, "bank_transfer")
-  assert.equal(db.tables.supplier_payments[0].receipt_url, "https://blob.test/receipt.pdf")
+  assert.equal(db.tables.supplier_payments[0].receipt_url, row(db, 1).payment_receipt_url)
   assert.equal(db.tables.balance_entries.length, 1)
   assert.equal(db.tables.balance_entries[0].amount, -400)
   assert.equal(db.tables.balance_entries[0].entry_type, "ap_payment")
@@ -83,7 +84,7 @@ test("P2. exact payment closes the invoice; a second payment is refused", async 
   assert.equal(db.tables.supplier_payments.length, 2)
 })
 
-test("P3. overpayment is refused without allowOverpayment and accepted with it", async () => {
+test("P3. overpayment is refused without allowOverpayment; accepted with it, the invoice is capped and the excess is credit", async () => {
   const db = baseDb()
   const r = await pay(1, 1500)
   assert.equal(r.status, 409)
@@ -91,8 +92,11 @@ test("P3. overpayment is refused without allowOverpayment and accepted with it",
   assert.equal(db.tables.supplier_payments.length, 0)
   const ok = await pay(1, 1500, { allowOverpayment: true, paymentMethod: "cheque" })
   assert.equal(ok.status, 200, JSON.stringify(ok.body))
-  assert.equal(row(db, 1).paid_amount, 1500)
+  assert.equal(row(db, 1).paid_amount, 1000)
   assert.equal(row(db, 1).status, "paid")
+  assert.equal(db.tables.supplier_payments[0].amount, 1500)
+  assert.equal(db.tables.supplier_credits.length, 1)
+  assert.equal(db.tables.supplier_credits[0].amount, 500)
 })
 
 test("P4. zero, negative and non-numeric amounts are rejected", async () => {
@@ -155,21 +159,22 @@ test("P8. concurrent payments that both fit are both applied exactly once", asyn
   }
 })
 
-test("P9. supplier_payments insert failure: 500 partialFailure, retry with the same key gets 409, nothing repeated", async () => {
+test("P9. supplier_payments insert failure: the invoice is put back, the key stays retryable and the retry pays once", async () => {
   const db = baseDb()
   db.failOn["supplier_payments:insert"] = "boom"
   const key = newKey()
   const a = await pay(1, 250, { idempotencyKey: key })
   assert.equal(a.status, 500)
-  assert.equal(a.body.partialFailure, true)
-  assert.equal(row(db, 1).paid_amount, 250)
+  assert.notEqual(a.body.partialFailure, true)
+  assert.equal(row(db, 1).paid_amount, 0)
+  assert.equal(row(db, 1).status, "pending")
+  assert.equal(db.tables.idempotency_log[0].status, "failed")
   delete db.failOn["supplier_payments:insert"]
   const b = await pay(1, 250, { idempotencyKey: key })
-  assert.equal(b.status, 409)
-  assert.equal(b.body.partialFailure, true)
+  assert.equal(b.status, 200, JSON.stringify(b.body))
   assert.equal(row(db, 1).paid_amount, 250)
-  assert.equal(db.tables.supplier_payments.length, 0)
-  assert.equal(db.tables.idempotency_log[0].status, "partial_failure")
+  assert.equal(db.tables.supplier_payments.length, 1)
+  assert.equal(db.tables.idempotency_log[0].status, "completed")
 })
 
 test("P10. balance_entries insert failure: 500 partialFailure, retry gets 409", async () => {
@@ -319,7 +324,7 @@ test("S1. paying with a scheduleId marks that payable schedule row paid (and par
   assert.equal(r.body.scheduleUpdated, true)
   assert.equal(srow(db, 1).status, "paid")
   assert.equal(srow(db, 1).paid_amount, 500)
-  assert.equal(srow(db, 1).receipt_url, "https://blob.test/receipt.pdf")
+  assert.equal(srow(db, 1).receipt_url, db.tables.supplier_payments[0].receipt_url)
   assert.equal(srow(db, 2).status, "pending")
   const r2 = await pay(1, 200, { scheduleId: 2 })
   assert.equal(r2.status, 200)
