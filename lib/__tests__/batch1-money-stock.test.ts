@@ -306,7 +306,7 @@ const rescheduleDb = (request: Row = {}, invoice: Row = {}) => {
   const db = new FakeDb({
     reschedule_requests: [{
       id: 1, invoice_id: 5, status: "pending", current_amount: 300, requested_amount: 300, requested_months: 6,
-      current_due_date: "2026-09-01", requested_due_date: "2026-12-01", ...request,
+      current_due_date: "2026-09-01", requested_due_date: "2099-12-01", ...request,
     }],
     accounts_receivable: [arRow({ due_date: "2026-09-01", installment_months: 3, status: "overdue", collected_amount: 100, ...invoice })],
   })
@@ -322,7 +322,7 @@ test("2. reschedule approval applies the terms once and recomputes the invoice s
   const inv = db.tables.accounts_receivable[0]
   assert.equal(inv.amount, 250)
   assert.equal(inv.installment_months, 6)
-  assert.equal(inv.due_date, "2026-12-01")
+  assert.equal(inv.due_date, "2099-12-01")
   assert.equal(inv.status, "partially_paid", "recomputed from the new amount (lib/ar-status)")
   assert.equal(db.tables.reschedule_requests[0].status, "approved")
   // a second review (approve or reject) of the same request is refused
@@ -634,4 +634,179 @@ test("4. a plain approval still works and deducts once", async () => {
   assert.equal(r.status, 200, JSON.stringify(r.body))
   assert.equal(permitStatus(db), "APPROVED")
   assert.deepEqual(onHand(db), [14, 0])
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// Review fixes
+// ---------------------------------------------------------------------------------------------------------
+// Runs `change` once, right before the first update of `table` (between the request's read and its write).
+function beforeFirstUpdate(db: FakeDb, table: string, change: () => void) {
+  const from = db.from.bind(db)
+  let done = false
+  ;(db as any).from = (name: string) => {
+    const q: any = from(name)
+    if (name === table && !done) {
+      const update = q.update.bind(q)
+      q.update = (payload: any) => {
+        if (!done) {
+          done = true
+          change()
+        }
+        return update(payload)
+      }
+    }
+    return q
+  }
+}
+
+test("R I-1. a reschedule request without an invoice id is applied to the invoice of its sales order", async () => {
+  const db = rescheduleDb({ invoice_id: null, so_number: "SO-77", customer_id: 3, requested_amount: 250 }, { so_id: 77 })
+  db.tables.sales_orders = [{ so_id: 77, so_number: "SO-77", customer_id: 3 }]
+  const r = await review("approved")
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.reschedule_requests[0].status, "approved")
+  assert.equal(db.tables.accounts_receivable[0].amount, 250)
+  assert.equal(db.tables.accounts_receivable[0].installment_months, 6)
+})
+
+test("R I-1. the invoice can also be found from the order's payment schedule", async () => {
+  const db = rescheduleDb({ invoice_id: null, so_number: "SO-78", customer_id: 3 })
+  db.tables.sales_orders = [{ so_id: 78, so_number: "SO-78", customer_id: 3 }]
+  db.tables.payment_schedules = [
+    { schedule_id: 1, so_id: 78, invoice_id: 5, amount: 150, schedule_type: "receivable" },
+    { schedule_id: 2, so_id: 78, invoice_id: 5, amount: 150, schedule_type: "receivable" },
+  ]
+  const r = await review("approved")
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.accounts_receivable[0].installment_months, 6)
+})
+
+test("R I-1. with no invoice to resolve, the request is approved and no invoice is changed (as before)", async () => {
+  for (const setup of [
+    (db: FakeDb) => { db.tables.sales_orders = [] },
+    // two invoices on the order: not safe to pick one
+    (db: FakeDb) => {
+      db.tables.sales_orders = [{ so_id: 79, so_number: "SO-79", customer_id: 3 }]
+      db.tables.accounts_receivable.push(arRow({ invoice_id: 6, invoice_number: "INV-6", so_id: 79 }))
+      db.tables.accounts_receivable[0].so_id = 79
+    },
+  ]) {
+    const db = rescheduleDb({ invoice_id: null, so_number: "SO-79", customer_id: 3, requested_amount: 250 })
+    setup(db)
+    const before = JSON.stringify(db.tables.accounts_receivable)
+    const r = await review("approved")
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    assert.equal(r.body.invoiceUpdated, false)
+    assert.equal(db.tables.reschedule_requests[0].status, "approved")
+    assert.equal(JSON.stringify(db.tables.accounts_receivable), before)
+  }
+})
+
+test("R I-1. the payment schedule screen sends the invoice id of the order's schedules", () => {
+  const screen = src("components/modules/payment-schedule-module.tsx")
+  assert.match(screen, /invoiceId: scheduleInvoiceId/)
+})
+
+test("R I-2. the supplier card's total paid counts cash only, not supplier credit applied to an invoice", () => {
+  const screen = src("components/modules/supplier-module.tsx")
+  assert.match(screen, /payment\.payment_method === SUPPLIER_CREDIT_PAYMENT_METHOD\) return/)
+})
+
+test("R I-3. after STOCK_CHANGED the changed rows must be counted again; saved rows are confirmed", () => {
+  const screen = src("components/modules/inventory-audit-module.tsx")
+  assert.match(screen, /keep\.set\(item\.inventory_id, \{ physicalCount: null, notes: item\.notes \}\)/)
+  assert.match(screen, /t\("inventory-audit\.saved-some"\)/)
+  const i18n = src("lib/i18n-context.tsx")
+  assert.equal(i18n.split('"inventory-audit.saved-some":').length - 1, 2, "English and Arabic")
+})
+
+test("R m2. an overpayment credit on an invoice without a supplier takes the supplier of its purchase order", async () => {
+  const db = apDb({ accounts_payable: [apInv(1, { supplier_id: null })], purchase_orders: [{ po_id: 11, supplier_id: 7 }] })
+  const r = await apPay(1, 1500, { allowOverpayment: true })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.supplier_credits[0].supplier_id, 7)
+})
+
+test("R m3. a payment insert that errors after writing the row is not undone (it stays a parked partial failure)", async () => {
+  const db = apDb()
+  db.failOn["supplier_payments:insert"] = "timeout after commit"
+  const from = db.from.bind(db)
+  ;(db as any).from = (name: string) => {
+    const q: any = from(name)
+    if (name === "supplier_payments") {
+      const insert = q.insert.bind(q)
+      q.insert = (payload: any) => {
+        db.tables.supplier_payments.push({ ...payload, payment_id: 999 })
+        return insert(payload)
+      }
+    }
+    return q
+  }
+  const r = await apPay(1, 400)
+  assert.equal(r.status, 500)
+  assert.equal(r.body.partialFailure, true)
+  assert.equal(ap(db, 1).paid_amount, 400, "the invoice matches the payment row that exists")
+  assert.equal(db.tables.idempotency_log[0].status, "partial_failure")
+})
+
+test("R m6. the supplier card shows the credit type in the user's language", () => {
+  const screen = src("components/modules/supplier-module.tsx")
+  assert.match(screen, /supplier\.credit-type-overpayment/)
+  const i18n = src("lib/i18n-context.tsx")
+  for (const key of ["supplier.credit-type-overpayment", "supplier.credit-type-return"]) {
+    assert.equal(i18n.split(`"${key}":`).length - 1, 2, key)
+  }
+})
+
+test("R m7. a reschedule approval keeps an invoice overdue when its due date has passed", async () => {
+  const db = rescheduleDb({ requested_amount: 250, current_due_date: "2020-01-01", requested_due_date: "2020-01-01" }, { due_date: "2020-01-01" })
+  const r = await review("approved")
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.accounts_receivable[0].status, "overdue")
+})
+
+test("R m8. an AR payment re-checks the balance when the invoice amount changed before its write", async () => {
+  const db = linkedScheduleDb()
+  beforeFirstUpdate(db, "accounts_receivable", () => { db.tables.accounts_receivable[0].amount = 100 })
+  const r = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 200, idempotencyKey: "ar-amount-race-1" })
+  assert.equal(r.status, 409, JSON.stringify(r.body))
+  assert.equal(db.tables.accounts_receivable[0].collected_amount, 0)
+  assert.equal(db.tables.customer_payments.length, 0)
+})
+
+test("R m9. pay in full on a schedule with nothing open is refused and collects nothing", async () => {
+  for (const status of ["partial", "paid"]) {
+    const db = linkedScheduleDb([
+      { schedule_id: 1, invoice_id: 5, installment_number: 1, amount: 100, paid_amount: 100, status, schedule_type: "receivable" },
+    ])
+    const r = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1" })
+    assert.equal(r.status, 400, `${status}: ${JSON.stringify(r.body)}`)
+    assert.equal(db.tables.customer_payments.length, 0, status)
+    assert.equal(db.tables.accounts_receivable[0].collected_amount, 0, status)
+  }
+})
+
+test("R m10. a schedule of a purchase order is never paid as a customer receivable", async () => {
+  const db = linkedScheduleDb([
+    { schedule_id: 1, invoice_id: 5, po_id: 3, installment_number: 1, amount: 100, paid_amount: 0, status: "pending", schedule_type: null },
+  ])
+  await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 100, paymentDate: "2026-10-08" })
+  assert.equal(db.tables.customer_payments.length, 0)
+  assert.equal(db.tables.accounts_receivable[0].collected_amount, 0)
+})
+
+test("R m11. a stock count that cannot be put back after a failure says which rows kept the count", async () => {
+  const db = countDb()
+  db.failOn["inventory_audits:insert"] = "audits down"
+  // stock moves after the count was written, so the guarded put-back misses
+  const from = db.from.bind(db)
+  ;(db as any).from = (name: string) => {
+    if (name === "inventory_audits") db.tables.inventory[0].quantity = 99
+    return from(name)
+  }
+  const r = await saveCount([{ inventoryId: 1, productId: 7, warehouseId: 1, systemQuantity: 20, physicalCount: 17 }])
+  assert.equal(r.status, 500)
+  assert.doesNotMatch(r.body.error, /Nothing was saved/)
+  assert.match(r.body.error, /could not be put back/)
+  assert.deepEqual(r.body.notRestored, [{ inventoryId: 1, productId: 7, warehouseId: 1 }])
 })

@@ -5,7 +5,7 @@
 // recordArPayment() owns, in this order:
 //   1. an idempotency claim (idempotency_log, plain INSERT guarded by the table's UNIQUE constraint)
 //   2. validation (invoice exists, not already paid, amount valid, amount <= remaining balance)
-//   3. a guarded UPDATE of accounts_receivable (compare-and-swap on the previously read collected_amount)
+//   3. a guarded UPDATE of accounts_receivable (compare-and-swap on the previously read collected_amount and amount)
 //   4. the customer_payments row, the balance_entries row and (for a persisted schedule) the schedule row
 //
 // Steps 3 and 4 are NOT one database transaction (no RPC is used). The guarded update in step 3 is what
@@ -54,6 +54,9 @@ function mapInvoice(row: any) {
   }
 }
 
+// The idempotency_log key of an AR payment made with the client's key.
+export const arPaymentLogKey = (invoiceId: number, clientKey: string) => `ar_pay_${invoiceId}_${clientKey}`
+
 export async function recordArPayment(supabase: any, body: any, options: ArPaymentOptions = {}): Promise<ArPaymentResult> {
   // ---- Input validation -------------------------------------------------------------------------
   const invoiceId = Number(body?.invoiceId)
@@ -70,7 +73,7 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
   if (!/^[A-Za-z0-9_.:-]{8,100}$/.test(clientKey)) {
     return fail(400, "idempotencyKey is required (8-100 characters: letters, digits, _ . : -)")
   }
-  const idempotencyKey = `ar_pay_${invoiceId}_${clientKey}`
+  const idempotencyKey = arPaymentLogKey(invoiceId, clientKey)
 
   const receiptUrl = typeof body?.receiptUrl === "string" && body.receiptUrl ? body.receiptUrl : null
   const paymentMethod =
@@ -225,6 +228,8 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
         })
         .eq("invoice_id", invoiceId)
       update = oldCollected === null ? update.is("collected_amount", null) : update.eq("collected_amount", oldCollected)
+      // and on the amount the balance was checked against (an approved reschedule may lower it in between)
+      update = row.amount === null || row.amount === undefined ? update.is("amount", null) : update.eq("amount", row.amount)
 
       const { data: updatedRows, error: updateError } = await update.select("*")
 
@@ -236,7 +241,7 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
         invoice = updatedRows[0]
         break
       }
-      // 0 rows: another request changed collected_amount between our read and write. Loop re-reads and
+      // 0 rows: another request changed collected_amount (or the amount) between our read and write. Loop re-reads and
       // re-validates against the new balance (or gives up after MAX_ATTEMPTS).
     }
 

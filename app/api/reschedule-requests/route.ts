@@ -108,10 +108,31 @@ export async function POST(request: Request) {
   }
 }
 
+// The invoice a request applies to: its own invoice_id, else the one AR invoice of its sales order (requests from the
+// payment schedule screen carry only the order number), found on the order or on the order's payment schedule. null
+// when there is none or more than one.
+async function resolveRequestInvoiceId(supabase: any, request: any): Promise<number | null> {
+  if (request.invoice_id !== null && request.invoice_id !== undefined && request.invoice_id !== "") return request.invoice_id
+  if (!request.so_number) return null
+  let orderQuery = supabase.from("sales_orders").select("so_id").eq("so_number", request.so_number)
+  if (request.customer_id !== null && request.customer_id !== undefined) orderQuery = orderQuery.eq("customer_id", request.customer_id)
+  const { data: orders } = await orderQuery
+  if (!Array.isArray(orders) || orders.length !== 1) return null
+  const soId = orders[0].so_id
+  const { data: invoices } = await supabase.from("accounts_receivable").select("invoice_id").eq("so_id", soId)
+  let ids = [...new Set((invoices || []).map((r: any) => r.invoice_id))]
+  if (ids.length === 0) {
+    const { data: schedules } = await supabase.from("payment_schedules").select("invoice_id, schedule_type").eq("so_id", soId)
+    ids = [...new Set((schedules || []).filter((r: any) => r.invoice_id && r.schedule_type !== "payable").map((r: any) => r.invoice_id))]
+  }
+  return ids.length === 1 ? (ids[0] as number) : null
+}
+
 // Approve / reject a reschedule request (BIZ-S-012). The request moves out of `pending` only once (guarded update,
 // 0 rows -> 409). An approval never sets the invoice amount below what was already collected, recomputes the invoice
 // status from the new amount (lib/ar-status.ts), and when the invoice cannot be updated the request is put back to
-// pending so it is not left approved with the old terms.
+// pending so it is not left approved with the old terms. A request whose invoice cannot be resolved is approved
+// without changing any invoice, as before.
 export async function PUT(request: Request) {
   try {
     const supabase = await createClient()
@@ -138,11 +159,12 @@ export async function PUT(request: Request) {
     // Approval: the new terms are checked against the invoice before the request is approved.
     let invoice: any = null
     const updateData: any = {}
-    if (status === "approved") {
+    const invoiceId = status === "approved" ? await resolveRequestInvoiceId(supabase, existing) : null
+    if (invoiceId !== null) {
       const { data: arRow, error: arReadError } = await supabase
         .from("accounts_receivable")
         .select("*")
-        .eq("invoice_id", existing.invoice_id)
+        .eq("invoice_id", invoiceId)
         .maybeSingle()
       if (arReadError) {
         console.error("Reschedule Request PUT - AR read error:", arReadError)
@@ -172,7 +194,7 @@ export async function PUT(request: Request) {
           { status: 409 },
         )
       }
-      updateData.status = computeArStatus({ amount: newAmount, collectedAmount: collected })
+      updateData.status = computeArStatus({ amount: newAmount, collectedAmount: collected, dueDate: updateData.due_date ?? arRow.due_date })
     }
 
     // Update the reschedule request, only while it is still pending
@@ -200,8 +222,8 @@ export async function PUT(request: Request) {
 
     // If approved, update the accounts_receivable record with the new terms, guarded on the collected amount the
     // check above used (a payment in between would make the status stale).
-    if (status === "approved") {
-      const arUpdate = supabase.from("accounts_receivable").update(updateData).eq("invoice_id", existing.invoice_id)
+    if (invoice) {
+      const arUpdate = supabase.from("accounts_receivable").update(updateData).eq("invoice_id", invoiceId)
       const { data: arRows, error: arError } = await (invoice.collected_amount === null || invoice.collected_amount === undefined
         ? arUpdate.is("collected_amount", null)
         : arUpdate.eq("collected_amount", invoice.collected_amount)
@@ -233,7 +255,7 @@ export async function PUT(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, request: requestData })
+    return NextResponse.json({ success: true, request: requestData, ...(status === "approved" ? { invoiceUpdated: !!invoice } : {}) })
   } catch (error: any) {
     console.error("Reschedule Request PUT error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })

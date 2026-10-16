@@ -67,8 +67,8 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
     }
   }
 
-  // `keep`: counts and notes to keep on these inventory rows (rows that changed during the count are re-counted
-  // against their fresh quantity; every other row starts empty again).
+  // `keep`: counts and notes to keep on these inventory rows (rows that changed during the count keep their notes but
+  // must be counted again against their fresh quantity; every other row starts empty again).
   const fetchInventory = async (keep?: Map<number, { physicalCount: number | null; notes: string }>) => {
     try {
       setLoading(true)
@@ -156,12 +156,15 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
       if (response.status === 409) {
         const data = await response.json().catch(() => ({}))
         if (data.code === "STOCK_CHANGED" && Array.isArray(data.changed)) {
-          // the other rows were saved; reload the current quantities and keep the counts of the changed rows
+          // the other rows were saved; reload the current quantities. The changed rows' counts are cleared so they
+          // are entered again (a blind re-save would overwrite the movement), their notes are kept.
           const keep = new Map<number, { physicalCount: number | null; notes: string }>()
           for (const row of data.changed) {
             const item = inventoryItems.find((i) => i.inventory_id === row.inventoryId)
-            if (item) keep.set(item.inventory_id, { physicalCount: item.physicalCount, notes: item.notes })
+            if (item) keep.set(item.inventory_id, { physicalCount: null, notes: item.notes })
           }
+          const savedCount = Number(data.summary?.totalAudited) || 0
+          if (savedCount > 0) setSuccessMessage(fill(t("inventory-audit.saved-some"), { count: formatNumber(savedCount) }))
           setChangedRows(
             data.changed.map((row: any) => {
               const item = inventoryItems.find((i) => i.inventory_id === row.inventoryId)

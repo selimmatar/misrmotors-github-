@@ -152,14 +152,30 @@ export async function POST(request: Request) {
     const changedItems: Counted[] = []
     const changedNow = new Map<Counted, number | null>()
     // Puts the rows this request already wrote back to the loaded quantity (guarded on what it wrote).
-    const undoApplied = async () => {
+    // Puts the saved counts back after a failure and answers 500. A row whose stock moved after the count was written
+    // (or whose put-back failed) keeps the count: the answer then names those rows instead of "Nothing was saved".
+    const failAndUndo = async (message: string) => {
+      const notRestored: { inventoryId: unknown; productId: unknown; warehouseId: unknown }[] = []
       for (const item of applied) {
-        const { error } = await rowFilter(
+        const { data: rows, error } = await rowFilter(
           supabase.from("inventory").update({ quantity: item.systemQuantity, last_updated: auditDate }),
           item,
-        ).eq("quantity", item.physicalCount)
+        )
+          .eq("quantity", item.physicalCount)
+          .select("inventory_id")
         if (error) console.error("Inventory Audit: could not put back the count of product", item.productId, ":", error.message)
+        if (error || !Array.isArray(rows) || rows.length === 0) {
+          notRestored.push({ inventoryId: item.inventoryId ?? null, productId: item.productId, warehouseId: item.warehouseId ?? null })
+        }
       }
+      if (notRestored.length === 0) return NextResponse.json({ error: `${message}. Nothing was saved.` }, { status: 500 })
+      return NextResponse.json(
+        {
+          error: `${message}. ${notRestored.length} count(s) could not be put back because the stock moved meanwhile; recheck those items.`,
+          notRestored,
+        },
+        { status: 500 },
+      )
     }
 
     for (const item of counted) {
@@ -167,8 +183,7 @@ export async function POST(request: Request) {
         // Nothing to write, but a count that matches a quantity that has since moved is no longer a valid count.
         const { data: rows, error } = await rowFilter(supabase.from("inventory").select("inventory_id, quantity"), item)
         if (error) {
-          await undoApplied()
-          return NextResponse.json({ error: `${error.message}. Nothing was saved.` }, { status: 500 })
+          return await failAndUndo(error.message)
         }
         if (Array.isArray(rows) && rows.length === 1 && Number(rows[0].quantity) !== item.systemQuantity) {
           changedItems.push(item)
@@ -187,8 +202,7 @@ export async function POST(request: Request) {
 
       if (updateError) {
         console.error("Inventory Audit: Error updating inventory for product", item.productId, ":", updateError)
-        await undoApplied()
-        return NextResponse.json({ error: `${updateError.message}. Nothing was saved.` }, { status: 500 })
+        return await failAndUndo(updateError.message)
       }
       if (Array.isArray(rows) && rows.length > 0) {
         applied.push(item)
@@ -216,8 +230,7 @@ export async function POST(request: Request) {
 
       if (auditError) {
         console.error("Inventory Audit: Error inserting audit records:", auditError)
-        await undoApplied()
-        return NextResponse.json({ error: `${auditError.message}. Nothing was saved.` }, { status: 500 })
+        return await failAndUndo(auditError.message)
       }
     }
 

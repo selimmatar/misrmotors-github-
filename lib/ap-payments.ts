@@ -363,6 +363,15 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
       .select("payment_id")
       .single()
     if (paymentError) {
+      // An error does not always mean nothing was written (a timeout after the commit): if the row is there, the
+      // invoice update is right and only the response was lost, so it is parked as a partial failure, not undone.
+      const { data: written, error: writtenError } = await supabase
+        .from("supplier_payments")
+        .select("payment_id")
+        .eq("invoice_id", invoiceId)
+        .eq("receipt_url", receiptUrl)
+        .eq("amount", paymentAmount)
+      if (writtenError || (written || []).length > 0) return await partial("supplier_payments", paymentError.message)
       // Put the invoice back, guarded on the values written above so a later payment is never undone.
       const { data: restored, error: restoreError } = await supabase
         .from("accounts_payable")
@@ -405,10 +414,17 @@ export async function recordApPayment(supabase: any, body: any): Promise<ApPayme
     let credit: { id: string | undefined; amount: number } | undefined
     if (excess > CURRENCY_TOLERANCE) {
       const note = `Overpayment on ${invoiceNumber}`
+      // an older invoice row may have no supplier_id: the credit then takes the supplier of the purchase order, so it
+      // still shows on that supplier's card and in the credit picker
+      let creditSupplierId = invoice.supplier_id ?? null
+      if (creditSupplierId === null && invoice.po_id) {
+        const { data: po } = await supabase.from("purchase_orders").select("supplier_id").eq("po_id", invoice.po_id).maybeSingle()
+        creditSupplierId = po?.supplier_id ?? null
+      }
       const { data: creditRow, error: creditError } = await supabase
         .from("supplier_credits")
         .insert({
-          supplier_id: invoice.supplier_id ?? null,
+          supplier_id: creditSupplierId,
           amount: excess,
           status: "active",
           credit_type: "overpayment",

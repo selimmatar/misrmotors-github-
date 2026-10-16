@@ -9,6 +9,7 @@ import { useApp } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { parseRemainderNote } from "@/lib/supplier-credit-note"
+import { SUPPLIER_CREDIT_PAYMENT_METHOD } from "@/lib/supplier-credit-apply"
 import { ReportGenerator } from "@/components/report-generator"
 import type { Supplier, PurchaseOrder } from "@/lib/types"
 import { Plus, X, ChevronLeft, Trash2 } from "lucide-react"
@@ -56,6 +57,9 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
           const payments = await response.json()
           const paymentsBySupplier: Record<string, number> = {}
           payments.forEach((payment: any) => {
+            // Cash only: a supplier credit applied to an invoice is not new money paid (an overpayment credit's cash
+            // is already in the payment that created it).
+            if (payment.payment_method === SUPPLIER_CREDIT_PAYMENT_METHOD) return
             const supplierId = payment.supplier_id?.toString() || payment.supplierId
             if (!paymentsBySupplier[supplierId]) {
               paymentsBySupplier[supplierId] = 0
@@ -390,7 +394,8 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           <p className="font-medium text-green-900 dark:text-green-300">{credit.description || t("supplier.return-credit")}</p>
                           <p className="text-xs text-green-700 dark:text-green-500 mt-1">
                             {formatDate(credit.created_at, language)}
-                            {credit.credit_type && ` • ${credit.credit_type}`}
+                            {credit.credit_type &&
+                              ` • ${credit.credit_type === "overpayment" ? t("supplier.credit-type-overpayment") : credit.credit_type === "return" ? t("supplier.credit-type-return") : credit.credit_type}`}
                             {credit.po_number && <>{" "}{fill(t("supplier.credit-po"), { number: credit.po_number })}</>}
                             {credit.invoice_number && <>{" "}{fill(t("supplier.credit-ap"), { number: credit.invoice_number })}</>}
                             {credit.unapplied !== false && <>{" "}{t("supplier.credit-unapplied")}</>}

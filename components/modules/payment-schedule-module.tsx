@@ -138,10 +138,14 @@ export function PaymentScheduleModule() {
     setIsSubmitting(true)
     try {
       const totalAmount = selectedOrder.schedules.reduce((sum, s) => sum + s.amount, 0)
+      // the invoice the order's schedules belong to (only when they all point at the same one)
+      const invoiceIds = [...new Set(selectedOrder.schedules.map((s) => s.invoiceId).filter(Boolean))]
+      const scheduleInvoiceId = invoiceIds.length === 1 ? invoiceIds[0] : undefined
       const response = await fetch("/api/reschedule-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          invoiceId: scheduleInvoiceId,
           customerId: selectedOrder.customerId,
           customerName: selectedOrder.customerName,
           soNumber: selectedOrder.soNumber,

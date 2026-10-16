@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkIdempotency, completeIdempotency } from "@/lib/idempotency"
-import { recordArPayment } from "@/lib/ar-payments"
+import { arPaymentLogKey, recordArPayment } from "@/lib/ar-payments"
 
 export const dynamic = "force-dynamic"
 
@@ -518,9 +518,12 @@ async function payLinkedReceivable(
   }
 }
 
+// A schedule of a purchase order is payable even when an older row has no schedule_type: its invoice_id is an AP
+// invoice id and must never be paid as the AR invoice with the same number.
+const isPayableSchedule = (current: any, scheduleType: unknown) =>
+  scheduleType === "payable" || current.schedule_type === "payable" || (!!current.po_id && !current.so_id)
 // A schedule linked to an AR invoice (receivable) is paid through lib/ar-payments.ts.
-const isLinkedReceivable = (current: any, scheduleType: unknown) =>
-  scheduleType !== "payable" && current.schedule_type !== "payable" && !!current.invoice_id
+const isLinkedReceivable = (current: any, scheduleType: unknown) => !isPayableSchedule(current, scheduleType) && !!current.invoice_id
 // Key for the shared AR operation (8-100 characters): the client's key scoped to the schedule, else the schedule key.
 function arScheduleKey(scheduleId: number, clientKey: unknown, scheduleKey: string): string {
   if (typeof clientKey === "string" && CLIENT_KEY.test(clientKey)) {
@@ -608,7 +611,7 @@ export async function PUT(request: NextRequest) {
           return NextResponse.json({ error: "This schedule has already been paid in full" }, { status: 400 })
         }
 
-        const isPayable = scheduleType === "payable" || current.schedule_type === "payable"
+        const isPayable = isPayableSchedule(current, scheduleType)
         const result = await recordSchedulePayment(
           supabase,
           current,
@@ -733,9 +736,15 @@ export async function PUT(request: NextRequest) {
     if (isLinkedReceivable(current, scheduleType)) {
       const amountToPay = money(Math.max(0, (Number(current.amount) || 0) - (Number(current.paid_amount) || 0)))
       if (current.status === "paid" || amountToPay <= 0) {
-        // a repeat of a completed "pay in full" is answered as a duplicate by the shared operation
-        const replay = await payLinkedReceivable(supabase, current, Number(current.amount) || 0, arScheduleKey(current.schedule_id, clientIdempotencyKey, idempotencyKey), body)
-        if (replay.body.isDuplicate) return NextResponse.json(replay.body)
+        // Nothing is open, so nothing is ever recorded here: a repeat of a completed "pay in full" (its key is in
+        // the log as completed) is answered as a duplicate, anything else is refused.
+        const { data: done } = await supabase
+          .from("idempotency_log")
+          .select("status")
+          .eq("operation_type", "payment")
+          .eq("idempotency_key", arPaymentLogKey(current.invoice_id, arScheduleKey(current.schedule_id, clientIdempotencyKey, idempotencyKey)))
+          .eq("status", "completed")
+        if ((done || []).length > 0) return NextResponse.json({ message: "Payment already recorded", isDuplicate: true })
         return NextResponse.json({ error: "This schedule has already been paid in full" }, { status: 400 })
       }
       const result = await payLinkedReceivable(supabase, current, amountToPay, arScheduleKey(current.schedule_id, clientIdempotencyKey, idempotencyKey), body)
@@ -762,7 +771,7 @@ export async function PUT(request: NextRequest) {
       }
 
       // AP invoice updates are handled by the client to avoid confusion
-      const isPayable = scheduleType === "payable" || current.schedule_type === "payable"
+      const isPayable = isPayableSchedule(current, scheduleType)
       const result = await recordSchedulePayment(
         supabase,
         current,
