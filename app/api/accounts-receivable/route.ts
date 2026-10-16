@@ -103,74 +103,60 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const supabase = createAdminClient()
-
-    const body = await request.json()
-
-    const dbData = {
-      invoice_number: body.invoice_number || body.invoiceNumber,
-      customer_id: Number.parseInt(body.customer_id || body.customerId),
-      so_id: Number.parseInt(body.so_id || body.soId),
-      invoice_date: body.date || body.invoice_date || new Date().toISOString().split("T")[0],
-      due_date: body.dueDate || body.due_date || new Date().toISOString().split("T")[0],
-      amount: body.amount,
-      collected_amount: body.collectedAmount || body.collected_amount || 0,
-      installment_months: body.installment_months || body.installmentMonths,
-      months_paid: body.months_paid || body.monthsPaid || 0,
-      status: body.status || "pending",
-    }
-
-    const { data, error } = await supabase.from("accounts_receivable").insert(dbData).select().single()
-
-    if (error) {
-      console.error("AR POST: Error", error.message)
-      throw error
-    }
-
-    return NextResponse.json(data)
-  } catch (error: any) {
-    console.error("Error creating customer invoice:", error.message)
-    return NextResponse.json({ error: "Failed to create customer invoice" }, { status: 500 })
-  }
+// RETIRED (BIZ-S-003). Invoices are created only from approved delivery permits
+// (POST /api/accounts-receivable/create-from-dps); a client-built invoice could carry any amount or collected total.
+export async function POST() {
+  return NextResponse.json(
+    {
+      error: "Creating an invoice directly is no longer supported. Invoices are created from approved delivery permits.",
+      code: "AR_CREATE_RETIRED",
+    },
+    { status: 410 },
+  )
 }
 
+// Only the VAT invoice file can be changed here. Payments go through POST /api/accounts-receivable/payments, so
+// collected_amount, months_paid and status are never written by this handler. The id is body.id or body.invoiceId
+// (the receivables screen sends invoiceId).
+const AR_MONEY_FIELDS = [
+  "amount", "status", "collectedAmount", "collected_amount", "monthsPaid", "months_paid", "balance",
+  "installmentMonths", "installment_months", "dueDate", "due_date",
+]
 export async function PUT(request: Request) {
   try {
     const supabase = createAdminClient()
 
     const body = await request.json()
-    const { id, ...updates } = body
-
-    const dbUpdates: any = {}
-
-    if (updates.monthsPaid !== undefined || updates.months_paid !== undefined) {
-      dbUpdates.months_paid = updates.monthsPaid ?? updates.months_paid
+    const numericId = parsePositiveId(body?.id ?? body?.invoiceId)
+    if (numericId === null) {
+      return NextResponse.json({ error: "A valid numeric id (id or invoiceId) is required" }, { status: 400 })
     }
-    if (updates.status !== undefined) dbUpdates.status = updates.status
-    if (updates.collectedAmount !== undefined || updates.collected_amount !== undefined) {
-      dbUpdates.collected_amount = updates.collectedAmount ?? updates.collected_amount
+    const refused = AR_MONEY_FIELDS.filter((field) => body[field] !== undefined)
+    if (refused.length > 0) {
+      return NextResponse.json(
+        { error: `Only the VAT invoice file can be changed here (refused: ${refused.join(", ")}). Record payments from the receivables screen.` },
+        { status: 400 },
+      )
     }
-    if (updates.vatInvoiceUrl !== undefined) {
-      dbUpdates.vat_invoice_url = updates.vatInvoiceUrl
+    if (body.vatInvoiceUrl === undefined) {
+      return NextResponse.json({ error: "vatInvoiceUrl is required" }, { status: 400 })
     }
-    // balance is auto-calculated as (amount - collected_amount) by the database
-
 
     const { data, error } = await supabase
       .from("accounts_receivable")
-      .update(dbUpdates)
-      .eq("invoice_id", id)
+      .update({ vat_invoice_url: body.vatInvoiceUrl || null })
+      .eq("invoice_id", numericId)
       .select()
-      .single()
 
     if (error) {
       console.error("AR PUT: Error", error.message)
       throw error
     }
+    if (!Array.isArray(data) || data.length === 0) {
+      return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
+    }
 
-    return NextResponse.json(data)
+    return NextResponse.json(data[0])
   } catch (error: any) {
     console.error("Error updating customer invoice:", error?.message || error)
     return NextResponse.json({ error: error?.message || "Failed to update customer invoice" }, { status: 500 })
@@ -187,6 +173,32 @@ export async function DELETE(request: Request) {
     const numericId = parsePositiveId(id)
     if (numericId === null) {
       return NextResponse.json({ error: "A valid numeric id is required" }, { status: 400 })
+    }
+
+    // An invoice that holds money is never deleted (BIZ-S-003): collected_amount > 0 or any customer payment row.
+    const { data: invoice, error: readError } = await supabase
+      .from("accounts_receivable")
+      .select("invoice_id, collected_amount")
+      .eq("invoice_id", numericId)
+      .maybeSingle()
+    if (readError) throw readError
+    if (invoice && (Number(invoice.collected_amount) || 0) > 0) {
+      return NextResponse.json(
+        { error: "This invoice has collected payments and cannot be deleted.", code: "AR_HAS_PAYMENTS" },
+        { status: 409 },
+      )
+    }
+    const { data: payments, error: paymentsError } = await supabase
+      .from("customer_payments")
+      .select("payment_id")
+      .eq("invoice_id", numericId)
+      .limit(1)
+    if (paymentsError) throw paymentsError
+    if (Array.isArray(payments) && payments.length > 0) {
+      return NextResponse.json(
+        { error: "This invoice has customer payments and cannot be deleted.", code: "AR_HAS_PAYMENTS" },
+        { status: 409 },
+      )
     }
 
     const { error } = await supabase.from("accounts_receivable").delete().eq("invoice_id", numericId)

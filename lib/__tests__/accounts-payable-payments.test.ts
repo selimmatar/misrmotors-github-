@@ -239,7 +239,7 @@ test("A2. PUT with nothing to update is a 400; a harmless field still updates", 
   assert.equal(db.tables.supplier_payments.length, 0)
 })
 
-test("A3. POST /api/accounts-payable ignores client paid_amount and status", async () => {
+test("A3. POST /api/accounts-payable is retired (410): AP invoices come only from PO approval", async () => {
   const db = baseDb({ accounts_payable: [] })
   const r = await call(apRoute.POST, "POST", {
     invoiceNumber: "APINV-NEW-1",
@@ -252,11 +252,8 @@ test("A3. POST /api/accounts-payable ignores client paid_amount and status", asy
     monthsPaid: 3,
     paymentType: "cash",
   })
-  assert.equal(r.status, 200, JSON.stringify(r.body))
-  const created = db.tables.accounts_payable[0]
-  assert.equal(created.paid_amount, 0)
-  assert.equal(created.status, "pending")
-  assert.equal(created.months_paid, 0)
+  assert.equal(r.status, 410, JSON.stringify(r.body))
+  assert.equal(db.tables.accounts_payable.length, 0)
 })
 
 const approvalDb = (paymentType: string) =>

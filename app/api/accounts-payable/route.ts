@@ -95,120 +95,13 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const supabase = createAdminClient()
-
-    const body = await request.json()
-
-
-    const amount = Number.parseFloat(body.amount) || 0
-
-    const paymentType =
-      body.payment_type || body.paymentType || body.payment_terms || body.paymentTerms || "installments"
-
-    // Dedup: never create a second AP invoice for the same PO
-    const poIdNum = Number.parseInt(body.po_id || body.poId)
-    if (!Number.isNaN(poIdNum)) {
-      const { data: existing } = await supabase
-        .from("accounts_payable")
-        .select("invoice_id, invoice_number")
-        .eq("po_id", poIdNum)
-        .limit(1)
-
-      if (existing && existing.length > 0) {
-        return NextResponse.json({
-          invoice_id: existing[0].invoice_id,
-          invoiceId: existing[0].invoice_id,
-          invoice_number: existing[0].invoice_number,
-          po_id: poIdNum,
-          duplicate: true,
-        })
-      }
-    }
-
-
-    const dbData: any = {
-      invoice_number: body.invoice_number || body.invoiceNumber,
-      supplier_id: Number.parseInt(body.supplier_id || body.supplierId),
-      po_id: Number.parseInt(body.po_id || body.poId),
-      invoice_date: body.invoice_date || body.date || new Date().toISOString().split("T")[0],
-      due_date: body.due_date || body.dueDate || new Date().toISOString().split("T")[0],
-      amount: amount,
-      paid_amount: 0, // payments are recorded only through /api/accounts-payable/payments
-      installment_months: body.installment_months || body.installmentMonths || 1,
-      months_paid: 0,
-      status: "pending",
-      payment_terms: body.payment_terms || body.paymentTerms || paymentType,
-      payment_type: paymentType,
-    }
-
-    if (paymentType === "hybrid") {
-      dbData.down_payment_amount = body.down_payment_amount ?? body.downPaymentAmount ?? null
-      dbData.down_payment_percent = body.down_payment_percent ?? body.downPaymentPercent ?? null
-      dbData.down_payment_type = body.down_payment_type ?? body.downPaymentType ?? "amount"
-      dbData.down_payment_due_date = body.down_payment_due_date ?? body.downPaymentDueDate ?? null
-      dbData.remaining_amount = body.remaining_amount ?? body.remainingAmount ?? null
-      dbData.remaining_installment_months = body.remaining_installment_months ?? body.remainingInstallmentMonths ?? null
-      dbData.monthly_amount = body.monthly_amount ?? body.monthlyAmount ?? null
-      dbData.payment_start_date = body.payment_start_date ?? body.paymentStartDate ?? null
-      dbData.schedule_entries = body.schedule_entries ?? body.scheduleEntries ?? null
-      dbData.schedule_mode = body.schedule_mode ?? body.scheduleMode ?? "AUTO"
-
-
-    } else {
-      // Non-hybrid: still set some fields if provided
-      dbData.down_payment_amount = body.down_payment_amount ?? body.downPaymentAmount ?? null
-      dbData.remaining_amount = body.remaining_amount ?? body.remainingAmount ?? null
-      dbData.remaining_installment_months = body.remaining_installment_months ?? body.remainingInstallmentMonths ?? null
-      dbData.monthly_amount = body.monthly_amount ?? body.monthlyAmount ?? null
-      dbData.payment_start_date = body.payment_start_date ?? body.paymentStartDate ?? null
-    }
-
-    const { data, error } = await supabase.from("accounts_payable").insert(dbData).select().single()
-
-    if (error) {
-      console.error("AP POST: Error", error.message)
-      throw error
-    }
-
-    if (!data || !data.invoice_id) {
-      console.error("AP POST: Invoice created but invoice_id is missing", data)
-      throw new Error("Invoice created but invoice_id was not returned")
-    }
-
-    return NextResponse.json({
-      invoice_id: data.invoice_id,
-      invoiceId: data.invoice_id,
-      invoice_number: data.invoice_number,
-      po_id: data.po_id,
-      supplier_id: data.supplier_id,
-      invoice_date: data.invoice_date,
-      due_date: data.due_date,
-      amount: data.amount,
-      paid_amount: data.paid_amount,
-      balance: data.balance,
-      payment_terms: data.payment_terms,
-      payment_type: data.payment_type,
-      installment_months: data.installment_months,
-      months_paid: data.months_paid,
-      status: data.status,
-      created_at: data.created_at,
-      payment_start_date: data.payment_start_date,
-      down_payment_amount: data.down_payment_amount,
-      down_payment_percent: data.down_payment_percent,
-      down_payment_type: data.down_payment_type,
-      down_payment_due_date: data.down_payment_due_date,
-      remaining_amount: data.remaining_amount,
-      remaining_installment_months: data.remaining_installment_months,
-      monthly_amount: data.monthly_amount,
-      schedule_entries: data.schedule_entries,
-      schedule_mode: data.schedule_mode,
-    })
-  } catch (error: any) {
-    console.error("Error creating accounts payable:", error.message)
-    return NextResponse.json({ error: "Failed to create accounts payable" }, { status: 500 })
-  }
+// RETIRED (BIZ-P-06), like POST /api/supplier-payments. AP invoices are created when a purchase order is approved
+// (ensureApInvoice in the purchase-orders route, which writes to the database directly).
+export async function POST() {
+  return NextResponse.json(
+    { error: "AP invoices are created when a purchase order is approved", code: "ENDPOINT_RETIRED" },
+    { status: 410 },
+  )
 }
 
 export async function PUT(request: Request) {

@@ -34,52 +34,8 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const supabase = createAdminClient()
-    const body = await request.json()
-
-    
-    let invoiceIdNumeric: number
-    const invoiceIdStr = String(body.invoiceId)
-    
-    // If it starts with "INV-CUST-", extract the timestamp and find the actual invoice_id
-    if (invoiceIdStr.startsWith("INV-CUST-")) {
-      console.error("ERROR: Received invoice NUMBER instead of invoice ID:", invoiceIdStr)
-      return NextResponse.json({ 
-        error: "Invalid invoiceId: expected database invoice_id (integer), received invoice number string" 
-      }, { status: 400 })
-    }
-    
-    invoiceIdNumeric = Number.parseInt(invoiceIdStr)
-    
-    if (isNaN(invoiceIdNumeric)) {
-      console.error("ERROR: Could not parse invoiceId to integer:", body.invoiceId)
-      return NextResponse.json({ error: "Invalid invoiceId format" }, { status: 400 })
-    }
-
-
-    const dbData = {
-      invoice_id: invoiceIdNumeric,
-      customer_id: Number.parseInt(body.customerId),
-      amount: body.amount,
-      payment_date: body.paymentDate || new Date().toISOString().split("T")[0],
-      payment_method: body.paymentMethod || "bank_transfer",
-      reference_number: body.referenceNumber,
-      recorded_by: body.recordedBy ? Number.parseInt(body.recordedBy) : null,
-    }
-
-
-    const { data, error } = await supabase.from("customer_payments").insert(dbData).select().single()
-
-    if (error) {
-      console.error("Customer Payments API - Database error:", error)
-      throw error
-    }
-
-    return NextResponse.json(data)
-  } catch (error: any) {
-    console.error("Error creating customer payment:", error.message)
-    return NextResponse.json({ error: error.message || "Failed to create customer payment" }, { status: 500 })
-  }
+// RETIRED (BIZ-S-010). A bare customer_payments row moved no invoice and wrote no ledger entry. Customer payments are
+// recorded with POST /api/accounts-receivable/payments, which updates the invoice and writes both rows.
+export async function POST() {
+  return NextResponse.json({ error: "Use POST /api/accounts-receivable/payments", code: "ENDPOINT_RETIRED" }, { status: 410 })
 }

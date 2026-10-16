@@ -206,12 +206,14 @@ test("LO9. schedule payment (idempotent path): AR update failure answers 500, no
   useDb(db)
   const r = await putSchedule({ scheduleId: "1", paidAmount: 100, invoiceId: 5, paymentDate: "2026-10-08" })
   assert.equal(r.status, 500, JSON.stringify(r.body))
-  assert.equal(r.body.schedulePaid, true)
   assert.equal(r.body.invoiceUpdated, false)
   assert.equal(r.body.message, undefined)
   assert.equal(db.tables.accounts_receivable[0].collected_amount, 0)
-  // The schedule already holds the payment, so the key is closed: a retry must not pay it twice.
-  assert.equal(db.tables.idempotency_log[0].status, "completed")
+  // Batch 1: the invoice is updated before the schedule (lib/ar-payments.ts), so nothing was paid and the key is
+  // left retryable.
+  assert.equal(r.body.schedulePaid, false)
+  assert.equal(db.tables.payment_schedules[0].paid_amount, 0)
+  assert.equal(db.tables.idempotency_log[0].status, "failed")
 })
 
 test("LO10. schedule payment (plain path): AR read failure answers 500, not success", async () => {

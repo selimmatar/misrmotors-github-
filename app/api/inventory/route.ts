@@ -170,62 +170,22 @@ export async function PUT(request: Request) {
       throw new Error("product_id is required for update")
     }
 
-    if (body.quantity_increment !== undefined) {
-      let fetchQuery = supabase
-        .from("inventory")
-        .select("quantity, unit_cost")
-        .eq("product_id", Number.parseInt(productId))
-
-      if (warehouseId) {
-        fetchQuery = fetchQuery.eq("warehouse_id", Number.parseInt(warehouseId))
-      }
-
-      const { data: existing, error: fetchError } = await fetchQuery.maybeSingle()
-
-      if (fetchError) {
-        console.error("Inventory PUT: Error fetching existing quantity", fetchError)
-        throw fetchError
-      }
-
-      if (!existing) {
-        return NextResponse.json({ error: "Inventory record not found. Cannot increment quantity." }, { status: 404 })
-      }
-
-      const newQuantity = existing.quantity + body.quantity_increment
-
-      const updates: any = {
-        quantity: newQuantity,
-        last_updated: new Date().toISOString(),
-      }
-
-      if (body.unitCost !== undefined) updates.unit_cost = body.unitCost
-      if (body.unit_cost !== undefined) updates.unit_cost = body.unit_cost
-      if (body.reorderPoint !== undefined) updates.reorder_point = body.reorderPoint
-      if (body.reorder_point !== undefined) updates.reorder_point = body.reorder_point
-      if (body.location !== undefined) updates.location = body.location
-      if (warehouseId !== undefined) updates.warehouse_id = warehouseId ? Number.parseInt(warehouseId) : null
-
-      let updateQuery = supabase.from("inventory").update(updates).eq("product_id", Number.parseInt(productId))
-
-      if (warehouseId) {
-        updateQuery = updateQuery.eq("warehouse_id", Number.parseInt(warehouseId))
-      }
-
-      const { data, error } = await updateQuery.select().single()
-
-      if (error) {
-        console.error("Inventory PUT: Error", error)
-        throw error
-      }
-
-      return NextResponse.json(data)
+    // Stock quantities move only through stock operations (receiving, delivery permits, transfers, returns, stock
+    // count), never through this generic update (BIZ-P-09). The metadata fields below still update.
+    if (body.quantity !== undefined || body.quantity_increment !== undefined) {
+      return NextResponse.json(
+        {
+          error: "Stock quantities cannot be changed here. Use goods receiving, delivery permits, transfers, returns or the stock count.",
+          code: "QUANTITY_NOT_EDITABLE",
+        },
+        { status: 400 },
+      )
     }
 
     const updates: any = {
       last_updated: new Date().toISOString(),
     }
 
-    if (body.quantity !== undefined) updates.quantity = body.quantity
     if (body.unitCost !== undefined) updates.unit_cost = body.unitCost
     if (body.unit_cost !== undefined) updates.unit_cost = body.unit_cost
     if (body.reorderPoint !== undefined) updates.reorder_point = body.reorderPoint
@@ -263,6 +223,20 @@ export async function DELETE(request: Request) {
     const numericId = parsePositiveId(id)
     if (numericId === null) {
       return NextResponse.json({ error: "A valid numeric id is required" }, { status: 400 })
+    }
+
+    // A row that still holds stock is never deleted (BIZ-P-09): the units would vanish without a movement.
+    const { data: row, error: readError } = await supabase
+      .from("inventory")
+      .select("inventory_id, quantity")
+      .eq("inventory_id", numericId)
+      .maybeSingle()
+    if (readError) throw readError
+    if (row && (Number(row.quantity) || 0) > 0) {
+      return NextResponse.json(
+        { error: "This inventory row still holds stock and cannot be deleted.", code: "INVENTORY_HAS_STOCK" },
+        { status: 409 },
+      )
     }
 
     const { error } = await supabase.from("inventory").delete().eq("inventory_id", numericId)

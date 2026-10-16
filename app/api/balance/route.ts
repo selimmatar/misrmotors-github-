@@ -24,37 +24,13 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-
-    const result = await withRetry(async () => {
-      const supabase = getAdminClient()
-      const { data, error } = await (supabase as any)
-        .from("balance_entries")
-        .insert([
-          {
-            entry_type: body.type,
-            reference_type: body.referenceType,
-            reference_id: body.referenceId,
-            reference_number: body.referenceNumber,
-            amount: body.amount,
-            description: body.description,
-            status: body.status || "active",
-            created_by: body.createdBy,
-          },
-        ])
-        .select()
-
-      if (error) throw error
-      return data[0]
-    })
-
-    return NextResponse.json(result)
-  } catch (error) {
-    console.error("Balance API - Error adding balance entry:", error)
-    return NextResponse.json({ error: "Failed to add balance entry" }, { status: 500 })
-  }
+// RETIRED (BIZ-P-14). Ledger rows are written only by the operations that move money (AR / AP payments, invoicing);
+// no screen posts manual entries.
+export async function POST() {
+  return NextResponse.json(
+    { error: "Balance entries are written by the payment and invoice operations only", code: "ENDPOINT_RETIRED" },
+    { status: 410 },
+  )
 }
 
 // Hardening: this handler used to delete EVERY balance entry on an unauthenticated, id-less DELETE. No UI caller

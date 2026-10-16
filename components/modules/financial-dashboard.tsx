@@ -86,6 +86,13 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
       if (response.ok) {
         setRescheduleRequests((prev) => prev.filter((r) => r.id !== requestId))
         alert(t("financial.reschedule-approved"))
+      } else {
+        // refused (already reviewed, amount below what was collected, invoice not updated): say so
+        const result = await response.json().catch(() => ({}))
+        alert(result.error ? `${t("financial.failed-to-approve-request")}\n${result.error}` : t("financial.failed-to-approve-request"))
+        if (response.status === 409 && result.code === "REQUEST_NOT_PENDING") {
+          setRescheduleRequests((prev) => prev.filter((r) => r.id !== requestId))
+        }
       }
     } catch (error) {
       alert(t("financial.failed-to-approve-request"))
@@ -108,6 +115,13 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
       if (response.ok) {
         setRescheduleRequests((prev) => prev.filter((r) => r.id !== requestId))
         alert(t("financial.reschedule-rejected"))
+      } else {
+        // refused (already reviewed, amount below what was collected, invoice not updated): say so
+        const result = await response.json().catch(() => ({}))
+        alert(result.error ? `${t("financial.failed-to-reject-request")}\n${result.error}` : t("financial.failed-to-reject-request"))
+        if (response.status === 409 && result.code === "REQUEST_NOT_PENDING") {
+          setRescheduleRequests((prev) => prev.filter((r) => r.id !== requestId))
+        }
       }
     } catch (error) {
       alert(t("financial.failed-to-reject-request"))

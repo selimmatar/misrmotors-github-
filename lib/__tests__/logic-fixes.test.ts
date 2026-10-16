@@ -242,14 +242,20 @@ test("payment: without a paymentDate the key uses today's date (not one key for 
   assert.match(String(key), new RegExp(`_${new Date(today).getTime()}_`))
 })
 
-test("payment: a retry after 'schedule paid, invoice not updated' does not pay the schedule again", async () => {
+test("payment: an invoice update failure writes nothing; the retry pays the schedule exactly once", async () => {
+  // Batch 1 (BIZ-S-009): linked receivable schedules are paid through lib/ar-payments.ts, which updates the invoice
+  // before the schedule, so a failed invoice update leaves nothing paid and the same key can be retried.
   const db = schedDb()
   db.failOn["accounts_receivable:update"] = "db down"
   const first = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 40, invoiceId: 5, paymentDate: "2026-10-01" })
   assert.equal(first.status, 500)
-  assert.equal(first.body.schedulePaid, true)
+  assert.equal(first.body.schedulePaid, false)
+  assert.equal(db.tables.payment_schedules[0].paid_amount, 0)
   delete db.failOn["accounts_receivable:update"]
   const retry = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 40, invoiceId: 5, paymentDate: "2026-10-01" })
-  assert.equal(retry.body.isDuplicate, true, JSON.stringify(retry.body))
+  assert.equal(retry.status, 200, JSON.stringify(retry.body))
+  const again = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 40, invoiceId: 5, paymentDate: "2026-10-01" })
+  assert.equal(again.body.isDuplicate, true, JSON.stringify(again.body))
   assert.equal(db.tables.payment_schedules[0].paid_amount, 40)
+  assert.equal(db.tables.accounts_receivable[0].collected_amount, 40)
 })

@@ -278,10 +278,10 @@ function schedDb(invoice: Row = {}, schedules?: Row[]) {
 const putSched = (body: Row) => call(scheduleRoute.PUT, "PUT", body)
 const ar = (db: FakeDb) => db.tables.accounts_receivable[0]
 
-test("D1. a partial payment that would overpay the invoice is refused with 400; nothing written", async () => {
+test("D1. a partial payment that would overpay the invoice is refused (409, the AR payment rule); nothing written", async () => {
   const db = schedDb({ collected_amount: 250 })
   const r = await putSched({ scheduleId: "1", paidAmount: 100, invoiceId: 5, paymentDate: "2026-10-08" })
-  assert.equal(r.status, 400, JSON.stringify(r.body))
+  assert.equal(r.status, 409, JSON.stringify(r.body))
   assert.match(r.body.error, /overpa|exceed/i)
   assert.equal(ar(db).collected_amount, 250)
   assert.equal(db.tables.payment_schedules[0].paid_amount, 0)
@@ -291,7 +291,7 @@ test("D1. a partial payment that would overpay the invoice is refused with 400; 
 test("D2. the full-payment path (no paidAmount) refuses an overpayment too", async () => {
   const db = schedDb({ collected_amount: 250 })
   const r = await putSched({ scheduleId: "1" })
-  assert.equal(r.status, 400, JSON.stringify(r.body))
+  assert.equal(r.status, 409, JSON.stringify(r.body))
   assert.match(r.body.error, /overpa|exceed/i)
   assert.equal(ar(db).collected_amount, 250)
   assert.equal(db.tables.payment_schedules[0].paid_amount, 0)
