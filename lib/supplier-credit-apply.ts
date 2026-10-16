@@ -179,6 +179,50 @@ export async function releaseSupplierCredits(db: Db, poId: number, reason: strin
   return null
 }
 
+/**
+ * After a PO's credits were released for good, fold each split remainder back into its credit, so the supplier card
+ * shows one row again. Only a remainder that is still active and untouched (its note is exactly the one written at the
+ * split) is folded. Best effort: a failure leaves two correct active rows (same total), never a lost amount.
+ */
+export async function mergeReleasedRemainders(db: Db, creditIds: number[], poNumber: string): Promise<void> {
+  for (const creditId of creditIds) {
+    const { data: rows } = await db.from("supplier_credits").select("*").eq("credit_id", creditId).eq("status", "active").limit(1)
+    const credit = rows?.[0]
+    if (!credit) continue
+    const usedPart = money(Number(credit.amount) || 0)
+    const note = remainderNote(creditId, usedPart, poNumber)
+    const { data: remainders } = await db
+      .from("supplier_credits")
+      .select("*")
+      .eq("supplier_id", credit.supplier_id)
+      .eq("status", "active")
+      .eq("notes", note)
+      .limit(1)
+    const remainder = remainders?.[0]
+    if (!remainder) continue
+    const { data: removed, error: removeError } = await db
+      .from("supplier_credits")
+      .delete()
+      .eq("credit_id", remainder.credit_id)
+      .eq("status", "active")
+      .eq("notes", note)
+      .select("credit_id")
+    if (removeError || !removed || removed.length !== 1) continue
+    const { data: grown, error: growError } = await db
+      .from("supplier_credits")
+      .update({ amount: money(usedPart + (Number(remainder.amount) || 0)) })
+      .eq("credit_id", creditId)
+      .eq("status", "active")
+      .eq("amount", credit.amount)
+      .select("credit_id")
+    if (!growError && grown && grown.length === 1) continue
+    // The credit changed in between: put the remainder back as it was so nothing is lost.
+    const { credit_id: _dropId, ...restore } = remainder
+    const { error: restoreError } = await db.from("supplier_credits").insert(restore)
+    if (restoreError) console.error("Supplier credits: could not restore a remainder row", remainder, restoreError)
+  }
+}
+
 /** Sum of the credits reserved on a PO (credits marked credited manually have no used_in_po_id and never count). */
 export async function reservedCreditTotal(db: Db, poId: number): Promise<{ total: number; error: string | null }> {
   const { data, error } = await db.from("supplier_credits").select("amount").eq("used_in_po_id", poId).eq("status", "used")

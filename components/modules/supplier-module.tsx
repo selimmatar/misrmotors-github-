@@ -441,7 +441,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                         <div className="flex-1">
                           <p className="font-medium">{credit.description || t("supplier.return-credit")}</p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {fill(t("supplier.credit-used-on-po"), { number: credit.used_in_po_number || `#${credit.used_in_po_id}` })}
+                            {fill(t(credit.used_in_po_status === "pending" ? "supplier.credit-reserved-on-po" : "supplier.credit-used-on-po"), { number: credit.used_in_po_number || `#${credit.used_in_po_id}` })}
                             {credit.used_at && <>{" • "}{formatDate(credit.used_at, language)}</>}
                           </p>
                         </div>
@@ -505,8 +505,8 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           <div className="mt-3 pt-3 border-t">
                             <p className="text-sm text-muted-foreground mb-2">{t("supplier.items")}</p>
                             <div className="space-y-2">
-                              {order.items.map((item) => (
-                                <div key={item.productId} className="text-sm bg-muted/50 rounded p-2">
+                              {order.items.map((item, itemIdx) => (
+                                <div key={item.id ?? `${item.productId}-${itemIdx}`} className="text-sm bg-muted/50 rounded p-2">
                                   <div className="flex justify-between items-start">
                                     <div>
                                       <span className="font-medium">

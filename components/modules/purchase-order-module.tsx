@@ -115,6 +115,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   const [searchQuery, setSearchQuery] = useState("")
   // Supplier credits (returned items) to deduct from the new PO: creditId -> amount
   const [creditAmounts, setCreditAmounts] = useState<CreditAmounts>({})
+  const [creditReloadKey, setCreditReloadKey] = useState(0)
   const [costFinalizeDialog, setCostFinalizeDialog] = useState(false)
   const [selectedPOForCost, setSelectedPOForCost] = useState<string | null>(null)
   const [taxAmount, setTaxAmount] = useState("")
@@ -840,6 +841,11 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       }
       const code = (error as { code?: string })?.code
       if (code && creditError[code]) {
+        // The open credits may have changed (used on another PO meanwhile): clear the choice and reload the list.
+        if (code === "CREDIT_NOT_AVAILABLE" || code === "CREDIT_AMOUNT_INVALID") {
+          setCreditAmounts({})
+          setCreditReloadKey((k) => k + 1)
+        }
         alert(`${t("error.create-po")}: ${t(creditError[code])}`)
         return
       }
@@ -1791,6 +1797,9 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         <span>{t("po.credit.net-payable")}</span>
                         <span><Money value={Math.max(grandTotal - appliedCreditTotal(creditAmounts), 0)} /></span>
                       </div>
+                      {(paymentType === "installments" || paymentType === "hybrid") && (
+                        <p className="text-xs text-muted-foreground">{t("po.credit.schedule-note")}</p>
+                      )}
                     </>
                   )}
                 </div>
@@ -1801,6 +1810,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   orderTotal={grandTotal}
                   value={creditAmounts}
                   onChange={setCreditAmounts}
+                  reloadKey={creditReloadKey}
                 />
               )}
             </div>

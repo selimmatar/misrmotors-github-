@@ -40,8 +40,11 @@ export function SupplierCreditPicker({
   orderTotal,
   value,
   onChange,
+  reloadKey = 0,
 }: {
   supplierId: string
+  /** Bump to fetch the open credits again (e.g. after the server refused a credit someone else just used). */
+  reloadKey?: number
   orderTotal: number
   value: CreditAmounts
   onChange: (next: CreditAmounts) => void
@@ -71,7 +74,7 @@ export function SupplierCreditPicker({
     return () => {
       cancelled = true
     }
-  }, [supplierId])
+  }, [supplierId, reloadKey])
 
   if (!supplierId || (!loading && credits.length === 0)) return null
 

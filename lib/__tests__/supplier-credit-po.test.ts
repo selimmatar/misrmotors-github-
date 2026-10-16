@@ -322,6 +322,7 @@ test("C25. an approval that wins while the PO is being deleted keeps its credits
     if (t === "supplier_credits" && !injected) {
       injected = true
       db.tables.accounts_payable.push({ invoice_id: 78, po_id: poId, supplier_id: 1, amount: 1000, paid_amount: 300, status: "partially_paid" })
+      db.tables.supplier_payments.push({ payment_id: 5, invoice_id: 78, supplier_id: 1, amount: 300, payment_method: "supplier_credit" })
     }
     return realFrom(t)
   }
@@ -339,4 +340,91 @@ test("C26 remainder note round-trips so the supplier card can show it in Arabic"
   assert.deepEqual(parseRemainderNote(note), { creditId: "12", amount: "500.00", poNumber: "PO-2026-0101" })
   assert.equal(parseRemainderNote("Returned 2 pumps"), null)
   assert.equal(parseRemainderNote(null), null)
+})
+
+test("C27. rejecting a PO joins a split credit back into one row", async () => {
+  const db = mk([credit(1, 1, 300)])
+  const poId = await createWithCredit(db, 120)
+  assert.equal(db.tables.supplier_credits.length, 2)
+  assert.equal((await put({ id: poId, status: "rejected", rejection_reason: "x" })).status, 200)
+  assert.equal(db.tables.supplier_credits.length, 1, "the remainder row is folded back")
+  const c = db.tables.supplier_credits[0]
+  assert.equal(c.credit_id, 1)
+  assert.equal(c.amount, 300)
+  assert.equal(c.status, "active")
+  assert.equal(c.used_in_po_id, null)
+})
+
+test("C28. deleting a PO joins a split credit back into one row", async () => {
+  const db = mk([credit(1, 1, 300)])
+  const poId = await createWithCredit(db, 50)
+  assert.equal((await del(poId)).status, 200)
+  assert.deepEqual(db.tables.supplier_credits.map((c) => [c.credit_id, c.amount, c.status]), [[1, 300, "active"]])
+})
+
+test("C29. no join when the remainder was already used on another PO", async () => {
+  const db = mk([credit(1, 1, 300)])
+  const poA = await createWithCredit(db, 100)
+  const remainderId = db.tables.supplier_credits.find((c) => c.credit_id !== 1)!.credit_id
+  const poB = await createWithCredit(db, 200, remainderId)
+  assert.notEqual(poA, poB)
+  assert.equal((await put({ id: poA, status: "rejected", rejection_reason: "x" })).status, 200)
+  const byId = new Map(db.tables.supplier_credits.map((c) => [c.credit_id, c]))
+  assert.equal(byId.get(1)!.amount, 100)
+  assert.equal(byId.get(1)!.status, "active")
+  assert.equal(byId.get(remainderId)!.status, "used")
+  assert.equal(byId.get(remainderId)!.used_in_po_id, poB)
+  assert.equal(db.tables.supplier_credits.reduce((s, c) => s + c.amount, 0), 300)
+})
+
+test("C30. ?include=used tells a credit reserved on a pending PO apart from one applied on approval", async () => {
+  const db = mk([credit(1, 1, 300), credit(2, 1, 100)])
+  const poA = await createWithCredit(db, 300, 1)
+  await createWithCredit(db, 100, 2)
+  assert.equal((await put({ id: poA, status: "approved" })).status, 200)
+  const all = await call(creditsRoute.GET, "GET", undefined, "http://test.local/api/supplier-credits?include=used")
+  const byId = new Map(all.body.map((c: any) => [c.credit_id, c]))
+  assert.equal((byId.get(1) as any).used_in_po_status, "approved")
+  assert.equal((byId.get(2) as any).used_in_po_status, "pending")
+})
+
+test("C31. an approval during the delete that did NOT apply the credits leaves them free (not lost)", async () => {
+  const db = mk([credit(1, 1, 300)])
+  const poId = await createWithCredit(db, 300)
+  const realFrom = db.from.bind(db)
+  let calls = 0
+  ;(db as any).from = (t: string) => {
+    // The approval reads the credits after the delete released them: AP at gross, no credit payment.
+    if (t === "accounts_payable" && ++calls === 2) {
+      db.tables.accounts_payable.push({ invoice_id: 79, po_id: poId, supplier_id: 1, amount: 1000, paid_amount: 0, status: "pending" })
+    }
+    return realFrom(t)
+  }
+  const r = await del(poId)
+  assert.equal(r.status, 409, JSON.stringify(r.body))
+  assert.equal(db.tables.supplier_credits[0].status, "active", "the credit was not applied anywhere, so it stays open")
+  assert.equal(db.tables.supplier_credits[0].used_in_po_id, null)
+})
+
+test("C32. a failed PO delete puts the released credits back on the PO", async () => {
+  const db = mk([credit(1, 1, 300)])
+  const poId = await createWithCredit(db, 120)
+  db.failOn["purchase_orders:delete"] = "boom"
+  const r = await del(poId)
+  assert.equal(r.status, 500)
+  assert.equal(db.tables.purchase_orders.length, 1)
+  const used = db.tables.supplier_credits.find((c) => c.credit_id === 1)!
+  assert.equal(used.status, "used")
+  assert.equal(used.used_in_po_id, poId)
+  assert.equal(used.amount, 120)
+  assert.equal(db.tables.supplier_credits.reduce((s, c) => s + c.amount, 0), 300)
+})
+
+test("C33. ?include=used: open credits are listed in full, used ones only when they went to a PO", async () => {
+  const db = mk([credit(1, 1, 300), credit(2, 1, 50, { status: "used", used_in_po_id: null }), credit(3, 1, 70)])
+  await createWithCredit(db, 70, 3)
+  const all = await call(creditsRoute.GET, "GET", undefined, "http://test.local/api/supplier-credits?include=used")
+  assert.equal(all.status, 200)
+  assert.deepEqual(all.body.map((c: any) => c.credit_id).sort(), [1, 3])
+  assert.equal(all.body.filter((c: any) => c.status === "active").reduce((s: number, c: any) => s + c.amount, 0), 300)
 })
