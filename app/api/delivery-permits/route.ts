@@ -709,17 +709,41 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: "Invalid action" }, { status: 400 })
     }
 
-    // Update permit
+    // Update permit, only while it still has the status this request read (BIZ-S-001): an approve and a reject
+    // that race end with exactly one of them applied.
     let updatedPermit: any
     let updateError: any
     try {
       const result = await withRetry(() =>
-        supabase.from("delivery_permits").update(updates).eq("permit_id", Number.parseInt(permitId)).select().single(),
+        supabase
+          .from("delivery_permits")
+          .update(updates)
+          .eq("permit_id", Number.parseInt(permitId))
+          .eq("status", currentPermit.status)
+          .select(),
       )
-      updatedPermit = result.data
+      updatedPermit = Array.isArray(result.data) ? result.data[0] : result.data
       updateError = result.error
     } catch (thrown: any) {
       updateError = { message: thrown?.message || "Failed to update delivery permit" }
+    }
+
+    if (!updateError && !updatedPermit) {
+      // 0 rows: someone else changed the permit since it was read. Nothing of this request is kept.
+      const { data: latest } = await supabase.from("delivery_permits").select("status").eq("permit_id", Number.parseInt(permitId)).maybeSingle()
+      const nowStatus = latest?.status ?? "deleted"
+      const message = `This permit was changed by someone else (now ${nowStatus}). Reload.`
+      if (approvalKey) await completeIdempotency("dp_approval", approvalKey, false, message)
+      if (stockMoves.length > 0) {
+        const restored = await abortDeduction(supabase, currentPermit, stockMoves, message)
+        if (!restored) {
+          return NextResponse.json(
+            { error: `${message} The stock taken for this approval could not be fully put back: contact an administrator.`, code: "DP_STATUS_CHANGED" },
+            { status: 409 },
+          )
+        }
+      }
+      return NextResponse.json({ error: message, code: "DP_STATUS_CHANGED", status: nowStatus }, { status: 409 })
     }
 
     if (updateError) {

@@ -20,6 +20,7 @@ import * as inventoryRoute from "../../app/api/inventory/route"
 import * as rescheduleRoute from "../../app/api/reschedule-requests/route"
 import * as scheduleRoute from "../../app/api/payment-schedules/route"
 import * as auditRoute from "../../app/api/inventory/audit/route"
+import * as dpRoute from "../../app/api/delivery-permits/route"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -539,4 +540,98 @@ test("3. screen: the stock count lists the changed rows and reloads their quanti
   for (const key of ["inventory-audit.changed-title", "inventory-audit.changed-line"]) {
     assert.equal(i18n.split(`"${key}":`).length - 1, 2, `${key} in English and Arabic`)
   }
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 4. Delivery permit approve vs reject (BIZ-S-001)
+// ---------------------------------------------------------------------------------------------------------
+function permitDb() {
+  const db = new FakeDb({
+    sales_orders: [{ so_id: 1, so_number: "SO-B1-1", customer_id: 5, status: "ready_for_delivery", fulfillment_status: "PENDING", total: 0 }],
+    sales_order_items: [
+      { so_item_id: 1, so_id: 1, product_id: 7, quantity: 10, item_type: "stock", unit_price: 100, total: 1000 },
+      { so_item_id: 2, so_id: 1, product_id: 8, quantity: 4, item_type: "stock", unit_price: 100, total: 400 },
+    ],
+    delivery_permits: [{ permit_id: 1, permit_no: "DP-B1-1", sales_order_id: 1, customer_id: 5, status: "SUBMITTED_SIGNED" }],
+    delivery_permit_items: [
+      { item_id: 1, permit_id: 1, product_id: 7, item_name_snapshot: "P7", quantity: 6, unit_price: 100, total: 600, warehouse_id: 1 },
+      { item_id: 2, permit_id: 1, product_id: 8, item_name_snapshot: "P8", quantity: 4, unit_price: 100, total: 400, warehouse_id: 2 },
+    ],
+    inventory: [
+      { inventory_id: 1, product_id: 7, warehouse_id: 1, quantity: 20, is_returned: false, unit_cost: 50 },
+      { inventory_id: 2, product_id: 8, warehouse_id: 2, quantity: 4, is_returned: false, unit_cost: 50 },
+    ],
+    inventory_transactions: [], idempotency_log: [], product_returns: [], return_items: [], workflow_events: [], users: [],
+  })
+  useDb(db)
+  return db
+}
+const dpApprove = () => call(dpRoute.PUT, "PUT", { permitId: "1", action: "APPROVE" })
+const dpReject = () => call(dpRoute.PUT, "PUT", { permitId: "1", action: "REJECT", rejectionReason: "wrong address" })
+const permitStatus = (db: FakeDb) => db.tables.delivery_permits[0].status
+const onHand = (db: FakeDb) => db.tables.inventory.map((r) => r.quantity)
+
+// Runs `change` on the permit row right before the request's own status write (between its read and its write).
+function changeBeforeStatusWrite(db: FakeDb, change: () => void) {
+  const from = db.from.bind(db)
+  let done = false
+  ;(db as any).from = (table: string) => {
+    const q: any = from(table)
+    if (table === "delivery_permits" && !done) {
+      const update = q.update.bind(q)
+      q.update = (payload: any) => {
+        if (payload && payload.status !== undefined && !done) {
+          done = true
+          change()
+        }
+        return update(payload)
+      }
+    }
+    return q
+  }
+}
+
+test("4. an approval that loses to a reject puts the stock back and is refused (409); the key can be retried", async () => {
+  const db = permitDb()
+  changeBeforeStatusWrite(db, () => { db.tables.delivery_permits[0].status = "REJECTED" })
+  const r = await dpApprove()
+  assert.equal(r.status, 409, JSON.stringify(r.body))
+  assert.equal(r.body.code, "DP_STATUS_CHANGED")
+  assert.equal(r.body.error, "This permit was changed by someone else (now REJECTED). Reload.")
+  assert.equal(permitStatus(db), "REJECTED")
+  assert.deepEqual(onHand(db), [20, 4], "the deducted stock was put back")
+  const key = db.tables.idempotency_log.find((l) => l.operation_type === "dp_approval")!
+  assert.equal(key.status, "failed")
+})
+
+test("4. a reject that loses to an approval is refused (409) and the approval stands", async () => {
+  const db = permitDb()
+  changeBeforeStatusWrite(db, () => { db.tables.delivery_permits[0].status = "APPROVED" })
+  const r = await dpReject()
+  assert.equal(r.status, 409, JSON.stringify(r.body))
+  assert.equal(r.body.error, "This permit was changed by someone else (now APPROVED). Reload.")
+  assert.equal(permitStatus(db), "APPROVED")
+})
+
+test("4. approve and reject at the same time: exactly one wins and stock matches the outcome", async () => {
+  for (let round = 0; round < 20; round++) {
+    const db = permitDb()
+    const [a, r] = await Promise.all([dpApprove(), dpReject()])
+    assert.equal([a, r].filter((x) => x.status === 200).length, 1, `round ${round}: ${JSON.stringify([a.body, r.body])}`)
+    const loser = a.status === 200 ? r : a
+    assert.equal(loser.status, 409, JSON.stringify(loser.body))
+    if (permitStatus(db) === "APPROVED") assert.deepEqual(onHand(db), [14, 0], `round ${round}`)
+    else {
+      assert.equal(permitStatus(db), "REJECTED")
+      assert.deepEqual(onHand(db), [20, 4], `round ${round}`)
+    }
+  }
+})
+
+test("4. a plain approval still works and deducts once", async () => {
+  const db = permitDb()
+  const r = await dpApprove()
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(permitStatus(db), "APPROVED")
+  assert.deepEqual(onHand(db), [14, 0])
 })
