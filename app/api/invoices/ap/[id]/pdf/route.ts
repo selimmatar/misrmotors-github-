@@ -77,6 +77,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const paymentType = invoice.payment_type || "cash"
 
+    // Supplier credit (returned items) deducted from this invoice: recorded as supplier_payments with method
+    // supplier_credit. Shown as its own line so the net amount due is clear.
+    const { data: creditPayments } = await supabase
+      .from("supplier_payments")
+      .select("amount")
+      .eq("invoice_id", invoiceId)
+      .eq("payment_method", "supplier_credit")
+    const creditDeducted = (creditPayments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
+    const cashPaid = Math.max((Number(invoice.paid_amount) || 0) - creditDeducted, 0)
+
     // Generate HTML invoice
     const html = `
 <!DOCTYPE html>
@@ -247,10 +257,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         <td>إجمالي الفاتورة</td>
         <td class="pm-num">${formatArabicCurrency(invoice.amount || 0)}</td>
       </tr>
+${
+      creditDeducted > 0
+        ? `      <tr>
+        <td>خصم رصيد المورد (مرتجعات)</td>
+        <td class="pm-num">- ${formatArabicCurrency(creditDeducted)}</td>
+      </tr>
+      <tr>
+        <td>الصافي المستحق</td>
+        <td class="pm-num">${formatArabicCurrency((invoice.amount || 0) - creditDeducted)}</td>
+      </tr>
       <tr>
         <td>المدفوع</td>
+        <td class="pm-num">${formatArabicCurrency(cashPaid)}</td>
+      </tr>`
+        : `      <tr>
+        <td>المدفوع</td>
         <td class="pm-num">${formatArabicCurrency(invoice.paid_amount || 0)}</td>
-      </tr>
+      </tr>`
+    }
       <tr class="pm-total-final">
         <td>المتبقي</td>
         <td class="pm-num">${formatArabicCurrency((invoice.amount || 0) - (invoice.paid_amount || 0))}</td>

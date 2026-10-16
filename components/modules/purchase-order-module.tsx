@@ -41,6 +41,7 @@ import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { describeOverOrderLines, type OverOrderLine } from "@/lib/po-over-order"
+import { SupplierCreditPicker, appliedCreditTotal, creditSelections, type CreditAmounts } from "@/components/supplier/supplier-credit-picker"
 
 interface PurchaseOrderModuleProps {
   userRole?: UserRole
@@ -112,6 +113,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     bankHolderName: "",
   })
   const [searchQuery, setSearchQuery] = useState("")
+  // Supplier credits (returned items) to deduct from the new PO: creditId -> amount
+  const [creditAmounts, setCreditAmounts] = useState<CreditAmounts>({})
   const [costFinalizeDialog, setCostFinalizeDialog] = useState(false)
   const [selectedPOForCost, setSelectedPOForCost] = useState<string | null>(null)
   const [taxAmount, setTaxAmount] = useState("")
@@ -691,6 +694,13 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       const itemsSubtotal = items.reduce((sum, item) => sum + item.total, 0)
       const totalAmount = itemsSubtotal + vatAmount
 
+      // Supplier credits are EGP amounts: only an EGP order can take them.
+      const credits = formData.currency === "EGP" ? creditSelections(creditAmounts) : []
+      if (credits.length > 0 && appliedCreditTotal(creditAmounts) > Math.round(totalAmount * 100) / 100 + 0.005) {
+        alert(t("po.credit.err-exceeds-total"))
+        return
+      }
+
       const finalPaymentDetails: PaymentDetails = {
         paymentType,
         ...(paymentType === "installments" && {
@@ -783,14 +793,14 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       }
 
       try {
-        await addPurchaseOrder(newOrder)
+        await addPurchaseOrder(newOrder, { credits })
       } catch (error) {
         // Over the sales order quantity: the user may confirm and order anyway (an unknown SO line is still refused)
         const details = error as { code?: string; lines?: OverOrderLine[] }
         if (details?.code !== "PO_OVER_ORDER" || !Array.isArray(details.lines)) throw error
         const lines = describeOverOrderLines(details.lines, newOrder.items as any[], t("po.over-order.line"))
         if (!confirm(fill(t("po.over-order.confirm"), { lines }))) return
-        await addPurchaseOrder(newOrder, { allowOverOrder: true })
+        await addPurchaseOrder(newOrder, { allowOverOrder: true, credits })
       }
 
       // Reset form
@@ -822,6 +832,17 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       setShowForm(false)
     } catch (error) {
       console.error("Error creating PO:", error)
+      const creditError: Record<string, string> = {
+        CREDIT_NOT_AVAILABLE: "po.credit.err-not-available",
+        CREDIT_AMOUNT_INVALID: "po.credit.err-amount",
+        CREDIT_EXCEEDS_TOTAL: "po.credit.err-exceeds-total",
+        CREDIT_CURRENCY: "po.credit.err-currency",
+      }
+      const code = (error as { code?: string })?.code
+      if (code && creditError[code]) {
+        alert(`${t("error.create-po")}: ${t(creditError[code])}`)
+        return
+      }
       alert(error instanceof Error && error.message ? `${t("error.create-po")}: ${error.message}` : t("error.create-po"))
     } finally {
       setUploadingInvoice(false)
@@ -1100,6 +1121,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       bankHolderName: "",
     })
     setOrderItems([])
+    setCreditAmounts({})
     setPoSource("manual")
     setSelectedSourceSoId("")
     setSoSearchTerm("")
@@ -1340,6 +1362,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   value={formData.supplierId}
                   onChange={(e) => {
                     setFormData({ ...formData, supplierId: e.target.value })
+                    setCreditAmounts({})
                     // Reset SO import when supplier changes
                     setSelectedSourceSoId("")
                     if (poSource === "sales_order") {
@@ -1383,7 +1406,10 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 <select
                   className="w-full border rounded px-3 py-2 mt-1"
                   value={formData.currency}
-                  onChange={(e) => setFormData({ ...formData, currency: e.target.value as "EGP" | "USD" | "EUR" })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, currency: e.target.value as "EGP" | "USD" | "EUR" })
+                    setCreditAmounts({})
+                  }}
                 >
                   <option value="EGP">{t("currency.egp")}</option>
                   <option value="USD">{t("currency.usd")}</option>
@@ -1753,7 +1779,29 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     <span>{t("field.total")} {t("common.egp")}</span>
                     <span><Money value={grandTotal} /></span>
                   </div>
+                  {formData.currency === "EGP" && appliedCreditTotal(creditAmounts) > 0 && (
+                    <>
+                      <div className="flex justify-between items-center text-sm text-emerald-700 dark:text-emerald-400">
+                        <span>{t("po.credit.less")}</span>
+                        <span>
+                          - <Money value={appliedCreditTotal(creditAmounts)} />
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center font-semibold">
+                        <span>{t("po.credit.net-payable")}</span>
+                        <span><Money value={Math.max(grandTotal - appliedCreditTotal(creditAmounts), 0)} /></span>
+                      </div>
+                    </>
+                  )}
                 </div>
+              )}
+              {orderItems.length > 0 && formData.currency === "EGP" && (
+                <SupplierCreditPicker
+                  supplierId={formData.supplierId}
+                  orderTotal={grandTotal}
+                  value={creditAmounts}
+                  onChange={setCreditAmounts}
+                />
               )}
             </div>
 

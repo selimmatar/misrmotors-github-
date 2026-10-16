@@ -7,7 +7,7 @@
         "api": [
           "\"/api/accounts-payable",
           "\"/api/supplier-credits",
-          "\"/api/supplier-credits",
+          "\"/api/supplier-credits?include=used",
           "\"/api/supplier-payments"
         ],
         "handlers": [

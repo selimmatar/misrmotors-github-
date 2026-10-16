@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useApp } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
+import { parseRemainderNote } from "@/lib/supplier-credit-note"
 import { ReportGenerator } from "@/components/report-generator"
 import type { Supplier, PurchaseOrder } from "@/lib/types"
 import { Plus, X, ChevronLeft, Trash2 } from "lucide-react"
@@ -18,7 +19,7 @@ import { Input } from "@/components/ui/input"
 import { PageHeader } from "@/components/erp/page-header"
 import { Money } from "@/components/erp/money"
 import { StatusBadge } from "@/components/erp/status-badge"
-import { formatDate } from "@/lib/format"
+import { formatDate, formatMoney } from "@/lib/format"
 
 interface SupplierModuleProps {
   userRole?: string
@@ -33,6 +34,8 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
   const [orderInvoices, setOrderInvoices] = useState<Record<string, any[]>>({})
   const [supplierCredits, setSupplierCredits] = useState<Record<string, number>>({})
   const [creditsDetail, setCreditsDetail] = useState<Record<string, any[]>>({})
+  // Credits already deducted on a purchase order (FEAT-01), per supplier
+  const [usedCreditsDetail, setUsedCreditsDetail] = useState<Record<string, any[]>>({})
   const [markingCredits, setMarkingCredits] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
@@ -91,14 +94,19 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
 
     const loadSupplierCredits = async () => {
       try {
-        const response = await fetch("/api/supplier-credits")
+        const response = await fetch("/api/supplier-credits?include=used")
         if (response.ok) {
           const credits = await response.json()
           const creditsBySupplier: Record<string, number> = {}
           const detailsBySupplier: Record<string, any[]> = {}
-          
+          const usedBySupplier: Record<string, any[]> = {}
+
           credits.forEach((credit: any) => {
             const supplierId = credit.supplier_id?.toString() || credit.supplierId
+            if (credit.status !== "active") {
+              if (credit.used_in_po_id != null) (usedBySupplier[supplierId] ||= []).push(credit)
+              return
+            }
             if (!creditsBySupplier[supplierId]) {
               creditsBySupplier[supplierId] = 0
               detailsBySupplier[supplierId] = []
@@ -109,6 +117,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
           
           setSupplierCredits(creditsBySupplier)
           setCreditsDetail(detailsBySupplier)
+          setUsedCreditsDetail(usedBySupplier)
         }
       } catch (error) {
         console.error("Error loading supplier credits:", error)
@@ -383,7 +392,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                             {credit.invoice_number && <>{" "}{fill(t("supplier.credit-ap"), { number: credit.invoice_number })}</>}
                             {credit.unapplied !== false && <>{" "}{t("supplier.credit-unapplied")}</>}
                           </p>
-                          {credit.notes && <p className="text-xs text-green-700/80 dark:text-green-500/80 mt-0.5">{credit.notes}</p>}
+                          {credit.notes && <p className="text-xs text-green-700/80 dark:text-green-500/80 mt-0.5">{(() => { const r = parseRemainderNote(credit.notes); return r ? fill(t("supplier.credit-remainder-note"), { id: r.creditId, amount: formatMoney(r.amount, language), po: r.poNumber }) : credit.notes })()}</p>}
                         </div>
                         <div className="ms-4 flex flex-col items-end gap-1">
                           <p className="font-semibold text-green-700 dark:text-green-400">
@@ -420,6 +429,27 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                     >
                       {t("supplier.mark-all-credited")}
                     </Button>
+                  </div>
+                </div>
+              )}
+              {(usedCreditsDetail[selectedSupplier.id] || []).length > 0 && (
+                <div className="mt-4 rounded-lg border p-4">
+                  <h4 className="text-sm font-semibold mb-2">{t("supplier.used-credits")}</h4>
+                  <div className="space-y-2">
+                    {usedCreditsDetail[selectedSupplier.id].map((credit: any) => (
+                      <div key={credit.credit_id} className="flex justify-between items-start text-sm border-b pb-2 last:border-0">
+                        <div className="flex-1">
+                          <p className="font-medium">{credit.description || t("supplier.return-credit")}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {fill(t("supplier.credit-used-on-po"), { number: credit.used_in_po_number || `#${credit.used_in_po_id}` })}
+                            {credit.used_at && <>{" • "}{formatDate(credit.used_at, language)}</>}
+                          </p>
+                        </div>
+                        <p className="ms-4 font-semibold">
+                          <Money value={credit.amount} /> {t("common.egp-2")}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

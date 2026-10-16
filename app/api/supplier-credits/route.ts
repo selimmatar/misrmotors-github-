@@ -14,16 +14,15 @@ export async function PATCH(request: Request) {
   }
 }
 
-export async function GET() {
+// Default: the open (active) credits. `?include=used` also returns the used ones, with the PO they were deducted on.
+export async function GET(request?: Request) {
   try {
     const supabase = createAdminClient()
+    const includeUsed = request ? new URL(request.url).searchParams.get("include") === "used" : false
 
-    // Fetch all active supplier credits (not yet used)
-    const { data: credits, error } = await supabase
-      .from("supplier_credits")
-      .select("*")
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
+    let query = supabase.from("supplier_credits").select("*")
+    if (!includeUsed) query = query.eq("status", "active")
+    const { data: credits, error } = await query.order("created_at", { ascending: false })
 
     if (error) {
       console.error("Error fetching supplier credits:", error)
@@ -42,6 +41,12 @@ export async function GET() {
         const { data: pos } = await supabase.from("purchase_orders").select("po_id, po_number").in("po_id", poIds)
         for (const po of pos || []) poById.set(po.po_id, po)
       }
+    }
+
+    const usedPoIds = [...new Set((credits || []).map((c: any) => c.used_in_po_id).filter((id: any) => id != null && !poById.has(id)))]
+    if (usedPoIds.length > 0) {
+      const { data: pos } = await supabase.from("purchase_orders").select("po_id, po_number").in("po_id", usedPoIds)
+      for (const po of pos || []) poById.set(po.po_id, po)
     }
 
     // Transform the response to match expected format
@@ -63,6 +68,7 @@ export async function GET() {
       created_by: credit.created_by,
       used_at: credit.used_at,
       used_in_po_id: credit.used_in_po_id,
+      used_in_po_number: credit.used_in_po_id != null ? (poById.get(credit.used_in_po_id)?.po_number ?? null) : null,
       notes: credit.notes,
     }))
 

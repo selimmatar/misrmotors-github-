@@ -35,7 +35,7 @@ interface AppContextType {
   updateInventoryQuantity: (productId: string, quantityChange: number, warehouseId?: string) => Promise<void>
   purchaseOrders: PurchaseOrder[]
   setPurchaseOrders: (orders: PurchaseOrder[]) => void
-  addPurchaseOrder: (order: PurchaseOrder, options?: { allowOverOrder?: boolean }) => Promise<void>
+  addPurchaseOrder: (order: PurchaseOrder, options?: { allowOverOrder?: boolean; credits?: { creditId: number; amount: number }[] }) => Promise<void>
   updatePurchaseOrder: (order: PurchaseOrder | (Partial<SalesOrder> & { id: string })) => Promise<void>
   salesOrders: SalesOrder[]
   setSalesOrders: (orders: SalesOrder[]) => void
@@ -526,13 +526,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const addPurchaseOrder = async (order: PurchaseOrder, options?: { allowOverOrder?: boolean }) => {
+  const addPurchaseOrder = async (
+    order: PurchaseOrder,
+    options?: { allowOverOrder?: boolean; credits?: { creditId: number; amount: number }[] },
+  ) => {
     try {
       const response = await fetch("/api/purchase-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...(options?.allowOverOrder && { allow_over_order: true }),
+          // Supplier credits to deduct (reserved by the server on this PO, applied to its supplier invoice on approval)
+          ...(options?.credits && options.credits.length > 0 && { credits: options.credits }),
           po_number: order.poNumber,
           supplier_id: order.supplierId,
           supplier_name: order.supplierName,

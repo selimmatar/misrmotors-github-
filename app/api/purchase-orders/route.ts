@@ -4,6 +4,15 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES, buildApprovalRevert } from "@/lib/po-status"
 import { checkPoOverOrder, linesWithIncreasedQuantity } from "@/lib/po-over-order"
+import {
+  SUPPLIER_CREDIT_PAYMENT_METHOD,
+  creditedInvoiceFields,
+  parseCreditSelections,
+  releaseSupplierCredits,
+  reserveSupplierCredits,
+  reservedCreditTotal,
+  validateCreditSelections,
+} from "@/lib/supplier-credit-apply"
 
 // Shared by POST and PUT so editing a PO's items keeps the SO link and the outsourced data.
 // `existingItems` (PUT only) are the PO's current rows: a line sent without item_type keeps its existing type
@@ -239,8 +248,11 @@ export async function POST(request: Request) {
     const supabase = createAdminClient()
 
     const body = await request.json()
-    const { items, allow_over_order, ...orderData } = body
+    const { items, allow_over_order, credits, ...orderData } = body
     const allowOverOrder = allow_over_order === true
+
+    const parsedCredits = parseCreditSelections(credits)
+    if (!parsedCredits.ok) return NextResponse.json(parsedCredits.result.body, { status: parsedCredits.result.status })
 
     // Do not order more from suppliers than the sales order lines need (400/409 before anything is written).
     // The user may confirm ordering more anyway (allow_over_order: true); an unknown SO line is still refused.
@@ -264,6 +276,21 @@ export async function POST(request: Request) {
 
     const mappedItems = (Array.isArray(items) ? items : []).map((item: any) => mapPoItem(item, 0))
     const poTotals = computePoTotals(mappedItems, Number(orderData.tax_amount ?? orderData.taxAmount) > 0)
+
+    // Supplier credits to deduct (FEAT-01): checked before anything is written, reserved once the PO exists.
+    // Credits are EGP amounts (raised from returns); the PO total has no conversion, so other currencies cannot take them.
+    if (parsedCredits.selections.length > 0 && String(orderData.currency || "EGP").toUpperCase() !== "EGP") {
+      return NextResponse.json(
+        { error: "Supplier credits are in EGP and can only be deducted from an EGP purchase order", code: "CREDIT_CURRENCY" },
+        { status: 409 },
+      )
+    }
+    const creditCheck = await validateCreditSelections(supabase, {
+      supplierId: Number(orderData.supplier_id || orderData.supplierId),
+      poTotal: poTotals.total,
+      selections: parsedCredits.selections,
+    })
+    if (!creditCheck.ok) return NextResponse.json(creditCheck.result.body, { status: creditCheck.result.status })
 
     // Always generate the PO number server-side (obfuscated, atomic) — never trust a
     // client-supplied value, which was previously a predictable, guessable counter.
@@ -347,6 +374,14 @@ export async function POST(request: Request) {
     }
 
 
+    // Do not leave a PO header without its lines or its credits: remove it and fail.
+    const removeCreatedPo = async () => {
+      const { error: cleanupError } = await supabase.from("purchase_order_items").delete().eq("po_id", order.po_id)
+      if (cleanupError) console.error("Purchase Orders POST: could not clean up items", cleanupError)
+      const { error: headerDeleteError } = await supabase.from("purchase_orders").delete().eq("po_id", order.po_id)
+      if (headerDeleteError) console.error("Purchase Orders POST: could not delete the PO header", headerDeleteError)
+    }
+
     // Insert items if provided
     if (mappedItems.length > 0) {
       const itemsWithPoId = mappedItems.map((item: any) => ({ ...item, po_id: order.po_id }))
@@ -354,15 +389,25 @@ export async function POST(request: Request) {
       const { error: itemsInsertError } = await supabase.from("purchase_order_items").insert(itemsWithPoId)
 
       if (itemsInsertError) {
-        // Do not leave a PO header without its lines (its total would not match anything): remove it and fail.
         console.error("Purchase Orders POST: Error inserting items", itemsInsertError)
-        const { error: cleanupError } = await supabase.from("purchase_order_items").delete().eq("po_id", order.po_id)
-        if (cleanupError) console.error("Purchase Orders POST: could not clean up items", cleanupError)
-        const { error: headerDeleteError } = await supabase.from("purchase_orders").delete().eq("po_id", order.po_id)
-        if (headerDeleteError) console.error("Purchase Orders POST: could not delete the PO header", headerDeleteError)
+        await removeCreatedPo()
         return NextResponse.json({ error: "Failed to create purchase order items" }, { status: 500 })
       }
     }
+
+    if (parsedCredits.selections.length > 0) {
+      const reserveError = await reserveSupplierCredits(supabase, {
+        poId: order.po_id,
+        poNumber: order.po_number,
+        selections: parsedCredits.selections,
+        rows: creditCheck.rows,
+      })
+      if (reserveError) {
+        await removeCreatedPo()
+        return NextResponse.json(reserveError.body, { status: reserveError.status })
+      }
+    }
+    const appliedCredit = Math.round(parsedCredits.selections.reduce((sum, c) => sum + c.amount, 0) * 100) / 100
 
     const createdOrder = {
       id: order.po_id.toString(),
@@ -425,6 +470,7 @@ export async function POST(request: Request) {
       bankIban: order.bank_iban,
       bankBranch: order.bank_branch,
       bankHolderName: order.bank_holder_name,
+      appliedCredit,
     }
 
     return NextResponse.json(createdOrder)
@@ -446,6 +492,11 @@ async function ensureApInvoice(supabase: any, currentOrder: any) {
   if (lookupError) return lookupError
   if (existingInvoices && existingInvoices.length > 0) return null
 
+  // Supplier credits reserved on this PO settle part of the invoice (FEAT-01). The invoice keeps the gross total.
+  const reserved = await reservedCreditTotal(supabase, currentOrder.po_id)
+  if (reserved.error) return { message: `Could not read the supplier credits: ${reserved.error}` }
+  const credited = creditedInvoiceFields(Number(currentOrder.total) || 0, reserved.total)
+
   const paymentType = currentOrder.payment_type || currentOrder.payment_terms || "cash"
   const invoiceData: any = {
     invoice_number: `APINV-${currentOrder.po_number}`,
@@ -454,8 +505,8 @@ async function ensureApInvoice(supabase: any, currentOrder: any) {
     invoice_date: new Date().toISOString().split("T")[0],
     due_date: currentOrder.down_payment_due_date || currentOrder.payment_start_date || new Date().toISOString().split("T")[0],
     amount: currentOrder.total,
-    paid_amount: 0,
-    status: "pending",
+    paid_amount: credited.paid_amount,
+    status: credited.status,
     payment_type: paymentType,
     payment_terms: paymentType,
     installment_months: currentOrder.installments || 1,
@@ -471,8 +522,29 @@ async function ensureApInvoice(supabase: any, currentOrder: any) {
     schedule_entries: currentOrder.schedule_entries || null,
     schedule_mode: currentOrder.schedule_mode || "AUTO",
   }
-  const { error: invoiceError } = await supabase.from("accounts_payable").insert(invoiceData).select().single()
-  return invoiceError || null
+  const { data: invoice, error: invoiceError } = await supabase.from("accounts_payable").insert(invoiceData).select().single()
+  if (invoiceError) return invoiceError
+  if (credited.paid_amount <= 0) return null
+
+  // The credit offset is recorded as a supplier payment (method supplier_credit) so the invoice history shows it.
+  // It is NOT a cash movement, so no balance_entries row is written. If it cannot be recorded the invoice is removed
+  // again and the approval fails (the caller reverts it); the credits stay reserved on the PO for the retry.
+  const { error: paymentError } = await supabase.from("supplier_payments").insert({
+    invoice_id: invoice.invoice_id,
+    supplier_id: currentOrder.supplier_id ?? null,
+    amount: credited.paid_amount,
+    payment_date: new Date().toISOString().split("T")[0],
+    payment_method: SUPPLIER_CREDIT_PAYMENT_METHOD,
+    reference_number: `${invoice.invoice_number}-CREDIT`,
+    receipt_url: null,
+    recorded_by: null,
+  })
+  if (paymentError) {
+    const { error: removeError } = await supabase.from("accounts_payable").delete().eq("invoice_id", invoice.invoice_id)
+    if (removeError) console.error("Purchase Orders: could not remove the AP invoice after the credit payment failed", removeError)
+    return paymentError
+  }
+  return null
 }
 
 export async function PUT(request: Request) {
@@ -574,6 +646,26 @@ export async function PUT(request: Request) {
       const totals = computePoTotals(newItemRows, vatOn)
       updates.total = totals.total
       if (vatOn) updates.tax_amount = totals.tax
+
+      // The supplier credits reserved on this PO may never be more than its total.
+      if (targetStatus !== "rejected") {
+        const reserved = await reservedCreditTotal(supabase, poId)
+        if (reserved.error) {
+          console.error("Purchase Orders PUT: Error reading reserved credits", reserved.error)
+          return NextResponse.json({ error: "Failed to read the supplier credits of this purchase order" }, { status: 500 })
+        }
+        if (reserved.total > totals.total + 0.005) {
+          return NextResponse.json(
+            {
+              error: `The new total (${totals.total.toFixed(2)}) is less than the supplier credit applied to this order (${reserved.total.toFixed(2)})`,
+              code: "CREDIT_EXCEEDS_TOTAL",
+              applied: reserved.total,
+              total: totals.total,
+            },
+            { status: 409 },
+          )
+        }
+      }
     }
 
     const statusChanged = targetStatus !== previousStatus
@@ -661,7 +753,27 @@ export async function PUT(request: Request) {
       }
     }
 
-    return NextResponse.json({ ...order, id: order.po_id.toString(), items })
+    // A rejected PO gives its supplier credits back, unless an AP invoice already took them (e.g. a failed cleanup
+    // after an approval): then they stay applied there and an administrator settles the invoice.
+    let creditsReleased: boolean | undefined
+    if (statusChanged && targetStatus === "rejected") {
+      const { data: apRows, error: apError } = await supabase.from("accounts_payable").select("invoice_id").eq("po_id", poId).limit(1)
+      if (apError || (apRows || []).length > 0) {
+        creditsReleased = false
+        console.error("Purchase Orders PUT: credits not released, the PO has an AP invoice or it could not be checked", apError?.message)
+      } else {
+        const releaseError = await releaseSupplierCredits(supabase, poId, `Released: ${order.po_number} rejected`)
+        creditsReleased = !releaseError
+        if (releaseError) console.error("Purchase Orders PUT: could not release supplier credits", releaseError)
+      }
+    }
+
+    return NextResponse.json({
+      ...order,
+      id: order.po_id.toString(),
+      items,
+      ...(creditsReleased === undefined ? {} : { creditsReleased }),
+    })
   } catch (error) {
     console.error("Purchase Orders PUT: Error", error)
     return NextResponse.json({ error: "Failed to update purchase order" }, { status: 500 })
@@ -696,6 +808,33 @@ export async function DELETE(request: Request) {
     ])
     for (const d of dependents) if (d.error) throw d.error
     if (dependents.some((d) => (d.data || []).length > 0)) {
+      return NextResponse.json(
+        { error: "This purchase order has goods receipts or payables and cannot be deleted" },
+        { status: 409 },
+      )
+    }
+
+    // Give the order's supplier credits back first, so a failure leaves the PO (and its credits) intact.
+    const { data: reservedRows, error: reservedError } = await supabase
+      .from("supplier_credits")
+      .select("credit_id")
+      .eq("used_in_po_id", poId)
+      .eq("status", "used")
+    if (reservedError) throw reservedError
+    const releaseError = await releaseSupplierCredits(supabase, poId, `Released: PO #${poId} deleted`)
+    if (releaseError) throw new Error(releaseError)
+    // An approval may have won in the meantime and applied these credits to its AP invoice: put them back and stop.
+    const { data: apNow, error: apNowError } = await supabase.from("accounts_payable").select("invoice_id").eq("po_id", poId).limit(1)
+    if (apNowError || (apNow || []).length > 0) {
+      const ids = (reservedRows || []).map((r: any) => r.credit_id)
+      if (ids.length > 0) {
+        const { error: restoreError } = await supabase
+          .from("supplier_credits")
+          .update({ status: "used", used_in_po_id: poId, used_at: new Date().toISOString() })
+          .in("credit_id", ids)
+          .eq("status", "active")
+        if (restoreError) console.error("Purchase Orders DELETE: could not restore supplier credits", ids, restoreError)
+      }
       return NextResponse.json(
         { error: "This purchase order has goods receipts or payables and cannot be deleted" },
         { status: 409 },
