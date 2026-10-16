@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Save, Loader2, AlertTriangle, CheckCircle, Warehouse } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { useAppContext } from "@/lib/app-context"
 import type { UserRole } from "@/lib/types"
 
@@ -46,6 +47,8 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  // rows whose stock moved while they were being counted (the server refused to overwrite them)
+  const [changedRows, setChangedRows] = useState<string[]>([])
 
   useEffect(() => {
     fetchInventory()
@@ -64,7 +67,9 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
     }
   }
 
-  const fetchInventory = async () => {
+  // `keep`: counts and notes to keep on these inventory rows (rows that changed during the count are re-counted
+  // against their fresh quantity; every other row starts empty again).
+  const fetchInventory = async (keep?: Map<number, { physicalCount: number | null; notes: string }>) => {
     try {
       setLoading(true)
       setError(null)
@@ -76,8 +81,8 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
       // Initialize with physicalCount as null and empty notes
       const itemsWithAuditFields = data.map((item: any) => ({
         ...item,
-        physicalCount: null,
-        notes: "",
+        physicalCount: keep?.get(item.inventory_id)?.physicalCount ?? null,
+        notes: keep?.get(item.inventory_id)?.notes ?? "",
       }))
       setInventoryItems(itemsWithAuditFields)
     } catch (err) {
@@ -131,6 +136,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
       setSaving(true)
       setError(null)
       setSuccessMessage(null)
+      setChangedRows([])
 
       const adjustments = itemsWithCounts.map((item) => ({
         inventoryId: item.inventory_id,
@@ -147,6 +153,32 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
         body: JSON.stringify({ adjustments }),
       })
 
+      if (response.status === 409) {
+        const data = await response.json().catch(() => ({}))
+        if (data.code === "STOCK_CHANGED" && Array.isArray(data.changed)) {
+          // the other rows were saved; reload the current quantities and keep the counts of the changed rows
+          const keep = new Map<number, { physicalCount: number | null; notes: string }>()
+          for (const row of data.changed) {
+            const item = inventoryItems.find((i) => i.inventory_id === row.inventoryId)
+            if (item) keep.set(item.inventory_id, { physicalCount: item.physicalCount, notes: item.notes })
+          }
+          setChangedRows(
+            data.changed.map((row: any) => {
+              const item = inventoryItems.find((i) => i.inventory_id === row.inventoryId)
+              const warehouse = (warehouses || []).find((wh: any) => String(wh.id) === String(row.warehouseId))
+              return fill(t("inventory-audit.changed-line"), {
+                product: row.productName || item?.productName || String(row.productId),
+                warehouse: warehouse?.name || item?.warehouse_name || t("warehouse.default"),
+                loaded: formatNumber(Number(row.quantityLoaded) || 0),
+                now: row.quantityNow === null || row.quantityNow === undefined ? "-" : formatNumber(Number(row.quantityNow)),
+              })
+            }),
+          )
+          await Promise.all([fetchInventory(keep), refreshInventory()])
+          return
+        }
+        throw new Error(data.error || "Failed to save adjustments")
+      }
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || "Failed to save adjustments")
@@ -233,6 +265,19 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
         <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertTriangle className="w-5 h-5" />
           {error}
+        </div>
+      )}
+      {changedRows.length > 0 && (
+        <div className="bg-amber-500/10 text-amber-800 dark:text-amber-300 px-4 py-3 rounded-lg space-y-1" role="alert">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="w-5 h-5" />
+            {t("inventory-audit.changed-title")}
+          </div>
+          <ul className="list-disc ps-8 text-sm">
+            {changedRows.map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
         </div>
       )}
       {successMessage && (

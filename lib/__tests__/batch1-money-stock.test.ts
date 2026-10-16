@@ -19,6 +19,7 @@ import * as balanceRoute from "../../app/api/balance/route"
 import * as inventoryRoute from "../../app/api/inventory/route"
 import * as rescheduleRoute from "../../app/api/reschedule-requests/route"
 import * as scheduleRoute from "../../app/api/payment-schedules/route"
+import * as auditRoute from "../../app/api/inventory/audit/route"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -429,4 +430,113 @@ test("2. AR payments route still answers as before after the extraction", async 
   assert.equal((await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 300, idempotencyKey: "ar-screen-key-2" })).body.isDuplicate, true)
   assert.equal((await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 1, idempotencyKey: "ar-screen-key-3" })).status, 409)
   assert.equal(db.tables.customer_payments.length, 1)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 3. Stock count (BIZ-P-01)
+// ---------------------------------------------------------------------------------------------------------
+const stockRow = (inventory_id: number, product_id: number, warehouse_id: number, quantity: number): Row => ({
+  inventory_id, product_id, warehouse_id, quantity, unit_cost: 10, reorder_point: 1, is_returned: false,
+})
+const countDb = () => {
+  const db = new FakeDb({
+    inventory: [stockRow(1, 7, 1, 20), stockRow(2, 7, 2, 30), stockRow(3, 8, 1, 5)],
+    inventory_audits: [],
+    products: [{ product_id: 7, product_name: "Brake pad" }, { product_id: 8, product_name: "Filter" }],
+  })
+  useDb(db)
+  return db
+}
+const stock = (db: FakeDb, id: number) => db.tables.inventory.find((r) => r.inventory_id === id)!.quantity
+const saveCount = (adjustments: Row[]) => call(auditRoute.POST, "POST", { adjustments, auditedBy: "u1" })
+
+test("3. a count of stock that moved meanwhile is not saved; the other rows are (409 STOCK_CHANGED)", async () => {
+  const db = countDb()
+  // loaded at 20 / 30 / 5; a delivery took 4 from row 1 before the count was saved
+  db.tables.inventory[0].quantity = 16
+  const r = await saveCount([
+    { inventoryId: 1, productId: 7, warehouseId: 1, systemQuantity: 20, physicalCount: 18 },
+    { inventoryId: 2, productId: 7, warehouseId: 2, systemQuantity: 30, physicalCount: 28 },
+    { inventoryId: 3, productId: 8, warehouseId: 1, systemQuantity: 5, physicalCount: 5 },
+  ])
+  assert.equal(r.status, 409, JSON.stringify(r.body))
+  assert.equal(r.body.code, "STOCK_CHANGED")
+  assert.deepEqual(r.body.changed, [
+    { inventoryId: 1, productId: 7, productName: "Brake pad", warehouseId: 1, quantityLoaded: 20, quantityNow: 16 },
+  ])
+  assert.equal(stock(db, 1), 16, "the delivery is not overwritten")
+  assert.equal(stock(db, 2), 28, "the unchanged row is saved")
+  assert.equal(stock(db, 3), 5)
+  assert.deepEqual(db.tables.inventory_audits.map((a) => a.product_id).sort(), [7, 8], "audits only for the saved rows")
+  assert.equal(db.tables.inventory_audits.find((a) => a.product_id === 7)!.physical_count, 28)
+})
+
+test("3. a 'matches' count of stock that moved is reported too and leaves the stock alone", async () => {
+  const db = countDb()
+  db.tables.inventory[2].quantity = 9
+  const r = await saveCount([{ inventoryId: 3, productId: 8, warehouseId: 1, systemQuantity: 5, physicalCount: 5 }])
+  assert.equal(r.status, 409)
+  assert.equal(r.body.changed[0].quantityNow, 9)
+  assert.equal(stock(db, 3), 9)
+  assert.equal(db.tables.inventory_audits.length, 0)
+})
+
+test("3. a count without the loaded system quantity is refused; nothing saved", async () => {
+  const db = countDb()
+  const r = await saveCount([{ inventoryId: 1, productId: 7, warehouseId: 1, physicalCount: 3 }])
+  assert.equal(r.status, 400)
+  assert.equal(stock(db, 1), 20)
+  assert.equal(db.tables.inventory_audits.length, 0)
+})
+
+test("3. an unchanged count saves as before (200)", async () => {
+  const db = countDb()
+  const r = await saveCount([{ inventoryId: 1, productId: 7, warehouseId: 1, systemQuantity: 20, physicalCount: 17 }])
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(stock(db, 1), 17)
+  assert.equal(r.body.summary.adjustmentsMade, 1)
+})
+
+test("3. a count racing a stock movement never loses the movement", async () => {
+  for (let round = 0; round < 20; round++) {
+    const db = countDb()
+    // a concurrent guarded movement of -4 (like a delivery deduction) on row 1
+    const move = (async () => {
+      await db.tick()
+      const { data } = await db.from("inventory").update({ quantity: 16 }).eq("inventory_id", 1).eq("quantity", 20).select()
+      return (data || []).length === 1
+    })()
+    const [r, moved] = await Promise.all([
+      saveCount([{ inventoryId: 1, productId: 7, warehouseId: 1, systemQuantity: 20, physicalCount: 18 }]),
+      move,
+    ])
+    if (moved) {
+      assert.equal(r.status, 409, `round ${round}`)
+      assert.equal(stock(db, 1), 16)
+    } else {
+      assert.equal(r.status, 200, `round ${round}`)
+      assert.equal(stock(db, 1), 18)
+    }
+  }
+})
+
+test("3. an audit record failure puts the saved counts back", async () => {
+  const db = countDb()
+  db.failOn["inventory_audits:insert"] = "audits down"
+  const r = await saveCount([{ inventoryId: 1, productId: 7, warehouseId: 1, systemQuantity: 20, physicalCount: 17 }])
+  assert.equal(r.status, 500)
+  assert.equal(stock(db, 1), 20)
+})
+
+test("3. screen: the stock count lists the changed rows and reloads their quantities", () => {
+  const screen = src("components/modules/inventory-audit-module.tsx")
+  assert.match(screen, /systemQuantity: item\.quantity/)
+  assert.match(screen, /STOCK_CHANGED/)
+  assert.match(screen, /t\("inventory-audit\.changed-title"\)/)
+  assert.match(screen, /fetchInventory\(keep\)/)
+  const i18n = src("lib/i18n-context.tsx")
+  assert.ok(i18n.includes('"inventory-audit.changed-title": "These items changed during your count. Recheck them:"'))
+  for (const key of ["inventory-audit.changed-title", "inventory-audit.changed-line"]) {
+    assert.equal(i18n.split(`"${key}":`).length - 1, 2, `${key} in English and Arabic`)
+  }
 })

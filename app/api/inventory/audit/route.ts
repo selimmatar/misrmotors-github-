@@ -60,6 +60,11 @@ export async function GET() {
   }
 }
 
+// Saves a stock count (BIZ-P-01). Each counted row is written with a guard on the system quantity the screen loaded
+// (UPDATE ... WHERE quantity = <loaded>), so stock that moved during the count (a delivery, a receipt, a transfer) is
+// never overwritten. Rows that changed are not saved: the answer is 409 STOCK_CHANGED listing them (product,
+// warehouse, quantity loaded, quantity now) while every other row is saved. An audit record is written only for the
+// rows that were saved or confirmed unchanged.
 export async function POST(request: Request) {
   try {
     const supabase = createAdminClient()
@@ -70,10 +75,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No adjustments provided" }, { status: 400 })
     }
 
-
     const auditDate = new Date().toISOString()
-    const auditRecords = []
-    const inventoryUpdates = []
+    type Counted = {
+      productId: any
+      inventoryId: any
+      warehouseId: any
+      systemQuantity: number
+      physicalCount: number
+      notes: string | null
+    }
+    const counted: Counted[] = []
 
     for (const adjustment of adjustments) {
       const { productId, systemQuantity, physicalCount, notes, warehouseId, inventoryId } = adjustment
@@ -81,28 +92,27 @@ export async function POST(request: Request) {
       if (physicalCount === null || physicalCount === undefined) {
         continue
       }
-
-      const difference = physicalCount - systemQuantity
-
-      auditRecords.push({
-        product_id: productId,
-        system_quantity: systemQuantity,
-        physical_count: physicalCount,
-        difference: difference,
-        notes: notes || null,
-        audited_by: auditedBy || null,
-        audit_date: auditDate,
-      })
-
-      if (difference !== 0) {
-        inventoryUpdates.push({
-          productId,
-          inventoryId: inventoryId || null,
-          warehouseId: warehouseId || null,
-          newQuantity: physicalCount,
-        })
+      const loaded = Number(systemQuantity)
+      const count = Number(physicalCount)
+      if (systemQuantity === null || systemQuantity === undefined || systemQuantity === "" || !Number.isFinite(loaded)) {
+        return NextResponse.json(
+          { error: `The system quantity the count started from is missing for product ${productId}. Reload and count again. Nothing was saved.` },
+          { status: 400 },
+        )
       }
+      if (physicalCount === "" || !Number.isFinite(count) || count < 0) {
+        return NextResponse.json({ error: `The counted quantity for product ${productId} is not valid. Nothing was saved.` }, { status: 400 })
+      }
+      counted.push({
+        productId,
+        inventoryId: inventoryId || null,
+        warehouseId: warehouseId || null,
+        systemQuantity: loaded,
+        physicalCount: count,
+        notes: notes || null,
+      })
     }
+    const inventoryUpdates = counted.filter((c) => c.physicalCount !== c.systemQuantity)
 
     // A count belongs to one inventory row (one product in one warehouse). Check every update before writing anything:
     // an inventoryId must be that product's row, and a product-only count is only safe when the product has one row.
@@ -131,54 +141,120 @@ export async function POST(request: Request) {
       }
     }
 
-    // Insert audit records
+    // inventoryId was checked above to be this product's row.
+    const rowFilter = (query: any, item: Counted) => {
+      if (item.inventoryId) return query.eq("inventory_id", item.inventoryId)
+      query = query.eq("product_id", item.productId)
+      return item.warehouseId ? query.eq("warehouse_id", item.warehouseId) : query
+    }
+
+    const applied: Counted[] = []
+    const changedItems: Counted[] = []
+    const changedNow = new Map<Counted, number | null>()
+    // Puts the rows this request already wrote back to the loaded quantity (guarded on what it wrote).
+    const undoApplied = async () => {
+      for (const item of applied) {
+        const { error } = await rowFilter(
+          supabase.from("inventory").update({ quantity: item.systemQuantity, last_updated: auditDate }),
+          item,
+        ).eq("quantity", item.physicalCount)
+        if (error) console.error("Inventory Audit: could not put back the count of product", item.productId, ":", error.message)
+      }
+    }
+
+    for (const item of counted) {
+      if (item.physicalCount === item.systemQuantity) {
+        // Nothing to write, but a count that matches a quantity that has since moved is no longer a valid count.
+        const { data: rows, error } = await rowFilter(supabase.from("inventory").select("inventory_id, quantity"), item)
+        if (error) {
+          await undoApplied()
+          return NextResponse.json({ error: `${error.message}. Nothing was saved.` }, { status: 500 })
+        }
+        if (Array.isArray(rows) && rows.length === 1 && Number(rows[0].quantity) !== item.systemQuantity) {
+          changedItems.push(item)
+          changedNow.set(item, Number(rows[0].quantity))
+        }
+        continue
+      }
+
+      // UPDATE ... WHERE <row> AND quantity = <system quantity the screen loaded>
+      const { data: rows, error: updateError } = await rowFilter(
+        supabase.from("inventory").update({ quantity: item.physicalCount, last_updated: auditDate }),
+        item,
+      )
+        .eq("quantity", item.systemQuantity)
+        .select("inventory_id")
+
+      if (updateError) {
+        console.error("Inventory Audit: Error updating inventory for product", item.productId, ":", updateError)
+        await undoApplied()
+        return NextResponse.json({ error: `${updateError.message}. Nothing was saved.` }, { status: 500 })
+      }
+      if (Array.isArray(rows) && rows.length > 0) {
+        applied.push(item)
+        continue
+      }
+      // 0 rows: the quantity moved since the screen loaded it (or the row is gone). Not overwritten.
+      const { data: now } = await rowFilter(supabase.from("inventory").select("inventory_id, quantity"), item)
+      changedItems.push(item)
+      changedNow.set(item, Array.isArray(now) && now.length === 1 ? Number(now[0].quantity) : null)
+    }
+
+    // Insert audit records for the rows that were saved (or confirmed unchanged)
+    const saved = counted.filter((c) => !changedItems.includes(c))
+    const auditRecords = saved.map((c) => ({
+      product_id: c.productId,
+      system_quantity: c.systemQuantity,
+      physical_count: c.physicalCount,
+      difference: c.physicalCount - c.systemQuantity,
+      notes: c.notes,
+      audited_by: auditedBy || null,
+      audit_date: auditDate,
+    }))
     if (auditRecords.length > 0) {
       const { error: auditError } = await supabase.from("inventory_audits").insert(auditRecords)
 
       if (auditError) {
         console.error("Inventory Audit: Error inserting audit records:", auditError)
-        return NextResponse.json({ error: auditError.message }, { status: 500 })
+        await undoApplied()
+        return NextResponse.json({ error: `${auditError.message}. Nothing was saved.` }, { status: 500 })
       }
-
     }
 
-    let updatedCount = 0
-    for (const update of inventoryUpdates) {
-      let query = supabase
-        .from("inventory")
-        .update({
-          quantity: update.newQuantity,
-          last_updated: auditDate,
-        })
+    const summary = {
+      totalAudited: auditRecords.length,
+      adjustmentsMade: applied.length,
+      noChangeItems: saved.length - applied.length,
+      changedItems: changedItems.length,
+    }
 
-      // inventoryId was checked above to be this product's row.
-      if (update.inventoryId) {
-        query = query.eq("inventory_id", update.inventoryId)
-      } else {
-        query = query.eq("product_id", update.productId)
-        if (update.warehouseId) {
-          query = query.eq("warehouse_id", update.warehouseId)
-        }
-      }
-
-      const { error: updateError } = await query
-
-      if (updateError) {
-        console.error("Inventory Audit: Error updating inventory for product", update.productId, ":", updateError)
-        return NextResponse.json({ error: updateError.message }, { status: 500 })
-      }
-
-      updatedCount++
+    if (changedItems.length > 0) {
+      const productIds = [...new Set(changedItems.map((c) => c.productId).filter((id) => id !== null && id !== undefined))]
+      const { data: products } = productIds.length
+        ? await supabase.from("products").select("product_id, product_name").in("product_id", productIds)
+        : { data: [] as any[] }
+      return NextResponse.json(
+        {
+          error: "Some items changed during the count and were not saved. Recheck them.",
+          code: "STOCK_CHANGED",
+          changed: changedItems.map((c) => ({
+            inventoryId: c.inventoryId,
+            productId: c.productId,
+            productName: (products || []).find((p: any) => p.product_id === c.productId)?.product_name ?? null,
+            warehouseId: c.warehouseId,
+            quantityLoaded: c.systemQuantity,
+            quantityNow: changedNow.get(c) ?? null,
+          })),
+          summary,
+        },
+        { status: 409 },
+      )
     }
 
     return NextResponse.json({
       success: true,
-      message: `${auditRecords.length} audit records saved, ${updatedCount} inventory items updated`,
-      summary: {
-        totalAudited: auditRecords.length,
-        adjustmentsMade: updatedCount,
-        noChangeItems: auditRecords.length - inventoryUpdates.length,
-      },
+      message: `${auditRecords.length} audit records saved, ${applied.length} inventory items updated`,
+      summary,
     })
   } catch (error) {
     console.error("Inventory Audit: Error in POST:", error)
