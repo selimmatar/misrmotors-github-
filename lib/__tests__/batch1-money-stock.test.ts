@@ -23,6 +23,7 @@ import * as auditRoute from "../../app/api/inventory/audit/route"
 import * as dpRoute from "../../app/api/delivery-permits/route"
 import * as applyCreditRoute from "../../app/api/accounts-receivable/apply-credit/route"
 import * as customerCreditsRoute from "../../app/api/customer-credits/route"
+import { reserveCredits, SUPPLIER_CREDIT_LEDGER } from "../credit-apply"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -1058,4 +1059,140 @@ test("P2 UI. customer credit is never counted as cash paid; the customer card li
   for (const key of ["ar.overpayment-credit-confirm", "ar.credit.use", "ar.credit.apply", "customer.credits", "customer.credit-remainder-note", "customer.open-credit"]) {
     assert.equal(i18n.split(`"${key}":`).length - 1, 2, key)
   }
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// Phase 2 review fixes: checked credit rollback, overpayment owner, payment row written despite an error,
+// credit methods refused on cash payments
+// ---------------------------------------------------------------------------------------------------------
+const logStatus = (db: FakeDb, key: string) => db.tables.idempotency_log.find((r) => String(r.idempotency_key).endsWith(key))?.status
+
+test("P2 I1. a credit that cannot be put back after a failed invoice update is a partial failure, not 'Nothing was saved'", async () => {
+  const db = creditDb([custCredit(1, 80)])
+  db.failOn["accounts_receivable:update"] = "down"
+  db.failOn["customer_credits:update"] = "credits down"
+  db.failAfter["customer_credits:update"] = 1 // the reserve succeeds, the restore fails
+  const key = apKey()
+  const r = await applyCredit([{ creditId: 1, amount: 80 }], key)
+  assert.equal(r.status, 500)
+  assert.equal(r.body.partialFailure, true)
+  assert.doesNotMatch(r.body.error, /Nothing was saved/)
+  assert.equal(logStatus(db, key), "partial_failure")
+  assert.equal(db.tables.customer_credits[0].status, "used")
+})
+
+test("P2 I1. a split credit whose remainder was used meanwhile is put back only to the part this call used", async () => {
+  const db = creditDb([custCredit(1, 80)])
+  let arCalls = 0
+  const from = db.from.bind(db)
+  ;(db as any).from = (name: string) => {
+    if (name === "accounts_receivable" && ++arCalls === 2) {
+      // another tab uses the remainder, and a cash payment lands on the invoice before this call's update
+      db.tables.customer_credits[1].status = "used"
+      db.tables.customer_credits[1].used_in_invoice_id = 9
+      ar5(db).collected_amount = 10
+    }
+    return from(name)
+  }
+  const key = apKey()
+  const r = await applyCredit([{ creditId: 1, amount: 50 }], key)
+  assert.equal(r.status, 500, JSON.stringify(r.body))
+  assert.equal(r.body.partialFailure, true)
+  assert.doesNotMatch(r.body.error, /Nothing was saved/)
+  assert.equal(logStatus(db, key), "partial_failure")
+  const [c1, rest] = db.tables.customer_credits
+  // never more credit than the 80 the customer had: 50 open again, 30 spent by the other tab
+  assert.deepEqual([c1.status, c1.amount, c1.used_in_invoice_id], ["active", 50, null])
+  assert.deepEqual([rest.status, rest.amount], ["used", 30])
+})
+
+test("P2 I1. supplier credits: a reserve whose rollback fails reports a partial failure; a clean rollback keeps the old message", async () => {
+  const supCredit = (credit_id: number, amount: number): Row => ({ credit_id, supplier_id: 1, amount, status: "active", notes: null })
+  const run = async (failRestore: boolean) => {
+    const db = new FakeDb({ supplier_credits: [supCredit(1, 40), supCredit(2, 40)] })
+    const rows = new Map(db.tables.supplier_credits.map((r) => [r.credit_id, { ...r }]))
+    db.tables.supplier_credits[1].amount = 39 // the second credit changed after it was read
+    if (failRestore) {
+      db.failOn["supplier_credits:update"] = "down"
+      db.failAfter["supplier_credits:update"] = 1
+    }
+    const out = await reserveCredits(db, SUPPLIER_CREDIT_LEDGER, { targetId: 7, targetNumber: "PO-7", selections: [{ creditId: 1, amount: 40 }, { creditId: 2, amount: 40 }], rows })
+    return { db, out }
+  }
+  const clean = await run(false)
+  assert.equal(clean.out.error?.status, 409)
+  assert.equal(clean.out.error?.body.code, "CREDIT_NOT_AVAILABLE")
+  assert.equal(clean.out.error?.body.error, "Credit #2 was used or changed by someone else. Reload and try again.")
+  assert.equal(clean.db.tables.supplier_credits[0].status, "active")
+  const broken = await run(true)
+  assert.equal(broken.out.error?.status, 500)
+  assert.equal(broken.out.error?.body.partialFailure, true)
+  assert.deepEqual(broken.out.error?.body.notRestored, [1])
+  assert.doesNotMatch(String(broken.out.error?.body.error), /Nothing was saved/)
+})
+
+test("P2 I2. an overpayment on an invoice without a customer takes the sales order's customer, or is refused before any write", async () => {
+  const db = creditDb([], { customer_id: null, so_id: 12, collected_amount: 250, status: "partially_paid" })
+  db.tables.sales_orders = [{ so_id: 12, customer_id: 3 }]
+  const ok = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 80, idempotencyKey: apKey(), allowOverpayment: true })
+  assert.equal(ok.status, 200, JSON.stringify(ok.body))
+  assert.equal(db.tables.customer_credits[0].customer_id, 3)
+  assert.equal(db.tables.customer_credits[0].amount, 30)
+
+  const none = creditDb([], { customer_id: null, so_id: null, collected_amount: 250, status: "partially_paid" })
+  const key = apKey()
+  const r = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 80, idempotencyKey: key, allowOverpayment: true })
+  assert.equal(r.status, 409)
+  assert.equal(r.body.code, "OVERPAYMENT_NO_CUSTOMER")
+  assert.equal(ar5(none).collected_amount, 250)
+  for (const t of ["customer_payments", "balance_entries", "customer_credits"]) assert.equal(none.tables[t].length, 0, t)
+  assert.equal(logStatus(none, key), "failed")
+  // a payment within the balance still works on such an invoice
+  assert.equal((await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 50, idempotencyKey: apKey() })).status, 200)
+})
+
+test("P2 I3. a credit payment row written despite an error (timeout after commit) is parked, never undone", async () => {
+  const db = creditDb([custCredit(1, 80)])
+  const from = db.from.bind(db)
+  ;(db as any).from = (name: string) => {
+    const q: any = from(name)
+    if (name === "customer_payments") {
+      const run = q.run.bind(q)
+      q.run = async () => {
+        const out = await run()
+        return q.op === "insert" ? { data: null, error: { message: "timeout", code: "57014" } } : out
+      }
+    }
+    return q
+  }
+  const key = apKey()
+  const r = await applyCredit([{ creditId: 1, amount: 50 }], key)
+  assert.equal(r.status, 500)
+  assert.equal(r.body.partialFailure, true)
+  assert.equal(r.body.failedStep, "customer_payments")
+  assert.equal(logStatus(db, key), "partial_failure")
+  // the payment row is there, so the invoice and the credit stay applied
+  assert.equal(db.tables.customer_payments.length, 1)
+  assert.equal(ar5(db).collected_amount, 50)
+  assert.deepEqual([db.tables.customer_credits[0].status, db.tables.customer_credits[0].amount], ["used", 50])
+})
+
+test("P2 M2. the credit payment methods are refused on cash payment routes", async () => {
+  for (const paymentMethod of ["customer_credit", "supplier_credit"]) {
+    const db = creditDb([])
+    const r = await call(arPayRoute.POST, "POST", { invoiceId: 5, amount: 50, idempotencyKey: apKey(), paymentMethod })
+    assert.equal(r.status, 400, paymentMethod)
+    assert.equal(ar5(db).collected_amount, 0, paymentMethod)
+    assert.equal(db.tables.customer_payments.length, 0, paymentMethod)
+    assert.equal(db.tables.idempotency_log.length, 0, paymentMethod)
+  }
+  const sdb = linkedScheduleDb()
+  const s = await call(scheduleRoute.PUT, "PUT", { scheduleId: "1", paidAmount: 100, invoiceId: 5, paymentMethod: "customer_credit" })
+  assert.equal(s.status, 400, JSON.stringify(s.body))
+  assert.equal(sdb.tables.customer_payments.length, 0)
+  assert.equal(sdb.tables.accounts_receivable[0].collected_amount, 0)
+  const adb = apDb()
+  const a = await apPay(1, 100, { paymentMethod: "supplier_credit" })
+  assert.equal(a.status, 400)
+  assert.equal(ap(adb, 1).paid_amount, 0)
 })

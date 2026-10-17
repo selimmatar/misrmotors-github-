@@ -18,7 +18,12 @@
 // Overpayments: a payment above the remaining balance is refused with 409 OVERPAYMENT unless the request carries
 // allowOverpayment: true. Confirmed, the invoice is capped at its amount (status paid), the payment and ledger rows
 // keep the full cash amount, and the excess becomes one active customer_credits row (credit_type "overpayment").
+// The credit's customer is the invoice's, else its sales order's; with neither, the overpayment is refused before
+// anything is written (409 OVERPAYMENT_NO_CUSTOMER).
+// The credit payment methods ("customer_credit", "supplier_credit") are not cash and are refused here: a customer
+// credit is used through lib/customer-credit-apply.ts.
 import { computeArStatus } from "./ar-status"
+import { CUSTOMER_CREDIT_PAYMENT_METHOD } from "./credit-apply"
 
 export type ArPaymentResult = { status: number; body: Record<string, any> }
 export type ArPaymentOptions = {
@@ -29,6 +34,8 @@ export type ArPaymentOptions = {
 const CURRENCY_TOLERANCE = 0.005
 const MAX_ATTEMPTS = 2 // first attempt + one retry after losing a compare-and-swap race
 const OPERATION_TYPE = "payment"
+// payment_method values of credits (no cash moved); never accepted on a cash payment
+const CREDIT_PAYMENT_METHODS = [CUSTOMER_CREDIT_PAYMENT_METHOD, "supplier_credit"]
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
 
@@ -85,6 +92,9 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
   const receiptUrl = typeof body?.receiptUrl === "string" && body.receiptUrl ? body.receiptUrl : null
   const paymentMethod =
     typeof body?.paymentMethod === "string" && body.paymentMethod.trim() ? body.paymentMethod.trim() : "bank_transfer"
+  if (CREDIT_PAYMENT_METHODS.includes(paymentMethod)) {
+    return fail(400, `paymentMethod "${paymentMethod}" is not a cash payment; use the credit dialog to apply customer credit`)
+  }
   const label = typeof body?.label === "string" && body.label.trim() ? body.label.trim().slice(0, 80) : null
   const allowOverpayment = body?.allowOverpayment === true
   const confirmDuplicate = body?.confirmDuplicate === true
@@ -222,6 +232,7 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
     let newCollected = 0
     let newMonthsPaid = 0
     let excess = 0
+    let creditCustomerId: number | null = null
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const { data: row, error: readError } = await supabase
@@ -251,6 +262,26 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
           `Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}. Confirm it to save the extra as customer credit.`,
           { code: "OVERPAYMENT", remaining, excess: round2(paymentAmount - remaining), overpayment: true },
         )
+      }
+
+      // The excess becomes credit of the invoice's customer (an older row may have none: then the sales order's).
+      // Resolved before any write, so an overpayment that could not be saved as credit is never booked.
+      if (isOverpayment && creditCustomerId === null) {
+        creditCustomerId = row.customer_id ?? null
+        if (creditCustomerId === null && row.so_id) {
+          const { data: so, error: soError } = await supabase.from("sales_orders").select("customer_id").eq("so_id", row.so_id).maybeSingle()
+          if (soError) {
+            console.error("AR payment - sales order read failed:", soError.message)
+            return await reject(500, "Could not read the sales order of the invoice. Nothing was recorded.")
+          }
+          creditCustomerId = so?.customer_id ?? null
+        }
+        if (creditCustomerId === null) {
+          return await reject(409, "This invoice has no customer, so the extra cannot be saved as customer credit. Record at most the remaining balance.", {
+            code: "OVERPAYMENT_NO_CUSTOMER",
+            remaining,
+          })
+        }
       }
 
       // The invoice never goes above its amount; the excess is saved as customer credit after the payment rows.
@@ -345,7 +376,7 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
       const { data: creditRow, error: creditError } = await supabase
         .from("customer_credits")
         .insert({
-          customer_id: invoice.customer_id,
+          customer_id: creditCustomerId,
           amount: excess,
           status: "active",
           credit_type: "overpayment",

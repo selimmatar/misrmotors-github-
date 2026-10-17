@@ -3,7 +3,8 @@
 //   - each selected credit moves active -> used, guarded on status 'active' AND the amount that was read;
 //   - using only part of a credit splits it: the used row keeps the used part, a new active row holds the remainder
 //     (same owner, source invoice and reference, note from ./supplier-credit-note), so the total never changes;
-//   - on any failure the credits already moved by the call are put back.
+//   - on any failure the credits already moved by the call are put back. Every put-back step checks its own result;
+//     a credit that could not be put back makes the failure a partial failure (never "Nothing was saved").
 import type { WorkflowResult } from "./returns"
 import { remainderNote } from "./supplier-credit-note"
 
@@ -115,26 +116,41 @@ export const appendCreditNote = (notes: string | null | undefined, note: string)
 /**
  * Moves the validated credits onto the target (PO or invoice). Every step is a guarded write; on any failure the
  * credits already moved by this call are put back. On success `undo` puts them back too (for a caller whose own
- * later step fails).
+ * later step fails) and returns the ids of the credits it could NOT put back (empty = all put back).
  */
 export async function reserveCredits(
   db: Db,
   ledger: CreditLedger,
   input: { targetId: number; targetNumber: string; selections: CreditSelection[]; rows: Map<number, any> },
-): Promise<{ error: WorkflowResult | null; undo: () => Promise<void> }> {
-  const undo: (() => Promise<void>)[] = []
+): Promise<{ error: WorkflowResult | null; undo: () => Promise<number[]> }> {
+  // each step returns true when its credit was fully put back
+  const undo: { creditId: number; run: () => Promise<boolean> }[] = []
   const rollback = async () => {
+    const notRestored: number[] = []
     for (const step of [...undo].reverse()) {
       try {
-        await step()
+        if (!(await step.run())) notRestored.push(step.creditId)
       } catch (e: any) {
         console.error(`[credit-apply] ${ledger.table} rollback step failed:`, e?.message || e)
+        notRestored.push(step.creditId)
       }
     }
+    return notRestored
   }
   const failed = async (result: WorkflowResult) => {
-    await rollback()
-    return { error: result, undo: async () => {} }
+    const notRestored = await rollback()
+    if (notRestored.length === 0) return { error: result, undo: async () => [] }
+    const list = notRestored.map((id) => `#${id}`).join(", ")
+    console.error(`[credit-apply] ${ledger.table}: ${result.body.error} Credits not put back: ${list}`)
+    return {
+      error: fail(
+        500,
+        `The ${ledger.owner} credit could not be applied and credit ${list} could not be put back. Do not repeat it; contact an administrator.`,
+        "CREDIT_ROLLBACK_FAILED",
+        { partialFailure: true, failedStep: ledger.table, notRestored, cause: result.body.code },
+      ),
+      undo: async () => [],
+    }
   }
   const now = new Date().toISOString()
   for (const s of input.selections) {
@@ -159,13 +175,40 @@ export async function reserveCredits(
     if (!moved || moved.length !== 1) {
       return failed(fail(409, `Credit #${s.creditId} was used or changed by someone else. Reload and try again.`, "CREDIT_NOT_AVAILABLE", { creditId: s.creditId }))
     }
-    undo.push(async () => {
-      await db
+    let remainderId: number | null = null
+    const putBack = async (): Promise<boolean> => {
+      // A split is undone by removing the remainder row first. Only when exactly that row was removed does the
+      // credit get its full amount back; if the remainder is gone (used elsewhere) or the delete failed, the credit
+      // is reopened with the part this call used, so the open total never exceeds what the owner had.
+      let restoreAmount = row.amount
+      let complete = true
+      if (remainderId !== null) {
+        const { data: removed, error: removeError } = await db
+          .from(ledger.table)
+          .delete()
+          .eq("credit_id", remainderId)
+          .eq("status", "active")
+          .select("credit_id")
+        if (removeError || !removed || removed.length !== 1) {
+          console.error(`[credit-apply] ${ledger.table}: remainder #${remainderId} of credit #${s.creditId} could not be removed:`, removeError?.message || "0 rows")
+          restoreAmount = s.amount
+          complete = false
+        }
+      }
+      const { data: restored, error: restoreError } = await db
         .from(ledger.table)
-        .update({ status: "active", used_at: null, [ledger.usedInColumn]: null, amount: row.amount, notes: row.notes ?? null })
+        .update({ status: "active", used_at: null, [ledger.usedInColumn]: null, amount: restoreAmount, notes: row.notes ?? null })
         .eq("credit_id", s.creditId)
+        .eq("status", "used")
         .eq(ledger.usedInColumn, input.targetId)
-    })
+        .select("credit_id")
+      if (restoreError || !restored || restored.length !== 1) {
+        console.error(`[credit-apply] ${ledger.table}: credit #${s.creditId} could not be put back:`, restoreError?.message || "0 rows")
+        return false
+      }
+      return complete
+    }
+    undo.push({ creditId: s.creditId, run: putBack })
     if (split) {
       const { data: inserted, error: insertError } = await db
         .from(ledger.table)
@@ -188,10 +231,7 @@ export async function reserveCredits(
       if (insertError || !inserted || inserted.length !== 1) {
         return failed(fail(500, `Could not split the ${ledger.owner} credit. Nothing was saved.`, "CREDIT_RESERVE_FAILED"))
       }
-      const remainderId = inserted[0].credit_id
-      undo.push(async () => {
-        await db.from(ledger.table).delete().eq("credit_id", remainderId).eq("status", "active")
-      })
+      remainderId = inserted[0].credit_id
     }
   }
   return { error: null, undo: rollback }

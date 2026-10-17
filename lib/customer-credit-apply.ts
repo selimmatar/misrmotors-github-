@@ -11,7 +11,10 @@
 //      unchanged (no instalment was paid in cash)
 //   5. one customer_payments row with payment_method "customer_credit"
 // No balance_entries row is written: no cash moved. A failure in 3 or 4 puts the credits back; a failure in 5 puts
-// the invoice and the credits back, and only when that undo fails is it reported as a partial failure.
+// the invoice and the credits back. Same rule as AP payments (batch-1 R m3): an insert error does not always mean
+// nothing was written (a timeout after the commit), so when the payment row is there it is parked as a partial
+// failure and nothing is undone. Any undo step that fails (or matches no row) is a partial failure too, never
+// "Nothing was saved".
 import { mapArInvoice as mapInvoice } from "./ar-payments"
 import { computeArStatus } from "./ar-status"
 import { CUSTOMER_CREDIT_LEDGER, CUSTOMER_CREDIT_PAYMENT_METHOD, creditMoney as round2, CREDIT_TOLERANCE, parseCreditSelections, reserveCredits, validateCredits } from "./credit-apply"
@@ -101,8 +104,20 @@ export async function applyCustomerCredits(supabase: any, body: any): Promise<Cu
     return fail(status, error, extra)
   }
 
-  let undoCredits: (() => Promise<void>) | null = null
+  let undoCredits: (() => Promise<number[]>) | null = null
   let invoiceUpdated = false
+  // The credits were moved but could not all be put back: parked as a partial failure.
+  const creditsNotRestored = async (step: string, cause: string, notRestored: number[]) => {
+    const list = notRestored.map((id) => `#${id}`).join(", ")
+    const detail = `PARTIAL: ${step} failed for invoice ${invoiceId} (${cause}) and customer credit ${list} could not be put back`
+    console.error("AR credit -", detail)
+    await finish("partial_failure", detail)
+    return fail(500, `The credit could not be applied and credit ${list} could not be put back. Do not repeat it; contact an administrator.`, {
+      partialFailure: true,
+      failedStep: step,
+      notRestored,
+    })
+  }
   try {
     // ---- Invoice and credits: validate before anything is written ----------------------------------
     const { data: row, error: readError } = await supabase.from("accounts_receivable").select("*").eq("invoice_id", invoiceId).maybeSingle()
@@ -126,7 +141,13 @@ export async function applyCustomerCredits(supabase: any, body: any): Promise<Cu
       selections,
       rows: checked.rows,
     })
-    if (reserved.error) return await reject(reserved.error.status, reserved.error.body.error, reserved.error.body)
+    if (reserved.error) {
+      if (reserved.error.body.partialFailure) {
+        await finish("partial_failure", `PARTIAL: ${reserved.error.body.error}`)
+        return { status: reserved.error.status, body: reserved.error.body }
+      }
+      return await reject(reserved.error.status, reserved.error.body.error, reserved.error.body)
+    }
     undoCredits = reserved.undo
 
     // ---- Guarded update of the invoice -------------------------------------------------------------
@@ -139,8 +160,9 @@ export async function applyCustomerCredits(supabase: any, body: any): Promise<Cu
     update = row.amount === null || row.amount === undefined ? update.is("amount", null) : update.eq("amount", row.amount)
     const { data: updatedRows, error: updateError } = await update.select("*")
     if (updateError || !updatedRows || updatedRows.length !== 1) {
-      await undoCredits()
+      const notRestored = await undoCredits()
       undoCredits = null
+      if (notRestored.length > 0) return await creditsNotRestored("accounts_receivable", updateError?.message || "invoice changed meanwhile", notRestored)
       if (updateError) return await reject(500, "Could not update the invoice. Nothing was saved.")
       return await reject(409, "The invoice was changed by someone else at the same time. Nothing was saved; please retry.", { conflict: true })
     }
@@ -162,15 +184,8 @@ export async function applyCustomerCredits(supabase: any, body: any): Promise<Cu
       .select("payment_id")
       .single()
     if (paymentError) {
-      // Put the invoice back (guarded on the value just written), then the credits.
-      const restore = supabase
-        .from("accounts_receivable")
-        .update({ collected_amount: row.collected_amount ?? null, status: row.status })
-        .eq("invoice_id", invoiceId)
-        .eq("collected_amount", newCollected)
-      const { data: restored, error: restoreError } = await restore.select("invoice_id")
-      if (restoreError || !restored || restored.length !== 1) {
-        const detail = `PARTIAL: invoice ${invoiceId} collected_amount increased by ${applied.toFixed(2)} from customer credit but customer_payments failed (${paymentError.message}) and the invoice could not be put back`
+      const parked = async (why: string) => {
+        const detail = `PARTIAL: invoice ${invoiceId} collected_amount increased by ${applied.toFixed(2)} from customer credit but customer_payments failed (${paymentError.message}); ${why}`
         console.error("AR credit -", detail)
         await finish("partial_failure", detail)
         return fail(500, "The credit was applied to the invoice but the payment record could not be saved. Do not repeat it; contact an administrator.", {
@@ -178,8 +193,30 @@ export async function applyCustomerCredits(supabase: any, body: any): Promise<Cu
           failedStep: "customer_payments",
         })
       }
-      await undoCredits()
+      // An error does not always mean nothing was written (a timeout after the commit): if the row is there, the
+      // invoice and the credits are right and only the response was lost, so nothing is undone.
+      const { data: written, error: writtenError } = await supabase
+        .from("customer_payments")
+        .select("payment_id")
+        .eq("invoice_id", invoiceId)
+        .eq("payment_method", CUSTOMER_CREDIT_PAYMENT_METHOD)
+        .eq("reference_number", `${row.invoice_number}-CREDIT`)
+        .eq("amount", applied)
+      if (writtenError || (written || []).length > 0) {
+        return await parked(writtenError ? "the payment rows could not be checked" : "the payment row was found, nothing was undone")
+      }
+      // Put the invoice back (guarded on the value just written), then the credits.
+      const restore = supabase
+        .from("accounts_receivable")
+        .update({ collected_amount: row.collected_amount ?? null, status: row.status })
+        .eq("invoice_id", invoiceId)
+        .eq("collected_amount", newCollected)
+      const { data: restored, error: restoreError } = await restore.select("invoice_id")
+      if (restoreError || !restored || restored.length !== 1) return await parked("the invoice could not be put back")
+      invoiceUpdated = false
+      const notRestored = await undoCredits()
       undoCredits = null
+      if (notRestored.length > 0) return await creditsNotRestored("customer_payments", paymentError.message, notRestored)
       return await reject(500, "Could not record the credit payment. Nothing was saved.")
     }
 
@@ -199,7 +236,10 @@ export async function applyCustomerCredits(supabase: any, body: any): Promise<Cu
       await finish("partial_failure", `Unexpected error after invoice update: ${error?.message || error}`)
       return fail(500, "Unexpected error after the invoice was updated. Do not repeat it; contact an administrator.", { partialFailure: true })
     }
-    if (undoCredits) await undoCredits()
+    if (undoCredits) {
+      const notRestored = await undoCredits()
+      if (notRestored.length > 0) return await creditsNotRestored("unexpected error", String(error?.message || error), notRestored)
+    }
     await finish("failed", `Unexpected error: ${error?.message || error}`)
     return fail(500, "Unexpected error while applying the credit. Nothing was saved.")
   }
