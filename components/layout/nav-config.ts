@@ -72,7 +72,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
     { id: "analytics", label: "module.analytics", icon: BarChart3 },
     { id: "approve-sales-orders", label: "module.approve-sales-orders", icon: CheckSquare },
-    { id: "sales-quotations", label: "module.sales-quotations", icon: FileText },
+    { id: "sales-orders", label: "module.sales-orders", icon: TrendingUp },
     { id: "payment-schedule", label: "module.payment-schedule", icon: DollarSign },
     { id: "purchase-orders", label: "module.purchase-orders", icon: ShoppingCart },
     { id: "pricing-review", label: "module.pricing-review", icon: TrendingUpIcon },

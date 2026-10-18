@@ -16,7 +16,8 @@ const AR = I18N.slice(AR_AT)
 const MAIN_IDS: Record<string, string[]> = { // verbatim from origin/main components/layout/sidebar.tsx
   admin: ["user-management","hr-management","metrics-validation","system-health"],
   ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","delivery-permits","accounts-receivable","balance","metrics-validation","system-health"],
-  accountant: ["dashboard","analytics","approve-sales-orders","sales-quotations","payment-schedule","purchase-orders","pricing-review","costing-settings","accounts-payable","accounts-receivable","maintenance-invoices","customers","suppliers","delivery-permits","balance"],
+  // accountant: quotations swapped for the view-only order list (owner request).
+  accountant: ["dashboard","analytics","approve-sales-orders","sales-orders","payment-schedule","purchase-orders","pricing-review","costing-settings","accounts-payable","accounts-receivable","maintenance-invoices","customers","suppliers","delivery-permits","balance"],
   "sales-rep": ["dashboard","analytics","customers","sales-orders","delivery-permits","inventory","lost-sales","accounts-receivable","operations-management"],
   "warehouse-rep": ["dashboard","inventory","inventory-audit","warehouse-transfers","warehouse-delivery","delivery-permits","goods-receipt","goods-receipt-tracking"],
   "po-rep": ["dashboard","analytics","suppliers","products","po-requests","purchase-orders","goods-receipt-tracking","inventory","reorder-suggestions","lost-sales"],
@@ -40,7 +41,7 @@ test("every label is an i18n key", () => {
 test("groupItems: fixed order, role order inside, empty groups hidden", () => {
   const g = groupItems(ROLE_MODULES.accountant)
   assert.deepEqual(g.map((x) => x.group), ["overview", "sales", "purchasing", "finance"])
-  assert.deepEqual(g[1].items.map((i) => i.id), ["approve-sales-orders", "sales-quotations", "customers", "delivery-permits"])
+  assert.deepEqual(g[1].items.map((i) => i.id), ["approve-sales-orders", "sales-orders", "customers", "delivery-permits"])
 })
 
 test("pageFor", () => {
@@ -67,4 +68,11 @@ test("frame keys exist in EN and AR", () => {
     assert.ok(EN.includes(`"${k}":`), `EN ${k}`)
     assert.ok(AR.includes(`"${k}":`), `AR ${k}`)
   }
+})
+
+test("the accountant has no quotation item and keeps the order lists", () => {
+  const ids = ROLE_MODULES.accountant.map((i) => i.id)
+  assert.ok(!ids.includes("sales-quotations"))
+  assert.ok(ids.includes("sales-orders"))
+  assert.ok(ids.includes("purchase-orders"))
 })
