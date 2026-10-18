@@ -35,6 +35,7 @@ import DeliveryPermitsModule from "@/components/modules/delivery-permits-module"
 import { SalesQuotationModule } from "@/components/modules/sales-quotation-module" // Import SalesQuotationModule
 import { ApproveSalesQuotationsModule } from "@/components/modules/approve-sales-quotations-module"
 import { SalesQuotationsHubModule } from "@/components/modules/sales-quotations-hub-module"
+import { SalesOrderModule } from "@/components/modules/sales-order-module"
 import { WarehouseDeliveryModule } from "@/components/modules/warehouse-delivery-module" // Import WarehouseDeliveryModule
 import { CourierManagementModule } from "@/components/modules/courier-management-module" // Import CourierManagementModule
 import { HRManagementModule } from "@/components/modules/hr-management-module" // Import HR Management Module
@@ -138,6 +139,8 @@ case "po-requests":
       case "customers":
         return <CustomerModule userRole={user.role} />
       case "sales-orders":
+        // The accountant gets the order list only: no quotation tabs.
+        if (user.role === "accountant") return <SalesOrderModule userRole={user.role} />
         // Sidebar shows this as a single "Sales Quotations" tab that groups Create
         // Quotations, Approve Quotations, and Sales Quotations (this list) into sub-tabs.
         return <SalesQuotationsHubModule userRole={user.role} />
@@ -172,6 +175,7 @@ case "po-requests":
       case "delivery-permits":
         return <DeliveryPermitsModule userRole={user.role} />
       case "sales-quotations":
+        if (user.role === "accountant") return <SalesOrderModule userRole={user.role} />
         return <SalesQuotationModule userRole={user.role} />
       case "approve-sales-quotations":
         return <ApproveSalesQuotationsModule userRole={user.role} />

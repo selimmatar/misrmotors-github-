@@ -159,7 +159,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
   const [downPaymentInputMode, setDownPaymentInputMode] = useState<"amount" | "percent" | null>(null)
 
-  const canCreatePO = userRole === "po-rep" || userRole === "accountant" || userRole === "admin"
+  // The accountant sees every PO but does not create them.
+  const canCreatePO = userRole === "po-rep" || userRole === "admin" || userRole === "ceo"
   const canApprovePO = userRole === "ceo" || userRole === "admin"
 
   const getLowStockSuggestions = () => {
@@ -1232,10 +1233,12 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             <Button variant="outline" onClick={() => setShowReportGenerator(true)}>
               {t("report.generate")}
             </Button>
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="w-4 h-4 me-2" />
-              {t("po.add")}
-            </Button>
+            {canCreatePO && (
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="w-4 h-4 me-2" />
+                {t("po.add")}
+              </Button>
+            )}
           </>
         }
       />
@@ -1308,7 +1311,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         </CardContent>
       </Card>
 
-      <Dialog open={showForm} onOpenChange={setShowForm}>
+      <Dialog open={canCreatePO && showForm} onOpenChange={setShowForm}>
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>{t("po.create-new")}</DialogTitle>
