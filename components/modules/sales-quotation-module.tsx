@@ -33,6 +33,7 @@ import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { Money } from "@/components/erp/money"
+import { openPendingWindow } from "@/lib/print/pending-window"
 
 interface QuotationItem {
   id: string
@@ -92,6 +93,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   const [customerAddress, setCustomerAddress] = useState("")
   const [validityDays, setValidityDays] = useState(30)
   const [savedQuotation, setSavedQuotation] = useState<any>(null)
+  const [savedPdfUrl, setSavedPdfUrl] = useState<string | null>(null)
   const [isCreatingQuotation, setIsCreatingQuotation] = useState(false)
   const [items, setItems] = useState<QuotationItem[]>([])
   const [notes, setNotes] = useState("")
@@ -200,6 +202,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     Boolean(draft.customerName?.trim()) || draft.items.length > 0
 
   const resetFormFields = () => {
+    setSavedPdfUrl(null)
     setSelectedCustomerId("")
     setCustomerName("")
     setCustomerPhone("")
@@ -737,6 +740,9 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       return
     }
 
+    // Opened now, on the click: a window opened after the save request returns is blocked by the browser.
+    const pdfWindow = openPendingWindow(window, t("sq.preparing-pdf"))
+    setSavedPdfUrl(null)
     setIsCreatingQuotation(true)
 
     try {
@@ -823,9 +829,12 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
         notes: notes,
       }
 
-      const queryString = `data=${encodeURIComponent(JSON.stringify(quotationData))}&qn=${quotation.quotation_number}`
-      window.open(`/api/quotations/generate?${queryString}`, "_blank")
+      const queryString = `data=${encodeURIComponent(JSON.stringify(quotationData))}&qn=${encodeURIComponent(quotation.quotation_number)}`
+      const pdfUrl = `/api/quotations/generate?${queryString}`
+      setSavedPdfUrl(pdfUrl)
+      pdfWindow.go(pdfUrl)
     } catch (error) {
+      pdfWindow.close()
       console.error("Save quotation error:", error)
       alert(t("sq.failed-to-save-quotation-please"))
     } finally {
@@ -1377,6 +1386,18 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
               </Button>
               <p className="text-sm text-muted-foreground">{t("sq.saves-quotation-and-opens-pdf")}</p>
               {isSavingDraft && <p className="text-xs text-muted-foreground">{t("sq.saving-draft")}</p>}
+
+              {savedQuotation && savedPdfUrl && (
+                <div role="status" className="rounded-md border border-green-600/40 bg-green-50 dark:bg-green-950/30 p-3 text-sm space-y-2">
+                  <p className="font-medium">{fill(t("sq.quotation-saved-number"), { number: String(savedQuotation.quotation_number ?? "") })}</p>
+                  <Button asChild variant="outline" size="sm" className="gap-2">
+                    <a href={savedPdfUrl} target="_blank" rel="noopener">
+                      <FileText className="h-4 w-4" />
+                      {t("sq.open-pdf")}
+                    </a>
+                  </Button>
+                </div>
+              )}
 
               {savedQuotation && (
                 <div className="mt-4 pt-4 border-t">
