@@ -827,6 +827,9 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
         })),
         validity_days: validityDays,
         notes: notes,
+        discount_type: discountType,
+        discount_value: discountValue,
+        discount_amount: discountAmount,
       }
 
       const queryString = `data=${encodeURIComponent(JSON.stringify(quotationData))}&qn=${encodeURIComponent(quotation.quotation_number)}`

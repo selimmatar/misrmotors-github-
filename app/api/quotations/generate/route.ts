@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
+import { computeTotals } from "@/lib/print-totals"
 
 export const dynamic = "force-dynamic"
 
@@ -23,6 +24,9 @@ export async function GET(request: NextRequest) {
       items,
       validity_days = 30,
       notes,
+      discount_type,
+      discount_value,
+      discount_amount,
     } = JSON.parse(decodeURIComponent(dataParam))
 
 
@@ -51,10 +55,14 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Calculate pre-tax subtotal, then add VAT
-    const subtotal = quotationItems.reduce((sum, item) => sum + item.total, 0)
-    const tax = subtotal * 0.14
-    const total = subtotal + tax
+    // Pre-tax subtotal, minus the quotation's discount, then 14% VAT: the same arithmetic as the saved quotation
+    const { subtotal, discount, netSubtotal, vat: tax, total } = computeTotals({
+      subtotal: quotationItems.reduce((sum, item) => sum + item.total, 0),
+      discountType: discount_type,
+      discountValue: discount_value,
+      discountAmount: discount_amount,
+    })
+    const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     
     // Use English date format to avoid Arabic numerals that show as 2022
     const quotationDate = new Date().toLocaleDateString("en-GB", { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -119,9 +127,11 @@ export async function GET(request: NextRequest) {
       .join("")}</tbody>
   </table>
   <table class="pm-totals">
-    <tr><td><strong>المجموع الفرعي:</strong></td><td class="pm-num">${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>
-    <tr><td><strong>ضريبة القيمة المضافة (14%):</strong></td><td class="pm-num">${tax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>
-    <tr class="pm-total-final"><td><strong>الإجمالي الكلي:</strong></td><td class="pm-num"><strong>${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</strong></td></tr>
+    <tr><td><strong>المجموع الفرعي:</strong></td><td class="pm-num">${money(subtotal)} جنيه</td></tr>${discount > 0 ? `
+    <tr><td><strong>الخصم:</strong></td><td class="pm-num" style="color: red;">-${money(discount)} جنيه</td></tr>
+    <tr><td><strong>المجموع بعد الخصم:</strong></td><td class="pm-num">${money(netSubtotal)} جنيه</td></tr>` : ""}
+    <tr><td><strong>ضريبة القيمة المضافة (14%):</strong></td><td class="pm-num">${money(tax)} جنيه</td></tr>
+    <tr class="pm-total-final"><td><strong>الإجمالي الكلي:</strong></td><td class="pm-num"><strong>${money(total)} جنيه</strong></td></tr>
   </table>
   ${notes ? `<div class="pm-note"><strong>ملاحظات:</strong><br>${escapeHtml(notes)}</div>` : ""}
   <div class="pm-footer"><p>هذا العرض صالح لمدة ${escapeHtml(validity_days)} يوم من تاريخ الإصدار</p>
