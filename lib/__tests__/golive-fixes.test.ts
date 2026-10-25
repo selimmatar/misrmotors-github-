@@ -11,6 +11,7 @@ import * as soRoute from "../../app/api/sales-orders/route"
 import * as dpRoute from "../../app/api/delivery-permits/route"
 import { planAllocation } from "../dp-allocate"
 import * as maintApprove from "../../app/api/maintenance/reports/approve/route"
+import * as maintInvoice from "../../app/api/maintenance/invoices/route"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -214,4 +215,53 @@ test("4. if the work order cannot be closed, the parts are put back and the repo
   assert.equal(res.status, 500)
   assert.equal(db.tables.inventory[0].quantity, 10)
   assert.equal(db.tables.maintenance_reports[0].approved_at, null)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 5. A maintenance invoice is the price before VAT plus 14% VAT, never the cost by default
+// ---------------------------------------------------------------------------------------------------------
+function maintInvoiceDb() {
+  const db = new FakeDb({
+    maintenance_work_orders: [{ work_order_id: 9, work_order_number: "WO-9", sales_order_id: null }],
+    maintenance_reports: [{ report_id: 1, work_order_id: 9, actual_cost: 5000, submitted_at: "2026-10-01", parts_used: [{ type: "inventory", totalCost: 2000 }] }],
+    accounts_receivable: [], maintenance_ar_invoices: [],
+  })
+  useDb(db)
+  return db
+}
+const invoiceBody = (extra: Row) => ({ work_order_id: 9, customer_id: 5, due_days: 30, payment_terms: "NET 30", ...extra })
+
+test("5. a price of 6,250 before VAT is invoiced as 7,125 with 875 VAT", async () => {
+  const db = maintInvoiceDb()
+  const res = await call(maintInvoice.POST, "POST", invoiceBody({ amount_before_vat: 6250 }))
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(db.tables.accounts_receivable[0].amount, 7125)
+  const detail = db.tables.maintenance_ar_invoices[0]
+  assert.equal(detail.invoice_amount, 7125)
+  assert.equal(detail.tax_amount, 875)
+  assert.equal(detail.parts_cost, 2000)
+  assert.equal(detail.labor_cost, 4250)
+})
+
+test("5. a missing, zero or negative price is refused", async () => {
+  for (const extra of [{}, { amount_before_vat: 0 }, { amount_before_vat: -5 }, { amount_before_vat: "abc" }]) {
+    const db = maintInvoiceDb()
+    const res = await call(maintInvoice.POST, "POST", invoiceBody(extra))
+    assert.equal(res.status, 400, JSON.stringify(extra))
+    assert.equal(db.tables.accounts_receivable.length, 0)
+  }
+})
+
+test("5. if the invoice detail cannot be saved, the AR invoice is removed again", async () => {
+  const db = maintInvoiceDb()
+  db.failOn["maintenance_ar_invoices:insert"] = "boom"
+  const res = await call(maintInvoice.POST, "POST", invoiceBody({ amount_before_vat: 6250 }))
+  assert.equal(res.status, 500)
+  assert.equal(db.tables.accounts_receivable.length, 0)
+})
+
+test("5. the invoice screen no longer falls back to the cost as the price", () => {
+  const tab = src("components/accounting/maintenance-invoice-tab.tsx")
+  assert.doesNotMatch(tab, /\|\|\s*selectedOrder\.actual_cost/)
+  assert.match(tab, /amount_before_vat/)
 })

@@ -1,13 +1,24 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
+import { VAT_RATE } from "@/lib/invoicing"
+
+const round2 = (n: number) => Math.round(n * 100) / 100
 
 export async function POST(request: Request) {
   try {
     const adminClient = createAdminClient()
     const body = await request.json()
     
-    const { work_order_id, customer_id, amount, notes, payment_terms, due_days } = body
-    
+    const { work_order_id, customer_id, notes, payment_terms, due_days } = body
+
+    // The accountant enters the price BEFORE VAT; the invoice (and the AR amount, which the tax PDF reads as
+    // VAT-inclusive) is that price plus 14% VAT. Example: 6,250 before VAT -> 875 VAT -> 7,125 invoiced.
+    const netAmount = round2(Number(body.amount_before_vat))
+    if (!Number.isFinite(netAmount) || netAmount <= 0) {
+      return NextResponse.json({ error: "Enter the price before VAT (a number above 0)." }, { status: 400 })
+    }
+    const amount = round2(netAmount * (1 + VAT_RATE))
+    const taxAmount = round2(amount - netAmount)
 
     // Get work order details for invoice number
     const { data: workOrder } = await adminClient
@@ -49,7 +60,7 @@ export async function POST(request: Request) {
 
     const partsUsed = report?.parts_used || []
     const partsCost = partsUsed.reduce((sum: number, p: any) => sum + (p.totalCost || 0), 0)
-    const laborCost = (amount || 0) - partsCost
+    const laborCost = round2(netAmount - partsCost)
 
     // Create AR entry WITHOUT so_id - maintenance invoices are independent
     // Do NOT link to the sales order to avoid inheriting SO payment terms
@@ -70,15 +81,19 @@ export async function POST(request: Request) {
       .single()
 
     if (arError) {
+      if (arError.code === "23505") {
+        return NextResponse.json({ error: "Invoice already exists for this work order" }, { status: 409 })
+      }
       console.error("Error creating AR entry:", arError)
       return NextResponse.json({ error: "Failed to create invoice" }, { status: 500 })
     }
 
     // Also create a detailed record in maintenance_ar_invoices
-    await adminClient.from("maintenance_ar_invoices").insert({
+    const { error: detailError } = await adminClient.from("maintenance_ar_invoices").insert({
       work_order_id,
       invoice_id: invoice.invoice_id,
       invoice_amount: amount,
+      tax_amount: taxAmount,
       labor_cost: laborCost > 0 ? laborCost : 0,
       parts_cost: partsCost,
       invoice_date: invoiceDate,
@@ -87,6 +102,12 @@ export async function POST(request: Request) {
       notes: notes || null,
       created_by: "accountant",
     })
+    if (detailError) {
+      // Without its detail row the work order would look un-invoiced while the customer owes it: undo the AR invoice.
+      console.error("Error creating maintenance invoice detail:", detailError)
+      await adminClient.from("accounts_receivable").delete().eq("invoice_id", invoice.invoice_id)
+      return NextResponse.json({ error: "Failed to create invoice. Nothing was saved; try again." }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,

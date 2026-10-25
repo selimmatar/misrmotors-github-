@@ -58,7 +58,11 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
   const handleCreateInvoice = async () => {
     if (!selectedOrder) return
     
-    const finalAmount = parseFloat(invoiceAmount) || selectedOrder.actual_cost
+    const priceBeforeVat = parseFloat(invoiceAmount)
+    if (!(priceBeforeVat > 0)) {
+      alert(t("mi.enter-price"))
+      return
+    }
     const daysToAdd = paymentTerms === "custom" ? parseInt(customDays) : parseInt(paymentTerms.split("_")[1])
     
     setLoading(true)
@@ -69,7 +73,7 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
         body: JSON.stringify({
           work_order_id: selectedOrder.work_order_id,
           customer_id: selectedOrder.customer_id,
-          amount: finalAmount,
+          amount_before_vat: priceBeforeVat,
           payment_terms: paymentTerms === "custom" ? `Net ${customDays} Days` : paymentTerms.replace("_", " ").toUpperCase(),
           due_days: daysToAdd,
           notes: invoiceNotes,
@@ -95,6 +99,11 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
       setLoading(false)
     }
   }
+
+  // Same rounding as the server: price before VAT + 14% VAT
+  const previewNet = Math.round((parseFloat(invoiceAmount) || 0) * 100) / 100
+  const previewTotal = Math.round(previewNet * 1.14 * 100) / 100
+  const invoicePreview = { net: previewNet, vat: Math.round((previewTotal - previewNet) * 100) / 100, total: previewTotal }
 
   const pendingInvoice = workOrders.filter(wo => !wo.has_invoice)
   const invoiced = workOrders.filter(wo => wo.has_invoice)
@@ -255,12 +264,12 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="invoice-amount">{t("mi.invoice-amount-egp")}</Label>
+                    <Label htmlFor="invoice-amount">{t("mi.price-before-vat-egp")}</Label>
                     <Input
                       id="invoice-amount"
                       type="number"
                       step="0.01"
-                      placeholder={selectedOrder.actual_cost.toFixed(2)}
+                      min="0"
                       value={invoiceAmount}
                       onChange={(e) => setInvoiceAmount(e.target.value)}
                     />
@@ -319,7 +328,9 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
                       <h4 className="font-semibold text-blue-900 mb-1">{t("ar.invoice-will-be-created")}</h4>
                       <div className="space-y-1 text-sm text-blue-700">
                         <p>{t("common.customer")} <span className="font-semibold">{selectedOrder.customer_name}</span></p>
-                        <p>{t("mi.amount-colon")} <span className="font-semibold"><Money value={parseFloat(invoiceAmount) || selectedOrder.actual_cost} /> {t("common.egp-2")}</span></p>
+                        <p>{t("mi.amount-colon")} <span className="font-semibold"><Money value={invoicePreview.net} /> {t("common.egp-2")}</span></p>
+                        <p>{t("mi.vat-14-colon")} <span className="font-semibold"><Money value={invoicePreview.vat} /> {t("common.egp-2")}</span></p>
+                        <p>{t("mi.total-with-vat-colon")} <span className="font-semibold"><Money value={invoicePreview.total} /> {t("common.egp-2")}</span></p>
                         <p>{t("mi.payment-terms-colon")} <span className="font-semibold">
                           {paymentTerms === "custom" ? fill(t("mi.net-days"), { days: customDays }) : t(paymentTerms === "due_on_receipt" ? "mi.due-on-receipt" : `mi.net-${paymentTerms.split("_")[1]}`)}
                         </span></p>
