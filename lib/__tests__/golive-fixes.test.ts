@@ -15,6 +15,7 @@ import * as maintInvoice from "../../app/api/maintenance/invoices/route"
 import * as auditRoute from "../../app/api/inventory/audit/route"
 import { createReturn, processReturn } from "../returns"
 import { scheduleShare, scaleSchedule } from "../invoicing"
+import { withoutVat, supplierAmountWithoutVat, supplierPaid, supplierUnpaid, profitMarginPercent } from "../dashboard-figures"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -446,4 +447,35 @@ test("9. the receivables screen scales the hybrid schedule to the invoice", () =
   const ar = src("components/modules/accounts-receivable-module.tsx")
   assert.match(ar, /scheduleShare\(/)
   assert.match(ar, /scaleSchedule\(/)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 10. Financial dashboard figures
+// ---------------------------------------------------------------------------------------------------------
+test("10. revenue is shown before VAT", () => {
+  assert.equal(withoutVat(114000), 100000)
+})
+
+test("10. supplier expenses drop the VAT their purchase order added, and only when it added some", () => {
+  assert.equal(supplierAmountWithoutVat(57000, { total: 114000, taxAmount: 14000 }), 50000)
+  assert.equal(supplierAmountWithoutVat(50000, { total: 100000, taxAmount: 0 }), 50000)
+  assert.equal(supplierAmountWithoutVat(50000, null), 50000)
+})
+
+test("10. a part-paid supplier invoice counts its payment as paid and only the rest as owed", () => {
+  const inv = { amount: 100000, paidAmount: 30000, status: "partially_paid" }
+  assert.equal(supplierPaid(inv), 30000)
+  assert.equal(supplierUnpaid(inv), 70000)
+  assert.equal(supplierUnpaid({ amount: 100000, paidAmount: 0, status: "paid" }), 0)
+})
+
+test("10. margin is profit divided by revenue", () => {
+  assert.equal(profitMarginPercent(20000, 100000), "20.00")
+  assert.equal(profitMarginPercent(5000, 0), "N/A")
+})
+
+test("10. the dashboard uses these figures", () => {
+  const fd = src("components/modules/financial-dashboard.tsx")
+  for (const fn of ["withoutVat(", "supplierAmountWithoutVat(", "supplierPaid(", "supplierUnpaid(", "profitMarginPercent("]) assert.ok(fd.includes(fn), fn)
+  assert.doesNotMatch(fd, /grossProfit \/ totalExpenses/)
 })

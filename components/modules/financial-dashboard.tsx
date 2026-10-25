@@ -18,6 +18,7 @@ import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { Money } from "@/components/erp/money"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { formatDate, statusLabel } from "@/lib/format"
+import { withoutVat, supplierAmountWithoutVat, supplierPaid, supplierUnpaid, profitMarginPercent } from "@/lib/dashboard-figures"
 
 const BarChart = dynamic(() => import("recharts").then((mod) => mod.BarChart), { ssr: false })
 const Bar = dynamic(() => import("recharts").then((mod) => mod.Bar), { ssr: false })
@@ -141,7 +142,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
   const todayString = today.toISOString().split("T")[0]
 
   const overdueSupplierInvoices = supplierInvoices.filter((inv) => {
-    if (inv.status === "paid") return false
+    if (inv.status === "paid" || supplierUnpaid(inv) <= 0) return false
 
     const dueDate = new Date(inv.dueDate)
     if (inv.installmentMonths > 1) {
@@ -152,7 +153,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
     return effectiveDueDateString < todayString
   })
 
-  const totalAccountsPayable = overdueSupplierInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0)
+  const totalAccountsPayable = overdueSupplierInvoices.reduce((sum, inv) => sum + supplierUnpaid(inv), 0)
 
   const overdueCustomerInvoices = customerInvoices.filter((inv) => {
     if (inv.status === "paid") return false
@@ -182,10 +183,14 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
     return so?.paymentMethod === "installment"
   })
 
-  const totalRevenue = customerInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0)
-  const totalExpenses = supplierInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0)
+  // Before VAT: the VAT on sales and purchases belongs to the tax authority, it is neither revenue nor cost.
+  const totalRevenue = customerInvoices.reduce((sum, inv) => sum + withoutVat(inv.amount || 0), 0)
+  const totalExpenses = supplierInvoices.reduce(
+    (sum, inv) => sum + supplierAmountWithoutVat(inv.amount || 0, purchaseOrders.find((p) => String(p.id) === String(inv.poId))),
+    0,
+  )
   const grossProfit = totalRevenue - totalExpenses
-  const profitMargin = totalExpenses > 0 ? ((grossProfit / totalExpenses) * 100).toFixed(2) : "N/A"
+  const profitMargin = profitMarginPercent(grossProfit, totalRevenue)
   const inventoryValue = totalInventoryValue
 
   const inventoryDistribution = inventory.map((item) => {
@@ -542,9 +547,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
   }, [salesOrders, pendingSalesOrders.length])
 
   const totalPayable = supplierInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0)
-  const totalPaid = supplierInvoices
-    .filter((inv) => inv.status === "paid")
-    .reduce((sum, inv) => sum + (inv.amount || 0), 0)
+  const totalPaid = supplierInvoices.reduce((sum, inv) => sum + supplierPaid(inv), 0)
   const totalUnpaid = totalPayable - totalPaid
 
   const totalReceivable = customerInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0)
@@ -592,7 +595,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
         <KpiTile
           label={fill(t("financial.label-egp"), { label: t("financial.total-revenue") })}
           value={<Money value={totalRevenue} />}
-          sub={t("financial.from-sales")}
+          sub={t("financial.from-sales-net")}
           onClick={
             user.role === "sales-rep"
               ? () => {
@@ -605,7 +608,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
         <KpiTile
           label={fill(t("financial.label-egp"), { label: t("financial.total-expenses") })}
           value={<Money value={totalExpenses} />}
-          sub={t("financial.from-purchases")}
+          sub={t("financial.from-purchases-net")}
         />
         <KpiTile
           label={fill(t("financial.label-egp"), { label: t("financial.gross-profit") })}

@@ -80,7 +80,7 @@ cat > "$OUT/tsconfig.json" <<JSON
 }
 JSON
 "$REPO/node_modules/.bin/tsc" -p "$OUT/tsconfig.json" > "$OUT/tsc.log" 2>&1
-echo "compiled (tsc reported $(grep -c 'error TS' "$OUT/tsc.log") error line(s); new-file errors: $(grep 'error TS' "$OUT/tsc.log" | grep -E 'lib/(format|i18n-fallback|i18n-format|status-tone|approval-steps|nav-groups|returns|return-lines|so-edit|delivery-status|invoicing|print-totals|print-html|missing-items|missing-items-html|so-print-html|goods-receiving|ap-payments|ar-payments|po-status|po-over-order|stock-hold|dp-stock|dp-planned|customer-dp-chip|__tests__|dp-transitions|ap-mark-paid|ar-status|enums|parse-id|html-escape|upload-allowlist|supplier-credit-status|supplier-credit-apply|dp-allocate|return-credit)|components/layout/nav-config|finalize-cost/route|warehouse-transfers/complete/route' | wc -l))"
+echo "compiled (tsc reported $(grep -c 'error TS' "$OUT/tsc.log") error line(s); new-file errors: $(grep 'error TS' "$OUT/tsc.log" | grep -E 'lib/(format|i18n-fallback|i18n-format|status-tone|approval-steps|nav-groups|returns|return-lines|so-edit|delivery-status|invoicing|print-totals|print-html|missing-items|missing-items-html|so-print-html|goods-receiving|ap-payments|ar-payments|po-status|po-over-order|stock-hold|dp-stock|dp-planned|customer-dp-chip|__tests__|dp-transitions|ap-mark-paid|ar-status|enums|parse-id|html-escape|upload-allowlist|supplier-credit-status|supplier-credit-apply|dp-allocate|return-credit|dashboard-figures)|components/layout/nav-config|finalize-cost/route|warehouse-transfers/complete/route' | wc -l))"
 export NODE_PATH="$REPO/node_modules"
 export REPO_ROOT="$REPO"
 export HARDENING_GOLDEN_DIR="$REPO/lib/__tests__/fixtures/hardening"
