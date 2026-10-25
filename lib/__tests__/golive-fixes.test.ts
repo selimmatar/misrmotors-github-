@@ -14,6 +14,7 @@ import * as maintApprove from "../../app/api/maintenance/reports/approve/route"
 import * as maintInvoice from "../../app/api/maintenance/invoices/route"
 import * as auditRoute from "../../app/api/inventory/audit/route"
 import { createReturn, processReturn } from "../returns"
+import { scheduleShare, scaleSchedule } from "../invoicing"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -357,4 +358,92 @@ test("7. two returns are credited separately and never more than was invoiced", 
   const total = db.tables.customer_credits.reduce((s: number, c: Row) => s + c.amount, 0)
   assert.equal(db.tables.customer_credits.length, 2)
   assert.equal(total, 228000)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 8. The accountant's approval and quantity increases on approved orders re-check stock on the server
+// ---------------------------------------------------------------------------------------------------------
+function stockDb(opts: { onHand: number; otherHeld?: number; status?: string; qty?: number }) {
+  const db = new FakeDb({
+    sales_orders: [
+      { so_id: 1, so_number: "SO-S-1", customer_id: 5, status: opts.status || "pending_accountant", total: 0, net_total: 0 },
+      { so_id: 2, so_number: "SO-S-2", customer_id: 6, status: "accountant_approved", total: 0, net_total: 0 },
+    ],
+    customers: [{ customer_id: 5, customer_name: "A" }, { customer_id: 6, customer_name: "B" }],
+    products: [{ product_id: 7, product_name: "Pump A" }],
+    sales_order_items: [
+      { so_item_id: 1, so_id: 1, product_id: 7, quantity: opts.qty ?? 3, unit_price: 100, total: 300, item_type: "stock" },
+      { so_item_id: 2, so_id: 2, product_id: 7, quantity: opts.otherHeld ?? 0, unit_price: 100, total: 0, item_type: "stock" },
+    ],
+    delivery_permits: [], delivery_permit_items: [], accounts_receivable: [], invoice_delivery_permits: [],
+    inventory: [{ inventory_id: 100, product_id: 7, warehouse_id: 1, is_returned: false, quantity: opts.onHand }],
+  })
+  useDb(db)
+  return db
+}
+
+test("8. the accountant cannot approve an order whose stock another approved order already holds", async () => {
+  const db = stockDb({ onHand: 3, otherHeld: 3 })
+  const res = await call(soRoute.PUT, "PUT", { so_id: 1, status: "accountant_approved" })
+  assert.equal(res.status, 409, JSON.stringify(res.body))
+  assert.match(res.body.error, /Pump A/)
+  assert.equal(db.tables.sales_orders[0].status, "pending_accountant")
+})
+
+test("8. the accountant can approve when enough stock is free", async () => {
+  const db = stockDb({ onHand: 6, otherHeld: 3 })
+  const res = await call(soRoute.PUT, "PUT", { so_id: 1, status: "accountant_approved" })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(db.tables.sales_orders[0].status, "accountant_approved")
+})
+
+const qtyEdit = (qty: number, price = 100) => ({
+  so_id: 1, status: "accountant_approved", customerId: "5",
+  items: [{ id: "1", productId: "7", productName: "Pump A", quantity: qty, unitPrice: price, total: qty * price, itemType: "stock" }],
+})
+
+test("8. raising the quantity on an approved order beyond the free stock is refused and nothing changes", async () => {
+  const db = stockDb({ onHand: 25, otherHeld: 10, status: "accountant_approved", qty: 10 })
+  const res = await call(soRoute.PUT, "PUT", qtyEdit(20))
+  assert.equal(res.status, 409, JSON.stringify(res.body))
+  assert.equal(db.tables.sales_order_items[0].quantity, 10)
+})
+
+test("8. raising the quantity within the free stock is saved", async () => {
+  const db = stockDb({ onHand: 30, otherHeld: 10, status: "accountant_approved", qty: 10 })
+  const res = await call(soRoute.PUT, "PUT", qtyEdit(20))
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(db.tables.sales_order_items[0].quantity, 20)
+})
+
+test("8. an edit that does not raise any quantity is never blocked, even when stock is short", async () => {
+  const db = stockDb({ onHand: 5, status: "accountant_approved", qty: 10 })
+  const res = await call(soRoute.PUT, "PUT", qtyEdit(10, 120))
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(db.tables.sales_order_items[0].unit_price, 120)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 9. A hybrid order invoiced in parts shows each invoice its share of the down payment and installments
+// ---------------------------------------------------------------------------------------------------------
+test("9. an invoice for half the order carries half the down payment and half of each installment", () => {
+  const share = scheduleShare(114000, 228000)
+  assert.equal(share, 0.5)
+  assert.deepEqual(scaleSchedule([28000, 50000, 50000, 50000, 50000], share), [14000, 25000, 25000, 25000, 25000])
+})
+
+test("9. an invoice for the whole order keeps the schedule as it is", () => {
+  assert.equal(scheduleShare(228000, 228000), 1)
+  assert.deepEqual(scaleSchedule([28000, 100000, 100000], 1), [28000, 100000, 100000])
+})
+
+test("9. rounding never makes the parts add up to more or less than the invoice's share", () => {
+  const parts = scaleSchedule([10000, 10000, 10000], scheduleShare(10000, 30000))
+  assert.equal(Math.round(parts.reduce((s, a) => s + a, 0) * 100) / 100, 10000)
+})
+
+test("9. the receivables screen scales the hybrid schedule to the invoice", () => {
+  const ar = src("components/modules/accounts-receivable-module.tsx")
+  assert.match(ar, /scheduleShare\(/)
+  assert.match(ar, /scaleSchedule\(/)
 })

@@ -736,3 +736,20 @@ export async function createDpInvoices(db: Db, permitIds: number[]): Promise<Wor
     return failure(500, error?.message || "Failed to create invoice")
   }
 }
+
+/**
+ * Share of a sales order that one invoice covers (1 when it covers the whole order or the order total is unknown).
+ * A hybrid order invoiced over several delivery permits shows each invoice this share of the order's down payment
+ * and installments, instead of the whole order's schedule on every invoice.
+ */
+export const scheduleShare = (invoiceAmount: number, soTotal: number) =>
+  soTotal > 0 && invoiceAmount > 0 ? Math.min(1, invoiceAmount / soTotal) : 1
+
+/** Scale schedule amounts by `share`, rounding to piasters; the last amount takes the rounding so the sum stays exact. */
+export function scaleSchedule(amounts: number[], share: number): number[] {
+  if (share === 1 || amounts.length === 0) return amounts
+  const scaled = amounts.map((a) => round2(a * share))
+  const target = round2(amounts.reduce((s, a) => s + a, 0) * share)
+  scaled[scaled.length - 1] = round2(scaled[scaled.length - 1] + target - scaled.reduce((s, a) => s + a, 0))
+  return scaled
+}

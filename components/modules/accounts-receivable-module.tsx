@@ -21,6 +21,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import type { CustomerInvoice } from "@/lib/types"
 import { isSinglePayment } from "@/lib/payment-type"
+import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
 import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, ChevronDown, Upload, Search, Wallet } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -467,6 +468,21 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     // Get payment details from SO
     const paymentDetails = so?.paymentDetails
 
+    // The SO's down payment and installments are for the whole order. An order invoiced over several delivery
+    // permits shows each invoice only its share of them, and the payments on this invoice fill them in order.
+    const share = scheduleShare(totalAmount, so?.total || 0)
+    const fitToInvoice = (entries: PaymentScheduleEntry[]): PaymentScheduleEntry[] => {
+      const amounts = scaleSchedule(entries.map((e) => e.amount), share)
+      let left = paidAmount
+      return entries.map((e, i) => {
+        const amount = amounts[i]
+        const paid = Math.max(0, Math.min(left, amount))
+        left -= paid
+        const status = paid >= amount ? "paid" : new Date(e.dueDate) < new Date() ? "overdue" : "pending"
+        return { ...e, amount, paidAmount: paid, status }
+      })
+    }
+
     if (
       so?.scheduleMode === "MANUAL" &&
       so?.scheduleEntries &&
@@ -532,7 +548,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         })
       })
 
-      return schedules
+      return fitToInvoice(schedules)
     }
 
     // For cash/prepaid/bank transfer, just show one entry
@@ -632,7 +648,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         })
       }
 
-      return schedules
+      return fitToInvoice(schedules)
     }
 
     // For regular installments
