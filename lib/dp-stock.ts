@@ -129,7 +129,7 @@ async function claim(db: Db, permitId: number): Promise<Claim> {
 }
 
 /** Move `quantity` out of one inventory row with a compare-and-swap. Returns the move, or the quantity found when short. */
-async function takeFromRow(db: Db, inventoryId: number, quantity: number): Promise<{ ok: true; before: number; after: number } | { ok: false; available: number }> {
+export async function takeFromRow(db: Db, inventoryId: number, quantity: number): Promise<{ ok: true; before: number; after: number } | { ok: false; available: number }> {
   let available = 0
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
     const { data: row, error } = await db.from("inventory").select("quantity").eq("inventory_id", inventoryId).limit(1).maybeSingle()

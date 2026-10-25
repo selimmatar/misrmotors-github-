@@ -10,6 +10,7 @@ import { call, useDb } from "./route-harness"
 import * as soRoute from "../../app/api/sales-orders/route"
 import * as dpRoute from "../../app/api/delivery-permits/route"
 import { planAllocation } from "../dp-allocate"
+import * as maintApprove from "../../app/api/maintenance/reports/approve/route"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -152,4 +153,65 @@ test("3. a split line's totals follow the quantities and add up exactly (roundin
   const totals = [planned.plan.updates[0].patch.total, ...planned.plan.inserts.map((r) => r.total)] as number[]
   assert.deepEqual(totals, [33.33, 33.33, 33.34])
   assert.equal(planned.plan.inserts[0].item_id, undefined, "a copy gets its own id")
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 4. Approving a maintenance report takes the parts from a real sellable stock row, once, and records it
+// ---------------------------------------------------------------------------------------------------------
+
+function maintDb(inventory: Row[], parts: Row[] = [{ type: "inventory", productId: 7, productName: "Seal kit", quantity: 3, unitCost: 100, totalCost: 300 }]) {
+  const db = new FakeDb({
+    maintenance_reports: [{ report_id: 1, work_order_id: 9, parts_used: parts, approved_at: null, approved_by: null }],
+    maintenance_work_orders: [{ work_order_id: 9, status: "in_progress" }],
+    inventory, inventory_transactions: [], idempotency_log: [],
+  })
+  useDb(db)
+  return db
+}
+const approveBody = { report_id: 1, work_order_id: 9, approved: true }
+
+test("4. parts come from the sellable row with enough stock, not a returned row", async () => {
+  const db = maintDb([
+    { inventory_id: 1, product_id: 7, warehouse_id: 1, is_returned: true, quantity: 5 },
+    { inventory_id: 2, product_id: 7, warehouse_id: 2, is_returned: false, quantity: 1 },
+    { inventory_id: 3, product_id: 7, warehouse_id: 3, is_returned: false, quantity: 10 },
+  ])
+  const res = await call(maintApprove.POST, "POST", approveBody)
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  const q = Object.fromEntries(db.tables.inventory.map((r: Row) => [r.inventory_id, r.quantity]))
+  assert.deepEqual(q, { 1: 5, 2: 1, 3: 7 })
+  const tx = db.tables.inventory_transactions
+  assert.equal(tx.length, 1)
+  assert.equal(tx[0].transaction_type, "adjustment")
+  assert.equal(tx[0].quantity_change, -3)
+  assert.ok(tx[0].transaction_type.length <= 20 && String(tx[0].reference_type).length <= 20)
+  assert.equal(db.tables.maintenance_work_orders[0].status, "completed")
+})
+
+test("4. not enough stock refuses the approval and changes nothing (no clamping to 0)", async () => {
+  const db = maintDb([{ inventory_id: 3, product_id: 7, warehouse_id: 3, is_returned: false, quantity: 2 }])
+  const res = await call(maintApprove.POST, "POST", approveBody)
+  assert.equal(res.status, 409, JSON.stringify(res.body))
+  assert.equal(db.tables.inventory[0].quantity, 2)
+  assert.equal(db.tables.inventory_transactions.length, 0)
+  assert.equal(db.tables.maintenance_reports[0].approved_at, null)
+  assert.equal(db.tables.maintenance_work_orders[0].status, "in_progress")
+})
+
+test("4. approving the same report twice takes the parts only once", async () => {
+  const db = maintDb([{ inventory_id: 3, product_id: 7, warehouse_id: 3, is_returned: false, quantity: 10 }])
+  assert.equal((await call(maintApprove.POST, "POST", approveBody)).status, 200)
+  const second = await call(maintApprove.POST, "POST", approveBody)
+  assert.equal(second.status, 409, JSON.stringify(second.body))
+  assert.equal(db.tables.inventory[0].quantity, 7)
+  assert.equal(db.tables.inventory_transactions.length, 1)
+})
+
+test("4. if the work order cannot be closed, the parts are put back and the report is not approved", async () => {
+  const db = maintDb([{ inventory_id: 3, product_id: 7, warehouse_id: 3, is_returned: false, quantity: 10 }])
+  db.failOn["maintenance_work_orders:update"] = "boom"
+  const res = await call(maintApprove.POST, "POST", approveBody)
+  assert.equal(res.status, 500)
+  assert.equal(db.tables.inventory[0].quantity, 10)
+  assert.equal(db.tables.maintenance_reports[0].approved_at, null)
 })

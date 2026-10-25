@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
+import { takeFromRow, undoMoves, type StockMove } from "@/lib/dp-stock"
 
 export async function POST(request: Request) {
   try {
@@ -10,80 +11,82 @@ export async function POST(request: Request) {
     
 
     if (approved) {
-      // Fetch the report to get materials/parts_used
-      const { data: report, error: reportError } = await adminClient
+      // Claim the approval first (only one request can set approved_at), so a double click or a retry never takes
+      // the parts twice. Every exit below that does not finish the approval gives the claim back.
+      const approvedAt = new Date().toISOString()
+      const { data: claimed, error: claimError } = await adminClient
         .from("maintenance_reports")
+        .update({ approved_by: "sales", approved_at: approvedAt })
+        .eq("report_id", report_id)
+        .is("approved_at", null)
         .select("*")
-        .eq("report_id", report_id)
-        .single()
+      if (claimError) {
+        console.error("Could not approve report:", claimError)
+        return NextResponse.json({ error: "Could not approve the report. Nothing was changed." }, { status: 500 })
+      }
+      const report = claimed?.[0]
+      if (!report) {
+        const { data: existing } = await adminClient.from("maintenance_reports").select("report_id").eq("report_id", report_id).maybeSingle()
+        return existing
+          ? NextResponse.json({ error: "This report is already approved. The parts were taken from stock the first time." }, { status: 409 })
+          : NextResponse.json({ error: "Report not found" }, { status: 404 })
+      }
+      const unclaim = () =>
+        adminClient.from("maintenance_reports").update({ approved_by: null, approved_at: null }).eq("report_id", report_id).eq("approved_at", approvedAt)
 
-      if (reportError || !report) {
-        console.error("Report not found:", reportError)
-        return NextResponse.json({ error: "Report not found" }, { status: 404 })
+      // Parts from stock, summed per product
+      const needByProduct = new Map<number, { need: number; name: string }>()
+      for (const m of (report.parts_used || []) as any[]) {
+        if (m?.type !== "inventory" || !m.productId || !(Number(m.quantity) > 0)) continue
+        const id = Number(m.productId)
+        const entry = needByProduct.get(id) || { need: 0, name: m.productName || `product ${id}` }
+        entry.need += Number(m.quantity)
+        needByProduct.set(id, entry)
       }
 
-      // Deduct inventory items used in maintenance
-      const materials = report.parts_used || []
-      const inventoryItems = materials.filter((m: any) => m.type === "inventory" && m.productId)
-      
-      
-      for (const item of inventoryItems) {
-        const { productId, quantity } = item
-        
-        // Get current inventory for this product
-        const { data: invRecords, error: invError } = await adminClient
+      // The parts are not tied to a warehouse, so each product is taken from ONE sellable (not returned) row that holds
+      // enough: the one with the most stock. Every product is checked before anything moves; nothing is clamped to 0.
+      const plan: { row: any; need: number; name: string }[] = []
+      const short: string[] = []
+      if (needByProduct.size > 0) {
+        const { data: rows, error: invError } = await adminClient
           .from("inventory")
-          .select("inventory_id, quantity, product_id")
-          .eq("product_id", productId)
-        
-        if (invError || !invRecords || invRecords.length === 0) {
-          console.error("Inventory not found for product:", productId)
-          continue
+          .select("inventory_id, product_id, warehouse_id, quantity")
+          .in("product_id", [...needByProduct.keys()])
+          .eq("is_returned", false)
+        if (invError) {
+          await unclaim()
+          return NextResponse.json({ error: "Could not read the stock. Nothing was changed." }, { status: 500 })
         }
-
-        // Deduct from the first matching inventory record
-        const inv = invRecords[0]
-        const newQty = Math.max(0, inv.quantity - quantity)
-        
-        const { error: updateError } = await adminClient
-          .from("inventory")
-          .update({ 
-            quantity: newQty,
-            last_updated: new Date().toISOString()
-          })
-          .eq("inventory_id", inv.inventory_id)
-        
-        if (updateError) {
-          console.error("Failed to deduct inventory:", updateError)
-          continue
+        for (const [productId, { need, name }] of needByProduct) {
+          const best = ((rows || []) as any[])
+            .filter((r) => Number(r.product_id) === productId)
+            .sort((a, b) => Number(b.quantity) - Number(a.quantity))[0]
+          if (!best || Number(best.quantity) < need) short.push(`${name}: needed ${need}, in stock ${Number(best?.quantity) || 0}`)
+          else plan.push({ row: best, need, name })
         }
-
-
-        // Log the inventory transaction
-        await adminClient
-          .from("inventory_transactions")
-          .insert({
-            product_id: productId,
-            transaction_type: "maintenance_deduction",
-            quantity_change: -quantity,
-            quantity_before: inv.quantity,
-            quantity_after: newQty,
-            reference_type: "maintenance_work_order",
-            reference_id: work_order_id,
-            reference_number: `WO-${work_order_id}`,
-            notes: `Maintenance deduction - Report #${report_id} - ${item.productName || 'Unknown'}`,
-            created_at: new Date().toISOString(),
-          })
+      }
+      if (short.length > 0) {
+        await unclaim()
+        return NextResponse.json(
+          { error: `Cannot approve: ${short.join("; ")}. Nothing was taken from stock.`, code: "INSUFFICIENT_STOCK" },
+          { status: 409 },
+        )
       }
 
-      // Mark report as approved
-      await adminClient
-        .from("maintenance_reports")
-        .update({
-          approved_by: "sales",
-          approved_at: new Date().toISOString(),
-        })
-        .eq("report_id", report_id)
+      const moves: StockMove[] = []
+      for (const { row, need, name } of plan) {
+        const taken = await takeFromRow(adminClient, row.inventory_id, need)
+        if (!taken.ok) {
+          await undoMoves(adminClient, moves)
+          await unclaim()
+          return NextResponse.json(
+            { error: `Cannot approve: ${name}: needed ${need}, in stock ${taken.available}. Nothing was taken from stock.`, code: "INSUFFICIENT_STOCK" },
+            { status: 409 },
+          )
+        }
+        moves.push({ inventoryId: row.inventory_id, productId: Number(row.product_id), warehouseId: row.warehouse_id ?? null, quantity: need, before: taken.before, after: taken.after, productName: name })
+      }
 
       // Update work order status to completed (approved)
       const { error: woError } = await adminClient
@@ -97,15 +100,37 @@ export async function POST(request: Request) {
 
       if (woError) {
         console.error("Error updating work order:", woError)
-        return NextResponse.json({ error: "Failed to update work order" }, { status: 500 })
+        const notRestored = await undoMoves(adminClient, moves)
+        await unclaim()
+        const error = notRestored.length
+          ? "Failed to update work order, and some parts could not be put back in stock. Ask an administrator to check the stock."
+          : "Failed to update work order. The parts were put back in stock; try again."
+        return NextResponse.json({ error }, { status: 500 })
       }
 
-      
+      if (moves.length > 0) {
+        // 'adjustment' is one of the four types the database accepts (purchase, sale, adjustment, return)
+        const { error: txError } = await adminClient.from("inventory_transactions").insert(
+          moves.map((m) => ({
+            product_id: m.productId,
+            transaction_type: "adjustment",
+            quantity_change: -m.quantity,
+            quantity_before: m.before,
+            quantity_after: m.after,
+            reference_type: "MAINTENANCE",
+            reference_id: work_order_id,
+            reference_number: `WO-${work_order_id}`,
+            notes: `Maintenance parts - Report #${report_id} - ${m.productName}${m.warehouseId ? ` - warehouse ${m.warehouseId}` : ""}`,
+          })),
+        )
+        if (txError) console.error("Maintenance stock record failed (stock stays deducted):", txError.message)
+      }
+
       return NextResponse.json({ 
         success: true, 
         message: "Report approved and inventory updated",
         workflow_stage: "approved",
-        items_deducted: inventoryItems.length
+        items_deducted: moves.length
       })
     } else {
       // Reject: change work order back to in_progress
