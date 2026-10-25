@@ -4,7 +4,7 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
-import { loadAvailability } from "@/lib/stock-hold"
+import { checkSoStock, loadAvailability } from "@/lib/stock-hold"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
 import { reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
 
@@ -658,6 +658,14 @@ export async function PUT(request: Request) {
     const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items })
     if (!editVerdict.ok) {
       return NextResponse.json({ error: editVerdict.error }, { status: editVerdict.status })
+    }
+
+    // The accountant's approval puts the order's stock on hold, and a bigger quantity on a held order holds more:
+    // both must fit in the stock other orders leave free, or two orders get sold the same units.
+    const shortages = await checkSoStock(supabase, numericId, { status: dbUpdates.status, items })
+    if (shortages.length > 0) {
+      const list = shortages.map((s) => `${s.name}: needs ${s.needed}, free ${s.available}`).join("; ")
+      return NextResponse.json({ error: `Not enough stock. ${list}`, code: "INSUFFICIENT_STOCK", shortages }, { status: 409 })
     }
 
 

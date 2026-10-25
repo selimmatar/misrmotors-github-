@@ -267,10 +267,15 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
     
     // Update status to accountant_approved
     const finalId = order.soId || order.id
-    await updateSalesOrder({
-      id: finalId,
-      status: "accountant_approved",
-    })
+    try {
+      await updateSalesOrder({
+        id: finalId,
+        status: "accountant_approved",
+      })
+    } catch (error) {
+      alert(fill(t("approve-so.approve-failed"), { error: error instanceof Error ? error.message : String(error) }))
+      return
+    }
 
     
     // NOTE: Invoice creation removed from here.

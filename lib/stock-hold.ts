@@ -156,3 +156,61 @@ export async function loadAvailability(db: Db, productIds: number[], opts: { exc
   }
   return result
 }
+
+export interface StockShortage {
+  productId: number
+  name: string
+  needed: number
+  available: number
+}
+
+const isStockItem = (item: any) => {
+  const productId = item?.productId ?? item?.product_id
+  if (productId === undefined || productId === null || productId === "") return false
+  const type = item.itemType ?? item.item_type
+  return item.itemCategory !== "OUTSOURCED" && type !== "outsourced"
+}
+
+/**
+ * Stock the order would newly hold if this edit is saved, checked against what other orders leave free. Returns the
+ * products that are short (empty = fine).
+ * - An order becoming held (the accountant's approval) checks all of its undelivered stock lines.
+ * - An order that already holds checks only the products whose undelivered quantity goes up, so a price or note
+ *   edit on an order that is already short is never blocked.
+ */
+export async function checkSoStock(db: Db, soId: number, edit: { status?: string; items?: any[] }): Promise<StockShortage[]> {
+  const so = must(await db.from("sales_orders").select("so_id, status").eq("so_id", soId).limit(1), "load sales order")[0]
+  if (!so) return []
+  const holdsNow = HOLDING_SO_STATUSES.includes(so.status)
+  const holdsAfter = edit.status ? HOLDING_SO_STATUSES.includes(edit.status) : holdsNow
+  if (!holdsAfter) return []
+
+  const stored = must(
+    await db.from("sales_order_items").select("product_id, quantity, item_type").eq("so_id", soId).eq("item_type", "stock"),
+    "load order lines",
+  ) as any[]
+  const permits = must(await db.from("delivery_permits").select("permit_id").eq("sales_order_id", soId).eq("status", "APPROVED"), "load approved permits") as any[]
+  const deducted = new Map<number, number>()
+  if (permits.length) {
+    const items = must(await db.from("delivery_permit_items").select("product_id, quantity").in("permit_id", permits.map((p) => p.permit_id)), "load permit items") as any[]
+    for (const i of items) if (i.product_id) deducted.set(Number(i.product_id), (deducted.get(Number(i.product_id)) || 0) + num(i.quantity))
+  }
+
+  const sum = (lines: { product_id: any; quantity: any }[]) => {
+    const m = new Map<number, number>()
+    for (const l of lines) if (l.product_id) m.set(Number(l.product_id), (m.get(Number(l.product_id)) || 0) + num(l.quantity))
+    return m
+  }
+  const before = sum(stored)
+  const after = edit.items ? sum(edit.items.filter(isStockItem).map((i) => ({ product_id: i.productId ?? i.product_id, quantity: i.quantity }))) : before
+  const undelivered = (m: Map<number, number>, id: number) => Math.max(0, (m.get(id) || 0) - (deducted.get(id) || 0))
+
+  const toCheck = [...after.keys()].filter((id) => undelivered(after, id) > (holdsNow ? undelivered(before, id) : 0))
+  if (toCheck.length === 0) return []
+  const availability = await loadAvailability(db, toCheck, { excludeSoId: soId })
+  const short = toCheck.filter((id) => undelivered(after, id) > (availability.get(id)?.available || 0))
+  if (short.length === 0) return []
+  const names = new Map<number, string>()
+  for (const p of must(await db.from("products").select("product_id, product_name").in("product_id", short), "load products")) names.set(Number(p.product_id), p.product_name)
+  return short.map((id) => ({ productId: id, name: names.get(id) || `#${id}`, needed: undelivered(after, id), available: availability.get(id)?.available || 0 }))
+}
