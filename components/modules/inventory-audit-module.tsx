@@ -29,6 +29,7 @@ interface InventoryAuditItem {
   location: string
   warehouse_id: number | null
   warehouse_name: string | null
+  is_returned?: boolean
   physicalCount: number | null
   notes: string
 }
@@ -342,6 +343,9 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
                           <Warehouse className="w-3 h-3" />
                           {item.warehouse_name || t("warehouse.default")}
                         </Badge>
+                        {item.is_returned && (
+                          <Badge variant="secondary" className="ms-1">{t("common.returned")}</Badge>
+                        )}
                       </TableCell>
                       <NumCell>{formatNumber(item.quantity)}</NumCell>
                       <TableCell>{countInput(item)}</TableCell>
@@ -355,7 +359,7 @@ export function InventoryAuditModule({ userRole }: InventoryAuditModuleProps) {
             card={(item) => (
               <ListCard
                 id={item.productName}
-                party={`${item.sku} · ${item.warehouse_name || t("warehouse.default")}`}
+                party={`${item.sku} · ${item.warehouse_name || t("warehouse.default")}${item.is_returned ? ` · ${t("common.returned")}` : ""}`}
                 status={getDifferenceDisplay(item.quantity, item.physicalCount)}
                 note={`${t("inventory-audit.system-quantity")}: ${formatNumber(item.quantity)}`}
                 actions={renderRowActions(item)}

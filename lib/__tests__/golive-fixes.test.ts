@@ -12,6 +12,7 @@ import * as dpRoute from "../../app/api/delivery-permits/route"
 import { planAllocation } from "../dp-allocate"
 import * as maintApprove from "../../app/api/maintenance/reports/approve/route"
 import * as maintInvoice from "../../app/api/maintenance/invoices/route"
+import * as auditRoute from "../../app/api/inventory/audit/route"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -264,4 +265,27 @@ test("5. the invoice screen no longer falls back to the cost as the price", () =
   const tab = src("components/accounting/maintenance-invoice-tab.tsx")
   assert.doesNotMatch(tab, /\|\|\s*selectedOrder\.actual_cost/)
   assert.match(tab, /amount_before_vat/)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 6. The stock count screen names each row's warehouse and marks returned rows
+// ---------------------------------------------------------------------------------------------------------
+test("6. the stock count list carries the warehouse name and whether the row is returned stock", async () => {
+  useDb(new FakeDb({
+    inventory: [
+      { inventory_id: 1, product_id: 7, warehouse_id: 2, is_returned: false, quantity: 4 },
+      { inventory_id: 2, product_id: 7, warehouse_id: 2, is_returned: true, quantity: 1 },
+    ],
+    products: [{ product_id: 7, product_name: "Pump A", sku: "P-A" }],
+    warehouses: [{ warehouse_id: 2, warehouse_name: "Alexandria" }],
+  }))
+  const res = await call(auditRoute.GET, "GET")
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  const rows = res.body as Row[]
+  assert.deepEqual(rows.map((r) => [r.warehouse_name, r.is_returned]), [["Alexandria", false], ["Alexandria", true]])
+})
+
+test("6. the stock count screen labels returned rows", () => {
+  const screen = src("components/modules/inventory-audit-module.tsx")
+  assert.match(screen, /item\.is_returned/)
 })

@@ -19,7 +19,8 @@ export async function GET() {
         location,
         warehouse_id,
         is_outsourced,
-        outsourced_name
+        outsourced_name,
+        is_returned
       `)
       .order("product_id")
 
@@ -38,6 +39,11 @@ export async function GET() {
       return NextResponse.json({ error: productsError.message }, { status: 500 })
     }
 
+    // Warehouse names, so each counted row says where it is (a product can sit in several warehouses)
+    const { data: warehouses, error: warehousesError } = await supabase.from("warehouses").select("warehouse_id, warehouse_name")
+    if (warehousesError) console.error("Error fetching warehouses:", warehousesError)
+    const warehouseName = new Map((warehouses || []).map((w: any) => [Number(w.warehouse_id), w.warehouse_name as string]))
+
     // Merge inventory with product details
     const inventoryWithProducts =
       inventory?.map((item) => {
@@ -50,6 +56,8 @@ export async function GET() {
             : product?.product_name || "Unknown",
           sku: isOutsourced ? "OUTSOURCED" : product?.sku || "N/A",
           isOutsourced,
+          warehouse_name: item.warehouse_id != null ? warehouseName.get(Number(item.warehouse_id)) ?? null : null,
+          is_returned: item.is_returned === true,
         }
       }) || []
 
