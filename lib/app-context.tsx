@@ -157,6 +157,14 @@ const REFERENCE_DATA_SWR_OPTIONS = {
   errorRetryInterval: 10000, // Wait 10s before retry
 }
 
+// A rejected save (validation, duplicate, missing row) comes back as an HTTP error, not a thrown fetch: turn it
+// into a thrown Error carrying the server's message so the screen shows it instead of closing as if it saved.
+async function ensureOk(response: Response, fallback: string) {
+  if (response.ok) return
+  const body = await response.json().catch(() => ({}) as any)
+  throw new Error(body?.error || body?.message || fallback)
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [prepaidBalance, setPrepaidBalance] = useState<number>(0)
   const [isLoading, setIsLoading] = useState(true)
@@ -467,11 +475,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Optimistic update
     mutateInventory([...(inventoryData || []), item] as any, false)
     try {
-      await fetch("/api/inventory", {
+      const response = await fetch("/api/inventory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(item),
       })
+      await ensureOk(response, "Failed to add inventory item")
       // Revalidate to get server data
       mutateInventory()
     } catch (error) {
@@ -483,11 +492,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateInventoryItem = async (item: InventoryItem) => {
     try {
-      await fetch("/api/inventory", {
+      const response = await fetch("/api/inventory", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(item),
       })
+      await ensureOk(response, "Failed to update inventory item")
       mutateInventory()
     } catch (error) {
       console.error("Error updating inventory item:", error)
@@ -781,11 +791,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addCustomerInvoice = async (invoice: CustomerInvoice) => {
     try {
-      await fetch("/api/accounts-receivable", {
+      const response = await fetch("/api/accounts-receivable", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(invoice),
       })
+      await ensureOk(response, "Failed to add customer invoice")
       mutateCustomerInvoices()
     } catch (error) {
       console.error("Error adding customer invoice:", error)
@@ -795,11 +806,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateCustomerInvoice = async (invoiceId: string, updates: Partial<CustomerInvoice>) => {
     try {
-      await fetch("/api/accounts-receivable", {
+      const response = await fetch("/api/accounts-receivable", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: invoiceId, ...updates }),
       })
+      await ensureOk(response, "Failed to update customer invoice")
       mutateCustomerInvoices()
     } catch (error) {
       console.error("Error updating customer invoice:", error)
@@ -811,11 +823,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Optimistic update
     mutateSuppliers([...suppliers, supplier], false)
     try {
-      await fetch("/api/suppliers", {
+      const response = await fetch("/api/suppliers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(supplier),
       })
+      await ensureOk(response, "Failed to add supplier")
       mutateSuppliers()
     } catch (error) {
       mutateSuppliers()
@@ -825,11 +838,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateSupplier = async (supplier: Supplier) => {
     try {
-      await fetch("/api/suppliers", {
+      const response = await fetch("/api/suppliers", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(supplier),
       })
+      await ensureOk(response, "Failed to update supplier")
       mutateSuppliers()
     } catch (error) {
       console.error("Error updating supplier:", error)
@@ -844,7 +858,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       false,
     )
     try {
-      await fetch(`/api/suppliers?id=${id}`, { method: "DELETE" })
+      const response = await fetch(`/api/suppliers?id=${id}`, { method: "DELETE" })
+      await ensureOk(response, "Failed to delete supplier")
       mutateSuppliers()
     } catch (error) {
       mutateSuppliers()
@@ -855,11 +870,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addCustomer = async (customer: Customer) => {
     mutateCustomers([...customers, customer], false)
     try {
-      await fetch("/api/customers", {
+      const response = await fetch("/api/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(customer),
       })
+      await ensureOk(response, "Failed to add customer")
       mutateCustomers()
     } catch (error) {
       mutateCustomers()
@@ -869,11 +885,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateCustomer = async (customer: Customer) => {
     try {
-      await fetch("/api/customers", {
+      const response = await fetch("/api/customers", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(customer),
       })
+      await ensureOk(response, "Failed to update customer")
       mutateCustomers()
     } catch (error) {
       console.error("Error updating customer:", error)
@@ -887,7 +904,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       false,
     )
     try {
-      await fetch(`/api/customers?id=${id}`, { method: "DELETE" })
+      const response = await fetch(`/api/customers?id=${id}`, { method: "DELETE" })
+      await ensureOk(response, "Failed to delete customer")
       mutateCustomers()
     } catch (error) {
       mutateCustomers()
@@ -898,11 +916,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addProduct = async (product: Product) => {
     mutateProducts([...products, product], false)
     try {
-      await fetch("/api/products", {
+      const response = await fetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(product),
       })
+      await ensureOk(response, "Failed to add product")
       mutateProducts()
     } catch (error) {
       mutateProducts()
@@ -912,11 +931,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateProduct = async (product: Product) => {
     try {
-      await fetch("/api/products", {
+      const response = await fetch("/api/products", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(product),
       })
+      await ensureOk(response, "Failed to update product")
       mutateProducts()
     } catch (error) {
       console.error("Error updating product:", error)
@@ -930,7 +950,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       false,
     )
     try {
-      await fetch(`/api/products?id=${id}`, { method: "DELETE" })
+      const response = await fetch(`/api/products?id=${id}`, { method: "DELETE" })
+      await ensureOk(response, "Failed to delete product")
       mutateProducts()
     } catch (error) {
       mutateProducts()

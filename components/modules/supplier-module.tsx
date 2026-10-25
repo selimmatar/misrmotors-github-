@@ -143,7 +143,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
     return () => clearInterval(interval)
   }, [supplierInvoices, selectedSupplier])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const newSupplier: Omit<Supplier, "id" | "createdAt"> = {
       name: formData.name,
@@ -155,7 +155,12 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
       address: formData.address,
       leadTimeDays: formData.leadTimeDays,
     }
-    addSupplier(newSupplier)
+    try {
+      await addSupplier(newSupplier as Supplier) // id/createdAt are assigned by the server
+    } catch (error) {
+      alert(fill(t("message.not-saved"), { error: error instanceof Error ? error.message : String(error) }))
+      return
+    }
     setFormData({
       name: "",
       email: "",
@@ -283,7 +288,7 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
         alert(`${t("supplier.name")} "${supplierName}" ${t("message.deleted-successfully")}`)
       } catch (error) {
         console.error("Error deleting supplier:", error)
-        alert(t("message.delete-failed"))
+        alert(fill(t("message.not-deleted"), { error: error instanceof Error ? error.message : String(error) }))
       }
     }
   }

@@ -549,8 +549,9 @@ export async function PUT(request: Request) {
     const finalDeliveryContactName = deliveryContactName || delivery_contact_name
     const finalDeliveryContactPhone = deliveryContactPhone || delivery_contact_phone
     const finalDiscountType = discountType || discount_type
-    const finalDiscountValue = discountValue || discount_value
-    const finalDiscountAmount = discountAmount || discount_amount
+    // ?? not ||: a discount edited back to 0 must be saved as 0, not skipped (it would keep the old discount)
+    const finalDiscountValue = discountValue ?? discount_value
+    const finalDiscountAmount = discountAmount ?? discount_amount
 
     const dbUpdates: any = {}
     if (updates.soNumber || updates.so_number) dbUpdates.so_number = updates.soNumber || updates.so_number
@@ -573,8 +574,8 @@ export async function PUT(request: Request) {
     if (finalInvoiceFileUrl !== undefined) dbUpdates.invoice_file_url = finalInvoiceFileUrl
     if (subtotal !== undefined) dbUpdates.subtotal = subtotal
     if (finalDiscountType) dbUpdates.discount_type = finalDiscountType
-    if (finalDiscountValue) dbUpdates.discount_value = finalDiscountValue
-    if (finalDiscountAmount) dbUpdates.discount_amount = finalDiscountAmount
+    if (finalDiscountValue !== undefined && finalDiscountValue !== null) dbUpdates.discount_value = finalDiscountValue
+    if (finalDiscountAmount !== undefined && finalDiscountAmount !== null) dbUpdates.discount_amount = finalDiscountAmount
     if (updates.total !== undefined) dbUpdates.net_total = updates.total
 
     if (finalPaymentType) dbUpdates.payment_type = finalPaymentType

@@ -145,7 +145,12 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
       status: "active",
     }
 
-    await addCustomer(newCustomer)
+    try {
+      await addCustomer(newCustomer)
+    } catch (error) {
+      alert(fill(t("message.not-saved"), { error: error instanceof Error ? error.message : String(error) }))
+      return
+    }
     setFormData({
       name: "",
       email: "",

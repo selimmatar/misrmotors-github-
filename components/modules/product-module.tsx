@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import type { Product } from "@/lib/types"
 import { PageHeader } from "@/components/erp/page-header"
 import { Money } from "@/components/erp/money"
@@ -112,7 +113,12 @@ export function ProductModule() {
       moq: formData.moq ? Number.parseInt(formData.moq) : undefined,
     }
 
-    await addProduct(newProduct)
+    try {
+      await addProduct(newProduct)
+    } catch (error) {
+      alert(fill(t("message.not-saved"), { error: error instanceof Error ? error.message : String(error) }))
+      return
+    }
     setFormData({
       productName: "",
       sku: "",
@@ -128,7 +134,11 @@ export function ProductModule() {
 
   const handleDeleteProduct = async (id: string) => {
     if (confirm(t("message.confirm-delete"))) {
-      await deleteProduct(id)
+      try {
+        await deleteProduct(id)
+      } catch (error) {
+        alert(fill(t("message.not-deleted"), { error: error instanceof Error ? error.message : String(error) }))
+      }
     }
   }
 
