@@ -89,7 +89,10 @@ export function MobileTabs({ items, activeModule, onNavigate, onOpenMenu }: Mobi
                   aria-current={active ? "page" : undefined}
                   className={tabClass(active)}
                   onClick={() => {
-                    if (tab.items.length === 1) return onNavigate(tab.items[0].id)
+                    if (tab.items.length === 1) {
+                      if (!tab.items[0].disabled) onNavigate(tab.items[0].id)
+                      return
+                    }
                     setSheetGroup(tab.group)
                     setSheetOpen(true)
                   }}
@@ -123,12 +126,19 @@ export function MobileTabs({ items, activeModule, onNavigate, onOpenMenu }: Mobi
                 <button
                   key={item.id}
                   type="button"
+                  disabled={item.disabled}
+                  aria-disabled={item.disabled || undefined}
                   aria-current={active ? "page" : undefined}
                   className={cn(
                     "flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm text-start",
-                    active ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "hover:bg-muted",
+                    item.disabled
+                      ? "cursor-not-allowed opacity-50"
+                      : active
+                        ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                        : "hover:bg-muted",
                   )}
                   onClick={() => {
+                    if (item.disabled) return
                     onNavigate(item.id)
                     setSheetOpen(false)
                   }}

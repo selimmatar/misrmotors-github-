@@ -511,3 +511,30 @@ test("11. the Delivery Permits screen tells approvers how many permits wait for 
   assert.equal(i18n.split('"permit.waiting-for-you":').length - 1, 2)
   assert.equal(i18n.split('"permit.show-waiting":').length - 1, 2)
 })
+
+// ---------------------------------------------------------------------------------------------------------
+// 12. Screens not in use yet are dimmed and can't be opened from the accountant and CEO menus
+// ---------------------------------------------------------------------------------------------------------
+test("12. payment schedule, maintenance invoices, pricing review and costing settings are disabled for accountant and CEO", async () => {
+  const { ROLE_MODULES } = await import("../../components/layout/nav-config")
+  const off = ["payment-schedule", "maintenance-invoices", "pricing-review", "costing-settings"]
+  for (const role of ["accountant", "ceo"] as const) {
+    for (const item of ROLE_MODULES[role]) {
+      assert.equal(!!item.disabled, off.includes(item.id), `${role} ${item.id}`)
+    }
+  }
+  assert.ok(ROLE_MODULES.admin.every((item) => !item.disabled))
+  const sidebar = src("components/layout/sidebar.tsx")
+  assert.match(sidebar, /disabled=\{module\.disabled\}/)
+  assert.match(sidebar, /if \(module\.disabled\) return/)
+  const tabs = src("components/layout/mobile-tabs.tsx")
+  assert.match(tabs, /disabled=\{item\.disabled\}/)
+  assert.match(tabs, /if \(!tab\.items\[0\]\.disabled\) onNavigate/)
+})
+
+test("13. Arabic always calls a delivery permit إذن تسليم", () => {
+  const ar = src("lib/i18n-context.tsx")
+  assert.doesNotMatch(ar, /سماح(?! بالنوافذ)|تصريح|تصاريح/)
+  assert.match(ar, /"module\.delivery-permits": "أذونات التسليم"/)
+  assert.match(ar, /"permit\.delivery-permit": "إذن تسليم"/)
+})

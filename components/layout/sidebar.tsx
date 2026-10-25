@@ -61,18 +61,25 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
             </p>
             {items.map((module) => {
               const IconComponent = module.icon
-              const count = pendingCounts[module.id] || 0
+              const count = module.disabled ? 0 : pendingCounts[module.id] || 0
               const active = activeModule === module.id
               return (
                 <button
                   key={module.id}
                   type="button"
+                  disabled={module.disabled}
+                  aria-disabled={module.disabled || undefined}
                   aria-current={active ? "page" : undefined}
                   className={cn(
                     "flex h-9 max-md:min-h-11 w-full items-center gap-3 rounded-md px-3 text-sm text-start text-sidebar-foreground transition-colors",
-                    active ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "hover:bg-muted",
+                    module.disabled
+                      ? "cursor-not-allowed opacity-50"
+                      : active
+                        ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                        : "hover:bg-muted",
                   )}
                   onClick={() => {
+                    if (module.disabled) return
                     onModuleChange(module.id)
                     onMobileClose?.()
                   }}

@@ -34,6 +34,8 @@ export interface NavItem {
   id: string
   label: string
   icon: LucideIcon
+  // Shown dimmed and not clickable (not in use yet for this role).
+  disabled?: boolean
 }
 
 export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
@@ -52,8 +54,8 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "products", label: "module.products", icon: Package },
     { id: "po-requests", label: "module.po-requests", icon: FileText },
     { id: "purchase-orders", label: "module.purchase-orders", icon: ShoppingCart },
-    { id: "pricing-review", label: "module.pricing-review", icon: TrendingUpIcon },
-    { id: "costing-settings", label: "module.costing-settings", icon: Settings },
+    { id: "pricing-review", label: "module.pricing-review", icon: TrendingUpIcon, disabled: true },
+    { id: "costing-settings", label: "module.costing-settings", icon: Settings, disabled: true },
     { id: "inventory", label: "module.inventory", icon: Warehouse },
     { id: "inventory-audit", label: "module.inventory-audit", icon: ClipboardCheck },
     { id: "goods-receipt-tracking", label: "module.goods-receipt-tracking", icon: ClipboardCheck },
@@ -73,13 +75,13 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "analytics", label: "module.analytics", icon: BarChart3 },
     { id: "approve-sales-orders", label: "module.approve-sales-orders", icon: CheckSquare },
     { id: "sales-orders", label: "module.sales-orders", icon: TrendingUp },
-    { id: "payment-schedule", label: "module.payment-schedule", icon: DollarSign },
+    { id: "payment-schedule", label: "module.payment-schedule", icon: DollarSign, disabled: true },
     { id: "purchase-orders", label: "module.purchase-orders", icon: ShoppingCart },
-    { id: "pricing-review", label: "module.pricing-review", icon: TrendingUpIcon },
-    { id: "costing-settings", label: "module.costing-settings", icon: Settings },
+    { id: "pricing-review", label: "module.pricing-review", icon: TrendingUpIcon, disabled: true },
+    { id: "costing-settings", label: "module.costing-settings", icon: Settings, disabled: true },
     { id: "accounts-payable", label: "module.accounts-payable", icon: CreditCard },
     { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
-    { id: "maintenance-invoices", label: "module.maintenance-invoices", icon: Wrench },
+    { id: "maintenance-invoices", label: "module.maintenance-invoices", icon: Wrench, disabled: true },
     { id: "customers", label: "module.customers", icon: Users },
     { id: "suppliers", label: "module.suppliers", icon: Building2 },
     { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
