@@ -105,6 +105,16 @@ export async function GET(request: Request) {
       }
     }
 
+    // ===== DELIVERY PERMITS SIGNED AND WAITING FOR APPROVAL =====
+    // The people who approve them (the delivery permit card's APPROVE button): accountant, ceo, admin
+    if (["accountant", "ceo", "admin"].includes(role)) {
+      const { count } = await adminClient
+        .from("delivery_permits")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "SUBMITTED_SIGNED")
+      counts["delivery-permits"] = count || 0
+    }
+
     // ===== SHIPPING: DELIVERY PERMITS READY FOR PICKUP =====
     // DPs with READY_FOR_PICKUP or PRINTED status are ready for shipping to pick up
     // Visible to: shipment, ceo

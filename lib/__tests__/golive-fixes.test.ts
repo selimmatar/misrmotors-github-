@@ -14,6 +14,7 @@ import * as maintApprove from "../../app/api/maintenance/reports/approve/route"
 import * as maintInvoice from "../../app/api/maintenance/invoices/route"
 import * as auditRoute from "../../app/api/inventory/audit/route"
 import { createReturn, processReturn } from "../returns"
+import * as pendingCounts from "../../app/api/pending-counts/route"
 import { scheduleShare, scaleSchedule } from "../invoicing"
 import { withoutVat, supplierAmountWithoutVat, supplierPaid, supplierUnpaid, profitMarginPercent } from "../dashboard-figures"
 
@@ -478,4 +479,35 @@ test("10. the dashboard uses these figures", () => {
   const fd = src("components/modules/financial-dashboard.tsx")
   for (const fn of ["withoutVat(", "supplierAmountWithoutVat(", "supplierPaid(", "supplierUnpaid(", "profitMarginPercent("]) assert.ok(fd.includes(fn), fn)
   assert.doesNotMatch(fd, /grossProfit \/ totalExpenses/)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 11. Delivery permits waiting for approval are counted and can be filtered by the people who approve them
+// ---------------------------------------------------------------------------------------------------------
+test("11. the sidebar badge on Delivery Permits counts signed permits waiting for approval, for approvers only", async () => {
+  useDb(new FakeDb({
+    delivery_permits: [
+      { permit_id: 1, status: "SUBMITTED_SIGNED" }, { permit_id: 2, status: "SUBMITTED_SIGNED" },
+      { permit_id: 3, status: "APPROVED" }, { permit_id: 4, status: "DRAFT" },
+    ],
+    sales_orders: [], purchase_orders: [], maintenance_work_orders: [], accounts_receivable: [],
+  }))
+  for (const role of ["accountant", "ceo", "admin"]) {
+    const res = await call(pendingCounts.GET, "GET", undefined, `http://test.local/api/pending-counts?role=${role}`)
+    assert.equal(res.body["delivery-permits"], 2, role)
+  }
+  for (const role of ["sales-rep", "warehouse-rep", "shipment"]) {
+    const res = await call(pendingCounts.GET, "GET", undefined, `http://test.local/api/pending-counts?role=${role}`)
+    assert.equal(res.body["delivery-permits"], undefined, role)
+  }
+})
+
+test("11. the Delivery Permits screen tells approvers how many permits wait for them and filters to them in one click", () => {
+  const dp = src("components/modules/delivery-permits-module.tsx")
+  assert.match(dp, /permit\.waiting-for-you/)
+  assert.match(dp, /setActiveTab\("submitted"\)/)
+  assert.match(dp, /permit\.awaiting-approval"\)\} \(\{statusCounts\.submitted\}\)/)
+  const i18n = src("lib/i18n-context.tsx")
+  assert.equal(i18n.split('"permit.waiting-for-you":').length - 1, 2)
+  assert.equal(i18n.split('"permit.show-waiting":').length - 1, 2)
 })

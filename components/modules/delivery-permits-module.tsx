@@ -64,6 +64,9 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
     rejected: permits.filter((p) => p.status === "REJECTED").length,
   }
 
+  // The people who can approve a signed permit (DeliveryPermitCard's APPROVE button)
+  const canApprove = userRole === "accountant" || userRole === "admin" || userRole === "ceo"
+
   const filteredPermits = permits.filter((permit) => {
     const matchesSearch =
       permit.permitNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -140,6 +143,18 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
         }
       />
 
+      {canApprove && statusCounts.submitted > 0 && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          <span className="font-medium">{fill(t("permit.waiting-for-you"), { count: statusCounts.submitted })}</span>
+          <Button size="sm" variant="outline" onClick={() => setActiveTab("submitted")}>
+            {t("permit.show-waiting")}
+          </Button>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <KpiGrid className="md:grid-cols-3 lg:grid-cols-6">
         <KpiTile label={t("permit.status.draft")} value={statusCounts.draft} onClick={() => setActiveTab("draft")} />
@@ -174,7 +189,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
               <TabsTrigger value="draft">{t("permit.status.draft")}</TabsTrigger>
               <TabsTrigger value="printed">{t("permit.status.printed")}</TabsTrigger>
               <TabsTrigger value="out_for_delivery">{t("permit.status.out-for-delivery")}</TabsTrigger>
-              <TabsTrigger value="submitted">{t("permit.awaiting-approval")}</TabsTrigger>
+              <TabsTrigger value="submitted">{t("permit.awaiting-approval")} ({statusCounts.submitted})</TabsTrigger>
               <TabsTrigger value="approved">{t("permit.status.approved")}</TabsTrigger>
             </TabsList>
 

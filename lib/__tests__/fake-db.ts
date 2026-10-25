@@ -102,8 +102,11 @@ class Query {
   constructor(private db: FakeDb, private table: string) {}
   embeds: string[] = []
   /** `child_table(*)` embeds are joined on the parent's primary-key column name (e.g. purchase_orders.po_id = purchase_order_items.po_id) */
-  select(columns?: string) {
+  /** `select(cols, { count: "exact" })`: the result also carries `count` (the matched rows before limit/range) */
+  wantCount = false
+  select(columns?: string, opts: { count?: string; head?: boolean } = {}) {
     this.wantRows = true
+    if (opts.count) this.wantCount = true
     for (const m of String(columns || "").matchAll(/(\w+)\(\*\)/g)) this.embeds.push(m[1])
     return this
   }
@@ -177,9 +180,10 @@ class Query {
       const { col, asc } = this.sortBy
       out = [...out].sort((a, b) => (a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0) * (asc ? 1 : -1))
     }
+    const count = out.length
     if (this.max !== null) out = out.slice(0, this.max)
     if (this.window) out = out.slice(this.window.from, this.window.to + 1)
-    if (this.one === "none") return { data: out.map((r) => ({ ...r })), error: null }
+    if (this.one === "none") return this.wantCount ? { data: out.map((r) => ({ ...r })), error: null, count } : { data: out.map((r) => ({ ...r })), error: null }
     if (this.one === "maybe") return { data: out[0] ? { ...out[0] } : null, error: null }
     return out[0] ? { data: { ...out[0] }, error: null } : { data: null, error: { message: "no rows", code: "PGRST116" } }
   }
