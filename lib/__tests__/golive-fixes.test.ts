@@ -8,6 +8,8 @@ import { join } from "node:path"
 import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import * as soRoute from "../../app/api/sales-orders/route"
+import * as dpRoute from "../../app/api/delivery-permits/route"
+import { planAllocation } from "../dp-allocate"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -88,4 +90,66 @@ test("2. the customer, supplier and product forms show the reason and stay open 
   const product = src("components/modules/product-module.tsx")
   assert.match(product, /await addProduct\(newProduct\)\n    \} catch \(error\) \{\n      alert\(fill\(t\("message\.not-saved"\)/)
   assert.match(product, /await deleteProduct\(id\)\n      \} catch \(error\) \{\n        alert\(fill\(t\("message\.not-deleted"\)/)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 3. A delivery split across warehouses takes each share from its own warehouse
+// ---------------------------------------------------------------------------------------------------------
+function splitDb(cairo = 6, alex = 10) {
+  const db = new FakeDb({
+    sales_orders: [{ so_id: 1, so_number: "SO-GL-3", customer_id: 5, status: "accountant_approved", fulfillment_status: "NOT_STARTED", total: 114000, net_total: 114000, subtotal: 100000, discount_amount: 0, payment_type: "bank_transfer", payment_terms: "prepaid", installments: 1 }],
+    customers: [{ customer_id: 5, customer_name: "Test Customer" }],
+    warehouses: [{ warehouse_id: 1, warehouse_name: "Cairo" }, { warehouse_id: 2, warehouse_name: "Alexandria" }],
+    sales_order_items: [{ so_item_id: 1, so_id: 1, product_id: 7, quantity: 10, unit_price: 10000, total: 100000, item_type: "stock" }],
+    delivery_permits: [{ permit_id: 1, permit_no: "DP-GL-1", sales_order_id: 1, customer_id: 5, status: "DRAFT" }],
+    delivery_permit_items: [{ item_id: 11, permit_id: 1, product_id: 7, item_name_snapshot: "Pump A", sku_snapshot: "A", quantity: 10, unit_price: 10000, total: 100000, supplier_id: null, outsourced_name: null }],
+    inventory: [
+      { inventory_id: 100, product_id: 7, warehouse_id: 1, is_returned: false, quantity: cairo, unit_cost: 5000 },
+      { inventory_id: 101, product_id: 7, warehouse_id: 2, is_returned: false, quantity: alex, unit_cost: 5000 },
+    ],
+    idempotency_log: [], inventory_transactions: [], invoice_delivery_permits: [], accounts_receivable: [], product_returns: [], return_items: [],
+  })
+  useDb(db)
+  return db
+}
+const dpPut = (body: Row) => call(dpRoute.PUT, "PUT", { permitId: "1", userId: "1", driverName: "Driver", ...body })
+const qtyOf = (db: FakeDb, id: number) => db.tables.inventory.find((r) => r.inventory_id === id)!.quantity
+
+test("3. 6 from Cairo + 4 from Alexandria: two permit lines, and approval takes 6 from Cairo and 4 from Alexandria", async () => {
+  const db = splitDb()
+  const alloc = await dpPut({ action: "ALLOCATE_WAREHOUSES", allocations: [{ itemId: 11, warehouseId: 1, quantity: 6 }, { itemId: 11, warehouseId: 2, quantity: 4 }] })
+  assert.equal(alloc.status, 200, JSON.stringify(alloc.body))
+  const lines = db.tables.delivery_permit_items.filter((i) => i.permit_id === 1)
+  assert.deepEqual(lines.map((l) => [l.warehouse_id, l.quantity, l.total]).sort(), [[1, 6, 60000], [2, 4, 40000]])
+  assert.equal(lines.reduce((s, l) => s + l.total, 0), 100000, "the permit's value is unchanged")
+  for (const action of ["MARK_READY_FOR_PICKUP", "MARK_OUT_FOR_DELIVERY", "MARK_SUBMITTED_SIGNED", "APPROVE"]) {
+    const res = await dpPut({ action })
+    assert.equal(res.status, 200, `${action}: ${JSON.stringify(res.body)}`)
+  }
+  assert.equal(qtyOf(db, 100), 0, "Cairo gave 6")
+  assert.equal(qtyOf(db, 101), 6, "Alexandria gave 4")
+})
+
+test("3. a split whose shares do not add up to the line, or names another permit's line, is refused and nothing changes", async () => {
+  const db = splitDb()
+  const before = JSON.stringify(db.tables.delivery_permit_items)
+  const short = await dpPut({ action: "ALLOCATE_WAREHOUSES", allocations: [{ itemId: 11, warehouseId: 1, quantity: 6 }, { itemId: 11, warehouseId: 2, quantity: 3 }] })
+  assert.equal(short.status, 400)
+  const foreign = await dpPut({ action: "ALLOCATE_WAREHOUSES", allocations: [{ itemId: 99, warehouseId: 1, quantity: 10 }] })
+  assert.equal(foreign.status, 400)
+  assert.equal(JSON.stringify(db.tables.delivery_permit_items), before)
+  assert.equal(db.tables.delivery_permits[0].status, "DRAFT")
+})
+
+test("3. a split line's totals follow the quantities and add up exactly (rounding goes to the last share)", () => {
+  const planned = planAllocation(
+    [{ item_id: 1, permit_id: 1, product_id: 7, quantity: 3, unit_price: 33.33, total: 100 }],
+    [{ itemId: 1, warehouseId: 1, quantity: 1 }, { itemId: 1, warehouseId: 2, quantity: 1 }, { itemId: 1, warehouseId: 3, quantity: 1 }],
+    null,
+  )
+  assert.ok(planned.ok)
+  if (!planned.ok) return
+  const totals = [planned.plan.updates[0].patch.total, ...planned.plan.inserts.map((r) => r.total)] as number[]
+  assert.deepEqual(totals, [33.33, 33.33, 33.34])
+  assert.equal(planned.plan.inserts[0].item_id, undefined, "a copy gets its own id")
 })

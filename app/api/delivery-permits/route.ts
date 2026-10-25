@@ -4,6 +4,7 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkIdempotency, completeIdempotency, generateDPApprovalIdempotencyKey } from "@/lib/idempotency"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { isSOFullyDelivered, DP_DELIVERED_STATUSES } from "@/lib/delivery-status"
+import { planAllocation } from "@/lib/dp-allocate"
 import { isAllowedDpTransition } from "@/lib/dp-transitions"
 import { abortDeduction, deductStockForPermit, finishDeduction, type StockMove } from "@/lib/dp-stock"
 
@@ -488,20 +489,39 @@ export async function PUT(request: NextRequest) {
 
       case "ALLOCATE_WAREHOUSES":
         // Save warehouse allocations for each item
+        // A line split across warehouses becomes one line per warehouse (lib/dp-allocate.ts), so APPROVE deducts each
+        // share from its own warehouse. Every allocation is checked against THIS permit's lines before anything is
+        // written, and a failed write stops here without moving the permit on.
         const { allocations, notes } = body
         if (allocations && Array.isArray(allocations)) {
-          for (const alloc of allocations) {
+          const { data: permitLines, error: linesError } = await supabase
+            .from("delivery_permit_items")
+            .select("*")
+            .eq("permit_id", currentPermit.permit_id)
+          if (linesError) {
+            return NextResponse.json({ error: "Could not read the permit items. Nothing was changed." }, { status: 500 })
+          }
+          const planned = planAllocation(permitLines || [], allocations, notes || null)
+          if (!planned.ok) return NextResponse.json({ error: planned.error, code: "INVALID_ALLOCATION" }, { status: 400 })
+          for (const { itemId, patch } of planned.plan.updates) {
             const { error: allocError } = await supabase
               .from("delivery_permit_items")
-              .update({
-                warehouse_id: alloc.warehouseId,
-                allocated_quantity: alloc.quantity,
-                allocation_notes: notes || null,
-              })
-              .eq("item_id", alloc.itemId)
-            
+              .update(patch)
+              .eq("item_id", itemId)
+              .eq("permit_id", currentPermit.permit_id)
             if (allocError) {
               console.error("Error updating item allocation:", allocError)
+              return NextResponse.json({ error: "Could not save the warehouse allocation. Please try again." }, { status: 500 })
+            }
+          }
+          if (planned.plan.inserts.length > 0) {
+            const { error: splitError } = await supabase.from("delivery_permit_items").insert(planned.plan.inserts)
+            if (splitError) {
+              console.error("Error saving split allocation lines:", splitError)
+              return NextResponse.json(
+                { error: "Could not save the split across warehouses. Open the allocation again and re-save it." },
+                { status: 500 },
+              )
             }
           }
         }
