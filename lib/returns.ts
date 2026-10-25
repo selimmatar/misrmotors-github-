@@ -17,10 +17,12 @@
 // Every inventory write is checked; a failure undoes what this request already did (best effort) and is reported,
 // never reported as success. If an undo itself fails the failure is flagged `partialFailure` for manual review.
 //
-// Returns never touch invoices, accounts_receivable, payments, balance_entries or schedules.
+// Returns never touch invoices, accounts_receivable, payments, balance_entries or schedules. Goods returned after they
+// were invoiced become a customer credit when received (lib/return-credit.ts), applied to the invoice from AR.
 
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "./return-lines"
 import { syncSalesOrderNetTotal } from "./so-edit"
+import { creditInvoicedReturn } from "./return-credit"
 
 type Db = any // supabase-js client (or a test double)
 
@@ -638,7 +640,16 @@ export async function processReturn(db: Db, input: any): Promise<WorkflowResult>
       ) as any[]
       if (finalRows.length !== 1) throw new Error("the return changed while it was being processed")
 
-      return { status: 200, body: { success: true, data: finalRows[0], heldItems, notRestockable } }
+      // Goods already invoiced become a customer credit. Derived: a failure is reported, never undoes the receipt.
+      let customerCredit: { amount: number } | null = null
+      let creditWarning: string | undefined
+      try {
+        customerCredit = await creditInvoicedReturn(db, finalRows[0])
+      } catch (e) {
+        console.error(`[returns] could not raise the customer credit for return ${returnId}: ${errText(e)}`)
+        creditWarning = "The return was received, but the customer credit for the invoiced goods could not be created. Contact an administrator."
+      }
+      return { status: 200, body: { success: true, data: finalRows[0], heldItems, notRestockable, customerCredit, creditWarning } }
     } catch (error: any) {
       console.error(`[returns] processing return ${returnId} failed:`, errText(error))
       const undoFailures = await runUndo(undo)

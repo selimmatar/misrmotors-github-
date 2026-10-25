@@ -34,6 +34,8 @@ export function CustomerCreditsCard({ customerId, reloadKey = 0 }: { customerId:
   const title = (credit: any) =>
     credit.credit_type === "overpayment" && credit.invoice_number
       ? fill(t("customer.credit-overpayment-on"), { number: credit.invoice_number })
+      : credit.credit_type === "sales_return"
+      ? fill(t("customer.credit-return"), { id: credit.reference_id })
       : credit.description || t("customer.credits")
   // notes are saved in English (DB data); the remainder note of a split credit is shown in the user's language
   const note = (credit: any) => {

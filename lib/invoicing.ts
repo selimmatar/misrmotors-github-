@@ -216,6 +216,12 @@ function effectiveOrderTotal(state: SoInvoicingState, returns: ReturnLine[]) {
   return priced.ok ? priced.amount : 0
 }
 
+/** What this order's invoices bill in total (an invoice that also covers other orders counts only for this one). */
+export const invoicedTotalForOrder = (state: SoInvoicingState) => round2(state.invoices.reduce((sum, inv) => sum + invoiceShare(state, inv), 0))
+
+/** The order total (discount and VAT applied) once the given return lines are left out. */
+export const orderTotalAfterReturns = (state: SoInvoicingState, returns: ReturnLine[]) => effectiveOrderTotal(state, returns)
+
 // Returns that already existed when an invoice was created were taken off that invoice's quantities; an invoice
 // without a timestamp is counted gross (the conservative choice).
 const invoiceAsOf = (inv: SoInvoicingState["invoices"][number]) => {

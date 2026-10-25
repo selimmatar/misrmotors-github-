@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
-import { formatDate, returnReasonLabel } from "@/lib/format"
+import { formatDate, formatMoney, returnReasonLabel } from "@/lib/format"
 import type { DeliveryPermit } from "@/lib/types"
 
 interface WarehouseAvailability {
@@ -1206,7 +1206,14 @@ export function WarehouseDeliveryModule() {
                       })
                       
                       if (response.ok) {
-                        alert(t("wd.return-processed"))
+                        const result = await response.json().catch(() => ({}) as any)
+                        alert(
+                          [
+                            t("wd.return-processed"),
+                            result?.customerCredit?.amount ? fill(t("wd.return-credit-raised"), { amount: formatMoney(Number(result.customerCredit.amount), language) }) : null,
+                            result?.creditWarning ? t("wd.return-credit-failed") : null,
+                          ].filter(Boolean).join("\n"),
+                        )
                         setShowReturnProcessDialog(false)
                         setSelectedReturn(null)
                         setReturnWarehouseSelections({})

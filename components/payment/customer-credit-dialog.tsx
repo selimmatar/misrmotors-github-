@@ -60,6 +60,8 @@ export function CustomerCreditDialog({
             detail: [
               c.credit_type === "overpayment" && c.invoice_number
                 ? fill(t("customer.credit-overpayment-on"), { number: c.invoice_number })
+                : c.credit_type === "sales_return"
+                ? fill(t("customer.credit-return"), { id: c.reference_id })
                 : c.description,
               c.created_at ? formatDate(c.created_at, language) : null,
             ]

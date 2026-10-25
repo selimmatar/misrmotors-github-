@@ -13,6 +13,7 @@ import { planAllocation } from "../dp-allocate"
 import * as maintApprove from "../../app/api/maintenance/reports/approve/route"
 import * as maintInvoice from "../../app/api/maintenance/invoices/route"
 import * as auditRoute from "../../app/api/inventory/audit/route"
+import { createReturn, processReturn } from "../returns"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -288,4 +289,72 @@ test("6. the stock count list carries the warehouse name and whether the row is 
 test("6. the stock count screen labels returned rows", () => {
   const screen = src("components/modules/inventory-audit-module.tsx")
   assert.match(screen, /item\.is_returned/)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 7. Goods returned after they were invoiced become a customer credit (applied to the invoice from AR)
+// ---------------------------------------------------------------------------------------------------------
+// SO 1: 4 x Pump at 50,000, no discount, total 228,000 with VAT. DP 1 (APPROVED) delivered `delivered` pumps.
+function returnDb(opts: { delivered: number; invoices: Row[]; links?: Row[] }) {
+  const db = new FakeDb({
+    sales_orders: [{ so_id: 1, so_number: "SO-R-1", customer_id: 5, status: "delivered", subtotal: 200000, discount_amount: 0, total: 228000, net_total: 228000 }],
+    sales_order_items: [{ so_item_id: 1, so_id: 1, product_id: 7, outsourced_name: null, quantity: 4, unit_price: 50000, total: 200000 }],
+    customers: [{ customer_id: 5, customer_name: "Test Customer" }],
+    warehouses: [{ warehouse_id: 1 }],
+    delivery_permits: [{ permit_id: 1, permit_no: "DP-R-1", sales_order_id: 1, customer_id: 5, status: "APPROVED" }],
+    delivery_permit_items: [{ item_id: 11, permit_id: 1, product_id: 7, item_name_snapshot: "Pump", sku_snapshot: "P", quantity: opts.delivered, unit_price: 50000, total: 50000 * opts.delivered, supplier_id: null, outsourced_name: null }],
+    inventory: [{ inventory_id: 100, product_id: 7, warehouse_id: 1, is_returned: false, quantity: 10 }],
+    accounts_receivable: opts.invoices, invoice_delivery_permits: opts.links || [],
+    product_returns: [], return_items: [], inventory_batches: [], idempotency_log: [], customer_credits: [],
+  })
+  return db
+}
+async function receiveReturn(db: FakeDb, qty: number) {
+  const created = await createReturn(db, { permitId: 1, idempotencyKey: `gl-ret-${Math.random().toString(36).slice(2)}`, createdBy: "t", items: [{ productId: 7, productName: "Pump", quantityReturned: qty, reason: "wrong_item", condition: "good" }] })
+  assert.equal(created.status, 200, JSON.stringify(created.body))
+  const id = created.body.returnId
+  const items = db.tables.return_items.filter((i: Row) => i.return_id === id).map((i: Row) => ({ returnItemId: i.return_item_id, warehouseId: 1 }))
+  const res = await processReturn(db, { returnId: id, status: "completed", processedBy: "wh", warehouseAssignments: items })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  return { id, res }
+}
+const wholeInvoice = { invoice_id: 1, invoice_number: "INV-R-1", so_id: 1, customer_id: 5, amount: 228000, collected_amount: 0, status: "pending", created_at: "2026-10-01T00:00:00Z" }
+
+test("7. returning 1 of 4 invoiced pumps gives the customer a 57,000 credit (price + VAT)", async () => {
+  const db = returnDb({ delivered: 4, invoices: [wholeInvoice] })
+  const { id } = await receiveReturn(db, 1)
+  const credits = db.tables.customer_credits
+  assert.equal(credits.length, 1)
+  assert.equal(credits[0].customer_id, 5)
+  assert.equal(credits[0].amount, 57000)
+  assert.equal(credits[0].status, "active")
+  assert.equal(credits[0].credit_type, "sales_return")
+  assert.equal(credits[0].reference_id, id)
+  assert.equal(db.tables.accounts_receivable[0].amount, 228000) // the invoice itself is not rewritten
+})
+
+test("7. a return before anything was invoiced gives no credit (the invoice will leave it out)", async () => {
+  const db = returnDb({ delivered: 4, invoices: [] })
+  await receiveReturn(db, 1)
+  assert.equal(db.tables.customer_credits.length, 0)
+})
+
+test("7. a return from a partly delivered order whose later invoices can still leave it out gives no credit", async () => {
+  // 2 of 4 delivered and invoiced (114,000); 1 returned: the remaining invoices bill only 1 more pump
+  const db = returnDb({
+    delivered: 2,
+    invoices: [{ ...wholeInvoice, so_id: null, amount: 114000 }],
+    links: [{ invoice_id: 1, permit_id: 1 }],
+  })
+  await receiveReturn(db, 1)
+  assert.equal(db.tables.customer_credits.length, 0)
+})
+
+test("7. two returns are credited separately and never more than was invoiced", async () => {
+  const db = returnDb({ delivered: 4, invoices: [wholeInvoice] })
+  await receiveReturn(db, 1)
+  await receiveReturn(db, 3)
+  const total = db.tables.customer_credits.reduce((s: number, c: Row) => s + c.amount, 0)
+  assert.equal(db.tables.customer_credits.length, 2)
+  assert.equal(total, 228000)
 })
