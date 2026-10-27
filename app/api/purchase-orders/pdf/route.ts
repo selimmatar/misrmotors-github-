@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate totals
-    const subtotal = poItems.reduce((sum, item) => sum + (item.total_price || item.quantity * item.unit_price || 0), 0)
+    const subtotal = poItems.reduce((sum, item) => sum + Number(item.total_price || item.quantity * item.unit_price || 0), 0)
     const taxAmount = po.tax_amount || 0
     const otherCosts = po.other_costs || 0
     const total = po.total || subtotal + taxAmount + otherCosts
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
       taxInfo: `${getTaxInfo()}`,
     })}
     
-    ${docTitle({ titleAr: `${po.status === "pending" ? "طلب عرض أسعار / Quotation Request" : "أمر شراء / Purchase Order"}` })}
+    ${docTitle({ titleAr: "أمر شراء / Purchase Order" })}
     
     <section class="pm-info">
         <div class="pm-info-title">بيانات أمر الشراء / PO Details</div>
@@ -181,7 +181,6 @@ export async function GET(request: NextRequest) {
             }</span>
           </div>
         </div>
-        ${po.status !== "pending" ? `
         <div class="pm-field">
           <div class="pm-label">نوع الدفع:</div>
           <div class="pm-value">${escapeHtml(getPaymentTermsDisplay())}</div>
@@ -190,7 +189,6 @@ export async function GET(request: NextRequest) {
           <div class="pm-label">العملة:</div>
           <div class="pm-value">${escapeHtml(po.currency || "EGP")}</div>
         </div>
-        ` : ""}
         </div>
     </section>
       
@@ -223,10 +221,8 @@ export async function GET(request: NextRequest) {
           <th>اسم الصنف / Item</th>
           <th class="pm-center" style="width: 80px;">الكود / SKU</th>
           <th class="pm-center" style="width: 100px;">الكمية / Qty</th>
-          ${po.status !== "pending" ? `
-          <th class="pm-num" style="width: 100px;">سعر الوحدة / Unit Price</th>
+          <th class="pm-num" style="width: 100px;">تكلفة الوحدة / Unit Cost</th>
           <th class="pm-num" style="width: 120px;">الإجمالي / Total</th>
-          ` : ""}
         </tr>
       </thead>
       <tbody>
@@ -236,16 +232,13 @@ export async function GET(request: NextRequest) {
             <td>${escapeHtml(item.products?.product_name || item.item_name_snapshot || item.product_name || "Unknown")}</td>
             <td class="pm-center">${escapeHtml(item.products?.sku || "-")}</td>
             <td class="pm-center">${escapeHtml(item.quantity)} ${escapeHtml(item.products?.unit || "")}</td>
-            ${po.status !== "pending" ? `
-            <td class="pm-num">${(item.unit_price || 0).toFixed(2)}</td>
-            <td class="pm-num">${(item.total_price || item.quantity * item.unit_price || 0).toFixed(2)}</td>
-            ` : ""}
+            <td class="pm-num">${Number(item.unit_price) ? Number(item.unit_price).toFixed(2) : "-"}</td>
+            <td class="pm-num">${Number(item.total_price || item.quantity * item.unit_price || 0).toFixed(2)}</td>
           </tr>
         `).join("")}
       </tbody>
     </table>
     
-    ${po.status !== "pending" ? `
       <table class="pm-totals">
         <tr>
           <td>المجموع الفرعي / Subtotal:</td>
@@ -268,13 +261,6 @@ export async function GET(request: NextRequest) {
           <td class="pm-num">${total.toFixed(2)} ${escapeHtml(po.currency || "EGP")}</td>
         </tr>
       </table>
-    ` : `
-    <div class="pm-note">
-      <h4>ملاحظة هامة / Important Note:</h4>
-      <p>هذا طلب عرض أسعار. يرجى إرسال عرض السعر الخاص بكم للأصناف المذكورة أعلاه.</p>
-      <p>This is a quotation request. Please send your price quote for the items listed above.</p>
-    </div>
-    `}
     
     ${po.notes ? `
     <div class="pm-note">

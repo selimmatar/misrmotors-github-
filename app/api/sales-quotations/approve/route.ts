@@ -190,6 +190,7 @@ export async function POST(request: NextRequest) {
         outsourced_name: isOutsourced ? item.product_name : null,
         outsourced_description: item.supplier_name ? `Supplier: ${item.supplier_name}` : null,
         outsourced_unit: isOutsourced ? "unit" : null,
+        cost_estimate: isOutsourced ? item.unit_cost ?? null : null,
         supplier_id: isOutsourced && item.supplier_name ? supplierIdByName.get(item.supplier_name) || null : null,
       }
     })

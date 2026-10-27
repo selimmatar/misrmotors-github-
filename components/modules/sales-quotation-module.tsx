@@ -790,6 +790,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
             product_name: item.product_name,
             quantity: item.quantity,
             unit_price: Number(getItemFinalPrice(item).toFixed(2)),
+            // Cost before markup, so a purchase order made from this line starts with it
+            unit_cost: item.item_type === "outsourced" ? Number(item.unit_price) || null : null,
             supplier_name: item.supplier_name || null,
           })),
         }),

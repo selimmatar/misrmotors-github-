@@ -232,6 +232,19 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     return suppliers.find((s) => s.id === supplierId)?.name || "Unknown"
   }
 
+  // Internal only: which sales order(s) and customer(s) this PO was raised for
+  const getLinkedSalesOrders = (order: any): string => {
+    const ids = [...new Set((order.items || []).map((i: any) => i.sourceSoId ?? i.source_so_id).filter(Boolean).map(String))]
+    return ids
+      .map((id) => {
+        const so = (salesOrders || []).find((s: any) => s.id?.toString() === id || s.soId?.toString() === id)
+        if (!so) return ""
+        return [so.soNumber || so.so_number, so.customerName].filter(Boolean).join(" · ")
+      })
+      .filter(Boolean)
+      .join(", ")
+  }
+
   const getProductName = (productId: string) => {
     return products.find((p) => p.id === productId)?.productName || "Unknown"
   }
@@ -544,7 +557,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       productId: "",
       productName: "",
       quantity: (item.quantity ?? "").toString(),
-      unitPrice: "",
+      // The cost typed on the sales order line, still editable here
+      unitPrice: item.costEstimate != null ? String(item.costEstimate) : "",
       itemType: "outsourced" as const,
       outsourcedName: item.outsourcedName || item.productName || "",
       outsourcedDescription: item.outsourcedDescription || "",
@@ -1256,6 +1270,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   <TableRow>
                     <TableHead>{t("po.number")}</TableHead>
                     <TableHead>{t("po.supplier")}</TableHead>
+                    <TableHead>{t("po.for-sales-order")}</TableHead>
                     <TableHead>{t("po.order-date")}</TableHead>
                     <TableHead>{t("po.delivery-date")}</TableHead>
                     <TableHead>{t("field.payment-terms")}</TableHead>
@@ -1271,6 +1286,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       <TableRow>
                         <IdCell>{order.poNumber}</IdCell>
                         <TableCell>{getSupplierName(order.supplierId)}</TableCell>
+                        <TableCell>{getLinkedSalesOrders(order) || "-"}</TableCell>
                         <TableCell>{formatDate(order.orderDate, language)}</TableCell>
                         <TableCell>{formatDate(order.deliveryDate, language)}</TableCell>
                         <TableCell>
@@ -1287,7 +1303,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       </TableRow>
                       {order.status === "rejected" && order.rejectionReason && (
                         <TableRow className="bg-red-50">
-                          <TableCell colSpan={9} className="p-3">
+                          <TableCell colSpan={10} className="p-3">
                             {renderRejectionReason(order)}
                           </TableCell>
                         </TableRow>
@@ -1300,7 +1316,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             card={(order) => (
               <ListCard
                 id={order.poNumber}
-                party={getSupplierName(order.supplierId)}
+                party={[getSupplierName(order.supplierId), getLinkedSalesOrders(order)].filter(Boolean).join(" — ")}
                 amount={formatMoney(order.total, language)}
                 status={<StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />}
                 note={order.status === "rejected" && order.rejectionReason ? renderRejectionReason(order) : undefined}
@@ -1704,6 +1720,14 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               </div>
 
               <div className="space-y-3">
+                {orderItems.length > 0 && (
+                  <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 text-xs font-medium text-muted-foreground">
+                    <span>{t("field.product")}</span>
+                    <span>{t("quantity")}</span>
+                    <span>{t("po.cost-per-unit")}</span>
+                    <span className="w-9" />
+                  </div>
+                )}
                 {orderItems.map((item, index) => (
                   <div key={index} className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-center">
                     {item.itemType === "outsourced" ? (
@@ -1742,7 +1766,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       }}
                     />
                     <Input
-                      placeholder={t("field.unit-price")}
+                      placeholder={t("po.cost-per-unit")}
                       type="number"
                       min="0"
                       step="0.01"
@@ -1874,6 +1898,12 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       <span className="text-muted-foreground">{t("common.supplier")}</span>
                       <span className="font-medium">{getSupplierName(viewDetailsOrder.supplierId)}</span>
                     </div>
+                    {getLinkedSalesOrders(viewDetailsOrder) && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{t("po.for-sales-order")}</span>
+                        <span className="font-medium">{getLinkedSalesOrders(viewDetailsOrder)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1929,7 +1959,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       <tr>
                         <th className="text-start p-3 font-semibold">{t("field.product")}</th>
                         <th className="text-start p-3 font-semibold">{t("quantity")}</th>
-                        <th className="text-start p-3 font-semibold">{t("common.unit-price-egp")}</th>
+                        <th className="text-start p-3 font-semibold">{t("po.cost-per-unit")} {t("common.egp")}</th>
                         <th className="text-start p-3 font-semibold">{t("common.total-egp")}</th>
                       </tr>
                     </thead>

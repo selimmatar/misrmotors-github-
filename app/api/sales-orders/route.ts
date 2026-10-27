@@ -158,6 +158,7 @@ export async function GET() {
           sku: item.products?.sku || "",
           quantity: item.quantity,
           unitPrice: item.unit_price,
+          costEstimate: item.cost_estimate === null || item.cost_estimate === undefined ? null : Number(item.cost_estimate),
           total: item.total,
           itemType: item.item_type || "stock",
           item_type: item.item_type || "stock",
@@ -451,6 +452,7 @@ export async function POST(request: Request) {
           outsourced_unit: isOutsourced ? (item.outsourced_unit || "unit") : null,
           outsourced_description: outsourcedDesc,
           supplier_id: item.supplierId ? Number(item.supplierId) : null,
+          cost_estimate: isOutsourced ? item.costEstimate ?? null : null,
         }
       })
 
@@ -744,6 +746,8 @@ export async function PUT(request: Request) {
           outsourced_description: outsourcedDesc,
           supplier_id: item.supplierId || item.supplier_id ? Number(item.supplierId || item.supplier_id) : null,
         }
+        // Keep the saved cost unless the caller sends one (the edit screen does not show it)
+        if (item.costEstimate !== undefined) itemRow.cost_estimate = isOutsourced ? item.costEstimate : null
 
         const existingId = item.id ?? item.so_item_id ?? item.soItemId
         if (existingId !== undefined && existingId !== null && existingId !== "" && existingIds.has(Number(existingId))) {
