@@ -33,7 +33,7 @@ import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDate, formatMoney } from "@/lib/format"
-import { CustomerCreditDialog } from "@/components/payment/customer-credit-dialog"
+import { CustomerCreditDialog, UseCreditButton } from "@/components/payment/customer-credit-dialog"
 import { arDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
 
 interface PaymentScheduleEntry {
@@ -1736,6 +1736,14 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   {getInstallmentMonths(selectedInvoiceForPayment)} {t("ar.months")}
                 </p>
               </div>
+              <UseCreditButton
+                party="customer"
+                partyId={selectedInvoiceForPayment.customerId}
+                onClick={() => {
+                  setPaymentDialogOpen(false)
+                  setCreditDialogInvoice(selectedInvoiceForPayment)
+                }}
+              />
               <div>
                 <Label>{t("ar.payment-amount")}</Label>
                 <Input

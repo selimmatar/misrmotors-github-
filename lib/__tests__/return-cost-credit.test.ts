@@ -4,6 +4,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { createReturn, previewReturnedItemCredit, processReturn, removeReturnedItem } from "../returns"
+import { applySupplierCredits } from "../supplier-credit-ap-apply"
 
 // ---------------------------------------------------------------------------------------------------------
 // 1. A returned item is stored at what it cost us (the goods receipt), never its selling price
@@ -68,4 +69,79 @@ test("1. the write-off dialog preview shows the cost-based credit and changes no
   const res = await removeReturnedItem(db, { inventoryId: holding.inventory_id, unitCost: 50000 })
   assert.equal(res.status, 200, JSON.stringify(res.body))
   assert.equal(db.tables.supplier_credits[0].amount, 30000)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// 3. A supplier credit is used while settling the supplier's invoice (AP): the supplier is paid less, no cash moves
+// ---------------------------------------------------------------------------------------------------------
+// APINV-PO-3: 100,000 owed to supplier 2 for PO 3. Supplier 2 has a 30,000 return credit; supplier 9 has one too.
+function apDb(paid = 0) {
+  return new FakeDb({
+    accounts_payable: [{ invoice_id: 1, invoice_number: "APINV-PO-3", supplier_id: 2, po_id: 3, amount: 100000, paid_amount: paid, status: paid > 0 ? "partially_paid" : "pending", months_paid: 0 }],
+    supplier_credits: [
+      { credit_id: 1, supplier_id: 2, amount: 30000, credit_type: "return", reference_type: "inventory", reference_id: 50, status: "active", notes: null, created_at: "2026-10-01" },
+      { credit_id: 2, supplier_id: 9, amount: 5000, credit_type: "return", status: "active", notes: null },
+    ],
+    supplier_payments: [], balance_entries: [], idempotency_log: [],
+  })
+}
+const useCredits = (db: FakeDb, credits: any[], key = `ap-${Math.random().toString(36).slice(2)}`) =>
+  applySupplierCredits(db, { invoiceId: 1, idempotencyKey: key, credits })
+
+test("3. using a 30,000 supplier credit on a 100,000 supplier invoice leaves 70,000 to pay and moves no cash", async () => {
+  const db = apDb()
+  const res = await useCredits(db, [{ creditId: 1, amount: 30000 }])
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  const inv = db.tables.accounts_payable[0]
+  assert.deepEqual([inv.paid_amount, inv.status], [30000, "partially_paid"])
+  const credit = db.tables.supplier_credits.find((c: Row) => c.credit_id === 1)!
+  assert.deepEqual([credit.status, credit.used_in_po_id], ["used", 3])
+  assert.equal(db.tables.supplier_payments.length, 1)
+  assert.deepEqual([db.tables.supplier_payments[0].payment_method, db.tables.supplier_payments[0].amount], ["supplier_credit", 30000])
+  assert.equal(db.tables.balance_entries.length, 0)
+})
+
+test("3. using part of a supplier credit keeps the rest open", async () => {
+  const db = apDb()
+  assert.equal((await useCredits(db, [{ creditId: 1, amount: 10000 }])).status, 200)
+  const open = db.tables.supplier_credits.filter((c: Row) => c.supplier_id === 2 && c.status === "active")
+  assert.deepEqual(open.map((c: Row) => c.amount), [20000])
+  assert.equal(db.tables.accounts_payable[0].paid_amount, 10000)
+})
+
+test("3. a credit settles the invoice in full when it covers the remaining balance", async () => {
+  const db = apDb(70000)
+  assert.equal((await useCredits(db, [{ creditId: 1, amount: 30000 }])).status, 200)
+  assert.deepEqual([db.tables.accounts_payable[0].paid_amount, db.tables.accounts_payable[0].status], [100000, "paid"])
+})
+
+test("3. another supplier's credit, or more than is owed, is refused and nothing changes", async () => {
+  const db = apDb(80000)
+  const before = JSON.stringify(db.tables.accounts_payable) + JSON.stringify(db.tables.supplier_credits)
+  assert.equal((await useCredits(db, [{ creditId: 2, amount: 5000 }])).status, 409)
+  assert.equal((await useCredits(db, [{ creditId: 1, amount: 30000 }])).status, 409) // only 20,000 left to pay
+  assert.equal(JSON.stringify(db.tables.accounts_payable) + JSON.stringify(db.tables.supplier_credits), before)
+  assert.equal(db.tables.supplier_payments.length, 0)
+})
+
+test("3. the same request sent twice uses the credit once", async () => {
+  const db = apDb()
+  const key = "ap-same-key-123"
+  assert.equal((await useCredits(db, [{ creditId: 1, amount: 30000 }], key)).status, 200)
+  const again = await useCredits(db, [{ creditId: 1, amount: 30000 }], key)
+  assert.equal(again.status, 200)
+  assert.equal(again.body.isDuplicate, true)
+  assert.equal(db.tables.accounts_payable[0].paid_amount, 30000)
+  assert.equal(db.tables.supplier_payments.length, 1)
+})
+
+test("3. both payment windows offer the open credit; the supplier one goes to the AP credit route", () => {
+  const { readFileSync } = require("node:fs") as typeof import("node:fs")
+  const src = (f: string) => readFileSync(`${process.env.REPO_ROOT || "."}/${f}`, "utf8")
+  assert.match(src("components/modules/accounts-receivable-module.tsx"), /<UseCreditButton\s+party="customer"/)
+  const ap = src("components/modules/accounts-payable-module.tsx")
+  assert.match(ap, /<UseCreditButton\s+party="supplier"/)
+  assert.match(ap, /<SupplierCreditDialog/)
+  assert.match(src("components/payment/customer-credit-dialog.tsx"), /supplier: "\/api\/accounts-payable\/apply-credit"/)
+  assert.match(src("app/api/accounts-payable/apply-credit/route.ts"), /applySupplierCredits/)
 })

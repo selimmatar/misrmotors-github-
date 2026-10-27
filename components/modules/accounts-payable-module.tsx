@@ -36,6 +36,7 @@ import {
 } from "lucide-react"
 import type { SupplierInvoice } from "@/lib/types"
 import { apDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
+import { SupplierCreditDialog, UseCreditButton } from "@/components/payment/customer-credit-dialog"
 
 interface PaymentScheduleEntry {
   id: string
@@ -59,6 +60,7 @@ export function AccountsPayableModule() {
   const { t, language } = useI18n()
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<SupplierInvoice | null>(null)
+  const [creditDialogInvoice, setCreditDialogInvoice] = useState<SupplierInvoice | null>(null)
   const [paymentReceiptFile, setPaymentReceiptFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [widgetDialogOpen, setWidgetDialogOpen] = useState(false)
@@ -1127,6 +1129,13 @@ export function AccountsPayableModule() {
         </DialogContent>
       </Dialog>
 
+      <SupplierCreditDialog
+        open={!!creditDialogInvoice}
+        onOpenChange={(open) => !open && setCreditDialogInvoice(null)}
+        invoice={creditDialogInvoice}
+        onApplied={loadData}
+      />
+
       {/* Quick Payment Dialog */}
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
         <DialogContent>
@@ -1148,6 +1157,14 @@ export function AccountsPayableModule() {
                   </span>
                 </div>
               </div>
+              <UseCreditButton
+                party="supplier"
+                partyId={selectedInvoiceForPayment.supplierId}
+                onClick={() => {
+                  setPaymentDialogOpen(false)
+                  setCreditDialogInvoice(selectedInvoiceForPayment)
+                }}
+              />
 
               <div className="space-y-2">
                 <Label>{t("amount")}</Label>
