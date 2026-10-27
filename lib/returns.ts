@@ -286,6 +286,13 @@ export async function createReturn(db: Db, body: any): Promise<WorkflowResult> {
     }
 
     // ---- insert: return row, then items. Any failure removes what was just created. ----
+    // What each returned item cost us (the goods receipt it came from), never its selling price: restocked returns
+    // are valued at cost. Unknown (no receipt) -> null; processing then falls back to the latest batch cost.
+    // Looked up BEFORE the header is inserted: a slow lookup between the header and its items would let a racing
+    // request with a higher return_id pass its re-check without seeing this one's items.
+    const costs: (number | null)[] = []
+    for (const r of resolved) costs.push(await returnedItemCost(db, r.dpItem, so.so_number || null))
+
     const inserted = must(
       await db
         .from("product_returns")
@@ -306,11 +313,6 @@ export async function createReturn(db: Db, body: any): Promise<WorkflowResult> {
       "create return",
     )
     createdReturnId = inserted.return_id
-
-    // What each returned item cost us (the goods receipt it came from), never its selling price: restocked returns
-    // are valued at cost. Unknown (no receipt) -> null; processing then falls back to the latest batch cost.
-    const costs: (number | null)[] = []
-    for (const r of resolved) costs.push(await returnedItemCost(db, r.dpItem, so.so_number || null))
 
     const itemsResult = await db.from("return_items").insert(
       resolved.map((r, i) => ({

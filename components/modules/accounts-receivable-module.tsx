@@ -1597,6 +1597,17 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   <span className="font-bold text-lg"><Money value={selectedScheduleForPayment.amount} /> {t("common.egp-2")}</span>
                 </div>
               </div>
+              {selectedInvoiceForSchedule && (
+                <UseCreditButton
+                  party="customer"
+                  partyId={selectedInvoiceForSchedule.customerId}
+                  onClick={() => {
+                    setSchedulePaymentDialogOpen(false)
+                    setScheduleDialogOpen(false)
+                    setCreditDialogInvoice(selectedInvoiceForSchedule)
+                  }}
+                />
+              )}
 
               <div>
                 <Label>{t("ar.upload-receipt")}</Label>
