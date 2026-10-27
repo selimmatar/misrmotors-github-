@@ -33,7 +33,7 @@ export const OWNED: Record<Area, string[]> = {
     "components/parties/",
   ],
   finance: [
-    ...mods(["accounts-receivable", "accounts-payable", "payment-schedule", "balance", "maintenance-invoices", "accountant"]),
+    ...mods(["accounts-receivable", "accounts-payable", "payment-schedule", "balance", "maintenance-invoices", "accountant", "finance-reports"]),
     "components/accounting/", "components/maintenance/",
   ],
   purchasing: [

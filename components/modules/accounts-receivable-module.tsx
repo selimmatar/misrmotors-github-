@@ -34,6 +34,7 @@ import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDate, formatMoney } from "@/lib/format"
 import { CustomerCreditDialog } from "@/components/payment/customer-credit-dialog"
+import { arDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
 
 interface PaymentScheduleEntry {
   id: string
@@ -351,23 +352,13 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     return so?.installments || 1
   }
 
+  // Late from the day after a due date, using the invoice's due dates (same calculation as the Reports page).
+  const dueSummary = (invoice: CustomerInvoice) =>
+    summarizeDue(arDueSchedule(invoice as any, getSO(invoice.soId) as any), todayYmd())
+
   const isPaymentDue = (invoice: CustomerInvoice): boolean => {
-    if (!invoice.date) return false
     if (invoice.status === "paid") return false
-
-    const invoiceDate = new Date(invoice.date)
-    if (isNaN(invoiceDate.getTime())) return false
-
-    const installmentMonths = getInstallmentMonths(invoice)
-    const monthsPaid = invoice.monthsPaid || 0
-
-    if (monthsPaid >= installmentMonths) return false
-
-    const today = new Date()
-    const nextPaymentDueDate = new Date(invoiceDate)
-    nextPaymentDueDate.setMonth(nextPaymentDueDate.getMonth() + monthsPaid + 1)
-
-    return today >= nextPaymentDueDate
+    return dueSummary(invoice).overdue > 0
   }
 
   const getInvoiceStatus = (invoice: CustomerInvoice): "pending" | "partially_paid" | "paid" | "overdue" => {
@@ -392,7 +383,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const totalCollected = allInvoices.reduce((sum, inv) => sum + (inv.collectedAmount || 0), 0)
   const totalOutstanding = totalReceivable - totalCollected
   const overdueInvoices = allInvoices.filter((inv) => getInvoiceStatus(inv) === "overdue")
-  const overdueAmount = overdueInvoices.reduce((sum, inv) => sum + ((inv.amount || 0) - (inv.collectedAmount || 0)), 0)
+  const overdueAmount = overdueInvoices.reduce((sum, inv) => sum + dueSummary(inv).overdue, 0)
 
   const fetchPaymentSchedule = async (invoice: CustomerInvoice) => {
     setIsLoadingSchedule(true)

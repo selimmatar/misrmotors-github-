@@ -15,9 +15,9 @@ const AR = I18N.slice(AR_AT)
 
 const MAIN_IDS: Record<string, string[]> = { // verbatim from origin/main components/layout/sidebar.tsx
   admin: ["user-management","hr-management","metrics-validation","system-health"],
-  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","delivery-permits","accounts-receivable","balance","metrics-validation","system-health"],
+  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","delivery-permits","accounts-receivable","balance","finance-reports","metrics-validation","system-health"],
   // accountant: quotations swapped for the view-only order list (owner request).
-  accountant: ["dashboard","analytics","approve-sales-orders","sales-orders","payment-schedule","purchase-orders","pricing-review","costing-settings","accounts-payable","accounts-receivable","maintenance-invoices","customers","suppliers","delivery-permits","balance"],
+  accountant: ["dashboard","analytics","approve-sales-orders","sales-orders","payment-schedule","purchase-orders","pricing-review","costing-settings","accounts-payable","accounts-receivable","maintenance-invoices","customers","suppliers","delivery-permits","balance","finance-reports"],
   "sales-rep": ["dashboard","analytics","customers","sales-orders","delivery-permits","inventory","lost-sales","accounts-receivable","operations-management"],
   "warehouse-rep": ["dashboard","inventory","inventory-audit","warehouse-transfers","warehouse-delivery","delivery-permits","goods-receipt","goods-receipt-tracking"],
   "po-rep": ["dashboard","analytics","suppliers","products","po-requests","purchase-orders","goods-receipt-tracking","inventory","reorder-suggestions","lost-sales"],

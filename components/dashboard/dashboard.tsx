@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { useAppContext } from "@/lib/app-context"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { MobileTabs } from "@/components/layout/mobile-tabs"
@@ -23,6 +24,7 @@ import { ApproveSalesOrdersModule } from "@/components/modules/approve-sales-ord
 import { PaymentScheduleModule } from "@/components/modules/payment-schedule-module"
 import { ShippingModule } from "@/components/modules/shipping-module"
 import { BalanceModule } from "@/components/modules/balance-module"
+import { FinanceReportsModule } from "@/components/modules/finance-reports-module"
 import { GoodsReceiptModule } from "@/components/modules/goods-receipt-module"
 import { AnalyticsDashboard } from "@/components/modules/analytics-dashboard"
 import { CEOChatAssistant } from "@/components/modules/ceo-chat-assistant"
@@ -95,6 +97,18 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
     user.role === "shipment" ? "shipment" : user.role === "admin" ? "user-management" : "dashboard",
   )
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const { refreshLists } = useAppContext()
+
+  // Opening a screen re-reads the shared lists, so orders other people just made show up without F5.
+  // The first render is skipped: the lists are already loading then.
+  const firstModuleRef = useRef(true)
+  useEffect(() => {
+    if (firstModuleRef.current) {
+      firstModuleRef.current = false
+      return
+    }
+    refreshLists()
+  }, [activeModule, refreshLists])
 
   useEffect(() => {
     const handleNavigate = (event: CustomEvent) => {
@@ -193,6 +207,8 @@ case "po-requests":
         return <ShippingModule />
       case "balance":
         return <BalanceModule />
+      case "finance-reports":
+        return <FinanceReportsModule />
       case "goods-receipt":
         return <GoodsReceiptModule />
       case "goods-receipt-tracking":

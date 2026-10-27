@@ -26,6 +26,7 @@ import {
   UserCog,
   ArrowLeftRight,
   Wrench,
+  FileSpreadsheet,
   type LucideIcon,
 } from "lucide-react"
 import type { UserRole } from "@/lib/types"
@@ -67,6 +68,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
     { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
     { id: "balance", label: "module.balance", icon: Wallet },
+    { id: "finance-reports", label: "module.finance-reports", icon: FileSpreadsheet },
     { id: "metrics-validation", label: "module.metrics-validation", icon: CheckSquare },
     { id: "system-health", label: "module.system-health", icon: Activity },
   ],
@@ -86,6 +88,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "suppliers", label: "module.suppliers", icon: Building2 },
     { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
     { id: "balance", label: "module.balance", icon: Wallet },
+    { id: "finance-reports", label: "module.finance-reports", icon: FileSpreadsheet },
   ],
   "sales-rep": [
     { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },

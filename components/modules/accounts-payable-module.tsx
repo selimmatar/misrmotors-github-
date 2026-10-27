@@ -35,6 +35,7 @@ import {
   FileText,
 } from "lucide-react"
 import type { SupplierInvoice } from "@/lib/types"
+import { apDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
 
 interface PaymentScheduleEntry {
   id: string
@@ -126,16 +127,14 @@ export function AccountsPayableModule() {
     return po?.installments || 1
   }
 
+  // Late / due-soon from the invoice's due dates (same calculation as the Reports page): late from the day after.
+  const dueSummary = (invoice: SupplierInvoice) => summarizeDue(apDueSchedule(invoice as any, getPO(invoice.poId) as any), todayYmd())
+
   const getInvoiceStatus = (invoice: SupplierInvoice) => {
-    const balance = (invoice.amount || 0) - (invoice.paidAmount || 0)
-    if (balance <= 0) return "paid"
-    const dueDate = new Date(invoice.dueDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    if (dueDate < today) return "overdue"
-    const weekFromNow = new Date(today)
-    weekFromNow.setDate(weekFromNow.getDate() + 7)
-    if (dueDate <= weekFromNow) return "due-soon"
+    const due = dueSummary(invoice)
+    if (due.balance <= 0) return "paid"
+    if (due.overdue > 0) return "overdue"
+    if (due.dueSoon > 0) return "due-soon"
     return "pending"
   }
 
@@ -752,7 +751,7 @@ export function AccountsPayableModule() {
           sub={
             <>
               <Money
-                value={overdueInvoices.reduce((sum, inv) => sum + (inv.amount || 0) - (inv.paidAmount || 0), 0)}
+                value={overdueInvoices.reduce((sum, inv) => sum + dueSummary(inv).overdue, 0)}
               />{" "}
               {t("common.egp-2")}
             </>
