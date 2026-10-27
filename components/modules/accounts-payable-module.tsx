@@ -1085,6 +1085,17 @@ export function AccountsPayableModule() {
                   <span>{formatDate(selectedScheduleForPayment.dueDate, language)}</span>
                 </div>
               </div>
+              {selectedInvoiceForSchedule && (
+                <UseCreditButton
+                  party="supplier"
+                  partyId={selectedInvoiceForSchedule.supplierId}
+                  onClick={() => {
+                    setSchedulePaymentDialogOpen(false)
+                    setScheduleDialogOpen(false)
+                    setCreditDialogInvoice(selectedInvoiceForSchedule)
+                  }}
+                />
+              )}
 
               <div className="space-y-2">
                 <Label>{t("amount")}</Label>

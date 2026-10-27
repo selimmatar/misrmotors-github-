@@ -142,6 +142,9 @@ test("3. both payment windows offer the open credit; the supplier one goes to th
   const ap = src("components/modules/accounts-payable-module.tsx")
   assert.match(ap, /<UseCreditButton\s+party="supplier"/)
   assert.match(ap, /<SupplierCreditDialog/)
+  // the instalment "Pay" windows (from "View schedule") offer it too, on both sides
+  assert.equal(ap.split("<UseCreditButton").length - 1, 2)
+  assert.equal(src("components/modules/accounts-receivable-module.tsx").split("<UseCreditButton").length - 1, 2)
   assert.match(src("components/payment/customer-credit-dialog.tsx"), /supplier: "\/api\/accounts-payable\/apply-credit"/)
   assert.match(src("app/api/accounts-payable/apply-credit/route.ts"), /applySupplierCredits/)
 })
