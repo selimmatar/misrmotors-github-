@@ -73,6 +73,8 @@ interface AppContextType {
   prepaidBalance: number
   setPrepaidBalance: (balance: number) => void
   loadData: () => Promise<void>
+  // Re-reads the shared lists in the background (no loading screen); called whenever a screen is opened.
+  refreshLists: () => void
   isLoading: boolean
   lostSales: LostSale[]
   setLostSales: (lostSales: LostSale[]) => void
@@ -137,7 +139,9 @@ const swrFetcher = async (url: string) => {
 }
 
 const SWR_OPTIONS = {
-  revalidateOnFocus: false,
+  // Coming back to the tab re-reads the lists (at most every 30s) so other people's new orders show up without F5.
+  revalidateOnFocus: true,
+  focusThrottleInterval: 30000,
   revalidateIfStale: false,
   revalidateOnReconnect: false,
   dedupingInterval: 60000, // 60s dedupe
@@ -352,6 +356,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshCustomers = useCallback(() => mutateCustomers(), [mutateCustomers])
   const refreshSuppliers = useCallback(() => mutateSuppliers(), [mutateSuppliers])
   const refreshCouriers = useCallback(() => mutateCouriers(), [mutateCouriers])
+
+  const refreshLists = useCallback(() => {
+    for (const refresh of [
+      mutateSalesOrders,
+      mutatePurchaseOrders,
+      mutateCustomerInvoices,
+      mutateSupplierInvoices,
+      mutateCustomers,
+      mutateSuppliers,
+      mutateProducts,
+      mutateInventory,
+      mutateBalanceEntries,
+      mutateLostSales,
+    ]) {
+      refresh().catch(() => {})
+    }
+  }, [
+    mutateSalesOrders,
+    mutatePurchaseOrders,
+    mutateCustomerInvoices,
+    mutateSupplierInvoices,
+    mutateCustomers,
+    mutateSuppliers,
+    mutateProducts,
+    mutateInventory,
+    mutateBalanceEntries,
+    mutateLostSales,
+  ])
 
   const loadData = useCallback(async () => {
     setIsLoading(true)
@@ -1007,6 +1039,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         prepaidBalance,
         setPrepaidBalance,
         loadData,
+        refreshLists,
         isLoading,
         lostSales,
         setLostSales,
