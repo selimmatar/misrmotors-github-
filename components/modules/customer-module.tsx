@@ -17,7 +17,9 @@ import { StatusBadge } from "@/components/erp/status-badge"
 import { Money } from "@/components/erp/money"
 import { formatDate } from "@/lib/format"
 import type { Customer, SalesOrder } from "@/lib/types"
-import { Plus, ChevronLeft, Search } from "lucide-react"
+import { Plus, ChevronLeft, Search, Pencil } from "lucide-react"
+import { EditPartyDialog } from "@/components/parties/edit-party-dialog"
+import { ContactsCard } from "@/components/parties/contacts-card"
 import { CustomerCreditsCard } from "@/components/accounting/customer-credits-card"
 import { CUSTOMER_CREDIT_PAYMENT_METHOD } from "@/lib/credit-apply"
 
@@ -32,8 +34,9 @@ interface CustomerModuleProps {
 
 export function CustomerModule({ userRole }: CustomerModuleProps) {
   const { t, formatNumber, language } = useI18n()
-  const { customers, addCustomer, salesOrders, customerInvoices } = useAppContext()
+  const { customers, addCustomer, updateCustomer, salesOrders, customerInvoices } = useAppContext()
   const [showForm, setShowForm] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [customerPayments, setCustomerPayments] = useState<CustomerPayment[]>([])
   const [formData, setFormData] = useState({
@@ -193,7 +196,32 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
             <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
             {t("action.back")} {t("module.customers")}
           </Button>
+          {canAddCustomer && (
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2 ms-auto">
+              <Pencil className="w-4 h-4" />
+              {t("party.edit-details")}
+            </Button>
+          )}
         </div>
+
+        <EditPartyDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          kind="customer"
+          initial={{
+            name: selectedCustomer.name,
+            email: selectedCustomer.email,
+            phone: selectedCustomer.phone,
+            country: selectedCustomer.country || "",
+            city: selectedCustomer.city || "",
+            address: selectedCustomer.address,
+          }}
+          onSave={async (details) => {
+            const updated = { ...selectedCustomer, ...details }
+            await updateCustomer(updated)
+            setSelectedCustomer(updated)
+          }}
+        />
 
         <Card>
           <CardHeader>
@@ -239,6 +267,8 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                 <p className="font-semibold text-lg"><Money value={totalSpent - totalPaid} /></p>
               </div>
             </div>
+
+            <ContactsCard owner={{ customerId: selectedCustomer.id }} canEdit={canAddCustomer} />
 
             <CustomerCreditsCard customerId={selectedCustomer.id} reloadKey={customerInvoices.length} />
 

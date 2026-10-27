@@ -12,7 +12,9 @@ import { parseRemainderNote } from "@/lib/supplier-credit-note"
 import { SUPPLIER_CREDIT_PAYMENT_METHOD } from "@/lib/supplier-credit-apply"
 import { ReportGenerator } from "@/components/report-generator"
 import type { Supplier, PurchaseOrder } from "@/lib/types"
-import { Plus, X, ChevronLeft, Trash2 } from "lucide-react"
+import { Plus, X, ChevronLeft, Trash2, Pencil } from "lucide-react"
+import { EditPartyDialog } from "@/components/parties/edit-party-dialog"
+import { ContactsCard } from "@/components/parties/contacts-card"
 import { SupplierProductsSection } from "@/components/supplier/supplier-products-section"
 import { COUNTRIES, getCitiesForCountry } from "@/lib/countries-data"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -28,8 +30,9 @@ interface SupplierModuleProps {
 
 export function SupplierModule({ userRole }: SupplierModuleProps) {
   const { t, language } = useI18n()
-  const { suppliers, addSupplier, purchaseOrders, supplierInvoices, deleteSupplier, products } = useApp()
+  const { suppliers, addSupplier, updateSupplier, purchaseOrders, supplierInvoices, deleteSupplier, products } = useApp()
   const [showForm, setShowForm] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
   const [supplierPayments, setSupplierPayments] = useState<any[]>([])
   const [orderInvoices, setOrderInvoices] = useState<Record<string, any[]>>({})
@@ -319,17 +322,45 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
             {t("supplier.title")}
           </Button>
           {canAddSupplier && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => handleDeleteSupplier(selectedSupplier.id, selectedSupplier.name)}
-              className="gap-2"
-            >
-              <Trash2 className="w-4 h-4" />
-              {t("supplier.delete")}
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
+                <Pencil className="w-4 h-4" />
+                {t("party.edit-details")}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => handleDeleteSupplier(selectedSupplier.id, selectedSupplier.name)}
+                className="gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                {t("supplier.delete")}
+              </Button>
+            </div>
           )}
         </div>
+
+        <EditPartyDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          kind="supplier"
+          initial={{
+            name: selectedSupplier.name,
+            email: selectedSupplier.email,
+            phone: selectedSupplier.phone,
+            country: selectedSupplier.country || "",
+            city: selectedSupplier.city || "",
+            address: selectedSupplier.address,
+            leadTimeDays: selectedSupplier.leadTimeDays,
+          }}
+          onSave={async (details) => {
+            // Payment terms are left out on purpose so editing contact details never changes them
+            const { paymentTerms: _terms, ...rest } = selectedSupplier
+            const updated = { ...rest, ...details }
+            await updateSupplier(updated as Supplier)
+            setSelectedSupplier({ ...selectedSupplier, ...details })
+          }}
+        />
 
         <Card>
           <CardHeader>
@@ -383,6 +414,8 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
             </div>
 
             {/* Supplier Credits Section — always visible */}
+            <ContactsCard owner={{ supplierId: selectedSupplier.id }} canEdit={canAddSupplier} />
+
             <div className="border-t pt-6 mt-2">
               <h3 className="text-lg font-semibold mb-4">{t("supplier.account-credits")}</h3>
               {(!creditsDetail[selectedSupplier.id] || creditsDetail[selectedSupplier.id].length === 0) ? (

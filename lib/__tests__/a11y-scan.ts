@@ -30,6 +30,7 @@ export const OWNED: Record<Area, string[]> = {
   customers: [
     ...mods(["approve-sales-orders", "delivery-permits", "customer", "lost-sales"]),
     "components/delivery-permit/",
+    "components/parties/",
   ],
   finance: [
     ...mods(["accounts-receivable", "accounts-payable", "payment-schedule", "balance", "maintenance-invoices", "accountant"]),
