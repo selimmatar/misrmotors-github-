@@ -143,7 +143,7 @@ test("ROUTE. return 2 of 10, then edit the SAME order (10 -> 8 + 2 replacement),
   const returnRow = db.tables.product_returns[0]
   assert.deepEqual([returnRow.so_id, returnRow.permit_id, returnRow.status], [1, "1", "pending_warehouse"])
   const returnItem = db.tables.return_items[0]
-  assert.deepEqual([returnItem.product_id, returnItem.product_name, returnItem.returned_quantity, returnItem.unit_cost], [7, "Pump A", 2, 10000]) // item, quantity, value
+  assert.deepEqual([returnItem.product_id, returnItem.product_name, returnItem.returned_quantity, returnItem.unit_cost], [7, "Pump A", 2, null]) // item, quantity; cost unknown (no goods receipt), never the 10,000 selling price
 
   // 3) the replacement flows into a NEW delivery permit of the same order (real POST + status actions)
   const dp2 = await replacementDp(db)
@@ -336,7 +336,13 @@ test("ROUTE. process -> holding row -> restock once; duplicate process / restock
 })
 
 test("ROUTE. write-off through the real endpoint happens once", async () => {
-  const db = baseDb()
+  // Pump A was bought on PO 3 / GRN 4 at 6,500 (sold at 10,000): the credit is the cost
+  const db = baseDb({
+    goods_receipt_lines: [{ line_id: 1, receipt_id: 4, po_item_id: 9, product_id: 7, item_type: "stock", quantity_received: 10, unit_cost: 6500, source_so_item_id: 1 }],
+    goods_receipts: [{ receipt_id: 4, grn_number: "GRN-4", po_id: 3 }],
+    purchase_orders: [{ po_id: 3, po_number: "PO-3", supplier_id: 3, total: 74100 }],
+    accounts_payable: [],
+  })
   const { body } = await postReturn(returnBody(2))
   await call(returnsRoute.PUT, "PUT", processBody(db, body.returnId))
   const holding = db.tables.inventory.find((r) => r.is_returned)!
@@ -344,6 +350,8 @@ test("ROUTE. write-off through the real endpoint happens once", async () => {
   assert.equal((await call(removeRoute.POST, "POST", input)).status, 200)
   assert.equal((await call(removeRoute.POST, "POST", input)).status, 404)
   assert.equal(db.tables.supplier_credits.length, 1)
+  assert.equal(db.tables.supplier_credits[0].amount, 13000)
+  assert.equal(db.tables.inventory_batches.find((b) => String(b.po_number || "").startsWith("RET-"))?.unit_cost, 6500)
 })
 
 test("ROUTE. reject: valid and invalid transitions on the real PUT /api/returns; the order total follows", async () => {

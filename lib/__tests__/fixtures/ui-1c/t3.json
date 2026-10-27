@@ -12,6 +12,7 @@
           "\"/api/inventory/restock-returned",
           "\"/api/product-images",
           "\"/api/warehouses",
+          "`/api/inventory/remove-returned?${params}",
           "`/api/product-images?productId=${item.productId}",
           "`/api/product-images?productId=${selectedProductForPhoto.productId}"
         ],
@@ -33,7 +34,7 @@
           "id=\"warehouse-location\"",
           "id=\"warehouse-name\""
         ],
-        "fetch": 9,
+        "fetch": 10,
         "iso": 0,
         "t": 86,
         "onClick": 22

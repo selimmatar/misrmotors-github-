@@ -100,6 +100,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const [isCreatingWarehouse, setIsCreatingWarehouse] = useState(false)
   const [removeReturnedItemDialog, setRemoveReturnedItemDialog] = useState(false)
   const [selectedReturnedItem, setSelectedReturnedItem] = useState<any>(null)
+  // The supplier credit the write-off would record (worked out on the server from the item's cost)
+  const [creditPreview, setCreditPreview] = useState<{ loading: boolean; unitCost?: number; amount?: number; error?: string } | null>(null)
   const [isRemovingItem, setIsRemovingItem] = useState(false)
   const [restockReturnedItemDialog, setRestockReturnedItemDialog] = useState(false)
   const [selectedRestockItem, setSelectedRestockItem] = useState<any>(null)
@@ -341,6 +343,17 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const handleRemoveReturnedItem = (item: any) => {
     setSelectedReturnedItem(item)
     setRemoveReturnedItemDialog(true)
+    setCreditPreview({ loading: true })
+    const params = new URLSearchParams({ inventoryId: String(item.inventoryId || item.id) })
+    if (item.supplierId) params.set("supplierNameId", String(item.supplierId))
+    if (item.productName) params.set("productName", item.productName)
+    if (item.soNumber) params.set("soNumber", item.soNumber)
+    fetch(`/api/inventory/remove-returned?${params}`)
+      .then(async (res) => {
+        const body: any = await res.json().catch(() => ({}))
+        setCreditPreview(res.ok ? { loading: false, unitCost: body.unitCost, amount: body.amount } : { loading: false, error: body.error || body.message })
+      })
+      .catch(() => setCreditPreview({ loading: false, error: t("inv.credit-preview-failed") }))
   }
 
   const handleRestockReturnedItem = (item: any) => {
@@ -1238,12 +1251,22 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                 <p className="text-sm text-amber-900 mt-2">
                   <strong>{t("common.quantity")}</strong> {formatNumber(selectedReturnedItem.quantity)}
                 </p>
-                <p className="text-sm text-amber-900 mt-2">
-                  <strong>{t("inv.unit-cost-egp-label")}</strong> <Money value={selectedReturnedItem.unitCost || 0} />
-                </p>
-                <p className="text-sm text-amber-900 mt-2 font-semibold">
-                  <strong>{t("inv.total-credit-egp-label")}</strong> <Money value={(selectedReturnedItem.quantity || 0) * (selectedReturnedItem.unitCost || 0)} />
-                </p>
+                {creditPreview?.loading ? (
+                  <p className="text-sm text-amber-900 mt-2 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> {t("inv.credit-preview-loading")}
+                  </p>
+                ) : creditPreview?.error ? (
+                  <p className="text-sm text-amber-900 mt-2">{creditPreview.error}</p>
+                ) : (
+                  <>
+                    <p className="text-sm text-amber-900 mt-2">
+                      <strong>{t("inv.unit-cost-egp-label")}</strong> <Money value={creditPreview?.unitCost || 0} />
+                    </p>
+                    <p className="text-sm text-amber-900 mt-2 font-semibold">
+                      <strong>{t("inv.total-credit-egp-label")}</strong> <Money value={creditPreview?.amount || 0} />
+                    </p>
+                  </>
+                )}
                 {selectedReturnedItem.supplierName && (
                   <p className="text-sm text-amber-900 mt-2">
                     <strong>{t("common.supplier")}</strong> {selectedReturnedItem.supplierName}

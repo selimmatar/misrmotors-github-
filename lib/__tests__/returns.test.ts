@@ -595,7 +595,7 @@ test("18. write-off happens once: one supplier credit, no second removal; a sell
   assert.equal(holdingRows(db).length, 0)
   const credits = db.tables.supplier_credits.filter((c) => c.credit_id > 1)
   assert.equal(credits.length, 1)
-  assert.equal(credits[0].amount, 4 * 10000) // the HELD quantity at the real cost, not the browser's 9999 x 1
+  assert.equal(credits[0].amount, 4 * 26000) // the HELD quantity at the latest real cost (no receipt), not the browser's 9999 x 1 nor the 10,000 selling price
   assert.equal(credits[0].reference_id, holding.inventory_id)
   const again = await removeReturnedItem(db, input)
   assert.ok([404, 409].includes(again.status))
