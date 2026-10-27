@@ -353,6 +353,19 @@ test("7. a return from a partly delivered order whose later invoices can still l
   assert.equal(db.tables.customer_credits.length, 0)
 })
 
+test("7. an item invoiced on its own delivery permit and returned is credited while other items are still undelivered", async () => {
+  // The order is 1 pump (50,000) + 1 gun (100,000, not delivered yet). The pump alone was delivered and invoiced
+  // (57,000), then returned. The later invoices can only bill the gun, so the pump's 57,000 is a credit.
+  const db = returnDb({ delivered: 1, invoices: [{ ...wholeInvoice, so_id: null, amount: 57000 }], links: [{ invoice_id: 1, permit_id: 1 }] })
+  db.tables.sales_order_items[0].quantity = 1
+  db.tables.sales_order_items[0].total = 50000
+  db.tables.sales_order_items.push({ so_item_id: 2, so_id: 1, product_id: 8, outsourced_name: null, quantity: 1, unit_price: 100000, total: 100000 })
+  Object.assign(db.tables.sales_orders[0], { status: "ready_for_delivery", subtotal: 150000, total: 171000, net_total: 171000 })
+  await receiveReturn(db, 1)
+  assert.equal(db.tables.customer_credits.length, 1)
+  assert.equal(db.tables.customer_credits[0].amount, 57000)
+})
+
 test("7. two returns are credited separately and never more than was invoiced", async () => {
   const db = returnDb({ delivered: 4, invoices: [wholeInvoice] })
   await receiveReturn(db, 1)

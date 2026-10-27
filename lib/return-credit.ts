@@ -3,11 +3,12 @@
 // from Accounts Receivable ("apply credit", lib/customer-credit-apply.ts), which lowers what the customer owes.
 // Invoices themselves are never rewritten, and returns received before this change are never credited.
 //
-// Amount = the value of THIS return (order price with discount and VAT), capped by what the invoices bill above the
-// order's total after all valid returns, less the return credits the order already has. Example: 4 pumps invoiced at
-// 228,000; 1 returned -> order now worth 171,000 -> 57,000 credit. A return the later invoices can still leave out
-// (a partly delivered order) gives no credit: those invoices bill less instead.
-import { invoicedTotalForOrder, loadSoInvoicingState, orderTotalAfterReturns, round2 } from "./invoicing"
+// Amount = the value of THIS return (order price with discount and VAT), capped by what the invoices already billed
+// for units the customer no longer keeps (per item, see overBilledValue), less the return credits the order already
+// has. Example: 4 pumps invoiced at 228,000; 1 returned -> 57,000 credit. A gun invoiced on its own delivery permit
+// and returned is credited even while other items are still to be delivered. A return the later invoices can still
+// leave out (the same item is still to be delivered and invoiced) gives no credit: those invoices bill less instead.
+import { loadSoInvoicingState, orderTotalAfterReturns, overBilledValue, round2 } from "./invoicing"
 
 type Db = any // supabase-js client (or a test double)
 
@@ -37,7 +38,7 @@ export async function creditInvoicedReturn(db: Db, ret: { return_id: number; so_
   if (existing.some((c) => Number(c.reference_id) === ret.return_id)) return null // credited already
   const alreadyCredited = existing.reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
 
-  const overBilled = invoicedTotalForOrder(state) - orderTotalAfterReturns(state, all) - alreadyCredited
+  const overBilled = overBilledValue(state) - alreadyCredited
   const amount = round2(Math.min(thisValue, overBilled))
   if (!(amount > 0.005)) return null
 

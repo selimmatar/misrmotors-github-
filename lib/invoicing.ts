@@ -263,6 +263,40 @@ function invoicedQtyByKey(state: SoInvoicingState, invoices: SoInvoicingState["i
   return map
 }
 
+/**
+ * Value the invoices already billed for units the customer no longer keeps, priced like the invoices (order
+ * discount + VAT). Per item: units invoiced beyond what can still be billed for it (invoiceablePool). A delivery-
+ * permit invoice counts the permit's net quantity when it was created; a whole-order invoice counts what the order
+ * could bill then. Example: a gun invoiced on its own delivery permit and then returned is over-billed by the gun,
+ * even while other items of the order are still to be delivered and invoiced.
+ */
+export function overBilledValue(state: SoInvoicingState): number {
+  const returns = state.returns || []
+  const pools = poolByKey(state, returnedByKey(returns))
+  const invoiced = invoicedQtyByKey(state, state.invoices.filter((i) => !isSoLevelInvoice(i)))
+  for (const inv of state.invoices.filter(isSoLevelInvoice)) {
+    for (const [key, info] of poolByKey(state, returnedByKey(returns, { asOfMs: invoiceAsOf(inv) }))) {
+      invoiced.set(key, (invoiced.get(key) || 0) + info.pool)
+    }
+  }
+  const lines = new Map<string, { raw: number; qty: number }>()
+  for (const line of state.soItems) {
+    const key = lineKey(line.product_id, line.outsourced_name)
+    const entry = lines.get(key) || { raw: 0, qty: 0 }
+    entry.raw += itemRawTotal(line)
+    entry.qty += Number(line.quantity) || 0
+    lines.set(key, entry)
+  }
+  let raw = 0
+  for (const [key, qty] of invoiced) {
+    const over = qty - (pools.get(key)?.pool ?? 0)
+    const line = lines.get(key)
+    if (over <= QTY_EPSILON || !line || line.qty <= 0) continue
+    raw += (line.raw / line.qty) * over
+  }
+  return round2(netInvoiceValue(raw, soDiscountBase(state.soItems, state.so.subtotal), state.so.discount_amount))
+}
+
 const soLabel = (state: SoInvoicingState) => state.so.so_number || `#${state.so.so_id}`
 const invoiceLabels = (invs: SoInvoicingState["invoices"]) => invs.map((i) => i.invoice_number || `#${i.invoice_id}`).join(", ")
 
