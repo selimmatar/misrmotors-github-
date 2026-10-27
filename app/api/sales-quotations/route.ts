@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
       product_name: item.product_name,
       quantity: item.quantity,
       unit_price: item.unit_price,
+      unit_cost: item.unit_cost ?? null,
       supplier_name: item.supplier_name || null,
     }))
 
@@ -211,6 +212,7 @@ export async function PATCH(request: NextRequest) {
       product_name: item.product_name,
       quantity: item.quantity,
       unit_price: item.unit_price,
+      unit_cost: item.unit_cost ?? null,
       supplier_name: item.supplier_name || null,
     }))
 

@@ -304,6 +304,8 @@ export interface SOItem {
   unitPrice: number
   total: number
   itemCategory?: ItemCategory // Add item category field
+  /** Outsourced line: cost per unit before markup (fills the purchase order) */
+  costEstimate?: number | null
 }
 
 export interface AccountsReceivableInvoice {

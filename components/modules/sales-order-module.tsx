@@ -733,7 +733,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             outsourced_unit: item.outsourced_unit,
             outsourced_description: item.outsourced_description,
             supplier_name: item.supplier_name, // Internal-only supplier reference
-          })
+            costEstimate: Number.parseFloat(item.costPrice || "") || null,
+          } as SOItem)
         }
       }
     }

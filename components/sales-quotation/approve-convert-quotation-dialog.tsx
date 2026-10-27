@@ -33,6 +33,7 @@ interface QuotationItemInput {
   product_name: string
   quantity: number
   unit_price: number
+  unit_cost?: number | null
   supplier_name?: string | null
 }
 
@@ -72,6 +73,7 @@ interface EditItem {
   supplierName: string
   quantity: number
   unitPrice: number
+  unitCost?: number | null
 }
 
 interface ApproveConvertQuotationDialogProps {
@@ -113,6 +115,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       supplierName: item.supplier_name || "",
       quantity: item.quantity || 0,
       unitPrice: item.unit_price || 0,
+      unitCost: item.unit_cost ?? null,
     })),
   )
 
@@ -288,6 +291,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         product_name: item.productName,
         quantity: item.quantity,
         unit_price: item.unitPrice,
+        unit_cost: item.itemType === "outsourced" ? item.unitCost ?? null : null,
         item_type: item.itemType === "stock" ? "inventory" : "outsourced",
         supplier_name: item.itemType === "outsourced" ? item.supplierName : null,
       }))
