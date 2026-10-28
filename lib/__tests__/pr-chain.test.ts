@@ -325,6 +325,18 @@ test("new quotation screen: asking for more than is free is allowed only in the 
   assert.match(src, /<StockShortfallNote free=\{stockLimit\} requested=\{item.quantity\} \/>/)
 })
 
+test("Request price from supplier is on the quotation screen after saving and on each waiting quotation", () => {
+  const read = (f: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), f), "utf8")
+  const create = read("components/modules/sales-quotation-module.tsx")
+  assert.match(create, /\{newWorkflow && \(\s*<div className="space-y-1">\s*<RequestPriceButton/)
+  assert.match(create, /lineNo: index \+ 1,/)
+  const list = read("components/modules/approve-sales-quotations-module.tsx")
+  assert.match(list, /\{isNewQuotationWorkflow\(\) && \(\s*<RequestPriceButton/)
+  assert.match(list, /lineNo: item.line_no \?\? index \+ 1/)
+  const button = read("components/sales-quotation/request-price-button.tsx")
+  assert.match(button, /stockShortfall\(l.quantity, free\[String\(l.productId\)\]\)/)
+})
+
 // ------------------------------------------------------------------------------------------- price requests (PR)
 const prDb = (seed: Record<string, Row[]> = {}) => {
   const db = mk({ purchase_orders: [], purchase_order_items: [], sales_order_items: [], ...seed })
