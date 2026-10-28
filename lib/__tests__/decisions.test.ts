@@ -19,7 +19,6 @@ import * as supplierQuoteUpload from "../../app/api/sales-quotations/supplier-qu
 import * as productImages from "../../app/api/product-images/route"
 import * as soAttachments from "../../app/api/sales-orders/attachments/route"
 import * as quotationRequest from "../../app/api/sales-orders/quotation-request/route"
-import * as poRequests from "../../app/api/sales-orders/po-requests/route"
 
 // ---------------------------------------------------------------------------------------------------------
 // 1. Revenue KPI
@@ -171,7 +170,6 @@ const ROUTES: Record<string, { handler: (req: any) => Promise<Response>; extra: 
   "/api/product-images": { handler: productImages.POST, extra: { productId: "1" } },
   "/api/sales-orders/attachments": { handler: soAttachments.POST, extra: { soId: "1" } },
   "/api/sales-orders/quotation-request": { handler: quotationRequest.POST, extra: { soId: "1" } },
-  "/api/sales-orders/po-requests": { handler: poRequests.POST, extra: { soId: "1", manualNumber: "POR-T-1" } },
 }
 
 test("D7. pure rule: same allowlist as /api/upload (jpg alias kept), 10 MB cap", () => {

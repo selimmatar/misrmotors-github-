@@ -6,7 +6,7 @@ import { X } from "lucide-react"
 import type { UserRole } from "@/lib/types"
 import { useI18n } from "@/lib/i18n-context"
 import { ROLE_MODULES, ROLE_DISPLAY_NAMES } from "@/components/layout/nav-config"
-import { groupItems } from "@/lib/nav-groups"
+import { groupItems, hideIdleApprovals } from "@/lib/nav-groups"
 import { cn } from "@/lib/utils"
 
 interface SidebarProps {
@@ -40,7 +40,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
     return () => clearInterval(interval)
   }, [fetchPendingCounts])
 
-  const modules = ROLE_MODULES[userRole] || []
+  const modules = hideIdleApprovals(ROLE_MODULES[userRole] || [], pendingCounts)
   const groups = groupItems(modules)
 
   const sidebarContent = (

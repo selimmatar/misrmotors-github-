@@ -83,6 +83,7 @@ import { Money } from "@/components/erp/money"
 import { formatDate, formatMoney } from "@/lib/format"
 import { canEditSalesOrder } from "@/lib/so-edit-eligibility"
 import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
+import { ChainLine } from "@/components/shared/chain-line"
 
 // Declare SalesOrderModuleProps type
 type SalesOrderModuleProps = {
@@ -1939,6 +1940,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           <DialogHeader>
             <DialogTitle>{t("sales-orders.details")}: {selectedOrder?.soNumber}</DialogTitle>
             {selectedOrder && <ApprovalSteps status={selectedOrder.status} />}
+            {selectedOrder && <ChainLine soId={selectedOrder.id} />}
             <DialogDescription className="sr-only">
               {t("so.full-details-pricing-payment-and")}
             </DialogDescription>

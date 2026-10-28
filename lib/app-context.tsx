@@ -35,7 +35,7 @@ interface AppContextType {
   updateInventoryQuantity: (productId: string, quantityChange: number, warehouseId?: string) => Promise<void>
   purchaseOrders: PurchaseOrder[]
   setPurchaseOrders: (orders: PurchaseOrder[]) => void
-  addPurchaseOrder: (order: PurchaseOrder, options?: { allowOverOrder?: boolean; credits?: { creditId: number; amount: number }[] }) => Promise<void>
+  addPurchaseOrder: (order: PurchaseOrder, options?: { allowOverOrder?: boolean; credits?: { creditId: number; amount: number }[] }) => Promise<{ autoApproved?: boolean }>
   updatePurchaseOrder: (order: PurchaseOrder | (Partial<SalesOrder> & { id: string })) => Promise<void>
   salesOrders: SalesOrder[]
   setSalesOrders: (orders: SalesOrder[]) => void
@@ -257,6 +257,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     unit: inv.products?.unit || inv.unit || "unit",
     quantity: inv.quantity,
     onHold: inv.onHold ?? null,
+    onHoldByQuotations: inv.onHoldByQuotations ?? null,
     available: inv.available ?? null,
     reorderPoint: inv.reorder_point ?? inv.reorderPoint,
     location: inv.location,
@@ -583,6 +584,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           po_number: order.poNumber,
           supplier_id: order.supplierId,
           supplier_name: order.supplierName,
+          ...(order.poRequestId && { po_request_id: order.poRequestId }),
           order_date: order.orderDate,
           expected_delivery: order.expectedDelivery,
           delivery_date: order.deliveryDate,
@@ -628,8 +630,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw Object.assign(new Error(error.error || "Failed to create purchase order"), { code: error.code, lines: error.lines })
       }
 
+      const created = await response.json().catch(() => ({}))
       // Refresh PO list
       mutatePurchaseOrders()
+      // autoApproved: false = the PO was saved but stays pending (its AP invoice could not be made)
+      return { autoApproved: created?.autoApproved }
     } catch (error) {
       console.error("Error adding purchase order:", error)
       throw error

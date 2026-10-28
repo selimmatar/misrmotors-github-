@@ -23,7 +23,7 @@ const STATUS_AR: Record<string, string> = {
   draft: "مسودة",
   pending: "قيد الانتظار",
   pending_accountant: "بانتظار المحاسب",
-  accountant_approved: "معتمد من المحاسب",
+  accountant_approved: "معتمد",
   ready_for_delivery: "جاهز للتسليم",
   shipped: "تم الشحن",
   delivered: "تم التسليم",

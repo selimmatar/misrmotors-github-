@@ -2,6 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getConvertedSo, LOCKED_QUOTATION_STATUSES } from "@/lib/sales-quotations/converted"
 import { buildSalesOrderPaymentFields } from "@/lib/payment-type"
 import { loadAvailability } from "@/lib/stock-hold"
+import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
+import { runApprovalSideEffects } from "@/lib/sales-orders/on-approved"
 import { type NextRequest, NextResponse } from "next/server"
 
 // Converts a quotation into a sales order using the values STORED on the quotation.
@@ -57,12 +59,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Same availability check as SO POST (lib/stock-hold.ts): available = on-hand - stock held by other approved
-    // sales orders. Lines of the same product are added up. Outsourced lines are not checked.
+    // sales orders (and, in the new workflow, by other waiting quotations: this quotation's own hold is not counted
+    // against it). Lines of the same product are added up. Outsourced lines are not checked.
+    // New workflow: a short quotation still converts (the order waits for stock through Missing Items); the
+    // shortage is returned as `missing`. Old workflow: it is refused.
+    const newWorkflow = isNewQuotationWorkflow()
+    const missing: { productId: number; name: string; requested: number; available: number; missing: number }[] = []
     const stockLines = quotationItems.filter((item) => item.item_type !== "outsourced" && item.product_id)
     if (stockLines.length > 0) {
       let availability: Awaited<ReturnType<typeof loadAvailability>>
       try {
-        availability = await loadAvailability(supabase, stockLines.map((item) => Number(item.product_id)))
+        availability = await loadAvailability(supabase, stockLines.map((item) => Number(item.product_id)), { excludeQuotationId: quotation.id })
       } catch (inventoryError) {
         console.error("Approve quotation: Error fetching inventory", inventoryError)
         return NextResponse.json({ error: "Failed to validate inventory" }, { status: 500 })
@@ -76,7 +83,9 @@ export async function POST(request: NextRequest) {
       }
       for (const [productId, { qty, name }] of requested) {
         const availableQty = availability.get(productId)?.available || 0
-        if (qty > availableQty) {
+        if (qty > availableQty && newWorkflow) {
+          missing.push({ productId, name: name || "product", requested: qty, available: availableQty, missing: qty - availableQty })
+        } else if (qty > availableQty) {
           return NextResponse.json(
             { error: `Insufficient inventory for ${name || "product"}. Requested: ${qty}, Available: ${availableQty}` },
             { status: 400 },
@@ -105,13 +114,17 @@ export async function POST(request: NextRequest) {
       return value
     }
 
+    // New workflow: the sales rep's conversion IS the approval (stored as "accountant_approved", shown as "Approved",
+    // so every existing hold / revenue / delivery-permit rule applies unchanged). Old workflow: the accountant approves.
+    const soStatus = newWorkflow ? "accountant_approved" : "pending_accountant"
+
     // Create a new sales order from the approved quotation
     const { data: salesOrder, error: soError } = await supabase
       .from("sales_orders")
       .insert({
         so_number: soNumber,
         customer_id: quotation.customer_id || null,
-        status: "pending_accountant",
+        status: soStatus,
         subtotal: quotation.subtotal,
         total: quotation.total,
         net_total: quotation.net_total || quotation.total,
@@ -207,13 +220,32 @@ export async function POST(request: NextRequest) {
     // The quotation's own status is intentionally not changed: a quotation counts as
     // converted once a sales order references it through parent_quotation_id.
 
+    // What the accountant's approval used to do (the down-payment invoice of a hybrid order) happens now.
+    if (newWorkflow) {
+      try {
+        await runApprovalSideEffects(supabase, salesOrder)
+      } catch (sideEffectError: any) {
+        console.error("Approve quotation: approval side effects failed:", sideEffectError?.message)
+      }
+    }
+
+    // The quotation's price requests now belong to the sales order too (the PO screen suggests them).
+    const { error: prLinkError } = await supabase
+      .from("po_requests")
+      .update({ so_id: salesOrder.so_id, updated_at: new Date().toISOString() })
+      .eq("sales_quotation_id", quotation.id)
+    if (prLinkError) console.error("Approve quotation: could not link price requests to the sales order:", prLinkError)
+
     return NextResponse.json({
       sales_order: {
         so_id: salesOrder.so_id,
         so_number: salesOrder.so_number,
         total: salesOrder.total,
       },
-      message: `Quotation approved! Sales Order ${salesOrder.so_number} created with status "pending_accountant".`,
+      missing,
+      message: newWorkflow
+        ? `Quotation approved! Sales Order ${salesOrder.so_number} created and approved.`
+        : `Quotation approved! Sales Order ${salesOrder.so_number} created with status "pending_accountant".`,
     })
   } catch (error) {
     console.error("Approve quotation error:", error)

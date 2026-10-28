@@ -13,6 +13,15 @@
 // available = on-hand (non-returned inventory rows, all warehouses) - held. Returned-goods rows (is_returned) are
 // never on-hand here, exactly like the existing availability checks.
 
+//
+// Quotation hold (owner request, 2026-10-28; only while isNewQuotationWorkflow()): a quotation that is waiting in
+// "Approve quotations" (status sent/pending, not converted, not past order_date + validity_days) holds the stock of
+// its non-outsourced lines too. It holds only what is free after the order holds: quotations are served oldest
+// first (by id), so the newest quotation is the one that comes up short. A converted quotation holds nothing (its
+// sales order holds instead), so nothing is counted twice.
+
+import { isNewQuotationWorkflow } from "./workflow-switch"
+
 type Db = any // supabase-js client (or a test double)
 
 /** sales_orders.status values that put the order's undelivered stock on hold ('approved' = accountant approval). */
@@ -99,13 +108,88 @@ export function computeHeldByProduct(input: {
   return held
 }
 
+/** sales_quotations.status values of a quotation that waits for the customer and so holds stock. */
+export const HOLDING_QUOTATION_STATUSES = ["sent", "pending"]
+
+export interface HoldQuotation {
+  id: number
+  status: string
+  order_date?: string | null
+  created_at?: string | null
+  validity_days?: number | null
+}
+export interface HoldQuotationLine {
+  quotation_id: number
+  item_type?: string | null
+  product_id: number | null
+  quantity: number
+}
+
+/** Last day (YYYY-MM-DD) a quotation is valid: order_date (or created_at) + validity_days. null = no end date. */
+export function quotationValidUntil(q: HoldQuotation): string | null {
+  const start = q.order_date || q.created_at
+  if (!start || q.validity_days === null || q.validity_days === undefined) return null
+  const d = new Date(`${String(start).slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return null
+  d.setUTCDate(d.getUTCDate() + Number(q.validity_days))
+  return d.toISOString().slice(0, 10)
+}
+
+/** Sent, not converted and not expired on `today` (YYYY-MM-DD). */
+export function isQuotationHolding(q: HoldQuotation, convertedIds: Set<number>, today: string): boolean {
+  if (!HOLDING_QUOTATION_STATUSES.includes(q.status) || convertedIds.has(q.id)) return false
+  const until = quotationValidUntil(q)
+  return until === null || until >= today
+}
+
+export interface QuotationHolds {
+  /** held per product, all holding quotations together */
+  byProduct: Map<number, number>
+  /** per quotation, per product: what it asks for and what it actually holds */
+  byQuotation: Map<number, Map<number, { requested: number; held: number }>>
+}
+
+/** Pure quotation-hold math. `free` = per product, on-hand minus the order holds (never below 0). */
+export function computeQuotationHolds(input: {
+  quotations: HoldQuotation[]
+  lines: HoldQuotationLine[]
+  free: Map<number, number>
+  convertedIds: Set<number>
+  today: string
+  excludeQuotationId?: number
+}): QuotationHolds {
+  const result: QuotationHolds = { byProduct: new Map(), byQuotation: new Map() }
+  // excludeQuotationId (the quotation being checked or converted) still takes its turn in the line, so quotations
+  // made after it cannot take its stock; only its own share is left out of byProduct.
+  const holding = input.quotations
+    .filter((q) => isQuotationHolding(q, input.convertedIds, input.today))
+    .sort((a, b) => a.id - b.id)
+  const left = new Map(input.free)
+  for (const q of holding) {
+    const wanted = new Map<number, number>()
+    for (const line of input.lines) {
+      if (line.quotation_id !== q.id || !line.product_id || line.item_type === "outsourced") continue
+      wanted.set(Number(line.product_id), (wanted.get(Number(line.product_id)) || 0) + num(line.quantity))
+    }
+    const perProduct = new Map<number, { requested: number; held: number }>()
+    for (const [productId, requested] of wanted) {
+      const held = Math.max(0, Math.min(requested, left.get(productId) || 0))
+      left.set(productId, (left.get(productId) || 0) - held)
+      perProduct.set(productId, { requested, held })
+      if (held > 0 && q.id !== input.excludeQuotationId) result.byProduct.set(productId, (result.byProduct.get(productId) || 0) + held)
+    }
+    result.byQuotation.set(q.id, perProduct)
+  }
+  return result
+}
+
 const must = (result: any, what: string): any[] => {
   if (result.error) throw new Error(`${what}: ${result.error.message || result.error}`)
   return result.data || []
 }
 
 /** Held quantity per product id across every holding sales order (optionally ignoring one order). Throws on query errors. */
-export async function loadHeldByProduct(db: Db, opts: { excludeSoId?: number } = {}): Promise<Map<number, number>> {
+export async function loadOrderHeldByProduct(db: Db, opts: { excludeSoId?: number } = {}): Promise<Map<number, number>> {
   const orders = must(await db.from("sales_orders").select("so_id, status").in("status", HOLDING_SO_STATUSES), "load holding orders") as HoldOrder[]
   const soIds = orders.map((o) => o.so_id).filter((id) => id !== opts.excludeSoId)
   if (soIds.length === 0) return new Map()
@@ -128,6 +212,62 @@ export async function loadHeldByProduct(db: Db, opts: { excludeSoId?: number } =
   return computeHeldByProduct({ orders, lines, permits, permitItems, excludeSoId: opts.excludeSoId })
 }
 
+const todayUtc = () => new Date().toISOString().slice(0, 10)
+
+/** Quotation holds (see the header). `orderHeld` = loadOrderHeldByProduct; `onHand` = loadOnHandByProduct (all products). */
+export async function loadQuotationHolds(
+  db: Db,
+  orderHeld: Map<number, number>,
+  onHand: Map<number, number>,
+  opts: { excludeQuotationId?: number; today?: string } = {},
+): Promise<QuotationHolds> {
+  const empty: QuotationHolds = { byProduct: new Map(), byQuotation: new Map() }
+  if (!isNewQuotationWorkflow()) return empty
+  const quotations = must(
+    await db.from("sales_quotations").select("id, status, order_date, created_at, validity_days").in("status", HOLDING_QUOTATION_STATUSES),
+    "load holding quotations",
+  ) as HoldQuotation[]
+  if (quotations.length === 0) return empty
+  const ids = quotations.map((q) => q.id)
+  const converted = await selectInChunks(
+    ids,
+    (chunk) => db.from("sales_orders").select("parent_quotation_id").in("parent_quotation_id", chunk),
+    "load converted quotations",
+  )
+  const convertedIds = new Set<number>(converted.map((r: any) => Number(r.parent_quotation_id)))
+  const open = ids.filter((id) => !convertedIds.has(id))
+  if (open.length === 0) return empty
+  const lines = (await selectInChunks(
+    open,
+    (chunk) => db.from("sales_quotation_items").select("quotation_id, item_type, product_id, quantity").in("quotation_id", chunk),
+    "load quotation lines",
+  )) as HoldQuotationLine[]
+  const free = new Map<number, number>()
+  for (const [id, qty] of onHand) free.set(id, Math.max(0, qty - (orderHeld.get(id) || 0)))
+  return computeQuotationHolds({ quotations, lines, free, convertedIds, today: opts.today || todayUtc(), excludeQuotationId: opts.excludeQuotationId })
+}
+
+export interface HoldOpts {
+  excludeSoId?: number
+  excludeQuotationId?: number
+}
+
+/** Held by orders and by quotations, per product. */
+export async function loadHoldSplit(db: Db, opts: HoldOpts = {}): Promise<{ orders: Map<number, number>; quotations: QuotationHolds; total: Map<number, number> }> {
+  const orders = await loadOrderHeldByProduct(db, { excludeSoId: opts.excludeSoId })
+  const quotations = isNewQuotationWorkflow()
+    ? await loadQuotationHolds(db, orders, await loadOnHandByProduct(db), { excludeQuotationId: opts.excludeQuotationId })
+    : { byProduct: new Map<number, number>(), byQuotation: new Map() }
+  const total = new Map(orders)
+  for (const [id, qty] of quotations.byProduct) total.set(id, (total.get(id) || 0) + qty)
+  return { orders, quotations, total }
+}
+
+/** Held quantity per product id: holding sales orders plus (new workflow) holding quotations. Throws on query errors. */
+export async function loadHeldByProduct(db: Db, opts: HoldOpts = {}): Promise<Map<number, number>> {
+  return (await loadHoldSplit(db, opts)).total
+}
+
 /** Non-returned on-hand per product id (all warehouses). */
 export async function loadOnHandByProduct(db: Db, productIds?: number[]): Promise<Map<number, number>> {
   const base = () => db.from("inventory").select("product_id, quantity").eq("is_returned", false)
@@ -144,7 +284,7 @@ export interface Availability {
 }
 
 /** onHand / held / available (never below 0) for the given products. */
-export async function loadAvailability(db: Db, productIds: number[], opts: { excludeSoId?: number } = {}): Promise<Map<number, Availability>> {
+export async function loadAvailability(db: Db, productIds: number[], opts: HoldOpts = {}): Promise<Map<number, Availability>> {
   const ids = [...new Set(productIds.filter((id) => Number.isInteger(id)))]
   const result = new Map<number, Availability>()
   if (ids.length === 0) return result

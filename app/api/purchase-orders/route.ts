@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
+import { isPoAutoApprove } from "@/lib/workflow-switch"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES, buildApprovalRevert } from "@/lib/po-status"
@@ -49,7 +50,8 @@ function mapPoItem(item: any, poId: number, existingItems: any[] = []) {
     // Never trust the client's line total: it is always quantity x unit price.
     total: poMoney((Number(item.quantity) || 0) * (Number(item.unitPrice ?? item.unit_price ?? 0) || 0)),
     item_type: itemType,
-    outsourced_name: item.outsourcedName || item.outsourced_name || null,
+    // A bought-in line sent with only its product name keeps that name.
+    outsourced_name: item.outsourcedName || item.outsourced_name || (isOutsourced ? item.productName || item.product_name : null) || null,
     outsourced_description: item.outsourcedDescription || item.outsourced_description || null,
     outsourced_unit: item.outsourcedUnit || item.outsourced_unit || null,
     // The client sends these as strings; the columns are integers.
@@ -139,6 +141,20 @@ export async function GET() {
         itemsByPoId[item.po_id].push(item)
       }
 
+      // Price request numbers, for the PO list's "PR" column and search (no FK embed: older POs have none), and the
+      // sales order the PR belongs to, for the "For sales order" column when the PO lines carry none.
+      const prIds = [...new Set(orders.map((o) => o.po_request_id).filter(Boolean))]
+      const prNumbers: Record<number, string> = {}
+      const prSoIds: Record<number, number> = {}
+      if (prIds.length > 0) {
+        const { data: prs, error: prsError } = await supabase.from("po_requests").select("request_id, request_number, so_id").in("request_id", prIds)
+        if (prsError) console.error("Purchase Orders GET: Error fetching price requests", prsError)
+        for (const pr of prs || []) {
+          prNumbers[pr.request_id] = pr.request_number
+          if (pr.so_id) prSoIds[pr.request_id] = pr.so_id
+        }
+      }
+
       const ordersWithItems = orders.map((order) => {
         const items = itemsByPoId[order.po_id] || []
 
@@ -156,6 +172,9 @@ export async function GET() {
           id: order.po_id.toString(),
           poNumber: order.po_number,
           supplierId: order.supplier_id.toString(),
+          poRequestId: order.po_request_id ? order.po_request_id.toString() : undefined,
+          poRequestNumber: order.po_request_id ? prNumbers[order.po_request_id] : undefined,
+          poRequestSoId: order.po_request_id && prSoIds[order.po_request_id] ? prSoIds[order.po_request_id].toString() : undefined,
           orderDate: order.order_date,
           deliveryDate: order.delivery_date,
           status: order.status,
@@ -208,7 +227,7 @@ export async function GET() {
             productId: item.product_id?.toString(),
             productName:
               item.item_type === "outsourced"
-                ? item.outsourced_name || "Outsourced Item"
+                ? item.outsourced_name || item.item_name_snapshot || "Outsourced Item"
                 : item.products?.product_name || item.item_name_snapshot || "Unknown Product",
             sku: item.products?.sku || "",
             unit: item.item_type === "outsourced" ? item.outsourced_unit || "" : item.products?.unit || "pcs",
@@ -293,6 +312,28 @@ export async function POST(request: Request) {
     })
     if (!creditCheck.ok) return NextResponse.json(creditCheck.result.body, { status: creditCheck.result.status })
 
+    // Optional price request (PR) this PO answers: one PR = one supplier = one PO, so it must be the same supplier
+    // and not already used or cancelled. Checked before anything is written; marked "converted" once the PO exists.
+    const rawPoRequestId = orderData.po_request_id ?? orderData.poRequestId
+    let poRequestId: number | null = null
+    if (rawPoRequestId !== undefined && rawPoRequestId !== null && rawPoRequestId !== "") {
+      poRequestId = parsePositiveId(String(rawPoRequestId))
+      if (!poRequestId) return NextResponse.json({ error: "Invalid po_request_id" }, { status: 400 })
+      const { data: poRequest, error: poRequestError } = await supabase
+        .from("po_requests")
+        .select("request_id, supplier_id, status")
+        .eq("request_id", poRequestId)
+        .maybeSingle()
+      if (poRequestError) throw poRequestError
+      if (!poRequest) return NextResponse.json({ error: "Price request not found" }, { status: 404 })
+      if (Number(poRequest.supplier_id) !== Number(orderData.supplier_id || orderData.supplierId)) {
+        return NextResponse.json({ error: "The price request is for another supplier", code: "PR_SUPPLIER" }, { status: 400 })
+      }
+      if (poRequest.status !== "pending" && poRequest.status !== "quoted") {
+        return NextResponse.json({ error: "The price request is already used or cancelled", code: "PR_CLOSED" }, { status: 409 })
+      }
+    }
+
     // Always generate the PO number server-side (obfuscated, atomic) — never trust a
     // client-supplied value, which was previously a predictable, guessable counter.
     const { data: generatedPoNumber, error: poNumberError } = await supabase.rpc("generate_po_number")
@@ -360,6 +401,7 @@ export async function POST(request: Request) {
       bank_iban: orderData.bank_iban || orderData.bankIban || null,
       bank_branch: orderData.bank_branch || orderData.bankBranch || null,
       bank_holder_name: orderData.bank_holder_name || orderData.bankHolderName || null,
+      ...(poRequestId && { po_request_id: poRequestId }),
     }
 
 
@@ -408,7 +450,47 @@ export async function POST(request: Request) {
         return NextResponse.json(reserveError.body, { status: reserveError.status })
       }
     }
+    if (poRequestId) {
+      // The PO is saved; a failure here leaves the PR open (it can still be closed by hand), so it does not fail the PO.
+      const { error: prError } = await supabase
+        .from("po_requests")
+        .update({ status: "converted", updated_at: new Date().toISOString() })
+        .eq("request_id", poRequestId)
+        .in("status", ["pending", "quoted"])
+      if (prError) console.error("Purchase Orders POST: could not mark the price request converted", prError)
+    }
     const appliedCredit = Math.round(parsedCredits.selections.reduce((sum, c) => sum + c.amount, 0) * 100) / 100
+
+    // No CEO approval (see lib/workflow-switch.ts): the new PO is approved now and gets its AP invoice, the same way
+    // the approve action does it. If the AP invoice fails the PO stays pending, so it can still be approved by hand.
+    let autoApproved: boolean | undefined
+    if (isPoAutoApprove() && order.status === "pending") {
+      autoApproved = false
+      const { data: approvedRows, error: approveError } = await supabase
+        .from("purchase_orders")
+        .update({ status: "approved", approved_at: new Date().toISOString(), approved_by: order.created_by || null })
+        .eq("po_id", order.po_id)
+        .eq("status", "pending")
+        .select()
+      const approvedOrder = !approveError && Array.isArray(approvedRows) ? approvedRows[0] : null
+      if (!approvedOrder) {
+        console.error("Purchase Orders POST: could not approve the new purchase order", approveError)
+      } else {
+        const apError = await ensureApInvoice(supabase, approvedOrder)
+        if (apError) {
+          console.error("Purchase Orders POST: AP invoice failed, the purchase order stays pending", apError)
+          const { error: revertError } = await supabase
+            .from("purchase_orders")
+            .update({ status: "pending", approved_at: null, approved_by: null })
+            .eq("po_id", order.po_id)
+            .eq("status", "approved")
+          if (revertError) console.error("Purchase Orders POST: could not put the purchase order back to pending", revertError)
+        } else {
+          Object.assign(order, approvedOrder)
+          autoApproved = true
+        }
+      }
+    }
 
     const createdOrder = {
       id: order.po_id.toString(),
@@ -472,6 +554,7 @@ export async function POST(request: Request) {
       bankBranch: order.bank_branch,
       bankHolderName: order.bank_holder_name,
       appliedCredit,
+      ...(autoApproved === undefined ? {} : { autoApproved }),
     }
 
     return NextResponse.json(createdOrder)

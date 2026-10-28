@@ -1,5 +1,9 @@
 // Sales-order approval progress (spec §4.4): accountant → warehouse → shipping → delivered.
 // Quotation, cancelled and unknown statuses have no approval track and return null.
+// New quotation workflow (lib/workflow-switch.ts): the first step is the sales rep's approval at conversion, so it is
+// labelled "Approved" instead of "Accountant".
+import { isNewQuotationWorkflow } from "./workflow-switch"
+
 export const APPROVAL_STEPS = ["accountant", "warehouse", "shipping", "delivered"] as const
 export type ApprovalStep = (typeof APPROVAL_STEPS)[number]
 
@@ -24,10 +28,15 @@ export function approvalState(status: string | null | undefined): ApprovalState 
   return state ? { ...state } : null
 }
 
+/** i18n key of a step's label. */
+export function approvalStepLabelKey(step: ApprovalStep): string {
+  return step === "accountant" && isNewQuotationWorkflow() ? "approval.approved" : `approval.${step}`
+}
+
 export function approvalAriaLabel(state: ApprovalState, t: (key: string) => string): string {
   const title = t("approval.title")
   if (state.current) {
-    return `${title}: ${t("approval.step")} ${state.done + 1} ${t("approval.of")} ${APPROVAL_STEPS.length}, ${t(`approval.${state.current}`)}`
+    return `${title}: ${t("approval.step")} ${state.done + 1} ${t("approval.of")} ${APPROVAL_STEPS.length}, ${t(approvalStepLabelKey(state.current))}`
   }
   return `${title}: ${t(state.done >= APPROVAL_STEPS.length ? "approval.complete" : "approval.not-started")}`
 }

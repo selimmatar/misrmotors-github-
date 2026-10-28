@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { chainTextForPrint } from "@/lib/po-requests/chain"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
@@ -114,6 +115,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const chainLine = await chainTextForPrint(supabase, { poId: po.po_id })
     const html = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
@@ -159,7 +161,11 @@ export async function GET(request: NextRequest) {
         <div class="pm-field">
           <div class="pm-label">رقم أمر الشراء:</div>
           <div class="pm-value">${escapeHtml(po.po_number)}</div>
-        </div>
+        </div>${chainLine ? `
+        <div class="pm-field">
+          <div class="pm-label">مرتبط بـ / Linked:</div>
+          <div class="pm-value" dir="ltr">${escapeHtml(chainLine)}</div>
+        </div>` : ""}
         <div class="pm-field">
           <div class="pm-label">التاريخ:</div>
           <div class="pm-value">${formatDate(po.order_date || po.created_at)}</div>

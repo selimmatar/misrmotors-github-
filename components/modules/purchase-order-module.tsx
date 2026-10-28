@@ -2,7 +2,7 @@
 
 import { DialogFooter } from "@/components/ui/dialog"
 
-import { Fragment, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -41,6 +41,7 @@ import { useAppContext } from "@/lib/app-context"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { describeOverOrderLines, type OverOrderLine } from "@/lib/po-over-order"
+import { ChainLine } from "@/components/shared/chain-line"
 import { SupplierCreditPicker, appliedCreditTotal, creditSelections, type CreditAmounts } from "@/components/supplier/supplier-credit-picker"
 
 interface PurchaseOrderModuleProps {
@@ -93,6 +94,9 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   const [poSource, setPoSource] = useState<"manual" | "sales_order">("manual")
   const [selectedSourceSoId, setSelectedSourceSoId] = useState<string>("")
   const [soSearchTerm, setSoSearchTerm] = useState<string>("")
+  // Price request (PR) this PO answers: optional; suggested from the chosen supplier (and sales order)
+  const [openPoRequests, setOpenPoRequests] = useState<{ request_id: number; request_number: string; so_id: number | null }[]>([])
+  const [selectedPoRequestId, setSelectedPoRequestId] = useState<string>("")
   const [poInvoiceFile, setPoInvoiceFile] = useState<File | null>(null)
   const [uploadingInvoice, setUploadingInvoice] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
@@ -234,7 +238,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
   // Internal only: which sales order(s) and customer(s) this PO was raised for
   const getLinkedSalesOrders = (order: any): string => {
-    const ids = [...new Set((order.items || []).map((i: any) => i.sourceSoId ?? i.source_so_id).filter(Boolean).map(String))]
+    // Lines raised from Missing Items carry their SO; a PO made from a price request gets it from the PR.
+    const ids = [...new Set([...(order.items || []).map((i: any) => i.sourceSoId ?? i.source_so_id), order.poRequestSoId].filter(Boolean).map(String))]
     return ids
       .map((id) => {
         const so = (salesOrders || []).find((s: any) => s.id?.toString() === id || s.soId?.toString() === id)
@@ -540,6 +545,30 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   }
 
   // Load the outsourced items of a sales order that belong to the selected supplier
+  // Open PRs of the chosen supplier (for the chosen SO when one is picked). Exactly one match on an SO is pre-selected;
+  // the user can always clear it, a PO never needs a PR.
+  useEffect(() => {
+    setSelectedPoRequestId("")
+    setOpenPoRequests([])
+    if (!formData.supplierId) return
+    const soId = poSource === "sales_order" ? selectedSourceSoId : ""
+    const params = new URLSearchParams({ supplier_id: formData.supplierId })
+    if (soId) params.set("so_id", soId)
+    let cancelled = false
+    fetch(`/api/po-requests?${params}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: any[]) => {
+        if (cancelled || !Array.isArray(rows)) return
+        const open = rows.filter((r) => r.status === "pending" || r.status === "quoted")
+        setOpenPoRequests(open)
+        if (soId && open.length === 1) setSelectedPoRequestId(String(open[0].request_id))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [formData.supplierId, poSource, selectedSourceSoId])
+
   const loadOutsourcedItemsFromSO = (soId: string) => {
     const so = (salesOrders || []).find(
       (s: any) => s.id?.toString() === soId.toString() || s.soId?.toString() === soId.toString(),
@@ -751,6 +780,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         id: Date.now().toString(),
         poNumber: `PO-2025-${String(purchaseOrders.length + 1).padStart(3, "0")}`,
         supplierId: formData.supplierId,
+        ...(selectedPoRequestId && { poRequestId: selectedPoRequestId }),
         orderDate: new Date().toISOString().split("T")[0],
         deliveryDate: formData.dueDate,
         expiryDate: formData.expiryDate,
@@ -808,16 +838,18 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         }),
       }
 
+      let created: { autoApproved?: boolean }
       try {
-        await addPurchaseOrder(newOrder, { credits })
+        created = await addPurchaseOrder(newOrder, { credits })
       } catch (error) {
         // Over the sales order quantity: the user may confirm and order anyway (an unknown SO line is still refused)
         const details = error as { code?: string; lines?: OverOrderLine[] }
         if (details?.code !== "PO_OVER_ORDER" || !Array.isArray(details.lines)) throw error
         const lines = describeOverOrderLines(details.lines, newOrder.items as any[], t("po.over-order.line"))
         if (!confirm(fill(t("po.over-order.confirm"), { lines }))) return
-        await addPurchaseOrder(newOrder, { allowOverOrder: true, credits })
+        created = await addPurchaseOrder(newOrder, { allowOverOrder: true, credits })
       }
+      if (created.autoApproved === false) alert(t("po.auto-approve-failed"))
 
       // Reset form
       resetForm()
@@ -1117,6 +1149,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     const lowerQuery = searchQuery.toLowerCase()
     return (
       order.poNumber.toLowerCase().includes(lowerQuery) ||
+      (order.poRequestNumber || "").toLowerCase().includes(lowerQuery) ||
       getSupplierName(order.supplierId).toLowerCase().includes(lowerQuery)
     )
   })
@@ -1146,6 +1179,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     setPoSource("manual")
     setSelectedSourceSoId("")
     setSoSearchTerm("")
+    setSelectedPoRequestId("")
     setPoInvoiceFile(null)
     setPaymentType("cash")
     setPaymentDetails({
@@ -1258,12 +1292,19 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       />
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>{t("po.list")}</CardTitle>
+          <Input
+            className="sm:max-w-xs"
+            aria-label={t("po.search")}
+            placeholder={t("po.search")}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </CardHeader>
         <CardContent>
           <ResponsiveList
-            rows={purchaseOrders}
+            rows={filteredOrders}
             table={
               <ErpTable>
                 <TableHeader>
@@ -1281,10 +1322,15 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {purchaseOrders.map((order) => (
+                  {filteredOrders.map((order) => (
                     <Fragment key={order.id}>
                       <TableRow>
-                        <IdCell>{order.poNumber}</IdCell>
+                        <IdCell>
+                          {order.poNumber}
+                          {order.poRequestNumber && (
+                            <span className="block text-xs text-muted-foreground">{order.poRequestNumber}</span>
+                          )}
+                        </IdCell>
                         <TableCell>{getSupplierName(order.supplierId)}</TableCell>
                         <TableCell>{getLinkedSalesOrders(order) || "-"}</TableCell>
                         <TableCell>{formatDate(order.orderDate, language)}</TableCell>
@@ -1315,7 +1361,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             }
             card={(order) => (
               <ListCard
-                id={order.poNumber}
+                id={order.poRequestNumber ? `${order.poNumber} · ${order.poRequestNumber}` : order.poNumber}
                 party={[getSupplierName(order.supplierId), getLinkedSalesOrders(order)].filter(Boolean).join(" — ")}
                 amount={formatMoney(order.total, language)}
                 status={<StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />}
@@ -1560,6 +1606,29 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       )}
                     </>
                   )}
+                </div>
+              )}
+
+              {/* Optional price request (PR) this PO answers; marked "converted" when the PO is saved */}
+              {formData.supplierId && openPoRequests.length > 0 && (
+                <div className="mt-3">
+                  <label className="text-sm font-medium" htmlFor="po-request-select">
+                    {t("chain.po-request")}
+                  </label>
+                  <select
+                    id="po-request-select"
+                    className="w-full border rounded px-3 py-2 mt-1"
+                    value={selectedPoRequestId}
+                    onChange={(e) => setSelectedPoRequestId(e.target.value)}
+                  >
+                    <option value="">{t("chain.no-po-request")}</option>
+                    {openPoRequests.map((pr) => (
+                      <option key={pr.request_id} value={pr.request_id}>
+                        {pr.request_number}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">{t("chain.po-request-hint")}</p>
                 </div>
               )}
             </div>
@@ -1870,6 +1939,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl">{fill(t("po.details-title"), { number: viewDetailsOrder.poNumber })}</DialogTitle>
+              <ChainLine poId={viewDetailsOrder.id} />
             </DialogHeader>
             
             <div className="space-y-6">

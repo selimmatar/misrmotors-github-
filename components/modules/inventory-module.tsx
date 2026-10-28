@@ -807,6 +807,14 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                           <NumCell>{formatNumber(item.quantity)}</NumCell>
                           <NumCell className="text-sm text-muted-foreground">
                             {item.onHold ? formatNumber(item.onHold) : "-"}
+                            {item.onHold && item.onHoldByQuotations ? (
+                              <span className="block text-xs">
+                                {fill(t("inventory.on-hold-split"), {
+                                  quotations: formatNumber(item.onHoldByQuotations),
+                                  orders: formatNumber(item.onHold - item.onHoldByQuotations),
+                                })}
+                              </span>
+                            ) : null}
                           </NumCell>
                           <NumCell>{formatNumber(item.reorderPoint)}</NumCell>
                           <NumCell>{formatMoney(item.unitCost ?? 0, language)}</NumCell>

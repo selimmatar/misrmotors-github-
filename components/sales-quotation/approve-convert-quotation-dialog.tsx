@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,6 +25,12 @@ import { DiscountFields, calculateDiscount, type DiscountType } from "@/componen
 import { PaymentTypeSelector, InstallmentFields, ChequeFields } from "@/components/payment"
 import type { PaymentType, PaymentDetails, ItemCategory } from "@/lib/types"
 import { normalizeQuotationPaymentDetails } from "@/lib/payment-type"
+import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
+import { StockShortfallNote } from "@/components/sales-quotation/stock-shortfall-note"
+import { RequestPriceDialog } from "@/components/sales-quotation/request-price-dialog"
+import { applyPrCosts } from "@/lib/po-requests/apply-costs"
+import { stockShortfall } from "@/lib/quotation-shortfall"
+import { ChainLine } from "@/components/shared/chain-line"
 
 interface QuotationItemInput {
   id?: number
@@ -184,8 +190,60 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     return Array.from(totals.entries()).map(([productId, quantity]) => ({ productId, quantity }))
   }, [inventory])
 
+  // New quotation workflow: free stock for this quotation (on hand minus what orders and other waiting quotations
+  // hold, this quotation's own hold left out), from the server, so "N missing" matches what conversion will say.
+  const newWorkflow = isNewQuotationWorkflow()
+  const [freeForQuotation, setFreeForQuotation] = useState<Record<string, number>>({})
+  const stockProductKey = [...new Set(items.filter((i) => i.itemType === "stock" && i.productId).map((i) => i.productId))].sort().join(",")
+  useEffect(() => {
+    if (!newWorkflow || !stockProductKey) return
+    let cancelled = false
+    fetch(`/api/sales-quotations/availability?quotation_id=${quotation.id}&product_ids=${stockProductKey}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!cancelled && body?.availability) setFreeForQuotation(body.availability)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [newWorkflow, stockProductKey, quotation.id])
+
+  // Price requests (PRs) made for this quotation; the newest one with supplier prices feeds "Use these costs".
+  const [requestPriceOpen, setRequestPriceOpen] = useState(false)
+  const [priceRequests, setPriceRequests] = useState<any[]>([])
+  const loadPriceRequests = () =>
+    fetch(`/api/po-requests?sales_quotation_id=${quotation.id}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setPriceRequests(Array.isArray(rows) ? rows : []))
+      .catch(() => {})
+  useEffect(() => {
+    loadPriceRequests()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotation.id])
+  const quotedRequest = priceRequests.find((pr) => pr.status === "quoted" && (pr.po_request_items || []).some((i: any) => i.unit_price !== null))
+
+  const handleUseCosts = () => {
+    if (!quotedRequest) return
+    const result = applyPrCosts(
+      items.map((item, index) => ({ ...item, lineNo: index + 1, outsourced: item.itemType === "outsourced" })),
+      quotedRequest.po_request_items || [],
+    )
+    setItems(result.lines.map(({ lineNo: _lineNo, outsourced: _outsourced, ...item }) => item))
+    alert(fill(t("chain.use-costs-done"), { filled: String(result.filled), skipped: String(result.skipped), number: quotedRequest.request_number }))
+  }
+
+  const handleRequestPrice = () => {
+    if (hasUnsavedChanges) {
+      alert(fill(t("chain.save-first"), { button: t("quote-convert.save-print") }))
+      return
+    }
+    setRequestPriceOpen(true)
+  }
+
   const getAvailableStock = (productId: string): number | null => {
     if (!productId) return null
+    if (newWorkflow) return productId in freeForQuotation ? freeForQuotation[productId] : null
     const entry = aggregatedInventory.find((inv) => inv.productId === productId)
     return entry ? entry.quantity : 0
   }
@@ -657,7 +715,12 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
         throw new Error(error.error || "Failed to approve quotation")
       }
 
-      const { sales_order } = await response.json()
+      const { sales_order, missing } = await response.json()
+      // New workflow: a short order is still created; say what it waits for (it shows in Missing Items).
+      if (Array.isArray(missing) && missing.length > 0) {
+        const lines = missing.map((m: { name: string; missing: number }) => `${m.name}: ${m.missing}`).join("\n")
+        alert(fill(t("quote-convert.converted-with-missing"), { number: sales_order.so_number, lines }))
+      }
       onApproved(sales_order.so_number)
     } catch (error) {
       console.error("Error approving quotation:", error)
@@ -674,6 +737,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("quote-convert.title")} {quotation.quotation_number}</DialogTitle>
+          <ChainLine quotationId={quotation.id} />
           <DialogDescription>
             {t("quote-convert.description")}
           </DialogDescription>
@@ -736,6 +800,14 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                   <UserPlus className="h-4 w-4 mr-2" />
                   {t("common.add-outsourced-item")}
                 </Button>
+                <Button size="sm" variant="outline" onClick={handleRequestPrice}>
+                  {t("chain.request-price")}
+                </Button>
+                {quotedRequest && (
+                  <Button size="sm" variant="outline" onClick={handleUseCosts}>
+                    {fill(t("chain.use-costs"), { number: quotedRequest.request_number })}
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -762,8 +834,12 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                             value={item.productId || undefined}
                             onSelect={(productId) => handleSelectStockProduct(item.key, productId)}
                           />
-                          {stockLimit !== null && (
-                            <p className="text-xs text-muted-foreground">{stockLimit} {t("common.in-stock")}</p>
+                          {newWorkflow ? (
+                            <StockShortfallNote free={stockLimit} requested={item.quantity} />
+                          ) : (
+                            stockLimit !== null && (
+                              <p className="text-xs text-muted-foreground">{stockLimit} {t("common.in-stock")}</p>
+                            )
                           )}
                         </div>
                       ) : (
@@ -935,6 +1011,23 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
             {saving ? (uploadingDocument ? t("common.uploading") : t("quote-convert.approving")) : t("common.approve-convert-to-so")}
           </Button>
         </DialogFooter>
+        {requestPriceOpen && (
+          <RequestPriceDialog
+            open={requestPriceOpen}
+            onOpenChange={setRequestPriceOpen}
+            quotation={{ id: quotation.id, quotation_number: quotation.quotation_number }}
+            lines={items.map((item, index) => ({
+              lineNo: index + 1,
+              productId: item.productId ? Number(item.productId) : null,
+              productName: item.productName,
+              quantity: item.quantity,
+              outsourced: item.itemType === "outsourced",
+              missing: item.itemType === "stock" ? stockShortfall(item.quantity, getAvailableStock(item.productId)) : 0,
+            }))}
+            suppliers={suppliers}
+            onCreated={loadPriceRequests}
+          />
+        )}
       </DialogContent>
     </Dialog>
   )

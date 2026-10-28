@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
-import { loadHeldByProduct } from "@/lib/stock-hold"
+import { loadHoldSplit } from "@/lib/stock-hold"
 
 export const dynamic = "force-dynamic"
 
@@ -36,9 +36,13 @@ export async function GET() {
 
     // Batch 4E-stock: stock on hold for approved sales orders (derived, product level) and what is left to sell.
     // onHold/available are null when the hold cannot be computed (the list itself is still returned).
+    // onHoldByQuotations: the part held by quotations waiting for the customer (new quotation workflow).
     let heldByProduct: Map<number, number> | null = null
+    let heldByQuotations: Map<number, number> = new Map()
     try {
-      heldByProduct = await loadHeldByProduct(createAdminClient())
+      const split = await loadHoldSplit(createAdminClient())
+      heldByProduct = split.total
+      heldByQuotations = split.quotations.byProduct
     } catch (holdError) {
       console.error("Inventory GET: could not compute stock on hold:", holdError)
     }
@@ -65,6 +69,7 @@ export async function GET() {
         quantity: item.quantity,
         // product-level (all warehouses): same value on every row of the product
         onHold,
+        onHoldByQuotations: onHold === null ? null : sellable ? heldByQuotations.get(item.product_id) || 0 : 0,
         available,
         unitCost: item.unit_cost ?? 0,
         reorderPoint: item.reorder_point || 5,

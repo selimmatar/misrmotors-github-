@@ -15,6 +15,7 @@ import * as finalizeRoute from "../../app/api/purchase-orders/finalize-cost/rout
 import * as grnRoute from "../../app/api/goods-receipts/route"
 import * as approveRoute from "../../app/api/sales-quotations/approve/route"
 import * as scheduleRoute from "../../app/api/payment-schedules/route"
+import { workflowSwitch } from "../workflow-switch"
 
 // =============================================================================================== A. purchase orders
 function poDb(seed: Record<string, Row[]> = {}) {
@@ -236,17 +237,23 @@ function quoteDb(onHand: number, seed: Record<string, Row[]> = {}) {
   return db
 }
 const convert = () => call(approveRoute.POST as any, "POST", { quotation_id: 1 })
+// C1/C2 pin the old refusal: in the new quotation workflow a short quotation converts (pr-chain.test.ts).
+const oldWorkflow = async (fn: () => Promise<void>) => {
+  const before = workflowSwitch.newQuotationWorkflow
+  workflowSwitch.newQuotationWorkflow = false
+  try { await fn() } finally { workflowSwitch.newQuotationWorkflow = before }
+}
 
-test("C1. converting a quotation with too little stock is refused with SO POST's 400 shape; nothing created", async () => {
+test("C1. old workflow: converting a quotation with too little stock is refused with SO POST's 400 shape; nothing created", () => oldWorkflow(async () => {
   const db = quoteDb(3)
   const r = await convert()
   assert.equal(r.status, 400, JSON.stringify(r.body))
   assert.match(r.body.error, /^Insufficient inventory for Pump\. Requested: 5, Available: 3$/)
   assert.equal(db.tables.sales_orders.length, 0)
   assert.equal(db.tables.sales_order_items.length, 0)
-})
+}))
 
-test("C2. stock held by an approved sales order is not available to the conversion", async () => {
+test("C2. old workflow: stock held by an approved sales order is not available to the conversion", () => oldWorkflow(async () => {
   const db = quoteDb(10, {
     sales_orders: [{ so_id: 40, so_number: "SO-OLD", status: "accountant_approved" }],
     sales_order_items: [{ so_item_id: 1, so_id: 40, product_id: 7, quantity: 8, item_type: "stock" }],
@@ -255,7 +262,7 @@ test("C2. stock held by an approved sales order is not available to the conversi
   assert.equal(r.status, 400, JSON.stringify(r.body))
   assert.match(r.body.error, /Available: 2/)
   assert.equal(db.tables.sales_orders.length, 1)
-})
+}))
 
 test("C3. enough stock: the conversion still works", async () => {
   const db = quoteDb(5)
