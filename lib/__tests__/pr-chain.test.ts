@@ -15,6 +15,7 @@ import { applyPrCosts } from "../po-requests/apply-costs"
 import { readItemRows } from "../excel/read-item-rows"
 import { loadChain, chainText } from "../po-requests/chain"
 import * as chainRoute from "../../app/api/chain/route"
+import * as quotationPdfRoute from "../../app/api/quotations/generate/route"
 import { stockShortfall } from "../quotation-shortfall"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -335,6 +336,31 @@ test("Request price from supplier is on the quotation screen after saving and on
   assert.match(list, /lineNo: item.line_no \?\? index \+ 1/)
   const button = read("components/sales-quotation/request-price-button.tsx")
   assert.match(button, /stockShortfall\(l.quantity, free\[String\(l.productId\)\]\)/)
+})
+
+test("quotation PDF: lines without a product id do not ask the database for product 'undefined'", async () => {
+  const db = mk({ products: [{ product_id: 7, product_name: "Pump 7", unit_price: 100 }] })
+  const asked: any[][] = []
+  const from = db.from.bind(db)
+  db.from = ((table: string) => {
+    const q: any = from(table)
+    const inFn = q.in.bind(q)
+    q.in = (c: string, vs: any[]) => { asked.push(vs); return inFn(c, vs) }
+    return q
+  }) as any
+  useDb(db)
+  const pdf = (items: any[]) => {
+    const data = encodeURIComponent(JSON.stringify({ customer_name: "Dummy", items }))
+    const url = new URL(`http://test.local/api/quotations/generate?data=${data}&qn=QT-T-1`)
+    return quotationPdfRoute.GET(Object.assign(new Request(url), { nextUrl: url }) as any)
+  }
+  const res = await pdf([{ product_name: "Bought-in pump", quantity: 1, unit_price: 50 }])
+  assert.equal(res.status, 200)
+  assert.deepEqual(asked, [])
+  const res2 = await pdf([{ product_id: 7, quantity: 2 }, { product_name: "Bought-in pump", quantity: 1, unit_price: 50 }])
+  assert.equal(res2.status, 200)
+  assert.deepEqual(asked, [[7]])
+  assert.match(await res2.text(), /Pump 7/)
 })
 
 // ------------------------------------------------------------------------------------------- price requests (PR)
