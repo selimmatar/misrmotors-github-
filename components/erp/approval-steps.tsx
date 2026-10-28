@@ -2,7 +2,7 @@
 
 import { Check } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
-import { APPROVAL_STEPS, approvalAriaLabel, approvalState } from "@/lib/approval-steps"
+import { APPROVAL_STEPS, approvalAriaLabel, approvalState, approvalStepLabelKey } from "@/lib/approval-steps"
 import { cn } from "@/lib/utils"
 
 // Sales-order approval track: Accountant → Warehouse → Shipping → Delivered. Renders nothing for statuses
@@ -30,7 +30,7 @@ export function ApprovalSteps({ status, className }: { status: string | null | u
             )}
           >
             {done ? <Check className="size-3" aria-hidden="true" /> : <span aria-hidden="true">{i + 1}</span>}
-            {t(`approval.${step}`)}
+            {t(approvalStepLabelKey(step))}
           </li>
         )
       })}

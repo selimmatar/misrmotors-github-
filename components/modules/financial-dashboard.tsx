@@ -19,6 +19,7 @@ import { Money } from "@/components/erp/money"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { formatDate, statusLabel } from "@/lib/format"
 import { withoutVat, supplierAmountWithoutVat, supplierPaid, supplierUnpaid, profitMarginPercent } from "@/lib/dashboard-figures"
+import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
 
 const BarChart = dynamic(() => import("recharts").then((mod) => mod.BarChart), { ssr: false })
 const Bar = dynamic(() => import("recharts").then((mod) => mod.Bar), { ssr: false })
@@ -796,7 +797,7 @@ export function FinancialDashboard({ user }: FinancialDashboardProps) {
                   <KpiTile key={index} label={stat.label} value={stat.value} sub={stat.change} onClick={stat.onClick} />
                 ))}
 
-        {user.role === "accountant" && (
+        {user.role === "accountant" && (!isNewQuotationWorkflow() || pendingSalesOrders.length > 0) && (
           <KpiTile
             label={t("financial.approve-sales-orders")}
             value={pendingSalesOrders.length}

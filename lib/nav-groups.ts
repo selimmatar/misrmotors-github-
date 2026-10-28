@@ -1,5 +1,7 @@
 // Sidebar groups and the phone tab model (spec §5). Pure data: the role item lists live in
 // components/layout/nav-config.ts and are never added to or reordered here.
+import { isNewQuotationWorkflow } from "./workflow-switch"
+
 export const GROUP_ORDER = ["overview", "sales", "purchasing", "inventory", "finance", "operations", "admin"] as const
 export type GroupId = (typeof GROUP_ORDER)[number]
 
@@ -87,3 +89,14 @@ export function buildMobileTabs<T extends { id: string }>(items: readonly T[]): 
   tabs.push({ kind: "menu" })
   return tabs
 }
+
+/**
+ * New quotation workflow (lib/workflow-switch.ts): the sales rep's conversion approves the sales order, so the
+ * accountant's "Approve sales orders" item is shown only while an older order is still waiting for that approval
+ * (its pending count > 0). Old workflow: unchanged.
+ */
+export function hideIdleApprovals<T extends { id: string }>(items: readonly T[], counts: Record<string, number>, newWorkflow = isNewQuotationWorkflow()): T[] {
+  if (!newWorkflow) return [...items]
+  return items.filter((item) => item.id !== "approve-sales-orders" || (counts[item.id] || 0) > 0)
+}
+

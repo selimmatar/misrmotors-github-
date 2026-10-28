@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { MobileTabs } from "@/components/layout/mobile-tabs"
 import { ROLE_MODULES } from "@/components/layout/nav-config"
+import { hideIdleApprovals } from "@/lib/nav-groups"
 import { PurchaseOrderModule } from "@/components/modules/purchase-order-module"
 import { PORequestModule } from "@/components/modules/po-request-module"
 import { SupplierModule } from "@/components/modules/supplier-module"
@@ -244,7 +245,7 @@ case "po-requests":
         </main>
       </div>
       <MobileTabs
-        items={ROLE_MODULES[user.role] ?? []}
+        items={hideIdleApprovals(ROLE_MODULES[user.role] ?? [], {})}
         activeModule={activeModule}
         onNavigate={(id) => setActiveModule(id as ModuleType)}
         onOpenMenu={() => setMobileSidebarOpen(true)}

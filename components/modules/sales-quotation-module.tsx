@@ -34,6 +34,9 @@ import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { Money } from "@/components/erp/money"
 import { openPendingWindow } from "@/lib/print/pending-window"
+import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
+import { readItemRows } from "@/lib/excel/read-item-rows"
+import { StockShortfallNote } from "@/components/sales-quotation/stock-shortfall-note"
 
 interface QuotationItem {
   id: string
@@ -65,8 +68,14 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     return Array.from(totals.entries()).map(([productId, quantity]) => ({ productId, quantity }))
   }, [inventory])
 
+  const newWorkflow = isNewQuotationWorkflow()
   const getAvailableStock = (productId?: number | null): number | null => {
     if (productId === undefined || productId === null) return null
+    // New quotation workflow: free stock = on hand minus what orders and other waiting quotations hold.
+    if (newWorkflow) {
+      const row = inventory.find((inv) => inv.productId === productId.toString() && typeof inv.available === "number")
+      if (row) return row.available as number
+    }
     const entry = aggregatedInventory.find((inv) => inv.productId === productId.toString())
     return entry ? entry.quantity : 0
   }
@@ -556,28 +565,14 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
         // Map Excel rows to quotation items
         // Expected columns: Product Name, Quantity, Unit Price, Outsourced (yes/no), Supplier Name
-        const newItems: QuotationItem[] = jsonData.map((row, index) => {
-          // Get all keys from the row and find matching columns (case-insensitive)
-          const keys = Object.keys(row)
-          
-          const findValue = (possibleNames: string[]) => {
-            for (const name of possibleNames) {
-              const key = keys.find(k => k.toLowerCase().replace(/[_\s]/g, '') === name.toLowerCase().replace(/[_\s]/g, ''))
-              if (key && row[key] !== undefined && row[key] !== null && row[key] !== '') {
-                return row[key]
-              }
-            }
-            return null
-          }
-          
-          const productName = findValue(['Product Name', 'ProductName', 'product_name', 'Name', 'Item', 'item_name', 'ItemName']) || ""
-          const quantity = Number(findValue(['Quantity', 'Qty', 'quantity', 'qty', 'QTY', 'Amount', 'amount']) || 1)
-          const unitPriceRaw = findValue(['Unit Price', 'UnitPrice', 'unit_price', 'Price', 'price', 'Unit price', 'unit price', 'PRICE', 'Rate', 'rate', 'Cost', 'cost'])
-          const unitPrice = unitPriceRaw !== null ? Number(unitPriceRaw) : 0
-          const supplierName = findValue(['Supplier Name', 'SupplierName', 'supplier_name', 'Supplier', 'supplier']) || ""
-          
+        const newItems: QuotationItem[] = readItemRows(jsonData).map((row, index) => {
+          const productName = row.productName
+          const quantity = row.quantity
+          const unitPrice = row.unitPrice ?? 0
+          const supplierName = row.supplierName
+
           // Check if outsourced - if supplier name is provided, it's outsourced
-          const outsourcedValue = findValue(['Outsourced', 'outsourced', 'Is Outsourced', 'is_outsourced'])
+          const outsourcedValue = row.outsourcedValue
           const hasSupplier = supplierName && String(supplierName).trim() !== ""
           const isOutsourced = hasSupplier || 
             String(outsourcedValue).toLowerCase() === "yes" || 
@@ -728,7 +723,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       return
     }
 
-    const outOfStockItem = items.find((item) => {
+    // New quotation workflow: a quotation may ask for more than is free (the line shows "N missing").
+    const outOfStockItem = newWorkflow ? undefined : items.find((item) => {
       if (item.item_type !== "inventory") return false
       const stock = getAvailableStock(item.product_id)
       return stock !== null && item.quantity > stock
@@ -1208,18 +1204,22 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                             id={`quantity-${item.id}`}
                             type="number"
                             min="1"
-                            max={stockLimit ?? undefined}
+                            max={newWorkflow ? undefined : stockLimit ?? undefined}
                             value={item.quantity}
                             onChange={(e) => {
                               let next = Number(e.target.value)
-                              if (stockLimit !== null && !isNaN(next) && next > stockLimit) {
+                              if (!newWorkflow && stockLimit !== null && !isNaN(next) && next > stockLimit) {
                                 next = stockLimit
                               }
                               updateItem(item.id, "quantity", next)
                             }}
                           />
-                          {stockLimit !== null && (
-                            <p className="text-xs text-muted-foreground">{stockLimit} {t("common.in-stock")}</p>
+                          {newWorkflow ? (
+                            <StockShortfallNote free={stockLimit} requested={item.quantity} />
+                          ) : (
+                            stockLimit !== null && (
+                              <p className="text-xs text-muted-foreground">{stockLimit} {t("common.in-stock")}</p>
+                            )
                           )}
                         </>
                       )
