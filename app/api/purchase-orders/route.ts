@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
+import { isPoAutoApprove } from "@/lib/workflow-switch"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES, buildApprovalRevert } from "@/lib/po-status"
@@ -453,6 +454,37 @@ export async function POST(request: Request) {
     }
     const appliedCredit = Math.round(parsedCredits.selections.reduce((sum, c) => sum + c.amount, 0) * 100) / 100
 
+    // No CEO approval (see lib/workflow-switch.ts): the new PO is approved now and gets its AP invoice, the same way
+    // the approve action does it. If the AP invoice fails the PO stays pending, so it can still be approved by hand.
+    let autoApproved: boolean | undefined
+    if (isPoAutoApprove() && order.status === "pending") {
+      autoApproved = false
+      const { data: approvedRows, error: approveError } = await supabase
+        .from("purchase_orders")
+        .update({ status: "approved", approved_at: new Date().toISOString(), approved_by: order.created_by || null })
+        .eq("po_id", order.po_id)
+        .eq("status", "pending")
+        .select()
+      const approvedOrder = !approveError && Array.isArray(approvedRows) ? approvedRows[0] : null
+      if (!approvedOrder) {
+        console.error("Purchase Orders POST: could not approve the new purchase order", approveError)
+      } else {
+        const apError = await ensureApInvoice(supabase, approvedOrder)
+        if (apError) {
+          console.error("Purchase Orders POST: AP invoice failed, the purchase order stays pending", apError)
+          const { error: revertError } = await supabase
+            .from("purchase_orders")
+            .update({ status: "pending", approved_at: null, approved_by: null })
+            .eq("po_id", order.po_id)
+            .eq("status", "approved")
+          if (revertError) console.error("Purchase Orders POST: could not put the purchase order back to pending", revertError)
+        } else {
+          Object.assign(order, approvedOrder)
+          autoApproved = true
+        }
+      }
+    }
+
     const createdOrder = {
       id: order.po_id.toString(),
       poNumber: order.po_number,
@@ -515,6 +547,7 @@ export async function POST(request: Request) {
       bankBranch: order.bank_branch,
       bankHolderName: order.bank_holder_name,
       appliedCredit,
+      ...(autoApproved === undefined ? {} : { autoApproved }),
     }
 
     return NextResponse.json(createdOrder)

@@ -7,6 +7,11 @@
 import path from "node:path"
 import Module from "node:module"
 import type { FakeDb } from "./fake-db"
+import { workflowSwitch } from "../workflow-switch"
+
+// The older PO tests check the CEO approve step, which still serves POs that are pending (made before the change, or
+// whose automatic approval failed). A new PO approves itself only in the tests that turn this on (pr-chain.test.ts).
+workflowSwitch.poAutoApprove = false
 
 let current: FakeDb | null = null
 export function useDb(db: FakeDb) {

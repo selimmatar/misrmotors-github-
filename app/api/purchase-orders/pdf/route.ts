@@ -161,8 +161,7 @@ export async function GET(request: NextRequest) {
         <div class="pm-field">
           <div class="pm-label">رقم أمر الشراء:</div>
           <div class="pm-value">${escapeHtml(po.po_number)}</div>
-        </div>
-        ${chainLine ? `
+        </div>${chainLine ? `
         <div class="pm-field">
           <div class="pm-label">مرتبط بـ / Linked:</div>
           <div class="pm-value" dir="ltr">${escapeHtml(chainLine)}</div>

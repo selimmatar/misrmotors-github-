@@ -443,3 +443,67 @@ test("chain route: needs one valid id", async () => {
   assert.equal((await call(chainRoute.GET as any, "GET", undefined, url("po_id=x"))).status, 400)
   assert.equal((await call(chainRoute.GET as any, "GET", undefined, url(""))).status, 400)
 })
+
+// ------------------------------------------------------------------------------------------- no CEO approval of POs
+const withPoAuto = async (on: boolean, fn: () => Promise<void>) => {
+  const before = workflowSwitch.poAutoApprove
+  workflowSwitch.poAutoApprove = on
+  try {
+    await fn()
+  } finally {
+    workflowSwitch.poAutoApprove = before
+  }
+}
+
+test("a new PO is approved when saved and gets its supplier invoice (no CEO step)", async () => {
+  await withPoAuto(true, async () => {
+    const db = prDb({ po_requests: [openPr()], accounts_payable: [], supplier_payments: [] })
+    const r = await postPo({ po_request_id: 5, created_by: "Mona" })
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    assert.equal(r.body.autoApproved, true)
+    assert.equal(r.body.status, "approved")
+    const po = db.tables.purchase_orders[0]
+    assert.equal(po.status, "approved")
+    assert.ok(po.approved_at)
+    assert.equal(po.approved_by, "Mona")
+    assert.equal(db.tables.accounts_payable.length, 1)
+    assert.equal(db.tables.accounts_payable[0].invoice_number, `APINV-${po.po_number}`)
+    assert.equal(db.tables.accounts_payable[0].amount, po.total)
+    assert.equal(db.tables.po_requests[0].status, "converted")
+  })
+})
+
+test("a draft PO is not approved", async () => {
+  await withPoAuto(true, async () => {
+    const db = prDb({ accounts_payable: [] })
+    const r = await postPo({ status: "draft" })
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    assert.equal(db.tables.purchase_orders[0].status, "draft")
+    assert.equal(db.tables.accounts_payable.length, 0)
+  })
+})
+
+test("supplier invoice fails: the PO is kept as pending for the CEO/admin to approve", async () => {
+  await withPoAuto(true, async () => {
+    const db = prDb({ accounts_payable: [] })
+    db.failOn["accounts_payable:insert"] = "boom"
+    const r = await postPo({})
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    assert.equal(r.body.autoApproved, false)
+    const po = db.tables.purchase_orders[0]
+    assert.equal(po.status, "pending")
+    assert.equal(po.approved_at, null)
+    assert.equal(db.tables.accounts_payable.length, 0)
+  })
+})
+
+test("switch off: a new PO waits as pending for the CEO (old behaviour)", async () => {
+  await withPoAuto(false, async () => {
+    const db = prDb({ accounts_payable: [] })
+    const r = await postPo({})
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    assert.equal(r.body.autoApproved, undefined)
+    assert.equal(db.tables.purchase_orders[0].status, "pending")
+    assert.equal(db.tables.accounts_payable.length, 0)
+  })
+})

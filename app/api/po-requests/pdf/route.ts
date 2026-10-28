@@ -126,8 +126,7 @@ export async function GET(request: NextRequest) {
         <div class="pm-field">
           <div class="pm-label">رقم الطلب:</div>
           <div class="pm-value">${escapeHtml(poRequest.request_number)}</div>
-        </div>
-        ${chainLine ? `
+        </div>${chainLine ? `
         <div class="pm-field">
           <div class="pm-label">مرتبط بـ / Linked:</div>
           <div class="pm-value" dir="ltr">${escapeHtml(chainLine)}</div>
