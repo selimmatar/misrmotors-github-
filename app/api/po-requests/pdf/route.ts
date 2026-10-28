@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
+import { chainTextForPrint } from "@/lib/po-requests/chain"
 import { PRINT_CSS, printHeader, docTitle, infoBox } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest) {
     const supplier = poRequest.suppliers || {}
     const items = poRequest.po_request_items || []
 
+    const chainLine = await chainTextForPrint(supabase, { prId: poRequest.request_id })
     const html = `
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -125,6 +127,11 @@ export async function GET(request: NextRequest) {
           <div class="pm-label">رقم الطلب:</div>
           <div class="pm-value">${escapeHtml(poRequest.request_number)}</div>
         </div>
+        ${chainLine ? `
+        <div class="pm-field">
+          <div class="pm-label">مرتبط بـ / Linked:</div>
+          <div class="pm-value" dir="ltr">${escapeHtml(chainLine)}</div>
+        </div>` : ""}
         <div class="pm-field">
           <div class="pm-label">تاريخ الطلب:</div>
           <div class="pm-value">${new Date(poRequest.request_date || poRequest.created_at).toLocaleDateString("ar-EG")}</div>

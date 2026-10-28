@@ -15,7 +15,8 @@
           "\"/api/payment-schedules",
           "\"/api/purchase-orders/finalize-cost",
           "\"/api/upload",
-          "`/api/accounts-payable?poId=${poIdInt}"
+          "`/api/accounts-payable?poId=${poIdInt}",
+          "`/api/po-requests?${params}"
         ],
         "handlers": [
           "handleAddItem",
@@ -32,13 +33,14 @@
           "handleRemoveItem"
         ],
         "ids": [
+          "id=\"po-request-select\"",
           "id=\"poVatEnabled\"",
           "name=\"poSource\"",
           "name=\"poSource\"",
           "name=\"poType\"",
           "name=\"poType\""
         ],
-        "fetch": 6,
+        "fetch": 7,
         "iso": 18,
         "t": 59,
         "onClick": 15

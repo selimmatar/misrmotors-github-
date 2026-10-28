@@ -81,6 +81,9 @@ export interface PurchaseOrder {
   id: string
   poNumber: string
   supplierId: string
+  /** the price request (PR) this PO answers, if any */
+  poRequestId?: string
+  poRequestNumber?: string
   orderDate: string
   deliveryDate: string
   items: POItem[]
@@ -165,6 +168,8 @@ export interface InventoryItem {
   quantity: number
   /** stock held for approved sales orders, product level (null: not available) */
   onHold?: number | null
+  /** part of onHold held by quotations waiting for the customer (new quotation workflow) */
+  onHoldByQuotations?: number | null
   available?: number | null
   unit: string
   reorderPoint: number

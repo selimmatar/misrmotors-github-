@@ -37,6 +37,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { Plus, Trash2, Printer, Eye, Search, X } from "lucide-react"
+import { ChainLine } from "@/components/shared/chain-line"
+import { QuoteReceivedDialog } from "@/components/po-requests/quote-received-dialog"
 
 // Supplier from API (transformed format)
 interface Supplier {
@@ -62,6 +64,9 @@ interface PORequest {
   notes: string
   status: string
   created_at: string
+  sales_quotation_id?: number | null
+  so_id?: number | null
+  supplier_quote_file_url?: string | null
   suppliers?: { supplier_id: number; supplier_name: string }
   po_request_items?: any[]
 }
@@ -75,6 +80,7 @@ export function PORequestModule() {
   const [isLoading, setIsLoading] = useState(true)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState<PORequest | null>(null)
+  const [quoteReceivedFor, setQuoteReceivedFor] = useState<PORequest | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   
   const [categories, setCategories] = useState<Array<{ category_id: number; category_name: string }>>([])
@@ -533,6 +539,7 @@ export function PORequestModule() {
                 {t("po-req.request-details")} - {selectedRequest?.request_number}
               </span>
             </DialogTitle>
+            {selectedRequest && <ChainLine prId={selectedRequest.request_id} />}
           </DialogHeader>
 
           {selectedRequest && (
@@ -579,6 +586,7 @@ export function PORequestModule() {
                       <TableHead>{t("common.item")}</TableHead>
                       <TableHead>{t("common.qty")}</TableHead>
                       <TableHead>{t("common.unit")}</TableHead>
+                      <TableHead>{t("chain.price")}</TableHead>
                       <TableHead>{t("notes")}</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -588,6 +596,7 @@ export function PORequestModule() {
                         <TableCell>{item.product_name}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>{item.unit || "-"}</TableCell>
+                        <TableCell>{item.unit_price ?? "-"}</TableCell>
                         <TableCell>{item.notes || "-"}</TableCell>
                       </TableRow>
                     ))}
@@ -597,7 +606,18 @@ export function PORequestModule() {
             </div>
           )}
 
+          {selectedRequest?.supplier_quote_file_url && (
+            <a className="text-sm text-primary underline" href={selectedRequest.supplier_quote_file_url} target="_blank" rel="noreferrer">
+              {t("chain.view-supplier-file")}
+            </a>
+          )}
+
           <DialogFooter>
+            {selectedRequest && (selectedRequest.status === "pending" || selectedRequest.status === "quoted") && (
+              <Button variant="outline" onClick={() => setQuoteReceivedFor(selectedRequest)}>
+                {t("po-req.quote-received")}
+              </Button>
+            )}
             <Button variant="outline" onClick={() => handlePrint(selectedRequest!.request_id)} className="gap-2">
               <Printer className="w-4 h-4" />
               {t("action.print")}
@@ -608,6 +628,18 @@ export function PORequestModule() {
           </DialogFooter>
         </DialogContent>
   </Dialog>
+
+  {quoteReceivedFor && (
+    <QuoteReceivedDialog
+      open={!!quoteReceivedFor}
+      onOpenChange={(open) => !open && setQuoteReceivedFor(null)}
+      request={quoteReceivedFor}
+      onSaved={() => {
+        setSelectedRequest(null)
+        fetchData()
+      }}
+    />
+  )}
 
   {/* Add Category Dialog */}
   <Dialog open={showAddCategoryDialog} onOpenChange={setShowAddCategoryDialog}>

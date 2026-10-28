@@ -139,6 +139,15 @@ export async function GET() {
         itemsByPoId[item.po_id].push(item)
       }
 
+      // Price request numbers, for the PO list's "PR" column and search (no FK embed: older POs have none).
+      const prIds = [...new Set(orders.map((o) => o.po_request_id).filter(Boolean))]
+      const prNumbers: Record<number, string> = {}
+      if (prIds.length > 0) {
+        const { data: prs, error: prsError } = await supabase.from("po_requests").select("request_id, request_number").in("request_id", prIds)
+        if (prsError) console.error("Purchase Orders GET: Error fetching price requests", prsError)
+        for (const pr of prs || []) prNumbers[pr.request_id] = pr.request_number
+      }
+
       const ordersWithItems = orders.map((order) => {
         const items = itemsByPoId[order.po_id] || []
 
@@ -156,6 +165,8 @@ export async function GET() {
           id: order.po_id.toString(),
           poNumber: order.po_number,
           supplierId: order.supplier_id.toString(),
+          poRequestId: order.po_request_id ? order.po_request_id.toString() : undefined,
+          poRequestNumber: order.po_request_id ? prNumbers[order.po_request_id] : undefined,
           orderDate: order.order_date,
           deliveryDate: order.delivery_date,
           status: order.status,
@@ -293,6 +304,28 @@ export async function POST(request: Request) {
     })
     if (!creditCheck.ok) return NextResponse.json(creditCheck.result.body, { status: creditCheck.result.status })
 
+    // Optional price request (PR) this PO answers: one PR = one supplier = one PO, so it must be the same supplier
+    // and not already used or cancelled. Checked before anything is written; marked "converted" once the PO exists.
+    const rawPoRequestId = orderData.po_request_id ?? orderData.poRequestId
+    let poRequestId: number | null = null
+    if (rawPoRequestId !== undefined && rawPoRequestId !== null && rawPoRequestId !== "") {
+      poRequestId = parsePositiveId(String(rawPoRequestId))
+      if (!poRequestId) return NextResponse.json({ error: "Invalid po_request_id" }, { status: 400 })
+      const { data: poRequest, error: poRequestError } = await supabase
+        .from("po_requests")
+        .select("request_id, supplier_id, status")
+        .eq("request_id", poRequestId)
+        .maybeSingle()
+      if (poRequestError) throw poRequestError
+      if (!poRequest) return NextResponse.json({ error: "Price request not found" }, { status: 404 })
+      if (Number(poRequest.supplier_id) !== Number(orderData.supplier_id || orderData.supplierId)) {
+        return NextResponse.json({ error: "The price request is for another supplier", code: "PR_SUPPLIER" }, { status: 400 })
+      }
+      if (poRequest.status !== "pending" && poRequest.status !== "quoted") {
+        return NextResponse.json({ error: "The price request is already used or cancelled", code: "PR_CLOSED" }, { status: 409 })
+      }
+    }
+
     // Always generate the PO number server-side (obfuscated, atomic) — never trust a
     // client-supplied value, which was previously a predictable, guessable counter.
     const { data: generatedPoNumber, error: poNumberError } = await supabase.rpc("generate_po_number")
@@ -360,6 +393,7 @@ export async function POST(request: Request) {
       bank_iban: orderData.bank_iban || orderData.bankIban || null,
       bank_branch: orderData.bank_branch || orderData.bankBranch || null,
       bank_holder_name: orderData.bank_holder_name || orderData.bankHolderName || null,
+      ...(poRequestId && { po_request_id: poRequestId }),
     }
 
 
@@ -407,6 +441,15 @@ export async function POST(request: Request) {
         await removeCreatedPo()
         return NextResponse.json(reserveError.body, { status: reserveError.status })
       }
+    }
+    if (poRequestId) {
+      // The PO is saved; a failure here leaves the PR open (it can still be closed by hand), so it does not fail the PO.
+      const { error: prError } = await supabase
+        .from("po_requests")
+        .update({ status: "converted", updated_at: new Date().toISOString() })
+        .eq("request_id", poRequestId)
+        .in("status", ["pending", "quoted"])
+      if (prError) console.error("Purchase Orders POST: could not mark the price request converted", prError)
     }
     const appliedCredit = Math.round(parsedCredits.selections.reduce((sum, c) => sum + c.amount, 0) * 100) / 100
 
