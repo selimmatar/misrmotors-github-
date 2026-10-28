@@ -79,6 +79,44 @@ test("switch off: conversion waits for the accountant (old behaviour)", async ()
   })
 })
 
+test("new workflow: a quotation with missing stock converts; the response names what is missing", async () => {
+  await withSwitch(true, async () => {
+    // 10 on hand, 8 held by an approved order -> 2 free; the quotation asks for 5 (3 missing).
+    const db = mk({
+      sales_quotations: [quotation(1)],
+      sales_quotation_items: [qline(1, 1, 7, 5)],
+      sales_orders: [{ so_id: 40, so_number: "SO-OLD", status: "accountant_approved" }],
+      sales_order_items: [{ so_item_id: 1, so_id: 40, product_id: 7, quantity: 8, item_type: "stock" }],
+    })
+    const r = await convert(1)
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    const so = db.tables.sales_orders.find((o) => o.parent_quotation_id === 1)!
+    assert.equal(so.status, "accountant_approved")
+    assert.deepEqual(r.body.missing, [{ productId: 7, name: "Product 7", requested: 5, available: 2, missing: 3 }])
+    // Free stock never shows below zero for the next order.
+    assert.equal((await loadAvailability(db, [7])).get(7)!.available, 0)
+  })
+})
+
+test("new workflow: enough stock -> no missing list", async () => {
+  await withSwitch(true, async () => {
+    mk({ sales_quotations: [quotation(1)], sales_quotation_items: [qline(1, 1, 7, 5)] })
+    const r = await convert(1)
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+    assert.deepEqual(r.body.missing, [])
+  })
+})
+
+test("switch off: a quotation with missing stock is still refused (old rule)", async () => {
+  await withSwitch(false, async () => {
+    const db = mk({ sales_quotations: [quotation(1)], sales_quotation_items: [qline(1, 1, 7, 15)] })
+    const r = await convert(1)
+    assert.equal(r.status, 400, JSON.stringify(r.body))
+    assert.match(r.body.error, /^Insufficient inventory for Product 7\. Requested: 15, Available: 10$/)
+    assert.equal(db.tables.sales_orders.length, 0)
+  })
+})
+
 test("hybrid conversion creates the down-payment invoice", async () => {
   await withSwitch(true, async () => {
     const db = mk({
@@ -254,7 +292,10 @@ test("second quotation sees reduced availability; conversion excludes its own ho
     assert.equal((await loadAvailability(db, [7], { excludeQuotationId: 2 })).get(7)!.available, 2)
     // checking quotation 1 itself: the newer quotation 2 cannot take its place in line (it holds only 2)
     assert.equal((await loadAvailability(db, [7], { excludeQuotationId: 1 })).get(7)!.available, 8)
-    assert.equal((await convert(2)).status, 400)
+    // quotation 2 still converts (new workflow) and its order waits for the 3 it is short
+    const r2 = await convert(2)
+    assert.equal(r2.status, 200, JSON.stringify(r2.body))
+    assert.deepEqual(r2.body.missing.map((m: Row) => [m.available, m.missing]), [[2, 3]])
     assert.equal((await convert(1)).status, 200)
   })
 })
@@ -367,7 +408,7 @@ const postPo = (body: Row) =>
     supplier_id: 3, status: "pending", payment_terms: "cash", payment_type: "cash",
     items: [{ productName: "Pump", quantity: 2, unitPrice: 100, total: 200, itemType: "outsourced" }], ...body,
   })
-const openPr = (status = "quoted"): Row => ({ request_id: 5, request_number: "PR-5", supplier_id: 3, status })
+const openPr = (status = "quoted", over: Row = {}): Row => ({ request_id: 5, request_number: "PR-5", supplier_id: 3, status, ...over })
 
 test("a PO saved with its PR keeps the link and marks the PR converted", async () => {
   const db = prDb({ po_requests: [openPr()] })
@@ -400,6 +441,24 @@ test("PO list shows the PR number", async () => {
   assert.equal(list.status, 200, JSON.stringify(list.body))
   const rows = Array.isArray(list.body) ? list.body : list.body.data || list.body.orders
   assert.equal(rows[0].poRequestNumber, "PR-5")
+  assert.equal(rows[0].poRequestSoId, undefined) // PR not yet tied to a sales order
+})
+
+test("a bought-in PO line sent with only its product name keeps that name (not 'Outsourced Item')", async () => {
+  prDb({ po_requests: [] })
+  await postPo({ items: [{ productName: "Custom VFD panel", quantity: 1, unitPrice: 2100, total: 2100, itemType: "outsourced" }] })
+  const list = await call(poRoute.GET as any, "GET")
+  const rows = Array.isArray(list.body) ? list.body : list.body.data || list.body.orders
+  assert.equal(rows[0].items[0].productName, "Custom VFD panel")
+  assert.equal(rows[0].items[0].outsourcedName, "Custom VFD panel")
+})
+
+test("PO list carries the PR's sales order for the 'For sales order' column", async () => {
+  prDb({ po_requests: [openPr("pending", { so_id: 40 })] })
+  await postPo({ po_request_id: 5 })
+  const list = await call(poRoute.GET as any, "GET")
+  const rows = Array.isArray(list.body) ? list.body : list.body.data || list.body.orders
+  assert.equal(rows[0].poRequestSoId, "40")
 })
 
 // ------------------------------------------------------------------------------------------- the chain line

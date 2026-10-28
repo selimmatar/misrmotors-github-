@@ -715,7 +715,12 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
         throw new Error(error.error || "Failed to approve quotation")
       }
 
-      const { sales_order } = await response.json()
+      const { sales_order, missing } = await response.json()
+      // New workflow: a short order is still created; say what it waits for (it shows in Missing Items).
+      if (Array.isArray(missing) && missing.length > 0) {
+        const lines = missing.map((m: { name: string; missing: number }) => `${m.name}: ${m.missing}`).join("\n")
+        alert(fill(t("quote-convert.converted-with-missing"), { number: sales_order.so_number, lines }))
+      }
       onApproved(sales_order.so_number)
     } catch (error) {
       console.error("Error approving quotation:", error)

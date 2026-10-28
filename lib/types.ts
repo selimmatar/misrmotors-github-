@@ -84,6 +84,8 @@ export interface PurchaseOrder {
   /** the price request (PR) this PO answers, if any */
   poRequestId?: string
   poRequestNumber?: string
+  /** Sales order of the price request this PO came from (for the "For sales order" column). */
+  poRequestSoId?: string
   orderDate: string
   deliveryDate: string
   items: POItem[]

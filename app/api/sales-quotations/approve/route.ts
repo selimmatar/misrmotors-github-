@@ -61,6 +61,10 @@ export async function POST(request: NextRequest) {
     // Same availability check as SO POST (lib/stock-hold.ts): available = on-hand - stock held by other approved
     // sales orders (and, in the new workflow, by other waiting quotations: this quotation's own hold is not counted
     // against it). Lines of the same product are added up. Outsourced lines are not checked.
+    // New workflow: a short quotation still converts (the order waits for stock through Missing Items); the
+    // shortage is returned as `missing`. Old workflow: it is refused.
+    const newWorkflow = isNewQuotationWorkflow()
+    const missing: { productId: number; name: string; requested: number; available: number; missing: number }[] = []
     const stockLines = quotationItems.filter((item) => item.item_type !== "outsourced" && item.product_id)
     if (stockLines.length > 0) {
       let availability: Awaited<ReturnType<typeof loadAvailability>>
@@ -79,7 +83,9 @@ export async function POST(request: NextRequest) {
       }
       for (const [productId, { qty, name }] of requested) {
         const availableQty = availability.get(productId)?.available || 0
-        if (qty > availableQty) {
+        if (qty > availableQty && newWorkflow) {
+          missing.push({ productId, name: name || "product", requested: qty, available: availableQty, missing: qty - availableQty })
+        } else if (qty > availableQty) {
           return NextResponse.json(
             { error: `Insufficient inventory for ${name || "product"}. Requested: ${qty}, Available: ${availableQty}` },
             { status: 400 },
@@ -110,7 +116,6 @@ export async function POST(request: NextRequest) {
 
     // New workflow: the sales rep's conversion IS the approval (stored as "accountant_approved", shown as "Approved",
     // so every existing hold / revenue / delivery-permit rule applies unchanged). Old workflow: the accountant approves.
-    const newWorkflow = isNewQuotationWorkflow()
     const soStatus = newWorkflow ? "accountant_approved" : "pending_accountant"
 
     // Create a new sales order from the approved quotation
@@ -237,6 +242,7 @@ export async function POST(request: NextRequest) {
         so_number: salesOrder.so_number,
         total: salesOrder.total,
       },
+      missing,
       message: newWorkflow
         ? `Quotation approved! Sales Order ${salesOrder.so_number} created and approved.`
         : `Quotation approved! Sales Order ${salesOrder.so_number} created with status "pending_accountant".`,

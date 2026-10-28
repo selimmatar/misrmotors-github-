@@ -238,7 +238,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
   // Internal only: which sales order(s) and customer(s) this PO was raised for
   const getLinkedSalesOrders = (order: any): string => {
-    const ids = [...new Set((order.items || []).map((i: any) => i.sourceSoId ?? i.source_so_id).filter(Boolean).map(String))]
+    // Lines raised from Missing Items carry their SO; a PO made from a price request gets it from the PR.
+    const ids = [...new Set([...(order.items || []).map((i: any) => i.sourceSoId ?? i.source_so_id), order.poRequestSoId].filter(Boolean).map(String))]
     return ids
       .map((id) => {
         const so = (salesOrders || []).find((s: any) => s.id?.toString() === id || s.soId?.toString() === id)

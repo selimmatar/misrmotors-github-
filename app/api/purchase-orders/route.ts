@@ -50,7 +50,8 @@ function mapPoItem(item: any, poId: number, existingItems: any[] = []) {
     // Never trust the client's line total: it is always quantity x unit price.
     total: poMoney((Number(item.quantity) || 0) * (Number(item.unitPrice ?? item.unit_price ?? 0) || 0)),
     item_type: itemType,
-    outsourced_name: item.outsourcedName || item.outsourced_name || null,
+    // A bought-in line sent with only its product name keeps that name.
+    outsourced_name: item.outsourcedName || item.outsourced_name || (isOutsourced ? item.productName || item.product_name : null) || null,
     outsourced_description: item.outsourcedDescription || item.outsourced_description || null,
     outsourced_unit: item.outsourcedUnit || item.outsourced_unit || null,
     // The client sends these as strings; the columns are integers.
@@ -140,13 +141,18 @@ export async function GET() {
         itemsByPoId[item.po_id].push(item)
       }
 
-      // Price request numbers, for the PO list's "PR" column and search (no FK embed: older POs have none).
+      // Price request numbers, for the PO list's "PR" column and search (no FK embed: older POs have none), and the
+      // sales order the PR belongs to, for the "For sales order" column when the PO lines carry none.
       const prIds = [...new Set(orders.map((o) => o.po_request_id).filter(Boolean))]
       const prNumbers: Record<number, string> = {}
+      const prSoIds: Record<number, number> = {}
       if (prIds.length > 0) {
-        const { data: prs, error: prsError } = await supabase.from("po_requests").select("request_id, request_number").in("request_id", prIds)
+        const { data: prs, error: prsError } = await supabase.from("po_requests").select("request_id, request_number, so_id").in("request_id", prIds)
         if (prsError) console.error("Purchase Orders GET: Error fetching price requests", prsError)
-        for (const pr of prs || []) prNumbers[pr.request_id] = pr.request_number
+        for (const pr of prs || []) {
+          prNumbers[pr.request_id] = pr.request_number
+          if (pr.so_id) prSoIds[pr.request_id] = pr.so_id
+        }
       }
 
       const ordersWithItems = orders.map((order) => {
@@ -168,6 +174,7 @@ export async function GET() {
           supplierId: order.supplier_id.toString(),
           poRequestId: order.po_request_id ? order.po_request_id.toString() : undefined,
           poRequestNumber: order.po_request_id ? prNumbers[order.po_request_id] : undefined,
+          poRequestSoId: order.po_request_id && prSoIds[order.po_request_id] ? prSoIds[order.po_request_id].toString() : undefined,
           orderDate: order.order_date,
           deliveryDate: order.delivery_date,
           status: order.status,
@@ -220,7 +227,7 @@ export async function GET() {
             productId: item.product_id?.toString(),
             productName:
               item.item_type === "outsourced"
-                ? item.outsourced_name || "Outsourced Item"
+                ? item.outsourced_name || item.item_name_snapshot || "Outsourced Item"
                 : item.products?.product_name || item.item_name_snapshot || "Unknown Product",
             sku: item.products?.sku || "",
             unit: item.item_type === "outsourced" ? item.outsourced_unit || "" : item.products?.unit || "pcs",
