@@ -161,6 +161,24 @@ test("3. a split line's totals follow the quantities and add up exactly (roundin
   assert.equal(planned.plan.inserts[0].item_id, undefined, "a copy gets its own id")
 })
 
+test("3. an outsourced line needs no warehouse: it is allocated in full from its supplier", () => {
+  const planned = planAllocation(
+    [
+      { item_id: 1, permit_id: 1, product_id: null, outsourced_name: "Warehouse", quantity: 1, total: 500 },
+      { item_id: 2, permit_id: 1, product_id: 7, quantity: 2, total: 200 },
+    ],
+    [{ itemId: 1, warehouseId: null, quantity: 1 }, { itemId: 2, warehouseId: 4, quantity: 2 }],
+    null,
+  )
+  assert.ok(planned.ok, planned.ok ? "" : planned.error)
+  if (!planned.ok) return
+  assert.deepEqual(planned.plan.updates.find((u) => u.itemId === 1)?.patch, { allocation_notes: null, warehouse_id: null, allocated_quantity: 1 })
+  assert.equal(planned.plan.updates.find((u) => u.itemId === 2)?.patch.warehouse_id, 4)
+  // A stock line still needs its warehouse.
+  const stock = planAllocation([{ item_id: 2, permit_id: 1, product_id: 7, quantity: 2 }], [{ itemId: 2, warehouseId: null, quantity: 2 }], null)
+  assert.equal(stock.ok, false)
+})
+
 // ---------------------------------------------------------------------------------------------------------
 // 4. Approving a maintenance report takes the parts from a real sellable stock row, once, and records it
 // ---------------------------------------------------------------------------------------------------------

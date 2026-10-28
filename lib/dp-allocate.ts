@@ -24,6 +24,7 @@ export function planAllocation(
   allocations: AllocationInput[],
   notes: string | null,
 ): { ok: true; plan: AllocationPlan } | { ok: false; error: string } {
+  const plan: AllocationPlan = { updates: [], inserts: [] }
   const byItem = new Map<number, { warehouseId: number; quantity: number }[]>()
   for (const alloc of allocations) {
     const itemId = Number(alloc.itemId)
@@ -31,6 +32,14 @@ export function planAllocation(
     const quantity = Number(alloc.quantity)
     const item = items.find((i) => Number(i.item_id) === itemId)
     if (!item) return { ok: false, error: `Item ${String(alloc.itemId)} is not a line of this delivery permit.` }
+    // An outsourced line (no product) comes from its supplier, not a warehouse: no stock is taken for it on
+    // approval (lib/dp-stock.ts skips lines without a product), so it is allocated in full with no warehouse.
+    if (!item.product_id) {
+      if (!plan.updates.some((u) => u.itemId === itemId)) {
+        plan.updates.push({ itemId, patch: { allocation_notes: notes, warehouse_id: null, allocated_quantity: Number(item.quantity) || 0 } })
+      }
+      continue
+    }
     if (!Number.isInteger(warehouseId) || warehouseId <= 0) return { ok: false, error: `Choose a warehouse for ${item.item_name_snapshot || "every item"}.` }
     if (!Number.isFinite(quantity) || quantity < 0) return { ok: false, error: `The quantity for ${item.item_name_snapshot || "an item"} is not valid.` }
     if (quantity === 0) continue
@@ -41,7 +50,6 @@ export function planAllocation(
     byItem.set(itemId, list)
   }
 
-  const plan: AllocationPlan = { updates: [], inserts: [] }
   for (const [itemId, shares] of byItem) {
     const item = items.find((i) => Number(i.item_id) === itemId)!
     const lineQty = Number(item.quantity) || 0
