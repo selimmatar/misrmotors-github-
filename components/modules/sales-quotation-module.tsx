@@ -701,14 +701,15 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     return { subtotal, tax, total: subtotal + tax }
   }
 
-  const handleSaveAndGeneratePDF = async () => {
+  // The checks Save runs before anything is sent; false once it has told the user what is missing
+  const validateQuotation = () => {
     if (!customerName.trim()) {
       alert(t("sq.please-enter-customer-name"))
-      return
+      return false
     }
     if (items.length === 0) {
       alert(t("common.please-add-at-least-one"))
-      return
+      return false
     }
 
     const invalidItems = items.filter((item) => {
@@ -723,7 +724,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
     if (invalidItems.length > 0) {
       alert(t("sq.please-fill-all-item-details"))
-      return
+      return false
     }
 
     // New quotation workflow: a quotation may ask for more than is free (the line shows "N missing").
@@ -736,8 +737,145 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     if (outOfStockItem) {
       const stock = getAvailableStock(outOfStockItem.product_id)
       alert(fill(t("sq.only-has-in-stock-please"), { name: outOfStockItem.product_name, stock: String(stock) }))
+      return false
+    }
+    return true
+  }
+
+  // What the saved quotation was made from: Save & Generate PDF reuses that quotation while nothing has changed,
+  // so asking a supplier for a price first and then printing does not make a second quotation
+  const savedFormRef = useRef<string | null>(null)
+  const formSnapshot = () =>
+    JSON.stringify([customerName, customerPhone, customerEmail, selectedCustomerId, items, notes, discountType, discountValue, paymentType, paymentDetails, validityDays, deliveryDate, deliveryAddress])
+
+  // Saves the quotation (VAT always applied at 14%) and returns it with its lines for a price request
+  const saveQuotation = async () => {
+    const discountResult = calculateDiscount(subtotal, discountType, discountValue)
+    const discountAmount = discountResult.discountAmount
+    const taxAmount = (subtotal - discountAmount) * VAT_RATE
+    const totalAmount = subtotal - discountAmount + taxAmount
+
+    const response = await fetch("/api/sales-quotations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_id: selectedCustomerId ? Number(selectedCustomerId) : null,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        customer_email: customerEmail,
+        quotation_request_number: quotationRequestNumber,
+        department_name: departmentName,
+        receiver_name: receiverName,
+        delivery_date: deliveryDate || null,
+        delivery_address: deliveryAddress,
+        delivery_contact_name: deliveryContactName,
+        delivery_contact_phone: deliveryContactPhone,
+        so_type: soType,
+        order_date: orderDate,
+        validity_days: validityDays,
+        notes: notes,
+        // Payment fields
+        payment_type: paymentType,
+        // Stored with the real payment type; single-payment types drop the installment defaults.
+        payment_details: normalizeQuotationPaymentDetails(paymentType, paymentDetails),
+        // Discount fields
+        discount_type: discountType,
+        discount_value: discountValue,
+        discount_amount: discountAmount,
+        // VAT (always applied at 14%)
+        vat_enabled: true,
+        tax: taxAmount,
+        subtotal: subtotal,
+        net_total: totalAmount,
+        items: items.map((item) => ({
+          item_type: item.item_type,
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: Number(getItemFinalPrice(item).toFixed(2)),
+          // Cost before markup, so a purchase order made from this line starts with it
+          unit_cost: item.item_type === "outsourced" ? Number(item.unit_price) || null : null,
+          supplier_name: item.supplier_name || null,
+        })),
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error("Failed to save quotation")
+    }
+
+    const { quotation } = await response.json()
+    const lines = items.map((item, index) => ({
+      lineNo: index + 1,
+      productId: item.item_type === "inventory" && item.product_id ? item.product_id : null,
+      productName: item.product_name,
+      quantity: item.quantity,
+      outsourced: item.item_type === "outsourced",
+    }))
+    setSavedQuotation(quotation)
+    setSavedLines(lines)
+
+    // Quotation was successfully created, so the in-progress draft is no longer needed
+    if (activeDraftId) {
+      const draftIdToClear = activeDraftId
+      setDrafts((prev) => prev.filter((d) => d.id !== draftIdToClear))
+      setActiveDraftId(null)
+      fetch(`/api/quotation-drafts?id=${encodeURIComponent(draftIdToClear)}`, { method: "DELETE" }).catch(
+        (error) => {
+          console.error("Failed to clear quotation draft:", error)
+        },
+      )
+    }
+    // The PDF link for this quotation (opened now by Save & Generate PDF, or later from the saved box)
+    const quotationData = {
+      quotation_number: quotation.quotation_number,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_email: customerEmail,
+      items: items.map((item) => ({
+        product_name: item.product_name,
+        quantity: item.quantity,
+        unit_price: Number(getItemFinalPrice(item).toFixed(2)),
+      })),
+      validity_days: validityDays,
+      notes: notes,
+      discount_type: discountType,
+      discount_value: discountValue,
+      discount_amount: discountAmount,
+    }
+
+    const queryString = `data=${encodeURIComponent(JSON.stringify(quotationData))}&qn=${encodeURIComponent(quotation.quotation_number)}`
+    const pdfUrl = `/api/quotations/generate?${queryString}`
+    setSavedPdfUrl(pdfUrl)
+    savedFormRef.current = formSnapshot()
+    return { quotation, lines, pdfUrl }
+  }
+
+  // "Request price from supplier" before saving: saves the quotation first (no PDF), then the button opens the PR dialog
+  const prepareRequestPrice = async () => {
+    if (savedQuotation) {
+      return { quotation: { id: savedQuotation.id, quotation_number: String(savedQuotation.quotation_number ?? "") }, lines: savedLines }
+    }
+    if (!validateQuotation()) return null
+    setIsCreatingQuotation(true)
+    try {
+      const { quotation, lines } = await saveQuotation()
+      return { quotation: { id: quotation.id, quotation_number: String(quotation.quotation_number ?? "") }, lines }
+    } catch (error) {
+      console.error("Save quotation error:", error)
+      alert(t("sq.failed-to-save-quotation-please"))
+      return null
+    } finally {
+      setIsCreatingQuotation(false)
+    }
+  }
+
+  const handleSaveAndGeneratePDF = async () => {
+    if (savedQuotation && savedPdfUrl && savedFormRef.current === formSnapshot()) {
+      window.open(savedPdfUrl, "_blank", "noopener")
       return
     }
+    if (!validateQuotation()) return
 
     // Opened now, on the click: a window opened after the save request returns is blocked by the browser.
     const pdfWindow = openPendingWindow(window, t("sq.preparing-pdf"))
@@ -745,106 +883,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     setIsCreatingQuotation(true)
 
     try {
-      // Save quotation to database first (VAT always applied at 14%)
-      const discountResult = calculateDiscount(subtotal, discountType, discountValue)
-      const discountAmount = discountResult.discountAmount
-      const taxAmount = (subtotal - discountAmount) * VAT_RATE
-      const totalAmount = subtotal - discountAmount + taxAmount
-
-      const response = await fetch("/api/sales-quotations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer_id: selectedCustomerId ? Number(selectedCustomerId) : null,
-          customer_name: customerName,
-          customer_phone: customerPhone,
-          customer_email: customerEmail,
-          quotation_request_number: quotationRequestNumber,
-          department_name: departmentName,
-          receiver_name: receiverName,
-          delivery_date: deliveryDate || null,
-          delivery_address: deliveryAddress,
-          delivery_contact_name: deliveryContactName,
-          delivery_contact_phone: deliveryContactPhone,
-          so_type: soType,
-          order_date: orderDate,
-          validity_days: validityDays,
-          notes: notes,
-          // Payment fields
-          payment_type: paymentType,
-          // Stored with the real payment type; single-payment types drop the installment defaults.
-          payment_details: normalizeQuotationPaymentDetails(paymentType, paymentDetails),
-          // Discount fields
-          discount_type: discountType,
-          discount_value: discountValue,
-          discount_amount: discountAmount,
-          // VAT (always applied at 14%)
-          vat_enabled: true,
-          tax: taxAmount,
-          subtotal: subtotal,
-          net_total: totalAmount,
-          items: items.map((item) => ({
-            item_type: item.item_type,
-            product_id: item.product_id,
-            product_name: item.product_name,
-            quantity: item.quantity,
-            unit_price: Number(getItemFinalPrice(item).toFixed(2)),
-            // Cost before markup, so a purchase order made from this line starts with it
-            unit_cost: item.item_type === "outsourced" ? Number(item.unit_price) || null : null,
-            supplier_name: item.supplier_name || null,
-          })),
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to save quotation")
-      }
-
-      const { quotation } = await response.json()
-      setSavedQuotation(quotation)
-      setSavedLines(
-        items.map((item, index) => ({
-          lineNo: index + 1,
-          productId: item.item_type === "inventory" && item.product_id ? item.product_id : null,
-          productName: item.product_name,
-          quantity: item.quantity,
-          outsourced: item.item_type === "outsourced",
-        })),
-      )
-
-      // Quotation was successfully created, so the in-progress draft is no longer needed
-      if (activeDraftId) {
-        const draftIdToClear = activeDraftId
-        setDrafts((prev) => prev.filter((d) => d.id !== draftIdToClear))
-        setActiveDraftId(null)
-        fetch(`/api/quotation-drafts?id=${encodeURIComponent(draftIdToClear)}`, { method: "DELETE" }).catch(
-          (error) => {
-            console.error("Failed to clear quotation draft:", error)
-          },
-        )
-      }
-
-      // Generate PDF
-      const quotationData = {
-        quotation_number: quotation.quotation_number,
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        customer_email: customerEmail,
-        items: items.map((item) => ({
-          product_name: item.product_name,
-          quantity: item.quantity,
-          unit_price: Number(getItemFinalPrice(item).toFixed(2)),
-        })),
-        validity_days: validityDays,
-        notes: notes,
-        discount_type: discountType,
-        discount_value: discountValue,
-        discount_amount: discountAmount,
-      }
-
-      const queryString = `data=${encodeURIComponent(JSON.stringify(quotationData))}&qn=${encodeURIComponent(quotation.quotation_number)}`
-      const pdfUrl = `/api/quotations/generate?${queryString}`
-      setSavedPdfUrl(pdfUrl)
+      const { pdfUrl } = await saveQuotation()
       pdfWindow.go(pdfUrl)
     } catch (error) {
       pdfWindow.close()
@@ -1403,6 +1442,15 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
               </Button>
               <p className="text-sm text-muted-foreground">{t("sq.saves-quotation-and-opens-pdf")}</p>
               {isSavingDraft && <p className="text-xs text-muted-foreground">{t("sq.saving-draft")}</p>}
+              {newWorkflow && (
+                <div className="space-y-1 pt-2">
+                  <RequestPriceButton prepare={prepareRequestPrice} suppliers={suppliers} size="default" />
+                  <p className="text-xs text-muted-foreground">
+                    {t("chain.request-price-hint")}
+                    {!savedQuotation && ` ${t("chain.request-price-saves-first")}`}
+                  </p>
+                </div>
+              )}
 
               {savedQuotation && savedPdfUrl && (
                 <div role="status" className="rounded-md border border-green-600/40 bg-green-50 dark:bg-green-950/30 p-3 text-sm space-y-2">
@@ -1413,16 +1461,6 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                       {t("sq.open-pdf")}
                     </a>
                   </Button>
-                  {newWorkflow && (
-                    <div className="space-y-1">
-                      <RequestPriceButton
-                        quotation={{ id: savedQuotation.id, quotation_number: String(savedQuotation.quotation_number ?? "") }}
-                        lines={savedLines}
-                        suppliers={suppliers}
-                      />
-                      <p className="text-xs text-muted-foreground">{t("chain.request-price-hint")}</p>
-                    </div>
-                  )}
                 </div>
               )}
 
