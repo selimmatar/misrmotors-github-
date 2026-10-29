@@ -5,7 +5,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { loadMissingItems, type MissingItemRow } from "../missing-items"
-import { renderMissingItemsHtml } from "../missing-items-html"
+import { procurementAr, renderMissingItemsHtml } from "../missing-items-html"
 
 interface World {
   lines?: Row[]
@@ -394,8 +394,18 @@ test("S7. the report still lists stock-covered lines (Missing 0, Received N), sh
   assert.ok(report)
   const html = renderMissingItemsHtml(report, { hideCost: false, generatedAt: "now" })
   assert.match(html, /Pump/)
-  assert.match(html, /<span class="type-tag type-stock">On Hold<\/span>/)
+  assert.match(html, /<span class="type-tag type-stock">محجوز<\/span>/)
   assert.match(html, /<td class="n missing">0<\/td>/)
-  assert.match(html, /Received = goods receipts, or stock already in our warehouse/)
+  assert.match(html, /المستلم = استلام بضاعة، أو مخزون موجود في مخزننا/)
+  assert.match(html, /تقرير الأصناف الناقصة/)
+  assert.doesNotMatch(html, /Missing Items Report|Sales Order #|Unit Cost/)
   assert.doesNotMatch(html, /EGP 3,000\.00/) // 10 x 300 is covered by stock, so it is not a missing cost
+})
+
+test("missing items print: procurement status in Arabic", () => {
+  assert.equal(procurementAr("Stock Item — No PO Needed"), "صنف مخزون — لا يحتاج أمر شراء")
+  assert.equal(procurementAr("Not Ordered — Needs PO"), "لم يُطلب — يحتاج أمر شراء")
+  assert.equal(procurementAr("On Hold 4/10 — Needs PO for 6"), "محجوز 4/10 — يحتاج أمر شراء لـ 6")
+  assert.equal(procurementAr("Ordered 4/4 — PO-1 (4, approved) ⚠ received 10 > PO 4"), "تم الطلب 4/4 — PO-1 (4، معتمد) ⚠ المستلم 10 أكبر من أمر الشراء 4")
+  assert.equal(procurementAr("Rejected PO — Needs Reorder (PO-2 (3, rejected))"), "أمر شراء مرفوض — يحتاج إعادة طلب (PO-2 (3، مرفوض))")
 })

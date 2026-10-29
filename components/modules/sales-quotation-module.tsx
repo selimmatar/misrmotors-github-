@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Trash2, FileText, Printer, Package, Upload, UserPlus, FileClock, Plus } from "lucide-react"
+import { Trash2, FileText, Printer, Package, Upload, UserPlus, FileClock, Plus, Camera } from "lucide-react"
 import { useAppContext } from "@/lib/app-context"
 import { cn } from "@/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -19,7 +19,6 @@ import { getCitiesForCountry } from "@/lib/countries-data"
 import {
   PaymentTypeSelector,
   InstallmentFields,
-  ChequeFields,
   HybridFields,
   PaymentScheduleEditor,
   type PaymentScheduleEntry,
@@ -37,6 +36,8 @@ import { Money } from "@/components/erp/money"
 import { openPendingWindow } from "@/lib/print/pending-window"
 import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
 import { readItemRows } from "@/lib/excel/read-item-rows"
+import { shrinkPhoto } from "@/lib/shrink-photo"
+import type { PhotoItem } from "@/lib/quotations/read-items"
 import { StockShortfallNote } from "@/components/sales-quotation/stock-shortfall-note"
 
 interface QuotationItem {
@@ -110,6 +111,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   const [items, setItems] = useState<QuotationItem[]>([])
   const [notes, setNotes] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const [readingPhoto, setReadingPhoto] = useState(false)
 
   // Additional fields from sales order form
   const [quotationRequestNumber, setQuotationRequestNumber] = useState("")
@@ -653,6 +656,65 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     }
   }
 
+  // A photo of a printed item list (table or plain lines): each row's name and quantity are read and added like
+  // the Excel import: a name matching a stock product exactly becomes a stock line, any other an outsourced line.
+  const handleItemsPhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = event.target.files?.[0]
+    event.target.value = ""
+    if (!picked) return
+    setReadingPhoto(true)
+    try {
+      const photo = await shrinkPhoto(picked, "items-photo")
+      const response = await fetch("/api/quotations/read-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: photo.base64, media_type: "image/jpeg" }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || t("sq.items-photo-failed"))
+      const read: PhotoItem[] = Array.isArray(body.items) ? body.items : []
+      const skipped = Number(body.skipped) || 0
+      if (read.length === 0) {
+        alert(t("sq.items-photo-none"))
+        return
+      }
+      const stamp = Date.now()
+      const newItems: QuotationItem[] = read.map((row, index) => {
+        const name = row.productName.toLowerCase()
+        const matched = products.find((p) => p.productName?.toLowerCase() === name || p.sku?.toLowerCase() === name)
+        return matched
+          ? {
+              id: `photo-${stamp}-${index}`,
+              item_type: "inventory" as const,
+              product_id: Number(matched.id),
+              product_name: matched.productName || "",
+              quantity: row.quantity,
+              unit_price: matched.unitPrice || 0,
+              markup: 0,
+            }
+          : {
+              id: `photo-${stamp}-${index}`,
+              item_type: "outsourced" as const,
+              product_id: undefined,
+              product_name: row.productName,
+              quantity: row.quantity,
+              unit_price: 0,
+              markup: 0,
+              supplier_name: undefined,
+            }
+      })
+      setItems((prev) => [...prev, ...newItems])
+      const matchedCount = newItems.filter((i) => i.item_type === "inventory").length
+      let note = fill(t("sq.items-photo-result"), { count: newItems.length, matched: matchedCount, outsourced: newItems.length - matchedCount })
+      if (skipped > 0) note += " " + fill(t("sq.items-photo-skipped"), { skipped })
+      alert(note)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : t("sq.items-photo-failed"))
+    } finally {
+      setReadingPhoto(false)
+    }
+  }
+
   const addItem = (itemType: "inventory" | "outsourced") => {
     setItems([
       ...items,
@@ -1164,6 +1226,11 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                 <Upload className="h-4 w-4 me-2" />
                 {t("sq.import-excel")}
               </Button>
+              <input ref={photoInputRef} type="file" accept="image/*" onChange={handleItemsPhoto} className="hidden" />
+              <Button onClick={() => photoInputRef.current?.click()} size="sm" variant="outline" disabled={readingPhoto}>
+                <Camera className="h-4 w-4 me-2" />
+                {readingPhoto ? t("sq.reading-items-photo") : t("sq.read-items-photo")}
+              </Button>
               <Button onClick={() => addItem("inventory")} size="sm" variant="outline">
                 <Package className="h-4 w-4 me-2" />
                 {t("common.add-from-inventory")}
@@ -1351,17 +1418,6 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
             />
           )}
 
-          {paymentType === "cheque" && (
-            <ChequeFields
-              chequeNumber={paymentDetails.chequeNumber || ""}
-              bankName={paymentDetails.chequeBankName || ""}
-              dueDate={paymentDetails.chequeDueDate || ""}
-              amount={paymentDetails.chequeAmount || subtotal}
-              notes={paymentDetails.chequeNotes || ""}
-              totalAmount={subtotal}
-              onChange={handlePaymentDetailChange}
-            />
-          )}
 
           {paymentType === "hybrid" && (
             <HybridFields

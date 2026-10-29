@@ -25,7 +25,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
-import { PaymentTypeSelector, InstallmentFields, ChequeFields } from "@/components/payment"
+import { PaymentTypeSelector, InstallmentFields } from "@/components/payment"
 import type { SalesOrder, PaymentType, PaymentDetails, ItemCategory } from "@/lib/types"
 
 interface EditItem {
@@ -802,17 +802,6 @@ ${renderTotalsBlock(printTotals)}
                     paymentStartDate={(paymentDetails as any).paymentStartDate || ""}
                     onInstallmentMonthsChange={(months) => handlePaymentDetailChange("installmentMonths", months)}
                     onPaymentStartDateChange={(date) => handlePaymentDetailChange("paymentStartDate", date)}
-                  />
-                )}
-                {paymentType === "cheque" && (
-                  <ChequeFields
-                    chequeNumber={paymentDetails.chequeNumber || ""}
-                    bankName={paymentDetails.chequeBankName || ""}
-                    dueDate={paymentDetails.chequeDueDate || ""}
-                    amount={paymentDetails.chequeAmount || netTotal}
-                    notes={paymentDetails.chequeNotes || ""}
-                    totalAmount={netTotal}
-                    onChange={handlePaymentDetailChange}
                   />
                 )}
               </>

@@ -22,13 +22,13 @@ import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/li
 import { useAppContext } from "@/lib/app-context"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
-import { PaymentTypeSelector, InstallmentFields, ChequeFields } from "@/components/payment"
+import { PaymentTypeSelector, InstallmentFields } from "@/components/payment"
 import type { PaymentType, PaymentDetails, ItemCategory } from "@/lib/types"
 import { normalizeQuotationPaymentDetails } from "@/lib/payment-type"
 import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
 import { StockShortfallNote } from "@/components/sales-quotation/stock-shortfall-note"
 import { RequestPriceDialog } from "@/components/sales-quotation/request-price-dialog"
-import { applyPrCosts } from "@/lib/po-requests/apply-costs"
+import { applyChosenCost, markupFrom, priceWithMarkup, supplierOffers, type SupplierOffer } from "@/lib/po-requests/apply-costs"
 import { stockShortfall } from "@/lib/quotation-shortfall"
 import { ChainLine } from "@/components/shared/chain-line"
 
@@ -80,6 +80,8 @@ interface EditItem {
   quantity: number
   unitPrice: number
   unitCost?: number | null
+  // Outsourced lines: selling price = cost + markup %. Not stored; worked out from cost and price on load.
+  markup: number
 }
 
 interface ApproveConvertQuotationDialogProps {
@@ -122,6 +124,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       quantity: item.quantity || 0,
       unitPrice: item.unit_price || 0,
       unitCost: item.unit_cost ?? null,
+      markup: markupFrom(item.unit_cost, item.unit_price),
     })),
   )
 
@@ -209,7 +212,8 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     }
   }, [newWorkflow, stockProductKey, quotation.id])
 
-  // Price requests (PRs) made for this quotation; the newest one with supplier prices feeds "Use these costs".
+  // Price requests (PRs) made for this quotation, often to several suppliers. "Choose supplier costs" lists every
+  // price offered for each outsourced line; the person picks one per line.
   const [requestPriceOpen, setRequestPriceOpen] = useState(false)
   const [priceRequests, setPriceRequests] = useState<any[]>([])
   const loadPriceRequests = () =>
@@ -221,16 +225,64 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     loadPriceRequests()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotation.id])
-  const quotedRequest = priceRequests.find((pr) => pr.status === "quoted" && (pr.po_request_items || []).some((i: any) => i.unit_price !== null))
-
-  const handleUseCosts = () => {
-    if (!quotedRequest) return
-    const result = applyPrCosts(
-      items.map((item, index) => ({ ...item, lineNo: index + 1, outsourced: item.itemType === "outsourced" })),
-      quotedRequest.po_request_items || [],
+  const numberedLines = items.map((item, index) => ({ ...item, lineNo: index + 1, outsourced: item.itemType === "outsourced" }))
+  const offers = supplierOffers(numberedLines, priceRequests)
+  const hasOffers = Object.keys(offers).length > 0
+  const [chooseCostsOpen, setChooseCostsOpen] = useState(false)
+  // line number -> chosen offer (key "requestId") while the chooser is open
+  const [chosen, setChosen] = useState<Record<number, string>>({})
+  const offerKey = (o: SupplierOffer) => String(o.requestId)
+  const openChooseCosts = () => {
+    const initial: Record<number, string> = {}
+    for (const line of numberedLines) {
+      const current = (offers[line.lineNo] || []).find((o) => o.price === line.unitCost && (!line.supplierName || o.supplierName === line.supplierName))
+      if (current) initial[line.lineNo] = offerKey(current)
+    }
+    setChosen(initial)
+    setChooseCostsOpen(true)
+  }
+  const handleApplyChosenCosts = () => {
+    setItems((prev) =>
+      prev.map((item, index) => {
+        const offer = (offers[index + 1] || []).find((o) => offerKey(o) === chosen[index + 1])
+        return offer ? applyChosenCost({ ...item, lineNo: index + 1, outsourced: true }, offer) : item
+      }).map(({ lineNo: _lineNo, outsourced: _outsourced, ...item }: any) => item as EditItem),
     )
-    setItems(result.lines.map(({ lineNo: _lineNo, outsourced: _outsourced, ...item }) => item))
-    alert(fill(t("chain.use-costs-done"), { filled: String(result.filled), skipped: String(result.skipped), number: quotedRequest.request_number }))
+    setChooseCostsOpen(false)
+  }
+
+  // Cost / markup / price of an outsourced line move together: cost or markup sets the price; a typed price sets the markup.
+  const updateCost = (key: string, unitCost: number | null) =>
+    setItems((prev) =>
+      prev.map((item) =>
+        item.key !== key ? item : { ...item, unitCost, unitPrice: unitCost ? priceWithMarkup(unitCost, item.markup) : item.unitPrice },
+      ),
+    )
+  const updateMarkup = (key: string, markup: number) =>
+    setItems((prev) =>
+      prev.map((item) =>
+        item.key !== key ? item : { ...item, markup, unitPrice: item.unitCost ? priceWithMarkup(item.unitCost, markup) : item.unitPrice },
+      ),
+    )
+  const updatePrice = (key: string, unitPrice: number) =>
+    setItems((prev) =>
+      prev.map((item) =>
+        item.key !== key
+          ? item
+          : { ...item, unitPrice, markup: item.itemType === "outsourced" && item.unitCost ? markupFrom(item.unitCost, unitPrice) : item.markup },
+      ),
+    )
+  const [markupForAll, setMarkupForAll] = useState("")
+  const handleMarkupForAll = () => {
+    const markup = Number(markupForAll)
+    if (!Number.isFinite(markup) || markupForAll.trim() === "") return
+    setItems((prev) =>
+      prev.map((item) =>
+        item.itemType !== "outsourced"
+          ? item
+          : { ...item, markup, unitPrice: item.unitCost ? priceWithMarkup(item.unitCost, markup) : item.unitPrice },
+      ),
+    )
   }
 
   const handleRequestPrice = () => {
@@ -262,6 +314,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         supplierName: "",
         quantity: 1,
         unitPrice: 0,
+        markup: 0,
       },
     ])
   }
@@ -803,13 +856,31 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                 <Button size="sm" variant="outline" onClick={handleRequestPrice}>
                   {t("chain.request-price")}
                 </Button>
-                {quotedRequest && (
-                  <Button size="sm" variant="outline" onClick={handleUseCosts}>
-                    {fill(t("chain.use-costs"), { number: quotedRequest.request_number })}
+                {hasOffers && (
+                  <Button size="sm" variant="outline" onClick={openChooseCosts}>
+                    {t("chain.choose-costs")}
                   </Button>
                 )}
               </div>
             </div>
+            {items.some((item) => item.itemType === "outsourced") && (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor="markup-for-all">{t("chain.markup-all")}</Label>
+                  <Input
+                    id="markup-for-all"
+                    type="number"
+                    step="0.1"
+                    className="w-28"
+                    value={markupForAll}
+                    onChange={(e) => setMarkupForAll(e.target.value)}
+                  />
+                </div>
+                <Button size="sm" variant="outline" onClick={handleMarkupForAll} disabled={markupForAll.trim() === ""}>
+                  {t("chain.markup-apply")}
+                </Button>
+              </div>
+            )}
 
             {items.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">
@@ -874,6 +945,29 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                           </div>
                         </>
                       )}
+                      {item.itemType === "outsourced" && (
+                        <>
+                          <div className="col-span-1 lg:col-span-2 space-y-1">
+                            <Label className="text-xs">{t("chain.cost")}</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.unitCost ?? ""}
+                              onChange={(e) => updateCost(item.key, e.target.value === "" ? null : Number(e.target.value) || 0)}
+                            />
+                          </div>
+                          <div className="col-span-1 lg:col-span-1 space-y-1">
+                            <Label className="text-xs">{t("so.markup")}</Label>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              value={item.markup}
+                              onChange={(e) => updateMarkup(item.key, Number(e.target.value) || 0)}
+                            />
+                          </div>
+                        </>
+                      )}
                       <div className="col-span-1 lg:col-span-1 space-y-1">
                         <Label className="text-xs">{t("quantity")}</Label>
                         <Input
@@ -890,13 +984,8 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                           min="0"
                           step="0.01"
                           value={item.unitPrice}
-                          onChange={(e) => updateItem(item.key, { unitPrice: Number(e.target.value) || 0 })}
+                          onChange={(e) => updatePrice(item.key, Number(e.target.value) || 0)}
                         />
-                        {item.itemType === "outsourced" && item.unitCost != null && (
-                          <p className="text-xs text-muted-foreground">
-                            {t("chain.supplier-cost")}: {formatCurrency(item.unitCost)}
-                          </p>
-                        )}
                       </div>
                       <div className="col-span-1 lg:col-span-2 space-y-1">
                         <Label className="text-xs">{t("total")}</Label>
@@ -942,17 +1031,6 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                     paymentStartDate={(paymentDetails as any).paymentStartDate || ""}
                     onInstallmentMonthsChange={(months) => handlePaymentDetailChange("installmentMonths", months)}
                     onPaymentStartDateChange={(date) => handlePaymentDetailChange("paymentStartDate", date)}
-                  />
-                )}
-                {paymentType === "cheque" && (
-                  <ChequeFields
-                    chequeNumber={paymentDetails.chequeNumber || ""}
-                    bankName={paymentDetails.chequeBankName || ""}
-                    dueDate={paymentDetails.chequeDueDate || ""}
-                    amount={paymentDetails.chequeAmount || netTotal}
-                    notes={paymentDetails.chequeNotes || ""}
-                    totalAmount={netTotal}
-                    onChange={handlePaymentDetailChange}
                   />
                 )}
               </>
@@ -1032,6 +1110,62 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
             suppliers={suppliers}
             onCreated={loadPriceRequests}
           />
+        )}
+        {chooseCostsOpen && (
+          <Dialog open={chooseCostsOpen} onOpenChange={setChooseCostsOpen}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{t("chain.choose-costs")}</DialogTitle>
+                <DialogDescription>{t("chain.choose-costs-help")}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                {numberedLines
+                  .filter((line) => offers[line.lineNo])
+                  .map((line) => (
+                    <div key={line.key} className="border rounded-md p-3 space-y-2">
+                      <div className="text-sm font-medium">
+                        {line.lineNo}. {line.productName} <span className="text-muted-foreground">× {line.quantity}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {offers[line.lineNo].map((offer) => {
+                          const selected = chosen[line.lineNo] === offerKey(offer)
+                          return (
+                            <Button
+                              key={offerKey(offer)}
+                              size="sm"
+                              variant={selected ? "default" : "outline"}
+                              aria-pressed={selected}
+                              onClick={() =>
+                                setChosen((prev) => {
+                                  const next = { ...prev }
+                                  if (selected) delete next[line.lineNo]
+                                  else next[line.lineNo] = offerKey(offer)
+                                  return next
+                                })
+                              }
+                              className="h-auto py-1.5 flex-col items-start"
+                            >
+                              <span className="font-semibold">{formatCurrency(offer.price)}</span>
+                              <span className="text-xs opacity-80">
+                                {offer.supplierName || "-"} · {offer.requestNumber}
+                              </span>
+                            </Button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setChooseCostsOpen(false)}>
+                  {t("cancel")}
+                </Button>
+                <Button onClick={handleApplyChosenCosts} disabled={Object.keys(chosen).length === 0}>
+                  {t("chain.choose-costs-apply")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         )}
       </DialogContent>
     </Dialog>

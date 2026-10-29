@@ -171,3 +171,18 @@ test("salesOrderPaymentMethod shows the real payment type, not the coarse paymen
   assert.equal(salesOrderPaymentMethod({}), null)
   assert.equal(salesOrderPaymentMethod(null), null)
 })
+
+test("cheque as a payment type: no cheque number / bank box on any order screen; the schedule uses the invoice due date", () => {
+  const { existsSync, readFileSync: read } = require("node:fs") as typeof import("node:fs")
+  const root = process.env.REPO_ROOT || process.cwd()
+  assert.equal(existsSync(`${root}/components/payment/cheque-fields.tsx`), false)
+  for (const f of [
+    "components/modules/purchase-order-module.tsx",
+    "components/modules/sales-quotation-module.tsx",
+    "components/modules/sales-order-module.tsx",
+    "components/payment/hybrid-fields.tsx",
+    "components/sales-order/edit-approved-order-dialog.tsx",
+    "components/sales-quotation/approve-convert-quotation-dialog.tsx",
+  ]) assert.doesNotMatch(read(`${root}/${f}`, "utf8"), /ChequeFields/, f)
+  assert.match(read(`${root}/lib/due-schedule.ts`, "utf8"), /if \(type === "cheque"\) return single\(ymd\(d\.chequeDueDate\) \|\| invoiceDue\)/)
+})

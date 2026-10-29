@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
   </style>
 </head>
 <body>
-  <button class="print-btn" onclick="window.print()">طباعة / Print</button>
+  <button class="print-btn" onclick="window.print()">طباعة</button>
   ${printHeader({
     logoHtml: `${logoDataUrl ? `<img src="${logoDataUrl}" alt="Logo" class="logo">` : `<div style="font-size: 24px; font-weight: bold; color: #1a56db;">مصر موتورز</div>`}`,
     company: {
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
       البريد الإلكتروني: ${COMPANY_SETTINGS.email}`,
     },
   })}
-  ${docTitle({ titleAr: `عرض سعر / Sales Quotation` })}
+  ${docTitle({ titleAr: `عرض سعر` })}
   <section class="pm-info">
     <div class="pm-fields">
       <div class="pm-field"><div class="pm-label">رقم العرض:</div><div class="pm-value">${escapeHtml(quotationNumber)}</div></div>

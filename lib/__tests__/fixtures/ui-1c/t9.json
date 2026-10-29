@@ -4,17 +4,10 @@
     "components/modules/financial-dashboard.tsx": {
       "migrated": true,
       "surface": {
-        "api": [
-          "\"/api/reschedule-requests",
-          "\"/api/reschedule-requests",
-          "\"/api/reschedule-requests"
-        ],
-        "handlers": [
-          "handleApproveReschedule",
-          "handleRejectReschedule"
-        ],
+        "api": [],
+        "handlers": [],
         "ids": [],
-        "fetch": 3,
+        "fetch": 0,
         "iso": 3,
         "t": 111,
         "onClick": 8

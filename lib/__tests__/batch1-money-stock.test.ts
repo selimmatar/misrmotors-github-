@@ -17,7 +17,6 @@ import * as customerPaymentsRoute from "../../app/api/customer-payments/route"
 import * as apRoute from "../../app/api/accounts-payable/route"
 import * as balanceRoute from "../../app/api/balance/route"
 import * as inventoryRoute from "../../app/api/inventory/route"
-import * as rescheduleRoute from "../../app/api/reschedule-requests/route"
 import * as scheduleRoute from "../../app/api/payment-schedules/route"
 import * as auditRoute from "../../app/api/inventory/audit/route"
 import * as dpRoute from "../../app/api/delivery-permits/route"
@@ -305,63 +304,13 @@ test("2. inventory PUT refuses quantity changes but still updates metadata; DELE
   assert.deepEqual(db.tables.inventory.map((r) => r.inventory_id), [1])
 })
 
-const rescheduleDb = (request: Row = {}, invoice: Row = {}) => {
-  const db = new FakeDb({
-    reschedule_requests: [{
-      id: 1, invoice_id: 5, status: "pending", current_amount: 300, requested_amount: 300, requested_months: 6,
-      current_due_date: "2026-09-01", requested_due_date: "2099-12-01", ...request,
-    }],
-    accounts_receivable: [arRow({ due_date: "2026-09-01", installment_months: 3, status: "overdue", collected_amount: 100, ...invoice })],
-  })
-  useDb(db)
-  return db
-}
-const review = (status: string, extra: Row = {}) => call(rescheduleRoute.PUT, "PUT", { id: 1, status, reviewedBy: "CEO", ...extra })
-
-test("2. reschedule approval applies the terms once and recomputes the invoice status", async () => {
-  const db = rescheduleDb({ requested_amount: 250 })
-  const r = await review("approved")
-  assert.equal(r.status, 200, JSON.stringify(r.body))
-  const inv = db.tables.accounts_receivable[0]
-  assert.equal(inv.amount, 250)
-  assert.equal(inv.installment_months, 6)
-  assert.equal(inv.due_date, "2099-12-01")
-  assert.equal(inv.status, "partially_paid", "recomputed from the new amount (lib/ar-status)")
-  assert.equal(db.tables.reschedule_requests[0].status, "approved")
-  // a second review (approve or reject) of the same request is refused
-  assert.equal((await review("approved")).status, 409)
-  assert.equal((await review("rejected", { rejectionReason: "late" })).status, 409)
-  assert.equal(db.tables.reschedule_requests[0].status, "approved")
-})
-
-test("2. reschedule approval never sets the amount below what was collected", async () => {
-  const db = rescheduleDb({ requested_amount: 80 })
-  const r = await review("approved")
-  assert.equal(r.status, 409)
-  assert.match(r.body.error, /already paid/)
-  assert.equal(db.tables.accounts_receivable[0].amount, 300)
-  assert.equal(db.tables.reschedule_requests[0].status, "pending")
-})
-
-test("2. reschedule: an invoice update failure is a failure and the request goes back to pending", async () => {
-  const db = rescheduleDb()
-  db.failOn["accounts_receivable:update"] = "ar down"
-  const r = await review("approved")
-  assert.equal(r.status, 500)
-  assert.equal(db.tables.reschedule_requests[0].status, "pending")
-  delete db.failOn["accounts_receivable:update"]
-  assert.equal((await review("approved")).status, 200)
-  assert.equal(db.tables.accounts_receivable[0].installment_months, 6)
-})
-
-test("2. reschedule: approve and reject at the same time end with exactly one review", async () => {
-  for (let round = 0; round < 15; round++) {
-    const db = rescheduleDb()
-    const rs = await Promise.all([review("approved"), review("rejected", { rejectionReason: "no" })])
-    assert.equal(rs.filter((r) => r.status === 200).length, 1, JSON.stringify(rs.map((r) => r.body)))
-    const final = db.tables.reschedule_requests[0].status
-    assert.equal(db.tables.accounts_receivable[0].installment_months, final === "approved" ? 6 : 3, `round ${round}`)
+test("2. payment rescheduling is removed: no endpoint, no request button, no CEO approval box", () => {
+  const { existsSync } = require("node:fs") as typeof import("node:fs")
+  assert.equal(existsSync(join(ROOT, "app/api/reschedule-requests/route.ts")), false)
+  for (const f of ["components/modules/payment-schedule-module.tsx", "components/modules/accountant-module.tsx", "components/modules/financial-dashboard.tsx"]) {
+    assert.doesNotMatch(src(f), /reschedule/i, f)
   }
+  assert.doesNotMatch(src("lib/i18n-context.tsx"), /reschedule|إعادة الجدولة/)
 })
 
 const linkedScheduleDb = (schedules?: Row[], invoice: Row = {}) => {
@@ -662,54 +611,6 @@ function beforeFirstUpdate(db: FakeDb, table: string, change: () => void) {
   }
 }
 
-test("R I-1. a reschedule request without an invoice id is applied to the invoice of its sales order", async () => {
-  const db = rescheduleDb({ invoice_id: null, so_number: "SO-77", customer_id: 3, requested_amount: 250 }, { so_id: 77 })
-  db.tables.sales_orders = [{ so_id: 77, so_number: "SO-77", customer_id: 3 }]
-  const r = await review("approved")
-  assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(db.tables.reschedule_requests[0].status, "approved")
-  assert.equal(db.tables.accounts_receivable[0].amount, 250)
-  assert.equal(db.tables.accounts_receivable[0].installment_months, 6)
-})
-
-test("R I-1. the invoice can also be found from the order's payment schedule", async () => {
-  const db = rescheduleDb({ invoice_id: null, so_number: "SO-78", customer_id: 3 })
-  db.tables.sales_orders = [{ so_id: 78, so_number: "SO-78", customer_id: 3 }]
-  db.tables.payment_schedules = [
-    { schedule_id: 1, so_id: 78, invoice_id: 5, amount: 150, schedule_type: "receivable" },
-    { schedule_id: 2, so_id: 78, invoice_id: 5, amount: 150, schedule_type: "receivable" },
-  ]
-  const r = await review("approved")
-  assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(db.tables.accounts_receivable[0].installment_months, 6)
-})
-
-test("R I-1. with no invoice to resolve, the request is approved and no invoice is changed (as before)", async () => {
-  for (const setup of [
-    (db: FakeDb) => { db.tables.sales_orders = [] },
-    // two invoices on the order: not safe to pick one
-    (db: FakeDb) => {
-      db.tables.sales_orders = [{ so_id: 79, so_number: "SO-79", customer_id: 3 }]
-      db.tables.accounts_receivable.push(arRow({ invoice_id: 6, invoice_number: "INV-6", so_id: 79 }))
-      db.tables.accounts_receivable[0].so_id = 79
-    },
-  ]) {
-    const db = rescheduleDb({ invoice_id: null, so_number: "SO-79", customer_id: 3, requested_amount: 250 })
-    setup(db)
-    const before = JSON.stringify(db.tables.accounts_receivable)
-    const r = await review("approved")
-    assert.equal(r.status, 200, JSON.stringify(r.body))
-    assert.equal(r.body.invoiceUpdated, false)
-    assert.equal(db.tables.reschedule_requests[0].status, "approved")
-    assert.equal(JSON.stringify(db.tables.accounts_receivable), before)
-  }
-})
-
-test("R I-1. the payment schedule screen sends the invoice id of the order's schedules", () => {
-  const screen = src("components/modules/payment-schedule-module.tsx")
-  assert.match(screen, /invoiceId: scheduleInvoiceId/)
-})
-
 test("R I-2. the supplier card's total paid counts cash only, not supplier credit applied to an invoice", () => {
   const screen = src("components/modules/supplier-module.tsx")
   assert.match(screen, /payment\.payment_method === SUPPLIER_CREDIT_PAYMENT_METHOD\) return/)
@@ -759,13 +660,6 @@ test("R m6. the supplier card shows the credit type in the user's language", () 
   for (const key of ["supplier.credit-type-overpayment", "supplier.credit-type-return"]) {
     assert.equal(i18n.split(`"${key}":`).length - 1, 2, key)
   }
-})
-
-test("R m7. a reschedule approval keeps an invoice overdue when its due date has passed", async () => {
-  const db = rescheduleDb({ requested_amount: 250, current_due_date: "2020-01-01", requested_due_date: "2020-01-01" }, { due_date: "2020-01-01" })
-  const r = await review("approved")
-  assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(db.tables.accounts_receivable[0].status, "overdue")
 })
 
 test("R m8. an AR payment re-checks the balance when the invoice amount changed before its write", async () => {

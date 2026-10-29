@@ -1,6 +1,5 @@
 "use client"
 
-import { Calendar } from "@/components/ui/calendar"
 
 import type React from "react"
 
@@ -394,45 +393,6 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                         </div>
                         
                         <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={async () => {
-                              const newMonths = prompt(fill(t("acct.current-plan-prompt"), { months: invoice.installmentMonths }), invoice.installmentMonths.toString())
-                              if (newMonths && Number.parseInt(newMonths) > 0) {
-                                const reason = prompt(t("acct.reschedule-reason-prompt"))
-                                if (reason) {
-                                  try {
-                                    const response = await fetch("/api/reschedule-requests", {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({
-                                        invoiceId: invoice.id,
-                                        invoiceNumber: invoice.invoiceNumber,
-                                        customerId: invoice.customerId,
-                                        currentMonths: invoice.installmentMonths,
-                                        requestedMonths: Number.parseInt(newMonths),
-                                        reason: reason,
-                                        requestedBy: "accountant",
-                                      }),
-                                    })
-                                    if (response.ok) {
-                                      alert(t("common.reschedule-request-sent-to-ceo"))
-                                    } else {
-                                      const error = await response.json()
-                                      alert(fill(t("acct.submit-request-failed"), { error: error.error || t("acct.unknown-error") }))
-                                    }
-                                  } catch (error) {
-                                    alert(t("common.failed-to-submit-reschedule-request"))
-                                  }
-                                }
-                              }
-                            }}
-                            disabled={invoice.status === "paid"}
-                          >
-                            <Calendar className="w-4 h-4 me-2" />
-                            {t("common.reschedule-payment-plan")}
-                          </Button>
                           <Button
                             size="sm"
                             onClick={() => handleMarkCustomerReceived(invoice.id)}

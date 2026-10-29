@@ -45,6 +45,7 @@
   "components/modules/sales-quotation-module.tsx": {
     "api": [
       "\"/api/quotation-drafts",
+      "\"/api/quotations/read-items",
       "\"/api/sales-quotations",
       "`/api/quotation-drafts?id=${encodeURIComponent(draftIdToClear)}",
       "`/api/quotation-drafts?id=${encodeURIComponent(id)}",
@@ -57,6 +58,7 @@
       "handleCustomerChange",
       "handleExcelUpload",
       "handleInventorySelection",
+      "handleItemsPhoto",
       "handlePaymentDetailChange",
       "handleSaveAndGeneratePDF"
     ],
@@ -81,10 +83,10 @@
       "id={`quantity-${item.id}`}",
       "id={`supplier-${item.id}`}"
     ],
-    "fetch": 5,
+    "fetch": 6,
     "iso": 7,
     "t": 0,
-    "onClick": 10
+    "onClick": 11
   },
   "components/modules/sales-quotations-hub-module.tsx": {
     "api": [],
@@ -238,17 +240,14 @@
   },
   "components/modules/payment-schedule-module.tsx": {
     "api": [
-      "\"/api/reschedule-requests",
       "`/api/payment-schedules?soId=${soId}"
     ],
-    "handlers": [
-      "handleSubmitReschedule"
-    ],
+    "handlers": [],
     "ids": [],
-    "fetch": 3,
-    "iso": 1,
+    "fetch": 2,
+    "iso": 0,
     "t": 0,
-    "onClick": 4
+    "onClick": 1
   },
   "components/modules/balance-module.tsx": {
     "api": [
@@ -275,7 +274,6 @@
       "\"/api/accounts-receivable/payments",
       "\"/api/customer-payments",
       "\"/api/maintenance/work-orders/ready-for-invoice",
-      "\"/api/reschedule-requests",
       "\"/api/upload"
     ],
     "handlers": [
@@ -286,10 +284,10 @@
     "ids": [
       "id={`file-${order.id}`}"
     ],
-    "fetch": 5,
+    "fetch": 4,
     "iso": 1,
     "t": 157,
-    "onClick": 17
+    "onClick": 16
   },
   "components/accounting/maintenance-invoice-tab.tsx": {
     "api": [
