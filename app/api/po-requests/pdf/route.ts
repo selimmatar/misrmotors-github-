@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { chainTextForPrint } from "@/lib/po-requests/chain"
+import { sortRequestItems } from "@/lib/po-requests/read-prices"
 import { PRINT_CSS, printHeader, docTitle, infoBox } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
     }
 
     const supplier = poRequest.suppliers || {}
-    const items = poRequest.po_request_items || []
+    const items = sortRequestItems(poRequest.po_request_items || [])
 
     const chainLine = await chainTextForPrint(supabase, { prId: poRequest.request_id })
     const html = `
@@ -95,6 +96,9 @@ export async function GET(request: NextRequest) {
     .pm-note h4 { margin-block-end: 4px; font-size: 13px; font-weight: 700; }
     .pm-note p { margin-block: 2px; }
     .pm-note ul { padding-inline-start: 18px; }
+    .pm-table td.pm-price-cell { padding: 4px; vertical-align: middle; }
+    .pm-price-box { block-size: 34px; border: 1.5px solid #000; border-radius: 3px; }
+    .pm-price-hint { margin-block: 4px 0; font-size: 12px; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -155,7 +159,8 @@ export async function GET(request: NextRequest) {
       [`العنوان:`, `${escapeHtml(supplier.address || "-")}`],
     ])}
     
-    <!-- Items Table (No Prices) -->
+    <!-- Items Table: the supplier hand-writes one unit price per row in the box (read back from a photo) -->
+    <p class="pm-price-hint">اكتب سعر الوحدة بالأرقام فقط داخل المربع لكل صنف / Write the unit price in numbers only, one per box</p>
     <table class="pm-table">
       <thead>
         <tr>
@@ -165,6 +170,7 @@ export async function GET(request: NextRequest) {
           <th class="pm-center" style="width: 100px;">الكمية / Quantity</th>
           <th class="pm-center" style="width: 80px;">الوحدة / Unit</th>
           <th>ملاحظات / Notes</th>
+          <th class="pm-center" style="width: 140px;">سعر الوحدة / Unit Price</th>
         </tr>
       </thead>
       <tbody>
@@ -176,6 +182,7 @@ export async function GET(request: NextRequest) {
             <td class="pm-center">${escapeHtml(item.quantity)}</td>
             <td class="pm-center">${escapeHtml(item.unit || item.products?.unit || "-")}</td>
             <td>${escapeHtml(item.notes || "-")}</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
           </tr>
         `).join("")}
       </tbody>
