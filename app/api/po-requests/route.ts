@@ -20,6 +20,10 @@ export async function GET(request: NextRequest) {
           email,
           phone
         ),
+        sales_quotations (
+          quotation_number,
+          customer_name
+        ),
         po_request_items (
           item_id,
           product_id,

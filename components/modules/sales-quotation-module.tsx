@@ -599,20 +599,18 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
             }
           } else {
             // Inventory item - try to find matching product
-            const matchedProduct = products.find(p => 
-              p.name?.toLowerCase() === String(productName).toLowerCase() ||
-              p.productName?.toLowerCase() === String(productName).toLowerCase() ||
-              p.sku?.toLowerCase() === String(productName).toLowerCase()
-            )
+            const name = String(productName).trim().toLowerCase()
+            const matchedProduct = products.find((p) => p.productName?.trim().toLowerCase() === name || p.sku?.trim().toLowerCase() === name)
             
             if (matchedProduct) {
               return {
                 id: `excel-${Date.now()}-${index}`,
                 item_type: "inventory" as const,
-                product_id: matchedProduct.id,
-                product_name: matchedProduct.name || matchedProduct.productName || "",
+                product_id: Number(matchedProduct.id),
+                product_name: matchedProduct.productName || "",
                 quantity: isNaN(quantity) ? 1 : quantity,
-                unit_price: isNaN(unitPrice) ? (matchedProduct.price || 0) : unitPrice,
+                // No price in the sheet: take the stock item's selling price
+                unit_price: isNaN(unitPrice) || unitPrice <= 0 ? matchedProduct.unitPrice || 0 : unitPrice,
                 markup: 0,
               }
             } else {

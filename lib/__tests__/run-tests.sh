@@ -81,7 +81,8 @@ cat > "$OUT/tsconfig.json" <<JSON
     "$REPO/lib/__tests__/party-edit-contacts.test.ts",
     "$REPO/lib/__tests__/po-cost.test.ts",
     "$REPO/lib/__tests__/reports-finance.test.ts",
-    "$REPO/lib/__tests__/read-prices.test.ts"
+    "$REPO/lib/__tests__/read-prices.test.ts",
+    "$REPO/lib/__tests__/notification-counts.test.ts"
   ]
 }
 JSON
@@ -92,7 +93,7 @@ export REPO_ROOT="$REPO"
 export HARDENING_GOLDEN_DIR="$REPO/lib/__tests__/fixtures/hardening"
 status=0
 for run in $(seq 1 "$REPEAT"); do
-  for suite in payment-type invoicing returns invoicing-returns so-edit routes print-totals missing-items print-routes print-theme goods-receiving accounts-payable-payments po-status po-over-order costing transfers legacy-paths supplier-credits stock-hold review-fixes leftovers workflow-fixes consistency-fixes hardening decisions removals format status-badge approval-steps sidebar-groups ui-frame erp-blocks module-migration module-migration-1c a11y-scan p24-frame p24-sales p24-customers p24-finance p24-purchasing p24-inventory p24-overview p24-keys p24-residuals i18n-format i18n-coverage i18n-review-fixes toasts-arabic logic-fixes logic-fixes-b reports-views connections so-edit-all supplier-credit-po batch1-money-stock pending-window quotation-pdf-discount golive-fixes party-edit-contacts po-cost reports-finance return-cost-credit pr-chain read-prices; do
+  for suite in payment-type invoicing returns invoicing-returns so-edit routes print-totals missing-items print-routes print-theme goods-receiving accounts-payable-payments po-status po-over-order costing transfers legacy-paths supplier-credits stock-hold review-fixes leftovers workflow-fixes consistency-fixes hardening decisions removals format status-badge approval-steps sidebar-groups ui-frame erp-blocks module-migration module-migration-1c a11y-scan p24-frame p24-sales p24-customers p24-finance p24-purchasing p24-inventory p24-overview p24-keys p24-residuals i18n-format i18n-coverage i18n-review-fixes toasts-arabic logic-fixes logic-fixes-b reports-views connections so-edit-all supplier-credit-po batch1-money-stock pending-window quotation-pdf-discount golive-fixes party-edit-contacts po-cost reports-finance return-cost-credit pr-chain read-prices notification-counts; do
     result="$(node --test "$OUT/out/lib/__tests__/$suite.test.js" 2>&1)"
     line="$(echo "$result" | grep -E '^# (tests|pass|fail)' | tr '\n' ' ')"
     echo "run $run  $suite: $line"

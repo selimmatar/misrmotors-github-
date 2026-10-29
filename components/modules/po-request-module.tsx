@@ -68,8 +68,13 @@ interface PORequest {
   so_id?: number | null
   supplier_quote_file_url?: string | null
   suppliers?: { supplier_id: number; supplier_name: string }
+  sales_quotations?: { quotation_number?: string | null; customer_name?: string | null } | null
   po_request_items?: any[]
 }
+
+// "QT-2026-031 · Ahmed Trading" under the request number; empty when the request has no quotation.
+const quotationLine = (request: PORequest) =>
+  [request.sales_quotations?.quotation_number, request.sales_quotations?.customer_name].filter(Boolean).join(" · ")
 
 export function PORequestModule() {
   const { toast } = useToast()
@@ -366,7 +371,12 @@ export function PORequestModule() {
                 <TableBody>
                   {filteredRequests.map((request) => (
                     <TableRow key={request.request_id}>
-                      <IdCell>{request.request_number}</IdCell>
+                      <IdCell>
+                        {request.request_number}
+                        {quotationLine(request) && (
+                          <div className="text-xs font-normal text-muted-foreground">{quotationLine(request)}</div>
+                        )}
+                      </IdCell>
                       <TableCell>{request.suppliers?.supplier_name || "-"}</TableCell>
                       <TableCell>{formatDate(request.request_date || request.created_at, language)}</TableCell>
                       <TableCell>{request.po_request_items?.length || 0}</TableCell>
@@ -384,6 +394,7 @@ export function PORequestModule() {
             party={request.suppliers?.supplier_name || "-"}
             note={
               <>
+                {quotationLine(request) && <span className="block text-xs text-muted-foreground">{quotationLine(request)}</span>}
                 {formatDate(request.request_date || request.created_at, language)} · {t("so.items")}:{" "}
                 {request.po_request_items?.length || 0}
               </>

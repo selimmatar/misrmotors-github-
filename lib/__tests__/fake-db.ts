@@ -123,6 +123,8 @@ class Query {
   lte(c: string, v: any) { this.filters.push((r) => r[c] <= v); return this }
   in(c: string, vs: any[]) { this.filters.push((r) => vs.includes(r[c])); return this }
   is(c: string, v: any) { this.filters.push((r) => (r[c] ?? null) === v); return this }
+  /** PostgREST `not`: only `not(col, "is", null)` */
+  not(c: string, op: string, v: any) { this.filters.push((r) => (op === "is" ? (r[c] ?? null) !== v : r[c] !== v)); return this }
   /** PostgREST `or`: only the "col.is.null" / "col.eq.value" terms the routes use */
   or(expr: string) {
     const terms = expr.split(",").map((t) => {
