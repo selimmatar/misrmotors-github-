@@ -122,7 +122,7 @@ test("reader route: prices come back per item (row 1 = lowest item id), nothing 
     async (seen) => {
       const r = await read(PHOTO)
       assert.equal(r.status, 200, JSON.stringify(r.body))
-      assert.deepEqual(r.body, { prices: { 11: 1250 }, brands: {}, read: 1, total: 2, request_number_matches: true })
+      assert.deepEqual(r.body, { prices: { 11: 1250 }, brands: {}, codes: {}, read: 1, total: 2, request_number_matches: true })
       const sent = seen[0].body
       assert.equal(seen[0].headers["x-goog-api-key"], "test-key")
       assert.match(seen[0].url, /^\/v1beta\/models\/gemini-3\.8-flash:generateContent$/)
@@ -144,7 +144,7 @@ test("reader route: a photo of another request is flagged", async () => {
     async () => {
       const r = await read(PHOTO)
       assert.equal(r.status, 200)
-      assert.deepEqual(r.body, { prices: { 12: 80 }, brands: {}, read: 1, total: 2, request_number_matches: false })
+      assert.deepEqual(r.body, { prices: { 12: 80 }, brands: {}, codes: {}, read: 1, total: 2, request_number_matches: false })
     },
   )
 })
