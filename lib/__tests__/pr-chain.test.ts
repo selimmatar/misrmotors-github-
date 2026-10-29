@@ -326,10 +326,17 @@ test("new quotation screen: asking for more than is free is allowed only in the 
   assert.match(src, /<StockShortfallNote free=\{stockLimit\} requested=\{item.quantity\} \/>/)
 })
 
-test("Request price from supplier is on the quotation screen after saving and on each waiting quotation", () => {
+test("Request price from supplier is on the quotation screen before saving and on each waiting quotation", () => {
   const read = (f: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), f), "utf8")
   const create = read("components/modules/sales-quotation-module.tsx")
-  assert.match(create, /\{newWorkflow && \(\s*<div className="space-y-1">\s*<RequestPriceButton/)
+  // Always shown under Save & Generate PDF, not only in the box that appears after saving
+  assert.match(create, /\{newWorkflow && \(\s*<div className="space-y-1 pt-2">\s*<RequestPriceButton prepare=\{prepareRequestPrice\}/)
+  assert.doesNotMatch(create, /savedQuotation && savedPdfUrl && \([\s\S]{0,800}<RequestPriceButton/)
+  // Not saved yet: the click saves it first (same checks as Save); saved already: the same quotation is used
+  assert.match(create, /if \(savedQuotation\) \{\s*return \{ quotation: \{ id: savedQuotation.id/)
+  assert.match(create, /if \(!validateQuotation\(\)\) return null/)
+  // Printing afterwards reuses that quotation while nothing changed, instead of saving a second one
+  assert.match(create, /savedFormRef.current === formSnapshot\(\)/)
   assert.match(create, /lineNo: index \+ 1,/)
   const list = read("components/modules/approve-sales-quotations-module.tsx")
   assert.match(list, /\{isNewQuotationWorkflow\(\) && \(\s*<RequestPriceButton/)
