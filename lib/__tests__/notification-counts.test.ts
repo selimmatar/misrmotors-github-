@@ -162,6 +162,7 @@ test("maintenance switched off: its reports leave the counter and the list; its 
   assert.match(src("components/modules/sales-quotation-module.tsx"), /<SelectItem value="MAINTENANCE" disabled=\{!isMaintenanceLive\(\)\}>/)
   assert.match(src("components/modules/sales-quotations-hub-module.tsx"), /isMaintenanceLive\(\) && \{\n\s*key: "reports"/)
   assert.match(src("components/layout/nav-config.ts"), /id: "maintenance-invoices",[^}]*disabled: true/)
+  assert.match(src("components/so-type/so-type-selector.tsx"), /<SelectItem value="MAINTENANCE_PARTS" disabled=\{!isMaintenanceLive\(\)\}>/)
 })
 
 test("waiting for you: the button sits on the three screens and opens each item", () => {

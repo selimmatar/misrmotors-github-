@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Wrench, Settings, Layers } from "lucide-react"
 import type { SOType } from "@/lib/types"
+import { isMaintenanceLive } from "@/lib/workflow-switch"
 
 interface SOTypeSelectorProps {
   value: SOType
@@ -29,7 +30,7 @@ export function SOTypeSelector({ value, onChange, disabled }: SOTypeSelectorProp
               <span>{t("so-type.equipment")}</span>
             </div>
           </SelectItem>
-          <SelectItem value="MAINTENANCE_PARTS">
+          <SelectItem value="MAINTENANCE_PARTS" disabled={!isMaintenanceLive()}>
             <div className="flex items-center gap-2">
               <Wrench className="w-4 h-4 text-orange-700" />
               <span>{t("so-type.maintenance-parts")}</span>
