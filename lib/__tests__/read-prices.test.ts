@@ -1,6 +1,6 @@
 // Hand-written prices on the printed price request (owner request, 2026-10-29): the PR print has a price box per
 // row; a photo of the filled sheet is read row by row and fills the "Quote received" screen for a person to check.
-// The reader is never called for real here: a local stand-in answers on ANTHROPIC_BASE_URL.
+// The reader is never called for real here: a local stand-in answers on GEMINI_BASE_URL.
 import "./route-harness"
 import test from "node:test"
 import assert from "node:assert/strict"
@@ -62,14 +62,14 @@ test("rows map to items in the printed order (by item id); empty, unreadable and
 })
 
 // ------------------------------------------------------------------------------- the reader route (stand-in API)
-type Seen = { body: any; headers: http.IncomingHttpHeaders }
+type Seen = { body: any; headers: http.IncomingHttpHeaders; url: string }
 async function withReader(reply: (seen: Seen) => { status: number; json: any }, fn: (seen: Seen[]) => Promise<void>) {
   const seen: Seen[] = []
   const server = http.createServer((req, res) => {
     let raw = ""
     req.on("data", (c) => (raw += c))
     req.on("end", () => {
-      const s = { body: JSON.parse(raw || "{}"), headers: req.headers }
+      const s = { body: JSON.parse(raw || "{}"), headers: req.headers, url: req.url || "" }
       seen.push(s)
       const out = reply(s)
       res.writeHead(out.status, { "content-type": "application/json" })
@@ -77,23 +77,23 @@ async function withReader(reply: (seen: Seen) => { status: number; json: any }, 
     })
   })
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r))
-  const before = { url: process.env.ANTHROPIC_BASE_URL, key: process.env.ANTHROPIC_API_KEY }
-  process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
-  process.env.ANTHROPIC_API_KEY = "test-key"
+  const before = { url: process.env.GEMINI_BASE_URL, key: process.env.GEMINI_API_KEY }
+  process.env.GEMINI_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  process.env.GEMINI_API_KEY = "test-key"
   try {
     await fn(seen)
   } finally {
-    process.env.ANTHROPIC_BASE_URL = before.url
-    if (before.key === undefined) delete process.env.ANTHROPIC_API_KEY
-    else process.env.ANTHROPIC_API_KEY = before.key
+    if (before.url === undefined) delete process.env.GEMINI_BASE_URL
+    else process.env.GEMINI_BASE_URL = before.url
+    if (before.key === undefined) delete process.env.GEMINI_API_KEY
+    else process.env.GEMINI_API_KEY = before.key
     await new Promise((r) => server.close(r))
   }
 }
 const message = (sheet: unknown) => ({
   status: 200,
   json: {
-    id: "msg_test", type: "message", role: "assistant", model: "test", stop_reason: "end_turn", stop_sequence: null,
-    content: [{ type: "text", text: JSON.stringify(sheet) }], usage: { input_tokens: 1, output_tokens: 1 },
+    candidates: [{ content: { role: "model", parts: [{ text: JSON.stringify(sheet) }] }, finishReason: "STOP" }],
   },
 })
 function mkDb() {
@@ -120,11 +120,13 @@ test("reader route: prices come back per item (row 1 = lowest item id), nothing 
       assert.equal(r.status, 200, JSON.stringify(r.body))
       assert.deepEqual(r.body, { prices: { 11: 1250 }, read: 1, total: 2, request_number_matches: true })
       const sent = seen[0].body
-      assert.equal(sent.messages[0].content[0].type, "image")
-      assert.equal(sent.messages[0].content[0].source.data, "aGVsbG8=")
-      assert.match(sent.messages[0].content[1].text, /1\. Valve \(× 4\)\n2\. Pump \(× 2 pcs\)/)
-      assert.equal(sent.output_config.format.type, "json_schema")
-      assert.equal(sent.thinking, undefined, "thinking left at the model default")
+      assert.equal(seen[0].headers["x-goog-api-key"], "test-key")
+      assert.match(seen[0].url, /^\/v1beta\/models\/gemini-3\.8-flash:generateContent$/)
+      const parts = sent.contents[0].parts
+      assert.deepEqual(parts[0].inline_data, { mime_type: "image/jpeg", data: "aGVsbG8=" })
+      assert.match(parts[1].text, /1\. Valve \(× 4\)\n2\. Pump \(× 2 pcs\)/)
+      assert.equal(sent.generationConfig.responseMimeType, "application/json")
+      assert.equal(sent.generationConfig.temperature, 0)
       assert.ok(db.tables.po_request_items.every((i) => i.unit_price === null), "no price saved")
     },
   )
@@ -142,7 +144,7 @@ test("reader route: a photo of another request is flagged", async () => {
   )
 })
 
-test("reader route: bad input, missing key, rejected key, refusal", async () => {
+test("reader route: bad input, missing key, rejected key, free limit, blocked", async () => {
   mkDb()
   for (const bad of [{}, { ...PHOTO, request_id: "abc" }, { ...PHOTO, media_type: "application/pdf" }, { ...PHOTO, image: "" }]) {
     assert.equal((await read(bad)).status, 400, JSON.stringify(bad))
@@ -151,7 +153,7 @@ test("reader route: bad input, missing key, rejected key, refusal", async () => 
     assert.equal((await read({ ...PHOTO, request_id: 99 })).status, 404)
   })
   await withReader(
-    () => ({ status: 401, json: { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } } }),
+    () => ({ status: 400, json: { error: { code: 400, status: "INVALID_ARGUMENT", message: "API key not valid", details: [{ reason: "API_KEY_INVALID" }] } } }),
     async () => {
       const r = await read(PHOTO)
       assert.equal(r.status, 503)
@@ -159,15 +161,27 @@ test("reader route: bad input, missing key, rejected key, refusal", async () => 
     },
   )
   await withReader(
-    () => ({ ...message({}), json: { ...message({}).json, stop_reason: "refusal", content: [] } }),
+    () => ({ status: 429, json: { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota" } } }),
+    async () => {
+      const r = await read(PHOTO)
+      assert.equal(r.status, 429)
+      assert.match(r.body.error, /free photo-reading limit/)
+    },
+  )
+  await withReader(
+    () => ({ status: 200, json: { promptFeedback: { blockReason: "SAFETY" } } }),
     async () => assert.equal((await read(PHOTO)).status, 422),
   )
-  const before = process.env.ANTHROPIC_API_KEY
-  delete process.env.ANTHROPIC_API_KEY
+  await withReader(
+    () => ({ status: 200, json: { candidates: [{ content: { parts: [{ text: "not json" }] } }] } }),
+    async () => assert.equal((await read(PHOTO)).status, 422),
+  )
+  const before = process.env.GEMINI_API_KEY
+  delete process.env.GEMINI_API_KEY
   const r = await read(PHOTO)
-  if (before !== undefined) process.env.ANTHROPIC_API_KEY = before
+  if (before !== undefined) process.env.GEMINI_API_KEY = before
   assert.equal(r.status, 503)
-  assert.match(r.body.error, /ANTHROPIC_API_KEY/)
+  assert.match(r.body.error, /GEMINI_API_KEY/)
 })
 
 // ------------------------------------------------------------------------------------------------- the print

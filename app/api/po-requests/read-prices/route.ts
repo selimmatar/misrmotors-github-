@@ -1,22 +1,33 @@
 import { type NextRequest, NextResponse } from "next/server"
-import Anthropic from "@anthropic-ai/sdk"
-import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod"
-import { z } from "zod/v4"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
-import { pricesByItem, sameRequestNumber, sortRequestItems } from "@/lib/po-requests/read-prices"
+import { pricesByItem, sameRequestNumber, sortRequestItems, type ReadRow } from "@/lib/po-requests/read-prices"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
 const MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const
-// The API takes images up to 5 MB; the phone shrinks the photo well below this before sending.
+// The phone shrinks the photo well below this before sending.
 const MAX_IMAGE_BASE64 = 7_000_000
 
-const ReadSheet = z.object({
-  request_number: z.string().nullable(),
-  rows: z.array(z.object({ row: z.number().int(), written: z.string().nullable() })),
-})
+// JSON shape the reader must answer in (Gemini's schema format).
+const SHEET_SCHEMA = {
+  type: "OBJECT",
+  required: ["request_number", "rows"],
+  properties: {
+    request_number: { type: "STRING", nullable: true },
+    rows: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        required: ["row", "written"],
+        properties: { row: { type: "INTEGER" }, written: { type: "STRING", nullable: true } },
+      },
+    },
+  },
+}
+// Free-tier model; can be changed in Vercel with GEMINI_MODEL without a code change.
+const DEFAULT_MODEL = "gemini-3.8-flash"
 
 const SYSTEM = `You read photos of a printed price request from Misr Motors. The sheet has a table with numbered rows (column "م"), an item name, and a "سعر الوحدة / Unit Price" box where the supplier hand-writes one unit price per row.
 For every row number you are given, copy exactly what is hand-written in that row's price box, digit by digit, in the same digits the supplier used (Arabic-Indic like ١٢٥٠ or English like 1250), keeping any commas or dots. Do not convert, round or calculate.
@@ -37,8 +48,9 @@ export async function POST(request: NextRequest) {
     if (image.length > MAX_IMAGE_BASE64) {
       return NextResponse.json({ error: "The photo is too large" }, { status: 413 })
     }
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return NextResponse.json({ error: "Reading photos is not set up yet (ANTHROPIC_API_KEY is missing)" }, { status: 503 })
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: "Reading photos is not set up yet (GEMINI_API_KEY is missing)" }, { status: 503 })
     }
 
     const supabase = createAdminClient()
@@ -52,48 +64,58 @@ export async function POST(request: NextRequest) {
     if (!items.length) return NextResponse.json({ error: "This price request has no items" }, { status: 400 })
 
     const rowList = items.map((item, i) => `${i + 1}. ${item.product_name} (× ${item.quantity}${item.unit ? " " + item.unit : ""})`).join("\n")
-    const client = new Anthropic()
-    const response = await client.beta.messages.parse({
-      model: "claude-opus-5-5",
-      max_tokens: 4000,
-      output_config: { effort: "medium", format: betaZodOutputFormat(ReadSheet) },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      system: SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
-            { type: "text", text: `Price request ${pr.request_number}. Rows on the sheet:\n${rowList}` },
-          ],
-        },
-      ],
+    const base = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com"
+    const model = process.env.GEMINI_MODEL || DEFAULT_MODEL
+    const response = await fetch(`${base}/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inline_data: { mime_type: mediaType, data: image } },
+              { text: `Price request ${pr.request_number}. Rows on the sheet:\n${rowList}` },
+            ],
+          },
+        ],
+        generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: SHEET_SCHEMA },
+      }),
     })
 
-    if (response.stop_reason === "refusal" || !response.parsed_output) {
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null)
+      const reason = detail?.error?.details?.find((d: { reason?: string }) => d?.reason)?.reason || detail?.error?.status
+      console.error("read-prices: Gemini error", response.status, reason)
+      if (reason === "API_KEY_INVALID" || response.status === 401 || response.status === 403) {
+        return NextResponse.json({ error: "Reading photos is not set up correctly (the API key was rejected)" }, { status: 503 })
+      }
+      if (response.status === 429) {
+        return NextResponse.json({ error: "The free photo-reading limit was reached. Please try again later or type the prices." }, { status: 429 })
+      }
+      return NextResponse.json({ error: "The photo could not be read. Please try again or type the prices." }, { status: 502 })
+    }
+
+    const data = await response.json()
+    const text = (data?.candidates?.[0]?.content?.parts || []).map((p: { text?: string }) => p?.text || "").join("")
+    let sheet: { request_number: string | null; rows: ReadRow[] } | null = null
+    try {
+      sheet = data?.promptFeedback?.blockReason ? null : JSON.parse(text)
+    } catch {
+      sheet = null
+    }
+    if (!sheet || !Array.isArray(sheet.rows)) {
       return NextResponse.json({ error: "The photo could not be read. Please type the prices." }, { status: 422 })
     }
-    const sheet = response.parsed_output
     const prices = pricesByItem(items, sheet.rows)
     return NextResponse.json({
       prices,
       read: Object.keys(prices).length,
       total: items.length,
-      request_number_matches: sheet.request_number === null ? null : sameRequestNumber(sheet.request_number, pr.request_number),
+      request_number_matches: sheet.request_number ? sameRequestNumber(sheet.request_number, pr.request_number) : null,
     })
   } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
-      console.error("read-prices: API key rejected", error.status)
-      return NextResponse.json({ error: "Reading photos is not set up correctly (the API key was rejected)" }, { status: 503 })
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      return NextResponse.json({ error: "Too many photos at once. Please try again in a minute." }, { status: 429 })
-    }
-    if (error instanceof Anthropic.APIError) {
-      console.error("read-prices: API error", error.status, error.message)
-      return NextResponse.json({ error: "The photo could not be read. Please try again or type the prices." }, { status: 502 })
-    }
     console.error("read-prices error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
