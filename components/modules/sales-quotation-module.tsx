@@ -34,7 +34,7 @@ import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { Money } from "@/components/erp/money"
 import { openPendingWindow } from "@/lib/print/pending-window"
-import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
+import { isNewQuotationWorkflow, isMaintenanceLive } from "@/lib/workflow-switch"
 import { readItemRows } from "@/lib/excel/read-item-rows"
 import { shrinkPhoto } from "@/lib/shrink-photo"
 import type { PhotoItem } from "@/lib/quotations/read-items"
@@ -1146,7 +1146,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="EQUIPMENT">{t("so-type.equipment")}</SelectItem>
-                  <SelectItem value="MAINTENANCE">{t("common.maintenance")}</SelectItem>
+                  <SelectItem value="MAINTENANCE" disabled={!isMaintenanceLive()}>{t("common.maintenance")}</SelectItem>
                   <SelectItem value="SPARE_PARTS">{t("sq.spare-parts")}</SelectItem>
                   <SelectItem value="SERVICE">{t("sq.service")}</SelectItem>
                 </SelectContent>

@@ -19,6 +19,7 @@ import { useAppContext } from "@/lib/app-context"
 import { getSalesInsights } from "@/lib/ai-utils"
 import { getCitiesForCountry } from "@/lib/countries-data"
 import { ReportGenerator } from "@/components/report-generator"
+import { isMaintenanceLive } from "@/lib/workflow-switch"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import type {
@@ -128,6 +129,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
   // Fetch pending maintenance report count
   useEffect(() => {
     async function fetchPendingCount() {
+      if (!isMaintenanceLive()) return
       try {
         const res = await fetch("/api/maintenance/reports")
         if (res.ok) {
@@ -1753,7 +1755,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           e.stopPropagation()
           setSelectedOrder(order)
         }}
-        title={t("so.manage-maintenance-for-this-order")}
+        disabled={!isMaintenanceLive()}
+        title={isMaintenanceLive() ? t("so.manage-maintenance-for-this-order") : t("maintenance.not-live")}
       >
         <Wrench className="w-4 h-4" /> {t("common.maintenance")}
       </Button>
@@ -1945,17 +1948,17 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
-            <Tabs defaultValue="maintenance" className="flex-1 overflow-hidden flex flex-col">
+            <Tabs defaultValue={isMaintenanceLive() ? "maintenance" : "details"} className="flex-1 overflow-hidden flex flex-col">
               <TabsList className="h-auto w-full flex-wrap justify-start bg-muted p-1 mb-4">
                 <TabsTrigger value="details" className="data-[state=active]:bg-background">
                   <FileText className="w-4 h-4 me-2" />
                   {t("sales-orders.details")}
                 </TabsTrigger>
-                <TabsTrigger value="maintenance" className="data-[state=active]:bg-background">
+                <TabsTrigger value="maintenance" className="data-[state=active]:bg-background" disabled={!isMaintenanceLive()}>
                   <Wrench className="w-4 h-4 me-2" />
                   {t("common.maintenance")}
                 </TabsTrigger>
-                <TabsTrigger value="approvals" className="data-[state=active]:bg-background relative">
+                <TabsTrigger value="approvals" className="data-[state=active]:bg-background relative" disabled={!isMaintenanceLive()}>
                   <CheckCircle className="w-4 h-4 me-2" />
                   {t("so.approve-reports")}
                   {pendingReportsCount > 0 && (

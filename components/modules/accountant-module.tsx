@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAppContext } from "@/lib/app-context"
+import { isMaintenanceLive } from "@/lib/workflow-switch"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import type { SupplierInvoice, CustomerInvoice, SalesOrder } from "@/lib/types"
@@ -330,10 +331,10 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
           <TabsTrigger value="ar">{t("tabs.ar")}</TabsTrigger>
           <TabsTrigger value="customers">{t("tabs.customers")}</TabsTrigger>
           <TabsTrigger value="suppliers">{t("tabs.suppliers")}</TabsTrigger>
-          <TabsTrigger value="maintenance-invoices" className="relative">
+          <TabsTrigger value="maintenance-invoices" className="relative" disabled={!isMaintenanceLive()}>
                   <Wrench className="w-4 h-4 me-2" />
                   {t("common.maintenance")}
-                  {pendingMaintenanceInvoices > 0 && (
+                  {isMaintenanceLive() && pendingMaintenanceInvoices > 0 && (
                     <span className="absolute -top-1 -end-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-700 text-white text-xs font-bold px-1">
                       {pendingMaintenanceInvoices}
                     </span>

@@ -153,29 +153,29 @@ export async function GET(request: NextRequest) {
       [`العنوان:`, `${escapeHtml(supplier.address || "-")}`],
     ])}
     
-    <!-- Items Table: the supplier hand-writes the brand and the unit price per row in the boxes (read back from a photo) -->
-    <p class="pm-price-hint">اكتب الماركة وسعر الوحدة (بالأرقام فقط) داخل المربعات لكل صنف</p>
+    <!-- Items Table: the supplier hand-writes the code, the brand and the unit price per row in the boxes (read back from a photo) -->
+    <p class="pm-price-hint">اكتب الكود والماركة وسعر الوحدة (بالأرقام فقط) داخل المربعات لكل صنف</p>
     <table class="pm-table">
       <thead>
         <tr>
           <th class="pm-center" style="width: 28px;">م</th>
+          <th class="pm-center" style="width: 100px;">الكود</th>
           <th>اسم الصنف</th>
           <th class="pm-center" style="width: 48px;">الكمية</th>
-          <th class="pm-center" style="width: 48px;">الوحدة</th>
-          <th style="width: 90px;">ملاحظات</th>
-          <th class="pm-center" style="width: 120px;">الماركة</th>
-          <th class="pm-center" style="width: 120px;">سعر الوحدة</th>
+          <th class="pm-center" style="width: 100px;">الماركة</th>
+          <th style="width: 80px;">ملاحظات</th>
+          <th class="pm-center" style="width: 110px;">سعر الوحدة</th>
         </tr>
       </thead>
       <tbody>
         ${items.map((item: any, index: number) => `
           <tr>
             <td class="pm-center">${index + 1}</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td>${escapeHtml(item.products?.product_name || item.product_name || "-")}</td>
             <td class="pm-center">${escapeHtml(item.quantity)}</td>
-            <td class="pm-center">${escapeHtml(item.unit || item.products?.unit || "-")}</td>
-            <td>${escapeHtml(item.notes || "-")}</td>
             <td class="pm-price-cell"><div class="pm-price-box"></div></td>
+            <td>${escapeHtml(item.notes || "-")}</td>
             <td class="pm-price-cell"><div class="pm-price-box"></div></td>
           </tr>
         `).join("")}

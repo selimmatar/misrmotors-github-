@@ -2,6 +2,7 @@
 // (app/api/pending-counts) counts these same lists, so the number and the list always agree.
 import { loadMissingItems } from "@/lib/missing-items"
 import { HOLDING_QUOTATION_STATUSES } from "@/lib/stock-hold"
+import { isMaintenanceLive } from "@/lib/workflow-switch"
 import { NEEDS_PO, SO_STATUSES_NEEDING_PO, filterUnappliedQuotedRequests, type QuotedRequest } from "@/lib/notifications/counts"
 
 type Db = any // supabase-js client (or a test double)
@@ -100,7 +101,9 @@ export interface ReportToReview {
 }
 
 // Maintenance reports sent by shipping (work order on hold) waiting for the sales rep's review.
+// Nothing while maintenance is switched off.
 export async function loadReportsToReview(db: Db): Promise<ReportToReview[]> {
+  if (!isMaintenanceLive()) return []
   const { data } = await db.from("maintenance_work_orders").select("work_order_id, work_order_number, customer_name").eq("status", "on_hold")
   return (data || []).map((w: any) => ({
     work_order_id: w.work_order_id,

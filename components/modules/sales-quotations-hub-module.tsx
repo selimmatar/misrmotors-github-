@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, CheckSquare, FileText } from "lucide-react"
 import type { UserRole } from "@/lib/types"
+import { isMaintenanceLive } from "@/lib/workflow-switch"
 import { useI18n } from "@/lib/i18n-context"
 import { PageHeader } from "@/components/erp/page-header"
 import { SalesOrderModule } from "@/components/modules/sales-order-module"
@@ -65,7 +66,7 @@ export function SalesQuotationsHubModule({ userRole }: SalesQuotationsHubModuleP
                 },
               })),
             },
-            {
+            isMaintenanceLive() && {
               key: "reports",
               heading: t("waiting.reports-to-review"),
               rows: (waiting.data?.reports || []).map((r) => ({

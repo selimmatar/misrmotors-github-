@@ -20,9 +20,10 @@ export interface WaitingSection {
 }
 
 // The items behind a screen's sidebar counter, each with a button that opens it. Shows nothing when empty.
-export function WaitingForYou({ sections }: { sections: WaitingSection[] }) {
+// A section given as false (switched off) is skipped.
+export function WaitingForYou({ sections }: { sections: (WaitingSection | false)[] }) {
   const { t } = useI18n()
-  const shown = sections.filter((s) => s.rows.length > 0)
+  const shown = sections.filter((s): s is WaitingSection => !!s && s.rows.length > 0)
   if (shown.length === 0) return null
   return (
     <section aria-label={t("waiting.title")} className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-3 dark:border-amber-800 dark:bg-amber-950">

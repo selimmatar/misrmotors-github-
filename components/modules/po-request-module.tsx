@@ -340,7 +340,7 @@ export function PORequestModule({ userRole }: { userRole?: UserRole } = {}) {
         sections={[
           {
             key: "requests",
-            heading: t("waiting.pr-needs-price"),
+            heading: t("waiting.requests-need-price"),
             rows: (waiting.data?.requests || []).map((r) => ({
               key: String(r.request_id),
               title: r.request_number,

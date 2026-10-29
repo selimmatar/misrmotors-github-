@@ -15,6 +15,9 @@ import { sameItemName } from "@/lib/po-requests/apply-costs"
 import { nameWithBrand, sortRequestItems } from "@/lib/po-requests/read-prices"
 import { shrinkPhoto } from "@/lib/shrink-photo"
 
+type NameBox = "brand" | "code"
+const NAME_BOXES: NameBox[] = ["brand", "code"]
+
 // "Quote received" on a price request (PR): the supplier's unit price per line (typed in, read from the
 // supplier's Excel sheet by item name, or read from a photo of the printed PR with hand-written prices) and,
 // optionally, the supplier's quotation file. Saves the PR as "quoted"; nothing is saved before Save.
@@ -41,10 +44,14 @@ export function QuoteReceivedDialog({
   const [reading, setReading] = useState(false)
   const [fromPhoto, setFromPhoto] = useState<Set<number>>(new Set())
   const [photoNote, setPhotoNote] = useState("")
-  // Brand read from the "الماركة" box per item, and the items whose name becomes "name – brand" on Save.
-  const [brands, setBrands] = useState<Record<number, string>>({})
-  const [addBrand, setAddBrand] = useState<Set<number>>(new Set())
-  const brandOf = (itemId: number) => (brands[itemId] || "").trim()
+  // Brand and code read from the "الماركة" / "الكود" boxes per item, and the ticked ones that join the item name
+  // on Save ("name – brand – code").
+  const [boxes, setBoxes] = useState<Record<NameBox, Record<number, string>>>({ brand: {}, code: {} })
+  const [addToName, setAddToName] = useState<Record<NameBox, Set<number>>>({ brand: new Set(), code: new Set() })
+  const boxText = (box: NameBox, itemId: number) => (boxes[box][itemId] || "").trim()
+  const ticked = (box: NameBox, itemId: number) => addToName[box].has(itemId) && !!boxText(box, itemId)
+  const newName = (item: { item_id: number; product_name: string }) =>
+    NAME_BOXES.filter((box) => ticked(box, item.item_id)).reduce((name, box) => nameWithBrand(name, boxText(box, item.item_id)), item.product_name)
 
   const handlePhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const picked = event.target.files?.[0]
@@ -64,7 +71,7 @@ export function QuoteReceivedDialog({
       const read: Record<string, number> = body.prices || {}
       setPrices((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(read).map(([id, price]) => [id, String(price)])) }))
       setFromPhoto(new Set(Object.keys(read).map(Number)))
-      setBrands((prev) => ({ ...prev, ...(body.brands || {}) }))
+      setBoxes((prev) => ({ brand: { ...prev.brand, ...(body.brands || {}) }, code: { ...prev.code, ...(body.codes || {}) } }))
       if (!file) setFile(photo.file)
       const notes = [fill(t("chain.photo-read-result"), { read: String(body.read ?? 0), total: String(body.total ?? items.length) })]
       if (body.request_number_matches === false) notes.unshift(fill(t("chain.photo-wrong-request"), { number: request.request_number }))
@@ -127,7 +134,7 @@ export function QuoteReceivedDialog({
           items: items.map((i) => ({
             item_id: i.item_id,
             unit_price: prices[i.item_id] === "" ? null : Number(prices[i.item_id]),
-            ...(addBrand.has(i.item_id) && brandOf(i.item_id) ? { product_name: nameWithBrand(i.product_name, brandOf(i.item_id)) } : {}),
+            ...(NAME_BOXES.some((box) => ticked(box, i.item_id)) ? { product_name: newName(i) } : {}),
           })),
           ...(fileUrl ? { supplier_quote_file_url: fileUrl } : {}),
         }),
@@ -194,37 +201,37 @@ export function QuoteReceivedDialog({
                   }}
                 />
               </div>
-              {item.item_id in brands && (
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <Label htmlFor={`brand-${item.item_id}`} className="text-muted-foreground">
-                    {t("chain.brand")}
+              {NAME_BOXES.filter((box) => item.item_id in boxes[box]).map((box) => (
+                <div key={box} className="flex flex-wrap items-center gap-2 text-sm">
+                  <Label htmlFor={`${box}-${item.item_id}`} className="text-muted-foreground">
+                    {t(`chain.${box}`)}
                   </Label>
                   <Input
-                    id={`brand-${item.item_id}`}
+                    id={`${box}-${item.item_id}`}
                     className="h-8 w-40 border-amber-500"
-                    value={brands[item.item_id]}
-                    onChange={(e) => setBrands((prev) => ({ ...prev, [item.item_id]: e.target.value }))}
+                    value={boxes[box][item.item_id]}
+                    onChange={(e) => setBoxes((prev) => ({ ...prev, [box]: { ...prev[box], [item.item_id]: e.target.value } }))}
                   />
                   <label className="flex items-center gap-1.5">
                     <Checkbox
-                      aria-label={`${t("chain.add-brand-to-name")}: ${item.product_name}`}
-                      checked={addBrand.has(item.item_id)}
-                      disabled={!brandOf(item.item_id)}
+                      aria-label={`${t(`chain.add-${box}-to-name`)}: ${item.product_name}`}
+                      checked={addToName[box].has(item.item_id)}
+                      disabled={!boxText(box, item.item_id)}
                       onCheckedChange={(checked) =>
-                        setAddBrand((prev) => {
-                          const next = new Set(prev)
+                        setAddToName((prev) => {
+                          const next = new Set(prev[box])
                           if (checked) next.add(item.item_id)
                           else next.delete(item.item_id)
-                          return next
+                          return { ...prev, [box]: next }
                         })
                       }
                     />
-                    {t("chain.add-brand-to-name")}
+                    {t(`chain.add-${box}-to-name`)}
                   </label>
-                  {addBrand.has(item.item_id) && brandOf(item.item_id) && (
-                    <span className="basis-full text-xs text-muted-foreground">{nameWithBrand(item.product_name, brandOf(item.item_id))}</span>
-                  )}
                 </div>
+              ))}
+              {NAME_BOXES.some((box) => ticked(box, item.item_id)) && (
+                <span className="block text-xs text-muted-foreground">{newName(item)}</span>
               )}
             </div>
           ))}

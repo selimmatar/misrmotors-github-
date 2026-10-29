@@ -9,6 +9,7 @@ import { join } from "node:path"
 import { FakeDb } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import { rowsNeedPo, unappliedQuotedRequests } from "../notifications/counts"
+import { workflowSwitch } from "../workflow-switch"
 import * as pendingCounts from "../../app/api/pending-counts/route"
 import * as pendingDetails from "../../app/api/pending-counts/details/route"
 
@@ -112,9 +113,11 @@ test("sales rep: a received price counts until it is applied to the quotation or
   assert.equal((await counts("sales-rep"))["sales-orders"], 0, "converted quotation")
 })
 
-test("waiting for you: each screen's list holds exactly the items behind its counter", async () => {
+test("waiting for you: each screen's list holds exactly the items behind its counter", async (t) => {
   const db = chainDb()
   useDb(db)
+  workflowSwitch.maintenanceLive = true
+  t.after(() => { workflowSwitch.maintenanceLive = false })
   db.tables.purchase_orders.push({ po_id: 8, po_number: "PO-8", status: "pending", supplier_id: 9, total: 1500, currency: "EGP" })
   db.tables.maintenance_work_orders.push(
     { work_order_id: 5, work_order_number: "WO-5", customer_name: "Nile Co", status: "on_hold" },
@@ -140,6 +143,25 @@ test("waiting for you: each screen's list holds exactly the items behind its cou
   // a role that does not own a screen gets nothing for it
   assert.deepEqual(await details("purchase-orders", "sales-rep"), {})
   assert.deepEqual(await details("sales-orders", "po-rep"), {})
+})
+
+test("maintenance switched off: its reports leave the counter and the list; its buttons and tabs are greyed out", async () => {
+  assert.equal(workflowSwitch.maintenanceLive, false, "maintenance is not live yet")
+  const db = chainDb()
+  useDb(db)
+  db.tables.maintenance_work_orders.push({ work_order_id: 5, work_order_number: "WO-5", customer_name: "Nile Co", status: "on_hold" })
+  assert.deepEqual((await details("sales-orders", "sales-rep")).reports, [])
+  assert.equal((await counts("sales-rep"))["sales-orders"], 1, "only the unapplied price")
+  const so = src("components/modules/sales-order-module.tsx")
+  assert.match(so, /disabled=\{!isMaintenanceLive\(\)\}\n\s*title=\{isMaintenanceLive\(\) \? t\("so\.manage-maintenance-for-this-order"\) : t\("maintenance\.not-live"\)\}/)
+  assert.match(so, /<TabsTrigger value="maintenance"[^>]*disabled=\{!isMaintenanceLive\(\)\}>/)
+  assert.match(so, /<TabsTrigger value="approvals"[^>]*disabled=\{!isMaintenanceLive\(\)\}>/)
+  assert.match(so, /<Tabs defaultValue=\{isMaintenanceLive\(\) \? "maintenance" : "details"\}/)
+  assert.match(src("components/modules/accountant-module.tsx"), /<TabsTrigger value="maintenance-invoices" className="relative" disabled=\{!isMaintenanceLive\(\)\}>/)
+  assert.match(src("components/modules/shipping-module.tsx"), /<TabsTrigger value="maintenance" disabled=\{!isMaintenanceLive\(\)\}>/)
+  assert.match(src("components/modules/sales-quotation-module.tsx"), /<SelectItem value="MAINTENANCE" disabled=\{!isMaintenanceLive\(\)\}>/)
+  assert.match(src("components/modules/sales-quotations-hub-module.tsx"), /isMaintenanceLive\(\) && \{\n\s*key: "reports"/)
+  assert.match(src("components/layout/nav-config.ts"), /id: "maintenance-invoices",[^}]*disabled: true/)
 })
 
 test("waiting for you: the box sits on the three screens and opens each item", () => {
