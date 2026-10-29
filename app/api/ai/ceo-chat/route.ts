@@ -273,7 +273,8 @@ Communication style:
     }
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:streamGenerateContent?key=${geminiKey}&alt=sse`,
+      // gemini-2.0-flash-exp was retired by Google; same free-tier model as the photo price reader.
+      `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-3.8-flash"}:streamGenerateContent?key=${geminiKey}&alt=sse`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -283,7 +284,7 @@ Communication style:
 
     if (!response.ok) {
       const contentType = response.headers.get("content-type") || ""
-      let errorMessage = "Gemini API error. Please try again."
+      let errorMessage = `Gemini API error (${response.status}). Please try again.`
 
       if (response.status >= 500) {
         errorMessage = "Gemini service is temporarily unavailable. Please try again in a few minutes."

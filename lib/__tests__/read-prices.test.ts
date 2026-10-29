@@ -127,6 +127,7 @@ test("reader route: prices come back per item (row 1 = lowest item id), nothing 
       assert.match(parts[1].text, /1\. Valve \(× 4\)\n2\. Pump \(× 2 pcs\)/)
       assert.equal(sent.generationConfig.responseMimeType, "application/json")
       assert.equal(sent.generationConfig.temperature, 0)
+      assert.deepEqual(sent.generationConfig.thinkingConfig, { thinkingLevel: "low" })
       assert.ok(db.tables.po_request_items.every((i) => i.unit_price === null), "no price saved")
     },
   )
@@ -158,6 +159,7 @@ test("reader route: bad input, missing key, rejected key, free limit, blocked", 
       const r = await read(PHOTO)
       assert.equal(r.status, 503)
       assert.match(r.body.error, /API key was rejected/)
+      assert.match(r.body.detail, /API_KEY_INVALID/)
     },
   )
   await withReader(
