@@ -22,7 +22,7 @@ import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/li
 import { useAppContext } from "@/lib/app-context"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
-import { PaymentTypeSelector, InstallmentFields, ChequeFields } from "@/components/payment"
+import { PaymentTypeSelector, InstallmentFields } from "@/components/payment"
 import type { PaymentType, PaymentDetails, ItemCategory } from "@/lib/types"
 import { normalizeQuotationPaymentDetails } from "@/lib/payment-type"
 import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
@@ -1031,17 +1031,6 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                     paymentStartDate={(paymentDetails as any).paymentStartDate || ""}
                     onInstallmentMonthsChange={(months) => handlePaymentDetailChange("installmentMonths", months)}
                     onPaymentStartDateChange={(date) => handlePaymentDetailChange("paymentStartDate", date)}
-                  />
-                )}
-                {paymentType === "cheque" && (
-                  <ChequeFields
-                    chequeNumber={paymentDetails.chequeNumber || ""}
-                    bankName={paymentDetails.chequeBankName || ""}
-                    dueDate={paymentDetails.chequeDueDate || ""}
-                    amount={paymentDetails.chequeAmount || netTotal}
-                    notes={paymentDetails.chequeNotes || ""}
-                    totalAmount={netTotal}
-                    onChange={handlePaymentDetailChange}
                   />
                 )}
               </>

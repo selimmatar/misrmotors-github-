@@ -19,7 +19,6 @@ import { getCitiesForCountry } from "@/lib/countries-data"
 import {
   PaymentTypeSelector,
   InstallmentFields,
-  ChequeFields,
   HybridFields,
   PaymentScheduleEditor,
   type PaymentScheduleEntry,
@@ -1351,17 +1350,6 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
             />
           )}
 
-          {paymentType === "cheque" && (
-            <ChequeFields
-              chequeNumber={paymentDetails.chequeNumber || ""}
-              bankName={paymentDetails.chequeBankName || ""}
-              dueDate={paymentDetails.chequeDueDate || ""}
-              amount={paymentDetails.chequeAmount || subtotal}
-              notes={paymentDetails.chequeNotes || ""}
-              totalAmount={subtotal}
-              onChange={handlePaymentDetailChange}
-            />
-          )}
 
           {paymentType === "hybrid" && (
             <HybridFields

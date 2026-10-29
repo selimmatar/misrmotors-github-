@@ -300,7 +300,7 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
         })
         .eq("invoice_id", invoiceId)
       update = oldCollected === null ? update.is("collected_amount", null) : update.eq("collected_amount", oldCollected)
-      // and on the amount the balance was checked against (an approved reschedule may lower it in between)
+      // and on the amount the balance was checked against
       update = row.amount === null || row.amount === undefined ? update.is("amount", null) : update.eq("amount", row.amount)
 
       const { data: updatedRows, error: updateError } = await update.select("*")

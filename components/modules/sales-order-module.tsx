@@ -53,7 +53,6 @@ import {
 import {
   PaymentTypeSelector,
   InstallmentFields,
-  ChequeFields,
   HybridFields,
 } from "@/components/payment"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"

@@ -17,7 +17,6 @@ import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { formatDate, formatMoney } from "@/lib/format"
 import { InstallmentFields } from "@/components/payment/installment-fields"
 import { HybridFields } from "@/components/payment/hybrid-fields"
-import { ChequeFields } from "@/components/payment/cheque-fields"
 import { PaymentTypeSelector, PaymentSummaryCard } from "@/components/payment"
 import type { PaymentScheduleEntry } from "@/components/payment/payment-schedule-builder"
 import {
@@ -1720,17 +1719,6 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               />
             )}
 
-            {paymentType === "cheque" && (
-              <ChequeFields
-                chequeNumber={paymentDetails.chequeNumber || ""}
-                bankName={paymentDetails.chequeBankName || ""}
-                dueDate={paymentDetails.chequeDueDate || ""}
-                amount={paymentDetails.chequeAmount || grandTotal}
-                notes={paymentDetails.chequeNotes}
-                totalAmount={grandTotal}
-                onChange={handlePaymentDetailChange}
-              />
-            )}
 
             {paymentType === "hybrid" && (
               <HybridFields

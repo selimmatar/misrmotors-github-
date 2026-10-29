@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ChequeFields } from "./cheque-fields"
 import { Button } from "@/components/ui/button"
 import { Minus, Plus, Calendar } from "lucide-react"
 import { useState, useEffect, useMemo } from "react"
@@ -305,22 +304,6 @@ export function HybridFields({
           )}
         </div>
 
-        {/* Cheque Fields for Down Payment */}
-        {downPaymentType === "cheque" && (
-          <ChequeFields
-            chequeNumber={downPaymentChequeNumber}
-            bankName={downPaymentChequeBank}
-            dueDate={downPaymentChequeDueDate}
-            amount={downPaymentAmount}
-            totalAmount={downPaymentAmount}
-            onChange={(field, value) => {
-              if (field === "chequeNumber") handleChange("downPaymentChequeNumber", value)
-              else if (field === "bankName") handleChange("downPaymentChequeBank", value)
-              else if (field === "dueDate") handleChange("downPaymentChequeDueDate", value)
-            }}
-            prefix="downPayment"
-          />
-        )}
 
         {showScheduleBuilder && onScheduleModeChange && onScheduleEntriesChange ? (
           <PaymentScheduleBuilder
