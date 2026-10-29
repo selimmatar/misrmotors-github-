@@ -159,9 +159,9 @@ export async function GET(request: NextRequest) {
       <thead>
         <tr>
           <th class="pm-center" style="width: 28px;">م</th>
-          <th class="pm-center" style="width: 100px;">الكود</th>
           <th>اسم الصنف</th>
           <th class="pm-center" style="width: 48px;">الكمية</th>
+          <th class="pm-center" style="width: 100px;">الكود</th>
           <th class="pm-center" style="width: 100px;">الماركة</th>
           <th style="width: 80px;">ملاحظات</th>
           <th class="pm-center" style="width: 110px;">سعر الوحدة</th>
@@ -171,9 +171,9 @@ export async function GET(request: NextRequest) {
         ${items.map((item: any, index: number) => `
           <tr>
             <td class="pm-center">${index + 1}</td>
-            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td>${escapeHtml(item.products?.product_name || item.product_name || "-")}</td>
             <td class="pm-center">${escapeHtml(item.quantity)}</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td>${escapeHtml(item.notes || "-")}</td>
             <td class="pm-price-cell"><div class="pm-price-box"></div></td>
