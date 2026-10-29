@@ -14,6 +14,8 @@ import { cannedDb, nreq } from "./hardening-fixtures"
 import { parseWrittenPrice, pricesByItem, sameRequestNumber, sortRequestItems, toEnglishDigits } from "../po-requests/read-prices"
 import * as readRoute from "../../app/api/po-requests/read-prices/route"
 import * as prPdf from "../../app/api/po-requests/pdf/route"
+import * as itemsRoute from "../../app/api/quotations/read-items/route"
+import { parseQuantity, photoItems } from "../quotations/read-items"
 
 const src = (p: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), p), "utf8")
 
@@ -284,4 +286,91 @@ test("Quote received screen: photo button fills and highlights prices, same row 
   for (const key of ["chain.read-photo", "chain.photo-check", "chain.photo-read-result", "chain.photo-wrong-request"]) {
     assert.equal(i18n.split(`"${key}":`).length - 1, 2, `${key} in English and Arabic`)
   }
+})
+
+// ---------------------------------------------------------- item list photo on the quotation (owner, 2026-10-29)
+test("item photo: quantities in Arabic or English digits; missing or unreadable become 1; unreadable names skipped", () => {
+  const cases: [string | null, number][] = [
+    ["4", 4], ["٤", 4], ["4 pcs", 4], ["x4", 4], ["١٢", 12], ["1,000", 1000], ["2.5", 2.5], ["12,5", 12.5],
+    ["", 1], [null, 1], ["0", 1], ["-", 1], ["abc", 1],
+  ]
+  for (const [written, expected] of cases) assert.equal(parseQuantity(written), expected, String(written))
+  assert.deepEqual(
+    photoItems([
+      { name: "  Oil   Filter X200 ", quantity: "٣" },
+      { name: "فلتر زيت", quantity: null },
+      { name: null, quantity: "5" },
+      { name: "  ", quantity: "2" },
+    ]),
+    { items: [{ productName: "Oil Filter X200", quantity: 3 }, { productName: "فلتر زيت", quantity: 1 }], skipped: 2 },
+  )
+})
+
+const readItems = (body: unknown) => call(itemsRoute.POST as any, "POST", body)
+const LIST_PHOTO = { image: "aGVsbG8=", media_type: "image/jpeg" }
+
+test("item photo route: name and quantity per row come back, nothing is saved", async () => {
+  const db = new FakeDb({})
+  useDb(db)
+  await withReader(
+    () => message({ rows: [{ name: "Pump P-10", quantity: "٢" }, { name: null, quantity: "1" }, { name: "Valve", quantity: null }] }),
+    async (seen) => {
+      const r = await readItems(LIST_PHOTO)
+      assert.equal(r.status, 200, JSON.stringify(r.body))
+      assert.deepEqual(r.body, { items: [{ productName: "Pump P-10", quantity: 2 }, { productName: "Valve", quantity: 1 }], skipped: 1 })
+      const sent = seen[0].body
+      assert.match(seen[0].url, /^\/v1beta\/models\/gemini-3\.8-flash:generateContent$/)
+      assert.deepEqual(sent.contents[0].parts[0].inline_data, { mime_type: "image/jpeg", data: "aGVsbG8=" })
+      assert.deepEqual(Object.keys(sent.generationConfig.responseSchema.properties.rows.items.properties), ["name", "quantity"])
+      assert.equal(sent.generationConfig.temperature, 0)
+      assert.match(sent.systemInstruction.parts[0].text, /table or plain lines/)
+      assert.deepEqual(db.tables, {}, "nothing written")
+    },
+  )
+})
+
+test("item photo route: bad input, busy main model, limit, unreadable answer, missing key", async () => {
+  useDb(new FakeDb({}))
+  for (const bad of [{}, { ...LIST_PHOTO, media_type: "application/pdf" }, { ...LIST_PHOTO, image: "" }]) {
+    assert.equal((await readItems(bad)).status, 400, JSON.stringify(bad))
+  }
+  const busy = { status: 503, json: { error: { code: 503, status: "UNAVAILABLE", message: "high demand" } } }
+  await withReader(
+    (s) => (s.url.includes("gemini-3.8-flash") ? busy : message({ rows: [{ name: "Hose", quantity: "3" }] })),
+    async (seen) => {
+      const r = await readItems(LIST_PHOTO)
+      assert.equal(r.status, 200, JSON.stringify(r.body))
+      assert.deepEqual(r.body.items, [{ productName: "Hose", quantity: 3 }])
+      assert.equal(seen.length, 2)
+    },
+  )
+  await withReader(
+    () => ({ status: 429, json: { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota" } } }),
+    async () => {
+      const r = await readItems(LIST_PHOTO)
+      assert.equal(r.status, 429)
+      assert.match(r.body.error, /add the items by hand/)
+    },
+  )
+  await withReader(
+    () => ({ status: 200, json: { candidates: [{ content: { parts: [{ text: "not json" }] } }] } }),
+    async () => assert.equal((await readItems(LIST_PHOTO)).status, 422),
+  )
+  const before = process.env.GEMINI_API_KEY
+  delete process.env.GEMINI_API_KEY
+  const r = await readItems(LIST_PHOTO)
+  if (before !== undefined) process.env.GEMINI_API_KEY = before
+  assert.equal(r.status, 503)
+})
+
+test("item photo button sits next to Import Excel and adds rows like the Excel import", () => {
+  const sq = src("components/modules/sales-quotation-module.tsx")
+  const excel = sq.indexOf('{t("sq.import-excel")}')
+  const photo = sq.indexOf('t("sq.read-items-photo")')
+  assert.ok(excel > 0 && photo > excel && photo - excel < 800, "photo button right after Import Excel")
+  assert.match(sq, /fetch\("\/api\/quotations\/read-items"/)
+  assert.match(sq, /shrinkPhoto\(picked, "items-photo"\)/)
+  assert.match(sq, /setItems\(\(prev\) => \[\.\.\.prev, \.\.\.newItems\]\)/, "added to the rows already there")
+  assert.match(sq, /p\.productName\?\.toLowerCase\(\) === name \|\| p\.sku\?\.toLowerCase\(\) === name/)
+  assert.match(src("components/po-requests/quote-received-dialog.tsx"), /import \{ shrinkPhoto \} from "@\/lib\/shrink-photo"/)
 })

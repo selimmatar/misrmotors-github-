@@ -45,6 +45,7 @@
   "components/modules/sales-quotation-module.tsx": {
     "api": [
       "\"/api/quotation-drafts",
+      "\"/api/quotations/read-items",
       "\"/api/sales-quotations",
       "`/api/quotation-drafts?id=${encodeURIComponent(draftIdToClear)}",
       "`/api/quotation-drafts?id=${encodeURIComponent(id)}",
@@ -57,6 +58,7 @@
       "handleCustomerChange",
       "handleExcelUpload",
       "handleInventorySelection",
+      "handleItemsPhoto",
       "handlePaymentDetailChange",
       "handleSaveAndGeneratePDF"
     ],
@@ -81,10 +83,10 @@
       "id={`quantity-${item.id}`}",
       "id={`supplier-${item.id}`}"
     ],
-    "fetch": 5,
+    "fetch": 6,
     "iso": 7,
     "t": 0,
-    "onClick": 10
+    "onClick": 11
   },
   "components/modules/sales-quotations-hub-module.tsx": {
     "api": [],

@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { pricesByItem, sameRequestNumber, sortRequestItems, type ReadRow } from "@/lib/po-requests/read-prices"
-import { geminiBusy, geminiModels } from "@/lib/gemini-models"
+import { askGemini, geminiFailure, geminiJson } from "@/lib/gemini-models"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -27,11 +27,6 @@ const SHEET_SCHEMA = {
     },
   },
 }
-// Stop waiting before the server's own 60-second limit so the screen gets a clear message. The main model gets
-// part of that time; if it is busy or slow, the backup model gets the rest.
-const GOOGLE_TOTAL_MS = 50_000
-const FIRST_MODEL_MS = 28_000
-
 const SYSTEM = `You read photos of a printed price request from Misr Motors. The sheet has a table with numbered rows (column "م"), an item name, and a "سعر الوحدة" box (older sheets label it "سعر الوحدة / Unit Price") where the supplier hand-writes one unit price per row.
 For every row number you are given, copy exactly what is hand-written in that row's price box, digit by digit, in the same digits the supplier used (Arabic-Indic like ١٢٥٠ or English like 1250), keeping any commas or dots. Do not convert, round or calculate.
 Use null when the box is empty, crossed out, or you cannot read every digit with confidence. Never guess a digit, and never take a number from another column (quantity, code, row number).
@@ -67,7 +62,6 @@ export async function POST(request: NextRequest) {
     if (!items.length) return NextResponse.json({ error: "This price request has no items" }, { status: 400 })
 
     const rowList = items.map((item, i) => `${i + 1}. ${item.product_name} (× ${item.quantity}${item.unit ? " " + item.unit : ""})`).join("\n")
-    const base = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com"
     const payload = JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM }] },
       contents: [
@@ -87,35 +81,11 @@ export async function POST(request: NextRequest) {
         thinkingConfig: { thinkingLevel: "low" },
       },
     })
-    const models = geminiModels()
-    const deadline = Date.now() + GOOGLE_TOTAL_MS
-    let response: Response | null = null
-    for (const [i, model] of models.entries()) {
-      const last = i === models.length - 1
-      const left = deadline - Date.now()
-      try {
-        response = await fetch(`${base}/v1beta/models/${model}:generateContent`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-          signal: AbortSignal.timeout(last ? left : Math.min(FIRST_MODEL_MS, left)),
-          body: payload,
-        })
-      } catch (error) {
-        if (last || !(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError"))) throw error
-        console.error("read-prices: no answer in time from", model, "- trying the backup model")
-        continue
-      }
-      if (response.ok || last || !geminiBusy(response.status)) break
-      console.error("read-prices:", model, "is busy", response.status, "- trying the backup model")
-    }
-    if (!response) throw Object.assign(new Error("timeout"), { name: "TimeoutError" })
+    const response = await askGemini(payload, apiKey, "read-prices")
 
     if (!response.ok) {
-      const detail = await response.json().catch(() => null)
-      const reason = detail?.error?.details?.find((d: { reason?: string }) => d?.reason)?.reason || detail?.error?.status
+      const { reason, why } = await geminiFailure(response)
       console.error("read-prices: Gemini error", response.status, reason)
-      // Google's reason (no key in it) goes back too, so a failed try can be diagnosed from the screen.
-      const why = `${response.status} ${reason || ""} ${String(detail?.error?.message || "").slice(0, 200)}`.trim()
       if (reason === "API_KEY_INVALID" || response.status === 401 || response.status === 403) {
         return NextResponse.json({ error: "Reading photos is not set up correctly (the API key was rejected)", detail: why }, { status: 503 })
       }
@@ -125,14 +95,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "The photo could not be read. Please try again or type the prices.", detail: why }, { status: 502 })
     }
 
-    const data = await response.json()
-    const text = (data?.candidates?.[0]?.content?.parts || []).map((p: { text?: string }) => p?.text || "").join("")
-    let sheet: { request_number: string | null; rows: ReadRow[] } | null = null
-    try {
-      sheet = data?.promptFeedback?.blockReason ? null : JSON.parse(text)
-    } catch {
-      sheet = null
-    }
+    const sheet = await geminiJson<{ request_number: string | null; rows: ReadRow[] }>(response)
     if (!sheet || !Array.isArray(sheet.rows)) {
       return NextResponse.json({ error: "The photo could not be read. Please type the prices." }, { status: 422 })
     }
