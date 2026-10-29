@@ -326,7 +326,7 @@ test("new quotation screen: asking for more than is free is allowed only in the 
   assert.match(src, /<StockShortfallNote free=\{stockLimit\} requested=\{item.quantity\} \/>/)
 })
 
-test("Request price from supplier is on the quotation screen before saving and on each waiting quotation", () => {
+test("Request price from supplier is on the quotation screen before saving, not on the waiting-quotations list", () => {
   const read = (f: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), f), "utf8")
   const create = read("components/modules/sales-quotation-module.tsx")
   // Always shown under Save & Generate PDF, not only in the box that appears after saving
@@ -338,9 +338,8 @@ test("Request price from supplier is on the quotation screen before saving and o
   // Printing afterwards reuses that quotation while nothing changed, instead of saving a second one
   assert.match(create, /savedFormRef.current === formSnapshot\(\)/)
   assert.match(create, /lineNo: index \+ 1,/)
-  const list = read("components/modules/approve-sales-quotations-module.tsx")
-  assert.match(list, /\{isNewQuotationWorkflow\(\) && \(\s*<RequestPriceButton/)
-  assert.match(list, /lineNo: item.line_no \?\? index \+ 1/)
+  // The list only approves or rejects; prices are asked from the quotation itself (create screen or its edit window)
+  assert.doesNotMatch(read("components/modules/approve-sales-quotations-module.tsx"), /RequestPriceButton/)
   const button = read("components/sales-quotation/request-price-button.tsx")
   assert.match(button, /stockShortfall\(l.quantity, free\[String\(l.productId\)\]\)/)
 })
@@ -438,6 +437,24 @@ test("Use these costs: fills outsourced lines' cost only, never stock lines, ski
   assert.equal(r.lines[1].unitPrice, 300)
   assert.equal(r.filled, 1)
   assert.equal(r.skipped, 2)
+})
+
+test("Use these costs: a line with no selling price yet (0) gets the supplier's price as its price; a priced line keeps its price", () => {
+  const lines = [
+    { lineNo: 1, outsourced: true, productName: "Air coupling", unitCost: 375, unitPrice: 375 },
+    { lineNo: 2, outsourced: true, productName: "Mechanical coupling ", unitCost: null, unitPrice: 0 },
+  ]
+  const r = applyPrCosts(lines, [{ quotation_line_no: 2, product_name: "Mechanical coupling", unit_price: 205 }])
+  assert.equal(r.lines[1].unitCost, 205)
+  assert.equal(r.lines[1].unitPrice, 205)
+  assert.equal(r.lines[0].unitPrice, 375)
+  assert.equal(r.filled, 1)
+})
+
+test("quotation edit window: each outsourced line shows its supplier cost", () => {
+  const src = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "components/sales-quotation/approve-convert-quotation-dialog.tsx"), "utf8")
+  assert.match(src, /item.itemType === "outsourced" && item.unitCost != null && \(/)
+  assert.match(src, /t\("chain.supplier-cost"\)/)
 })
 
 test("Excel rows: empty names dropped, quantity defaults to 1", () => {
