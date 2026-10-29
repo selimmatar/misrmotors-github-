@@ -186,6 +186,61 @@ test("reader route: bad input, missing key, rejected key, free limit, blocked", 
   assert.match(r.body.error, /GEMINI_API_KEY/)
 })
 
+test("reader route: when the main model is busy, the backup model reads the photo", async () => {
+  mkDb()
+  const busy = { status: 503, json: { error: { code: 503, status: "UNAVAILABLE", message: "high demand" } } }
+  await withReader(
+    (s) => (s.url.includes("gemini-3.8-flash") ? busy : message({ request_number: null, rows: [{ row: 1, written: "50" }] })),
+    async (seen) => {
+      const r = await read(PHOTO)
+      assert.equal(r.status, 200, JSON.stringify(r.body))
+      assert.deepEqual(r.body.prices, { 11: 50 })
+      assert.deepEqual(seen.map((s) => s.url), [
+        "/v1beta/models/gemini-3.8-flash:generateContent",
+        "/v1beta/models/gemini-3.6-flash:generateContent",
+      ])
+      assert.deepEqual(seen[1].body, seen[0].body, "same photo and rows sent to the backup")
+    },
+  )
+  // Both models over their free limit: the limit message, after two tries.
+  await withReader(
+    () => ({ status: 429, json: { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota" } } }),
+    async (seen) => {
+      const r = await read(PHOTO)
+      assert.equal(r.status, 429)
+      assert.equal(seen.length, 2)
+    },
+  )
+  // A rejected key is not "busy": no second try.
+  await withReader(
+    () => ({ status: 400, json: { error: { code: 400, status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] } } }),
+    async (seen) => {
+      assert.equal((await read(PHOTO)).status, 503)
+      assert.equal(seen.length, 1)
+    },
+  )
+  // GEMINI_MODEL in Vercel replaces the main model; the backup stays.
+  process.env.GEMINI_MODEL = "gemini-custom"
+  try {
+    await withReader(
+      () => busy,
+      async (seen) => {
+        assert.equal((await read(PHOTO)).status, 502)
+        assert.deepEqual(seen.map((s) => s.url.split("/").pop()), ["gemini-custom:generateContent", "gemini-3.6-flash:generateContent"])
+      },
+    )
+  } finally {
+    delete process.env.GEMINI_MODEL
+  }
+})
+
+test("CEO assistant: tries the backup model when the main one is busy", () => {
+  const chat = src("app/api/ai/ceo-chat/route.ts")
+  assert.match(chat, /const models = geminiModels\(\)/)
+  assert.match(chat, /models\/\$\{model\}:streamGenerateContent/)
+  assert.match(chat, /!geminiBusy\(response\.status\)\) break/)
+})
+
 // ------------------------------------------------------------------------------------------------- the print
 test("PR print: a unit-price box on every row, rows in item-id order, numbers-only note", async () => {
   const realFetch = globalThis.fetch

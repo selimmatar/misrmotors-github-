@@ -1,4 +1,5 @@
 import { getAdminClient } from "@/lib/supabase/admin"
+import { geminiBusy, geminiModels } from "@/lib/gemini-models"
 
 export const maxDuration = 60
 
@@ -272,15 +273,21 @@ Communication style:
       ],
     }
 
-    const response = await fetch(
-      // gemini-2.0-flash-exp was retired by Google; same free-tier model as the photo price reader.
-      `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-3.8-flash"}:streamGenerateContent?key=${geminiKey}&alt=sse`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      },
-    )
+    // Same free-tier models as the photo price reader; the backup model answers when the main one is busy.
+    const models = geminiModels()
+    let response!: Response
+    for (const [i, model] of models.entries()) {
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${geminiKey}&alt=sse`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        },
+      )
+      if (response.ok || i === models.length - 1 || !geminiBusy(response.status)) break
+      console.error("CEO chat:", model, "is busy", response.status, "- trying the backup model")
+    }
 
     if (!response.ok) {
       const contentType = response.headers.get("content-type") || ""
