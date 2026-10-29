@@ -35,11 +35,11 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getAdminClient()
-    const productIds = items.map((item: any) => item.product_id)
-    const { data: products } = await supabase
-      .from("products")
-      .select("product_id, product_name, unit_price")
-      .in("product_id", productIds)
+    // Lines from the quotation screen carry their name and price and often no product id: look up only real ids
+    const productIds = items.map((item: any) => item.product_id).filter((id: any) => id !== undefined && id !== null && id !== "")
+    const { data: products } = productIds.length
+      ? await supabase.from("products").select("product_id, product_name, unit_price").in("product_id", productIds)
+      : { data: [] as any[] }
 
     const quotationItems = items.map((item: any) => {
       const product = products?.find((p) => p.product_id === item.product_id)

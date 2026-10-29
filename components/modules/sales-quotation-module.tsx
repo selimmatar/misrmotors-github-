@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { UserRole, Customer, PaymentType, PaymentDetails } from "@/lib/types"
 import { SupplierQuoteComparison } from "@/components/sales-quotation/supplier-quote-comparison"
+import { RequestPriceButton } from "@/components/sales-quotation/request-price-button"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { getCitiesForCountry } from "@/lib/countries-data"
 import {
@@ -102,6 +103,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   const [customerAddress, setCustomerAddress] = useState("")
   const [validityDays, setValidityDays] = useState(30)
   const [savedQuotation, setSavedQuotation] = useState<any>(null)
+  // the lines as saved (line_no = index + 1), for "Request price from supplier"
+  const [savedLines, setSavedLines] = useState<{ lineNo: number; productId: number | null; productName: string; quantity: number; outsourced: boolean }[]>([])
   const [savedPdfUrl, setSavedPdfUrl] = useState<string | null>(null)
   const [isCreatingQuotation, setIsCreatingQuotation] = useState(false)
   const [items, setItems] = useState<QuotationItem[]>([])
@@ -799,6 +802,15 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
       const { quotation } = await response.json()
       setSavedQuotation(quotation)
+      setSavedLines(
+        items.map((item, index) => ({
+          lineNo: index + 1,
+          productId: item.item_type === "inventory" && item.product_id ? item.product_id : null,
+          productName: item.product_name,
+          quantity: item.quantity,
+          outsourced: item.item_type === "outsourced",
+        })),
+      )
 
       // Quotation was successfully created, so the in-progress draft is no longer needed
       if (activeDraftId) {
@@ -1401,6 +1413,16 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                       {t("sq.open-pdf")}
                     </a>
                   </Button>
+                  {newWorkflow && (
+                    <div className="space-y-1">
+                      <RequestPriceButton
+                        quotation={{ id: savedQuotation.id, quotation_number: String(savedQuotation.quotation_number ?? "") }}
+                        lines={savedLines}
+                        suppliers={suppliers}
+                      />
+                      <p className="text-xs text-muted-foreground">{t("chain.request-price-hint")}</p>
+                    </div>
+                  )}
                 </div>
               )}
 

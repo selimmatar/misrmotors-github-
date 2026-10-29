@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input"
 import { useAppContext } from "@/lib/app-context"
 import { QuotationPreviewDialog } from "@/components/quotation/quotation-preview-dialog"
 import { ApproveConvertQuotationDialog } from "@/components/sales-quotation/approve-convert-quotation-dialog"
+import { RequestPriceButton } from "@/components/sales-quotation/request-price-button"
+import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
 import type { UserRole } from "@/lib/types"
 
 interface Quotation {
@@ -85,7 +87,21 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
   const [rejectionReason, setRejectionReason] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   
-  const { refreshSalesOrders } = useAppContext()
+  const { refreshSalesOrders, suppliers } = useAppContext()
+
+  // "Request price from supplier" needs the quotation's lines; the list only has summaries.
+  const loadRequestPriceLines = async (quotation: Quotation) => {
+    const response = await fetch(`/api/sales-quotations?id=${quotation.id}`)
+    if (!response.ok) throw new Error("Failed to fetch quotation details")
+    const items: QuotationItem[] = (await response.json()).quotation?.items || []
+    return items.map((item, index) => ({
+      lineNo: item.line_no ?? index + 1,
+      productId: item.item_type === "outsourced" ? null : item.product_id ?? null,
+      productName: item.product_name,
+      quantity: item.quantity,
+      outsourced: item.item_type === "outsourced",
+    }))
+  }
 
   useEffect(() => {
     fetchQuotations()
@@ -330,7 +346,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                       <StatusBadge status={quotation.status} label={quotation.status === "sent" ? t("quote.sent-to-customer") : undefined} />
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex flex-wrap gap-2 mt-4">
                     <Button
                       size="sm"
                       variant="outline"
@@ -362,6 +378,13 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
                       <CheckCircle className="w-4 h-4" />
                       {t("common.approve-convert-to-so")}
                     </Button>
+                    {isNewQuotationWorkflow() && (
+                      <RequestPriceButton
+                        quotation={{ id: quotation.id, quotation_number: quotation.quotation_number }}
+                        lines={() => loadRequestPriceLines(quotation)}
+                        suppliers={suppliers}
+                      />
+                    )}
                   </div>
                 </div>
               ))}

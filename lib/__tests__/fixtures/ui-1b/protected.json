@@ -114,6 +114,7 @@
       "\"/api/sales-quotations/reject",
       "`/api/sales-quotations?id=${id}",
       "`/api/sales-quotations?id=${quotation.id}",
+      "`/api/sales-quotations?id=${quotation.id}",
       "`/api/sales-quotations?id=${quotation.id}"
     ],
     "handlers": [
@@ -124,7 +125,7 @@
     "ids": [
       "id=\"rejection-reason\""
     ],
-    "fetch": 5,
+    "fetch": 6,
     "iso": 0,
     "t": 0,
     "onClick": 5
