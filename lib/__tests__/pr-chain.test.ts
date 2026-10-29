@@ -11,7 +11,7 @@ import * as inventoryRoute from "../../app/api/inventory/route"
 import * as availabilityRoute from "../../app/api/sales-quotations/availability/route"
 import * as poRequestsRoute from "../../app/api/po-requests/route"
 import * as poRoute from "../../app/api/purchase-orders/route"
-import { applyPrCosts } from "../po-requests/apply-costs"
+import { applyChosenCost, markupFrom, priceWithMarkup, supplierOffers } from "../po-requests/apply-costs"
 import { readItemRows } from "../excel/read-item-rows"
 import { loadChain, chainText } from "../po-requests/chain"
 import * as chainRoute from "../../app/api/chain/route"
@@ -421,40 +421,59 @@ test("a used (converted) PR cannot be changed", async () => {
   assert.equal(db.tables.po_requests[0].status, "converted")
 })
 
-test("Use these costs: fills outsourced lines' cost only, never stock lines, skips removed lines", () => {
+test("Supplier costs: every price request's prices are listed per outsourced line, cheapest first; stock, removed and cancelled left out", () => {
   const lines = [
     { lineNo: 1, outsourced: false, productName: "Oil", unitCost: null, unitPrice: 50 },
     { lineNo: 2, outsourced: true, productName: "Pump ", unitCost: null, unitPrice: 300 },
+    { lineNo: 3, outsourced: true, productName: "Gauge", unitCost: null, unitPrice: 0 },
   ]
-  const r = applyPrCosts(lines, [
-    { quotation_line_no: 1, product_name: "Oil", unit_price: 10 },
-    { quotation_line_no: 2, product_name: "pump", unit_price: 200 },
-    { quotation_line_no: 3, product_name: "Valve", unit_price: 5 },
-    { quotation_line_no: 2, product_name: "Pump", unit_price: null },
+  const offers = supplierOffers(lines, [
+    {
+      request_id: 7, request_number: "PR-7", status: "quoted", supplier_id: 4, suppliers: { supplier_name: "APAC " },
+      po_request_items: [
+        { quotation_line_no: 1, product_name: "Oil", unit_price: 10 },
+        { quotation_line_no: 2, product_name: "pump", unit_price: 220 },
+        { quotation_line_no: 9, product_name: "Valve", unit_price: 5 },
+        { quotation_line_no: 3, product_name: "Gauge", unit_price: null },
+      ],
+    },
+    {
+      request_id: 8, request_number: "PR-8", status: "converted", supplier_id: 3, suppliers: { supplier_name: "SMG" },
+      po_request_items: [{ quotation_line_no: 2, product_name: "Pump", unit_price: "200" }, { quotation_line_no: 3, product_name: "gauge", unit_price: 30 }],
+    },
+    { request_id: 9, request_number: "PR-9", status: "cancelled", supplier_id: 5, po_request_items: [{ quotation_line_no: 2, product_name: "Pump", unit_price: 1 }] },
   ])
-  assert.equal(r.lines[0].unitCost, null)
-  assert.equal(r.lines[1].unitCost, 200)
-  assert.equal(r.lines[1].unitPrice, 300)
-  assert.equal(r.filled, 1)
-  assert.equal(r.skipped, 2)
+  assert.deepEqual(Object.keys(offers), ["2", "3"])
+  assert.deepEqual(offers[2].map((o) => [o.requestNumber, o.supplierName, o.supplierId, o.price]), [["PR-8", "SMG", "3", 200], ["PR-7", "APAC", "4", 220]])
+  assert.deepEqual(offers[3].map((o) => o.requestNumber), ["PR-8"])
 })
 
-test("Use these costs: a line with no selling price yet (0) gets the supplier's price as its price; a priced line keeps its price", () => {
-  const lines = [
-    { lineNo: 1, outsourced: true, productName: "Air coupling", unitCost: 375, unitPrice: 375 },
-    { lineNo: 2, outsourced: true, productName: "Mechanical coupling ", unitCost: null, unitPrice: 0 },
-  ]
-  const r = applyPrCosts(lines, [{ quotation_line_no: 2, product_name: "Mechanical coupling", unit_price: 205 }])
-  assert.equal(r.lines[1].unitCost, 205)
-  assert.equal(r.lines[1].unitPrice, 205)
-  assert.equal(r.lines[0].unitPrice, 375)
-  assert.equal(r.filled, 1)
+test("Supplier costs: the chosen price becomes the cost and the supplier goes on the line; price follows the markup", () => {
+  const offer = { requestId: 8, requestNumber: "PR-8", supplierId: "3", supplierName: "SMG", price: 200 }
+  // Already costed: markup kept, price follows the new cost.
+  const a = applyChosenCost({ lineNo: 2, outsourced: true, productName: "Pump", unitCost: 250, unitPrice: 300, markup: 20, supplierId: "4", supplierName: "APAC" }, offer)
+  assert.deepEqual([a.unitCost, a.unitPrice, a.markup, a.supplierId, a.supplierName], [200, 240, 20, "3", "SMG"])
+  // Priced but never costed: the sales rep's price stays, the markup shows what it means.
+  const b = applyChosenCost({ lineNo: 2, outsourced: true, productName: "Pump", unitCost: null, unitPrice: 300, markup: 0 }, offer)
+  assert.deepEqual([b.unitCost, b.unitPrice, b.markup], [200, 300, 50])
+  // Not priced yet: price = cost.
+  const c = applyChosenCost({ lineNo: 2, outsourced: true, productName: "Pump", unitCost: null, unitPrice: 0, markup: 0 }, offer)
+  assert.deepEqual([c.unitCost, c.unitPrice], [200, 200])
+  assert.equal(priceWithMarkup(1000, 20), 1200)
+  assert.equal(priceWithMarkup(333.33, 15), 383.33)
+  assert.equal(markupFrom(1000, 1200), 20)
+  assert.equal(markupFrom(null, 1200), 0)
+  assert.equal(markupFrom(1000, 0), 0)
 })
 
-test("quotation edit window: each outsourced line shows its supplier cost", () => {
+test("quotation edit window: cost and markup fields, markup for all items, choose supplier costs", () => {
   const src = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "components/sales-quotation/approve-convert-quotation-dialog.tsx"), "utf8")
-  assert.match(src, /item.itemType === "outsourced" && item.unitCost != null && \(/)
-  assert.match(src, /t\("chain.supplier-cost"\)/)
+  assert.match(src, /t\("chain.cost"\)/)
+  assert.match(src, /t\("so.markup"\)/)
+  assert.match(src, /t\("chain.markup-all"\)/)
+  assert.match(src, /onClick=\{openChooseCosts\}/)
+  assert.match(src, /unit_cost: item.itemType === "outsourced" \? item.unitCost \?\? null : null/)
+  assert.doesNotMatch(src, /chain\.use-costs/)
 })
 
 test("Excel rows: empty names dropped, quantity defaults to 1", () => {
