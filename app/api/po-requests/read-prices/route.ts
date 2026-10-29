@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { pricesByItem, sameRequestNumber, sortRequestItems, type ReadRow } from "@/lib/po-requests/read-prices"
+import { geminiBusy, geminiModels } from "@/lib/gemini-models"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -26,9 +27,10 @@ const SHEET_SCHEMA = {
     },
   },
 }
-// Free-tier model; can be changed in Vercel with GEMINI_MODEL without a code change.
-const DEFAULT_MODEL = "gemini-3.8-flash"
-const GOOGLE_TIMEOUT_MS = 45_000
+// Stop waiting before the server's own 60-second limit so the screen gets a clear message. The main model gets
+// part of that time; if it is busy or slow, the backup model gets the rest.
+const GOOGLE_TOTAL_MS = 50_000
+const FIRST_MODEL_MS = 28_000
 
 const SYSTEM = `You read photos of a printed price request from Misr Motors. The sheet has a table with numbered rows (column "م"), an item name, and a "سعر الوحدة / Unit Price" box where the supplier hand-writes one unit price per row.
 For every row number you are given, copy exactly what is hand-written in that row's price box, digit by digit, in the same digits the supplier used (Arabic-Indic like ١٢٥٠ or English like 1250), keeping any commas or dots. Do not convert, round or calculate.
@@ -66,32 +68,47 @@ export async function POST(request: NextRequest) {
 
     const rowList = items.map((item, i) => `${i + 1}. ${item.product_name} (× ${item.quantity}${item.unit ? " " + item.unit : ""})`).join("\n")
     const base = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com"
-    const model = process.env.GEMINI_MODEL || DEFAULT_MODEL
-    const response = await fetch(`${base}/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      // Stop waiting before the server's own 60-second limit so the screen gets a clear message.
-      signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM }] },
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { inline_data: { mime_type: mediaType, data: image } },
-              { text: `Price request ${pr.request_number}. Rows on the sheet:\n${rowList}` },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0,
-          responseMimeType: "application/json",
-          responseSchema: SHEET_SCHEMA,
-          // Copying digits out of boxes needs little reasoning; low thinking answers much faster.
-          thinkingConfig: { thinkingLevel: "low" },
+    const payload = JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM }] },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inline_data: { mime_type: mediaType, data: image } },
+            { text: `Price request ${pr.request_number}. Rows on the sheet:\n${rowList}` },
+          ],
         },
-      }),
+      ],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: "application/json",
+        responseSchema: SHEET_SCHEMA,
+        // Copying digits out of boxes needs little reasoning; low thinking answers much faster.
+        thinkingConfig: { thinkingLevel: "low" },
+      },
     })
+    const models = geminiModels()
+    const deadline = Date.now() + GOOGLE_TOTAL_MS
+    let response: Response | null = null
+    for (const [i, model] of models.entries()) {
+      const last = i === models.length - 1
+      const left = deadline - Date.now()
+      try {
+        response = await fetch(`${base}/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          signal: AbortSignal.timeout(last ? left : Math.min(FIRST_MODEL_MS, left)),
+          body: payload,
+        })
+      } catch (error) {
+        if (last || !(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError"))) throw error
+        console.error("read-prices: no answer in time from", model, "- trying the backup model")
+        continue
+      }
+      if (response.ok || last || !geminiBusy(response.status)) break
+      console.error("read-prices:", model, "is busy", response.status, "- trying the backup model")
+    }
+    if (!response) throw Object.assign(new Error("timeout"), { name: "TimeoutError" })
 
     if (!response.ok) {
       const detail = await response.json().catch(() => null)
