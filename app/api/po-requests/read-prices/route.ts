@@ -28,6 +28,7 @@ const SHEET_SCHEMA = {
 }
 // Free-tier model; can be changed in Vercel with GEMINI_MODEL without a code change.
 const DEFAULT_MODEL = "gemini-3.8-flash"
+const GOOGLE_TIMEOUT_MS = 45_000
 
 const SYSTEM = `You read photos of a printed price request from Misr Motors. The sheet has a table with numbered rows (column "م"), an item name, and a "سعر الوحدة / Unit Price" box where the supplier hand-writes one unit price per row.
 For every row number you are given, copy exactly what is hand-written in that row's price box, digit by digit, in the same digits the supplier used (Arabic-Indic like ١٢٥٠ or English like 1250), keeping any commas or dots. Do not convert, round or calculate.
@@ -69,6 +70,8 @@ export async function POST(request: NextRequest) {
     const response = await fetch(`${base}/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      // Stop waiting before the server's own 60-second limit so the screen gets a clear message.
+      signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM }] },
         contents: [
@@ -80,7 +83,13 @@ export async function POST(request: NextRequest) {
             ],
           },
         ],
-        generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: SHEET_SCHEMA },
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json",
+          responseSchema: SHEET_SCHEMA,
+          // Copying digits out of boxes needs little reasoning; low thinking answers much faster.
+          thinkingConfig: { thinkingLevel: "low" },
+        },
       }),
     })
 
@@ -88,13 +97,15 @@ export async function POST(request: NextRequest) {
       const detail = await response.json().catch(() => null)
       const reason = detail?.error?.details?.find((d: { reason?: string }) => d?.reason)?.reason || detail?.error?.status
       console.error("read-prices: Gemini error", response.status, reason)
+      // Google's reason (no key in it) goes back too, so a failed try can be diagnosed from the screen.
+      const why = `${response.status} ${reason || ""} ${String(detail?.error?.message || "").slice(0, 200)}`.trim()
       if (reason === "API_KEY_INVALID" || response.status === 401 || response.status === 403) {
-        return NextResponse.json({ error: "Reading photos is not set up correctly (the API key was rejected)" }, { status: 503 })
+        return NextResponse.json({ error: "Reading photos is not set up correctly (the API key was rejected)", detail: why }, { status: 503 })
       }
       if (response.status === 429) {
-        return NextResponse.json({ error: "The free photo-reading limit was reached. Please try again later or type the prices." }, { status: 429 })
+        return NextResponse.json({ error: "The free photo-reading limit was reached. Please try again later or type the prices.", detail: why }, { status: 429 })
       }
-      return NextResponse.json({ error: "The photo could not be read. Please try again or type the prices." }, { status: 502 })
+      return NextResponse.json({ error: "The photo could not be read. Please try again or type the prices.", detail: why }, { status: 502 })
     }
 
     const data = await response.json()
@@ -116,6 +127,10 @@ export async function POST(request: NextRequest) {
       request_number_matches: sheet.request_number ? sameRequestNumber(sheet.request_number, pr.request_number) : null,
     })
   } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      console.error("read-prices: Google did not answer in time")
+      return NextResponse.json({ error: "Google took too long to read the photo. Please try again or type the prices.", detail: "timeout" }, { status: 504 })
+    }
     console.error("read-prices error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
