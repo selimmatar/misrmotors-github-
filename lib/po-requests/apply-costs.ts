@@ -1,12 +1,14 @@
 // "Use these costs": copy the supplier's prices from a price request (PR) into the quotation's outsourced lines as
 // their cost. A PR line matches the quotation line with the same line number AND the same item name, so a quotation
 // edited after the PR was sent (a line deleted, lines moved) never gets a cost from a different item. Stock lines
-// are never touched; the selling price is left to the sales rep.
+// are never touched. A line with no selling price yet (0) also gets the supplier's price as its price, so the
+// quotation shows it; a line already priced keeps the sales rep's price.
 export interface CostLine {
   lineNo: number
   outsourced: boolean
   productName: string
   unitCost?: number | null
+  unitPrice?: number
 }
 
 export interface PrPriceItem {
@@ -32,6 +34,7 @@ export function applyPrCosts<T extends CostLine>(lines: T[], prItems: PrPriceIte
       continue
     }
     target.unitCost = price
+    if (!target.unitPrice) target.unitPrice = price
     filled++
   }
   return { lines: next, filled, skipped }

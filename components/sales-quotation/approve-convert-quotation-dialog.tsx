@@ -892,6 +892,11 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                           value={item.unitPrice}
                           onChange={(e) => updateItem(item.key, { unitPrice: Number(e.target.value) || 0 })}
                         />
+                        {item.itemType === "outsourced" && item.unitCost != null && (
+                          <p className="text-xs text-muted-foreground">
+                            {t("chain.supplier-cost")}: {formatCurrency(item.unitCost)}
+                          </p>
+                        )}
                       </div>
                       <div className="col-span-1 lg:col-span-2 space-y-1">
                         <Label className="text-xs">{t("total")}</Label>
