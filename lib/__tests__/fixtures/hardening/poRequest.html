@@ -76,6 +76,9 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
     .pm-note h4 { margin-block-end: 4px; font-size: 13px; font-weight: 700; }
     .pm-note p { margin-block: 2px; }
     .pm-note ul { padding-inline-start: 18px; }
+    .pm-table td.pm-price-cell { padding: 4px; vertical-align: middle; }
+    .pm-price-box { block-size: 34px; border: 1.5px solid #000; border-radius: 3px; }
+    .pm-price-hint { margin-block: 4px 0; font-size: 12px; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -119,7 +122,8 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
       
     <section class="pm-info"><div class="pm-info-title">بيانات المورد / Supplier Details</div><div class="pm-fields"><div class="pm-field"><div class="pm-label">اسم المورد:</div><div class="pm-value">Supplier One</div></div><div class="pm-field"><div class="pm-label">التليفون:</div><div class="pm-value">Phone-0200</div></div><div class="pm-field"><div class="pm-label">البريد الإلكتروني:</div><div class="pm-value">s@example.com</div></div><div class="pm-field"><div class="pm-label">العنوان:</div><div class="pm-value">Supplier Street</div></div></div></section>
     
-    <!-- Items Table (No Prices) -->
+    <!-- Items Table: the supplier hand-writes one unit price per row in the box (read back from a photo) -->
+    <p class="pm-price-hint">اكتب سعر الوحدة بالأرقام فقط داخل المربع لكل صنف / Write the unit price in numbers only, one per box</p>
     <table class="pm-table">
       <thead>
         <tr>
@@ -129,6 +133,7 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
           <th class="pm-center" style="width: 100px;">الكمية / Quantity</th>
           <th class="pm-center" style="width: 80px;">الوحدة / Unit</th>
           <th>ملاحظات / Notes</th>
+          <th class="pm-center" style="width: 140px;">سعر الوحدة / Unit Price</th>
         </tr>
       </thead>
       <tbody>
@@ -140,6 +145,7 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
             <td class="pm-center">5</td>
             <td class="pm-center">Unit Box</td>
             <td>Item note</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
           </tr>
         
           <tr>
@@ -149,6 +155,7 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
             <td class="pm-center">2</td>
             <td class="pm-center">-</td>
             <td>-</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
           </tr>
         
       </tbody>
