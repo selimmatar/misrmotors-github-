@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { moneyCell } from "@/lib/print-html"
-import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
+import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 import { VAT_RATE, computeWholeOrderAmount, dpInvoicePrintTotals, loadSoInvoicingState, round2, soDiscountBase } from "@/lib/invoicing"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 
@@ -379,6 +379,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       <div class="pm-sign-line"></div>
     </div>
   </div>
+${PRINT_ROWS_SCRIPT}
 </body>
 </html>
     `

@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
-import { PRINT_CSS, printHeader, docTitle, infoBox } from "@/lib/print/print-theme"
+import { PRINT_CSS, printHeader, docTitle, infoBox, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
 
@@ -229,6 +229,7 @@ export async function GET(request: NextRequest) {
     <div class="pm-sign"><strong>تحريرًا في:</strong> _______________</div>
     <div class="pm-sign"><strong>توقيع المستلم:</strong> _______________</div>
   </div>
+${PRINT_ROWS_SCRIPT}
 </body>
 </html>
     `

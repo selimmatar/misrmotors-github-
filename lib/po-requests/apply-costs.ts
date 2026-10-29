@@ -32,10 +32,16 @@ export interface SupplierOffer {
   supplierId: string
   supplierName: string
   price: number
+  // The PR item's name, with the brand when one was added on "Quote received".
+  productName?: string
 }
 
 export const sameItemName = (a?: string | null, b?: string | null) =>
   (a || "").trim().replace(/\s+/g, " ").toLowerCase() === (b || "").trim().replace(/\s+/g, " ").toLowerCase()
+
+// A PR item may carry the supplier's brand after " – " ("Filter – Bosch"); it is still the quotation's "Filter" line.
+const withoutBrand = (name?: string | null) => (name || "").split(" – ")[0]
+export const sameItemIgnoringBrand = (a?: string | null, b?: string | null) => sameItemName(withoutBrand(a), withoutBrand(b))
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -54,7 +60,7 @@ export function supplierOffers(lines: CostLine[], requests: PriceRequestForCosts
       if (item.unit_price === null || item.unit_price === undefined || item.unit_price === "") continue
       const price = Number(item.unit_price)
       if (!Number.isFinite(price) || price < 0) continue
-      const line = lines.find((l) => l.outsourced && l.lineNo === item.quotation_line_no && sameItemName(l.productName, item.product_name))
+      const line = lines.find((l) => l.outsourced && l.lineNo === item.quotation_line_no && sameItemIgnoringBrand(l.productName, item.product_name))
       if (!line) continue
       ;(offers[line.lineNo] ||= []).push({
         requestId: pr.request_id,
@@ -62,6 +68,7 @@ export function supplierOffers(lines: CostLine[], requests: PriceRequestForCosts
         supplierId: pr.supplier_id == null ? "" : String(pr.supplier_id),
         supplierName: pr.suppliers?.supplier_name?.trim() || "",
         price,
+        productName: item.product_name?.trim() || undefined,
       })
     }
   }
@@ -70,13 +77,14 @@ export function supplierOffers(lines: CostLine[], requests: PriceRequestForCosts
 }
 
 // The chosen supplier's price becomes the line's cost and the supplier goes on the line (its purchase order goes to
-// them). A line that had a selling price but no cost keeps its price (the markup shows what it means); otherwise the
+// them), and the line takes the PR item's name so a brand added there shows on the quotation. A line that had a selling price but no cost keeps its price (the markup shows what it means); otherwise the
 // line's markup is kept and the price follows the new cost.
 export function applyChosenCost<T extends CostLine & { markup?: number; supplierId?: string; supplierName?: string }>(
   line: T,
   offer: SupplierOffer,
 ): T {
   const next = { ...line, unitCost: offer.price, supplierId: offer.supplierId, supplierName: offer.supplierName }
+  if (offer.productName) next.productName = offer.productName
   const hadCost = line.unitCost != null && line.unitCost > 0
   if (!hadCost && (line.unitPrice || 0) > 0) next.markup = markupFrom(offer.price, line.unitPrice)
   else next.unitPrice = priceWithMarkup(offer.price, line.markup || 0)

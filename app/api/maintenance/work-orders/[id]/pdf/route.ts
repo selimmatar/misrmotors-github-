@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
-import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
+import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
 
@@ -153,6 +153,7 @@ ${emptyRows}
 </div>
 
 <div class="pm-note print-note">\u0647\u0630\u0627 \u0627\u0644\u0645\u0633\u062A\u0646\u062F \u062A\u0645 \u0625\u0646\u0634\u0627\u0624\u0647 \u0622\u0644\u064A\u0627\u064B \u0645\u0646 \u0646\u0638\u0627\u0645 \u0645\u0635\u0631 \u0645\u0648\u062A\u0648\u0631\u0632 - \u064A\u0631\u062C\u0649 \u0637\u0628\u0627\u0639\u062A\u0647 \u0648\u062A\u0639\u0628\u0626\u062A\u0647 \u0645\u0646 \u0642\u0628\u0644 \u0641\u0631\u064A\u0642 \u0627\u0644\u0634\u062D\u0646</div>
+${PRINT_ROWS_SCRIPT}
 </body>
 </html>`
 

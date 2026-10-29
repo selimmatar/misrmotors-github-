@@ -28,7 +28,7 @@ import { normalizeQuotationPaymentDetails } from "@/lib/payment-type"
 import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
 import { StockShortfallNote } from "@/components/sales-quotation/stock-shortfall-note"
 import { RequestPriceDialog } from "@/components/sales-quotation/request-price-dialog"
-import { applyChosenCost, markupFrom, priceWithMarkup, supplierOffers, type SupplierOffer } from "@/lib/po-requests/apply-costs"
+import { applyChosenCost, markupFrom, priceWithMarkup, sameItemName, supplierOffers, type SupplierOffer } from "@/lib/po-requests/apply-costs"
 import { stockShortfall } from "@/lib/quotation-shortfall"
 import { ChainLine } from "@/components/shared/chain-line"
 
@@ -1149,6 +1149,9 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                               <span className="text-xs opacity-80">
                                 {offer.supplierName || "-"} · {offer.requestNumber}
                               </span>
+                              {offer.productName && !sameItemName(offer.productName, line.productName) && (
+                                <span className="text-xs opacity-80">{offer.productName}</span>
+                              )}
                             </Button>
                           )
                         })}

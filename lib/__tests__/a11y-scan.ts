@@ -18,7 +18,7 @@ const mods = (names: string[], suffix = "-module.tsx") => names.map((n) => `comp
 // Entries ending in "/" are directory prefixes; the rest are files.
 export const OWNED: Record<Area, string[]> = {
   frame: [
-    "components/layout/", "components/erp/", "components/auth/", "components/dashboard/", "components/shared/",
+    "components/layout/", "components/erp/", "components/auth/", "components/dashboard/", "components/shared/", "components/notifications/",
     ...["button", "input", "select", "tabs", "checkbox", "radio-group", "switch", "dialog", "sheet"].map((n) => `components/ui/${n}.tsx`),
     "app/layout.tsx", "app/page.tsx",
   ],

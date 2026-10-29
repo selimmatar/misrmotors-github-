@@ -47,7 +47,7 @@ export function parseWrittenPrice(written: string | null | undefined): number | 
   return Number.isFinite(price) && price > 0 ? Math.round(price * 100) / 100 : null
 }
 
-export type ReadRow = { row: number; written: string | null }
+export type ReadRow = { row: number; written: string | null; brand?: string | null }
 
 // Row numbers read from the photo -> unit price per item_id. Rows that are empty, unreadable or not on the
 // request are left out.
@@ -60,6 +60,25 @@ export function pricesByItem<T extends ItemWithId>(items: T[], rows: ReadRow[]):
     if (item && price !== null) prices[item.item_id] = price
   }
   return prices
+}
+
+// Row numbers read from the photo -> the brand written in the "الماركة" box per item_id. Empty boxes are left out.
+export function brandsByItem<T extends ItemWithId>(items: T[], rows: ReadRow[]): Record<number, string> {
+  const ordered = sortRequestItems(items)
+  const brands: Record<number, string> = {}
+  for (const read of rows) {
+    const item = ordered[read.row - 1]
+    const brand = read.brand?.replace(/\s+/g, " ").trim()
+    if (item && brand) brands[item.item_id] = brand.slice(0, 60)
+  }
+  return brands
+}
+
+// "Filter" + "Bosch" -> "Filter – Bosch". The quotation matches its lines on the part before " – ".
+export const BRAND_SEPARATOR = " – "
+export function nameWithBrand(name: string, brand: string): string {
+  const withBrand = `${name.trim()}${BRAND_SEPARATOR}${brand.trim()}`
+  return name.trim().toLowerCase().endsWith(`${BRAND_SEPARATOR}${brand.trim()}`.toLowerCase()) ? name.trim() : withBrand
 }
 
 export const sameRequestNumber = (a: string | null | undefined, b: string | null | undefined) =>

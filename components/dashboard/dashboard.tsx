@@ -138,7 +138,7 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
       case "analytics":
         return <AnalyticsDashboard userRole={user.role} />
 case "po-requests":
-  return <PORequestModule />
+  return <PORequestModule userRole={user.role} />
   case "purchase-orders":
   return <PurchaseOrderModule userRole={user.role} />
       case "suppliers":

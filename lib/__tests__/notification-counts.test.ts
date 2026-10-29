@@ -10,8 +10,11 @@ import { FakeDb } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import { rowsNeedPo, unappliedQuotedRequests } from "../notifications/counts"
 import * as pendingCounts from "../../app/api/pending-counts/route"
+import * as pendingDetails from "../../app/api/pending-counts/details/route"
 
 const src = (p: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), p), "utf8")
+const details = async (screen: string, role: string) =>
+  (await call(pendingDetails.GET, "GET", undefined, `http://test.local/api/pending-counts/details?screen=${screen}&role=${role}`)).body
 const counts = async (role: string) => (await call(pendingCounts.GET, "GET", undefined, `http://test.local/api/pending-counts?role=${role}`)).body
 
 test("a sales order needs a PO while any line says Needs PO or Needs Reorder", () => {
@@ -59,7 +62,7 @@ function chainDb() {
     products: [], inventory: [], delivery_permits: [], delivery_permit_items: [],
     returns: [], return_items: [], sales_returns: [], sales_return_items: [],
     po_requests: [
-      { request_id: 1, request_number: "POR-1", status: "pending", sales_quotation_id: 40 },
+      { request_id: 1, request_number: "POR-1", status: "pending", sales_quotation_id: 40, supplier_id: 9 },
       { request_id: 2, request_number: "POR-2", status: "quoted", sales_quotation_id: 40 },
       { request_id: 3, request_number: "POR-3", status: "quoted", sales_quotation_id: 40 },
       { request_id: 4, request_number: "POR-4", status: "cancelled", sales_quotation_id: 40 },
@@ -71,6 +74,7 @@ function chainDb() {
     sales_quotations: [{ id: 40, quotation_number: "QT-2026-031", customer_name: "Ahmed Trading", status: "sent" }],
     sales_quotation_items: [{ id: 1, quotation_id: 40, product_name: "Pump A", unit_cost: 500, item_type: "outsourced" }],
     maintenance_work_orders: [],
+    suppliers: [{ supplier_id: 9, supplier_name: "Cairo Parts" }],
   })
 }
 
@@ -106,6 +110,54 @@ test("sales rep: a received price counts until it is applied to the quotation or
   db.tables.sales_quotation_items.pop()
   db.tables.sales_orders.push({ so_id: 4, so_number: "SO-4", status: "pending_accountant", parent_quotation_id: 40, customer_id: 5 })
   assert.equal((await counts("sales-rep"))["sales-orders"], 0, "converted quotation")
+})
+
+test("waiting for you: each screen's list holds exactly the items behind its counter", async () => {
+  const db = chainDb()
+  useDb(db)
+  db.tables.purchase_orders.push({ po_id: 8, po_number: "PO-8", status: "pending", supplier_id: 9, total: 1500, currency: "EGP" })
+  db.tables.maintenance_work_orders.push(
+    { work_order_id: 5, work_order_number: "WO-5", customer_name: "Nile Co", status: "on_hold" },
+    { work_order_id: 6, work_order_number: "WO-6", customer_name: "Nile Co", status: "completed" },
+  )
+  const po = await details("purchase-orders", "po-rep")
+  assert.deepEqual(po.orders, [{ so_id: 1, so_number: "SO-1", customer_name: "Ahmed Trading", items: ["Pump A"] }])
+  assert.deepEqual(po.purchaseOrders, [{ po_id: 8, po_number: "PO-8", supplier_name: "Cairo Parts", total: 1500, currency: "EGP" }])
+  const pr = await details("po-requests", "po-rep")
+  assert.deepEqual(pr.requests, [
+    { request_id: 1, request_number: "POR-1", quotation_number: "QT-2026-031", customer_name: "Ahmed Trading", supplier_name: "Cairo Parts" },
+  ])
+  const sales = await details("sales-orders", "sales-rep")
+  assert.deepEqual(sales.prices, [
+    { request_id: 3, request_number: "POR-3", quotation_id: 40, quotation_number: "QT-2026-031", customer_name: "Ahmed Trading", items: [{ name: "Valve", price: 90 }] },
+  ])
+  assert.deepEqual(sales.reports, [{ work_order_id: 5, work_order_number: "WO-5", customer_name: "Nile Co" }])
+  // the counters are the same lists counted
+  const c = await counts("ceo")
+  assert.equal(c["purchase-orders"], po.orders.length + po.purchaseOrders.length)
+  assert.equal(c["po-requests"], pr.requests.length)
+  assert.equal(c["sales-orders"], sales.prices.length + sales.reports.length)
+  // a role that does not own a screen gets nothing for it
+  assert.deepEqual(await details("purchase-orders", "sales-rep"), {})
+  assert.deepEqual(await details("sales-orders", "po-rep"), {})
+})
+
+test("waiting for you: the box sits on the three screens and opens each item", () => {
+  const box = src("components/notifications/waiting-for-you.tsx")
+  assert.match(box, /if \(shown\.length === 0\) return null/)
+  const pr = src("components/modules/po-request-module.tsx")
+  assert.match(pr, /useWaiting<[^>]*>\("po-requests", userRole\)/)
+  assert.match(pr, /if \(request\) setQuoteReceivedFor\(request\)/)
+  assert.match(src("components/dashboard/dashboard.tsx"), /<PORequestModule userRole=\{user\.role\} \/>/)
+  const po = src("components/modules/purchase-order-module.tsx")
+  assert.match(po, /useWaiting<[^>]*>\("purchase-orders", userRole\)/)
+  assert.match(po, /setSoSearchTerm\(o\.so_number\)/)
+  assert.match(po, /setViewDetailsOrder\(order\)/)
+  const hub = src("components/modules/sales-quotations-hub-module.tsx")
+  assert.match(hub, /useWaiting<[^>]*>\("sales-orders", userRole\)/)
+  assert.match(hub, /setOpenQuotationId\(p\.quotation_id\)/)
+  assert.match(hub, /<MaintenanceApprovalTab userRole=\{userRole\} \/>/)
+  assert.match(src("components/modules/approve-sales-quotations-module.tsx"), /openApproveConvertDialog\(\{ id: openQuotationId \}/)
 })
 
 test("price request list: quotation number and customer in small grey text under the request number", () => {

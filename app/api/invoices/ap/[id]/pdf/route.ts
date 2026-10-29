@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
-import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
+import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
 
@@ -323,6 +323,7 @@ ${
       <p>للاستفسار: 02-12242222</p>
     </div>
   </div>
+${PRINT_ROWS_SCRIPT}
 </body>
 </html>
     `
