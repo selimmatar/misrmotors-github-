@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { loadMissingItems } from "@/lib/missing-items"
-import { HOLDING_QUOTATION_STATUSES } from "@/lib/stock-hold"
-import { SO_STATUSES_NEEDING_PO, rowsNeedPo, unappliedQuotedRequests } from "@/lib/notifications/counts"
+import {
+  loadPendingPriceRequests,
+  loadPendingPurchaseOrders,
+  loadReportsToReview,
+  loadSalesOrdersNeedingPo,
+  loadUnappliedPrices,
+} from "@/lib/notifications/waiting"
 
 export const dynamic = "force-dynamic"
 
@@ -37,36 +41,16 @@ export async function GET(request: Request) {
       counts["approve-sales-orders"] = count || 0
     }
 
-    // ===== PURCHASE ORDERS PENDING APPROVAL =====
-    // Visible to: po-rep, ceo
+    // ===== PURCHASE ORDERS PENDING APPROVAL + SALES ORDERS THAT NEED A PO; PRICE REQUESTS WAITING =====
+    // Visible to: po-rep, ceo. Same lists as the "Waiting for you" box on those screens.
     if (["po-rep", "ceo"].includes(role)) {
-      const { count } = await adminClient
-        .from("purchase_orders")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pending")
-      counts["purchase-orders"] = count || 0
-
-      // Sales orders made from a quotation that still have lines needing a purchase order
-      const { data: orders } = await adminClient
-        .from("sales_orders")
-        .select("so_id")
-        .not("parent_quotation_id", "is", null)
-        .in("status", SO_STATUSES_NEEDING_PO)
-      for (const order of orders || []) {
-        try {
-          const report = await loadMissingItems(adminClient, order.so_id)
-          if (report && rowsNeedPo(report.rows)) counts["purchase-orders"] += 1
-        } catch (error) {
-          console.error("pending-counts: missing items of SO", order.so_id, error)
-        }
-      }
-
-      // Price requests sent by a sales rep, waiting for the supplier's price
-      const { count: pendingRequests } = await adminClient
-        .from("po_requests")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pending")
-      counts["po-requests"] = pendingRequests || 0
+      const [pendingPos, ordersNeedingPo, priceRequests] = await Promise.all([
+        loadPendingPurchaseOrders(adminClient),
+        loadSalesOrdersNeedingPo(adminClient),
+        loadPendingPriceRequests(adminClient),
+      ])
+      counts["purchase-orders"] = pendingPos.length + ordersNeedingPo.length
+      counts["po-requests"] = priceRequests.length
     }
 
     // ===== DELIVERY PERMITS PENDING ALLOCATION (warehouse) =====
@@ -90,38 +74,11 @@ export async function GET(request: Request) {
       counts["goods-receipt"] = count || 0
     }
 
-    // ===== MAINTENANCE REPORTS PENDING SALES APPROVAL =====
-    // Reports submitted by shipping (work orders on_hold) awaiting sales review
-    // Visible to: sales-rep, ceo
+    // ===== MAINTENANCE REPORTS TO REVIEW + SUPPLIER PRICES NOT ON THE QUOTATION YET =====
+    // Visible to: sales-rep, ceo. Same lists as the "Waiting for you" box on the sales screen.
     if (["sales-rep", "ceo"].includes(role)) {
-      const { data: onHoldWOs } = await adminClient
-        .from("maintenance_work_orders")
-        .select("work_order_id")
-        .eq("status", "on_hold")
-      
-      if (onHoldWOs && onHoldWOs.length > 0) {
-        counts["sales-orders"] = onHoldWOs.length
-      } else {
-        counts["sales-orders"] = 0
-      }
-
-      // Price requests with a supplier price that is not on its quotation yet
-      const { data: quoted } = await adminClient
-        .from("po_requests")
-        .select("request_id, sales_quotation_id, po_request_items(*)")
-        .eq("status", "quoted")
-        .not("sales_quotation_id", "is", null)
-      const quotationIds = [...new Set((quoted || []).map((r) => r.sales_quotation_id as number))]
-      if (quotationIds.length > 0) {
-        const [{ data: quotations }, { data: converted }, { data: lines }] = await Promise.all([
-          adminClient.from("sales_quotations").select("id").in("id", quotationIds).in("status", HOLDING_QUOTATION_STATUSES),
-          adminClient.from("sales_orders").select("parent_quotation_id").in("parent_quotation_id", quotationIds),
-          adminClient.from("sales_quotation_items").select("quotation_id, product_name, unit_cost, item_type").in("quotation_id", quotationIds),
-        ])
-        const convertedIds = new Set((converted || []).map((o) => o.parent_quotation_id))
-        const open = new Set((quotations || []).map((q) => q.id as number).filter((id) => !convertedIds.has(id)))
-        counts["sales-orders"] += unappliedQuotedRequests(quoted as any[], open, lines || [])
-      }
+      const [reports, prices] = await Promise.all([loadReportsToReview(adminClient), loadUnappliedPrices(adminClient)])
+      counts["sales-orders"] = reports.length + prices.length
     }
 
     // ===== MAINTENANCE INVOICES READY TO CREATE (accountant) =====

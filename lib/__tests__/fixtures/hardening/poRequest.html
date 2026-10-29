@@ -16,6 +16,8 @@ img { max-inline-size: 100%; }
 table { border-collapse: collapse; }
 thead { display: table-header-group; }
 tr { break-inside: avoid; page-break-inside: avoid; }
+.pm-rows, .pm-rows > thead, .pm-rows > tbody, .pm-rows > tfoot { display: block; inline-size: 100%; }
+.pm-rows tr { display: grid; grid-template-columns: var(--pm-cols); break-inside: avoid; page-break-inside: avoid; }
 .pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
 .pm-brand { display: flex; align-items: center; gap: 12px; }
 .pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }
@@ -122,38 +124,38 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
       
     <section class="pm-info"><div class="pm-info-title">بيانات المورد</div><div class="pm-fields"><div class="pm-field"><div class="pm-label">اسم المورد:</div><div class="pm-value">Supplier One</div></div><div class="pm-field"><div class="pm-label">التليفون:</div><div class="pm-value">Phone-0200</div></div><div class="pm-field"><div class="pm-label">البريد الإلكتروني:</div><div class="pm-value">s@example.com</div></div><div class="pm-field"><div class="pm-label">العنوان:</div><div class="pm-value">Supplier Street</div></div></div></section>
     
-    <!-- Items Table: the supplier hand-writes one unit price per row in the box (read back from a photo) -->
-    <p class="pm-price-hint">اكتب سعر الوحدة بالأرقام فقط داخل المربع لكل صنف</p>
+    <!-- Items Table: the supplier hand-writes the code, the brand and the unit price per row in the boxes (read back from a photo) -->
+    <p class="pm-price-hint">اكتب الكود والماركة وسعر الوحدة (بالأرقام فقط) داخل المربعات لكل صنف</p>
     <table class="pm-table">
       <thead>
         <tr>
-          <th class="pm-center" style="width: 50px;">م</th>
-          <th>اسم الصنف</th>
+          <th class="pm-center" style="width: 28px;">م</th>
           <th class="pm-center" style="width: 100px;">الكود</th>
-          <th class="pm-center" style="width: 100px;">الكمية</th>
-          <th class="pm-center" style="width: 80px;">الوحدة</th>
-          <th>ملاحظات</th>
-          <th class="pm-center" style="width: 140px;">سعر الوحدة</th>
+          <th>اسم الصنف</th>
+          <th class="pm-center" style="width: 48px;">الكمية</th>
+          <th class="pm-center" style="width: 100px;">الماركة</th>
+          <th style="width: 80px;">ملاحظات</th>
+          <th class="pm-center" style="width: 110px;">سعر الوحدة</th>
         </tr>
       </thead>
       <tbody>
         
           <tr>
             <td class="pm-center">1</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td>Filter F</td>
-            <td class="pm-center">SKU-F</td>
             <td class="pm-center">5</td>
-            <td class="pm-center">Unit Box</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td>Item note</td>
             <td class="pm-price-cell"><div class="pm-price-box"></div></td>
           </tr>
         
           <tr>
             <td class="pm-center">2</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td>Loose item</td>
-            <td class="pm-center">-</td>
             <td class="pm-center">2</td>
-            <td class="pm-center">-</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td>-</td>
             <td class="pm-price-cell"><div class="pm-price-box"></div></td>
           </tr>
@@ -197,5 +199,28 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
       <p>هاتف: 02-33039811 | فاكس: 02-33039818 | sales@misrmotors.com</p>
     </div>
   </div>
+<script>(function () {
+  function keepRowsWhole() {
+    document.querySelectorAll("table.pm-table").forEach(function (table) {
+      var rows = Array.prototype.slice.call(table.rows)
+      var cols = 0
+      rows.forEach(function (row) {
+        var n = 0
+        Array.prototype.forEach.call(row.cells, function (cell) { n += cell.colSpan || 1 })
+        cols = Math.max(cols, n)
+      })
+      var ref = rows.filter(function (row) { return row.cells.length === cols })[0]
+      if (!ref || cols < 2) return
+      var widths = Array.prototype.map.call(ref.cells, function (cell) { return Math.max(1, Math.round(cell.getBoundingClientRect().width)) + "fr" })
+      rows.forEach(function (row) {
+        Array.prototype.forEach.call(row.cells, function (cell) { if (cell.colSpan > 1) cell.style.gridColumn = "span " + cell.colSpan })
+      })
+      table.style.setProperty("--pm-cols", widths.join(" "))
+      table.classList.add("pm-rows")
+    })
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", keepRowsWhole)
+  else keepRowsWhole()
+})()</script>
 </body>
 </html>

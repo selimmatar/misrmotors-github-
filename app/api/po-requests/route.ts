@@ -182,7 +182,7 @@ export async function PUT(request: NextRequest) {
     if (!PUT_STATUSES.includes(status)) {
       return NextResponse.json({ error: `Invalid status: ${status}` }, { status: 400 })
     }
-    const prices: Array<{ item_id: number; unit_price: number | null }> = []
+    const prices: Array<{ item_id: number; unit_price: number | null; product_name?: string }> = []
     if (body.items !== undefined) {
       if (!Array.isArray(body.items)) return NextResponse.json({ error: "items must be a list" }, { status: 400 })
       for (const item of body.items) {
@@ -192,7 +192,12 @@ export async function PUT(request: NextRequest) {
         if (itemId === null || (price !== null && (!Number.isFinite(price) || price < 0))) {
           return NextResponse.json({ error: "Each price needs an item_id and a price of 0 or more" }, { status: 400 })
         }
-        prices.push({ item_id: itemId, unit_price: price })
+        // Optional new name, e.g. "Filter – Bosch" when the brand is added on "Quote received".
+        const name = typeof item?.product_name === "string" ? item.product_name.trim() : undefined
+        if (item?.product_name !== undefined && (!name || name.length > 300)) {
+          return NextResponse.json({ error: "An item name must be 1 to 300 characters" }, { status: 400 })
+        }
+        prices.push({ item_id: itemId, unit_price: price, ...(name ? { product_name: name } : {}) })
       }
     }
 
@@ -210,7 +215,7 @@ export async function PUT(request: NextRequest) {
     for (const price of prices) {
       const { error: priceError } = await supabase
         .from("po_request_items")
-        .update({ unit_price: price.unit_price })
+        .update(price.product_name ? { unit_price: price.unit_price, product_name: price.product_name } : { unit_price: price.unit_price })
         .eq("item_id", price.item_id)
         .eq("request_id", request_id)
       if (priceError) {

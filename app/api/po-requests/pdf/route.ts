@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { sortRequestItems } from "@/lib/po-requests/read-prices"
-import { PRINT_CSS, printHeader, docTitle, infoBox } from "@/lib/print/print-theme"
+import { PRINT_CSS, printHeader, docTitle, infoBox, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
 
@@ -153,28 +153,28 @@ export async function GET(request: NextRequest) {
       [`العنوان:`, `${escapeHtml(supplier.address || "-")}`],
     ])}
     
-    <!-- Items Table: the supplier hand-writes one unit price per row in the box (read back from a photo) -->
-    <p class="pm-price-hint">اكتب سعر الوحدة بالأرقام فقط داخل المربع لكل صنف</p>
+    <!-- Items Table: the supplier hand-writes the code, the brand and the unit price per row in the boxes (read back from a photo) -->
+    <p class="pm-price-hint">اكتب الكود والماركة وسعر الوحدة (بالأرقام فقط) داخل المربعات لكل صنف</p>
     <table class="pm-table">
       <thead>
         <tr>
-          <th class="pm-center" style="width: 50px;">م</th>
-          <th>اسم الصنف</th>
+          <th class="pm-center" style="width: 28px;">م</th>
           <th class="pm-center" style="width: 100px;">الكود</th>
-          <th class="pm-center" style="width: 100px;">الكمية</th>
-          <th class="pm-center" style="width: 80px;">الوحدة</th>
-          <th>ملاحظات</th>
-          <th class="pm-center" style="width: 140px;">سعر الوحدة</th>
+          <th>اسم الصنف</th>
+          <th class="pm-center" style="width: 48px;">الكمية</th>
+          <th class="pm-center" style="width: 100px;">الماركة</th>
+          <th style="width: 80px;">ملاحظات</th>
+          <th class="pm-center" style="width: 110px;">سعر الوحدة</th>
         </tr>
       </thead>
       <tbody>
         ${items.map((item: any, index: number) => `
           <tr>
             <td class="pm-center">${index + 1}</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td>${escapeHtml(item.products?.product_name || item.product_name || "-")}</td>
-            <td class="pm-center">${escapeHtml(item.products?.sku || "-")}</td>
             <td class="pm-center">${escapeHtml(item.quantity)}</td>
-            <td class="pm-center">${escapeHtml(item.unit || item.products?.unit || "-")}</td>
+            <td class="pm-price-cell"><div class="pm-price-box"></div></td>
             <td>${escapeHtml(item.notes || "-")}</td>
             <td class="pm-price-cell"><div class="pm-price-box"></div></td>
           </tr>
@@ -218,6 +218,7 @@ export async function GET(request: NextRequest) {
       <p>هاتف: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax} | ${COMPANY_SETTINGS.email}</p>
     </div>
   </div>
+${PRINT_ROWS_SCRIPT}
 </body>
 </html>
 `

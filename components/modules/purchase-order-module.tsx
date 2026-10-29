@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { PageHeader } from "@/components/erp/page-header"
+import { WaitingForYou, useWaiting } from "@/components/notifications/waiting-for-you"
+import type { PendingPo, SoNeedingPo } from "@/lib/notifications/waiting"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { Money } from "@/components/erp/money"
 import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
@@ -164,6 +166,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
   // The accountant sees every PO but does not create them.
   const canCreatePO = userRole === "po-rep" || userRole === "admin" || userRole === "ceo"
+  const waiting = useWaiting<{ orders?: SoNeedingPo[]; purchaseOrders?: PendingPo[] }>("purchase-orders", userRole)
   const canApprovePO = userRole === "ceo" || userRole === "admin"
 
   const getLowStockSuggestions = () => {
@@ -1288,6 +1291,46 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             )}
           </>
         }
+      />
+
+      <WaitingForYou
+        sections={[
+          {
+            key: "orders",
+            heading: t("waiting.so-needs-po"),
+            rows: (waiting.data?.orders || []).map((o) => ({
+              key: String(o.so_id),
+              title: [o.so_number, o.customer_name].filter(Boolean).join(" · "),
+              detail: o.items.join("، "),
+              action: t("waiting.make-po"),
+              // New PO from this sales order: the person picks the supplier, the order is already searched for.
+              onOpen: () => {
+                setPoSource("sales_order")
+                setSelectedSourceSoId("")
+                setOrderItems([])
+                setSoSearchTerm(o.so_number)
+                setShowForm(true)
+              },
+            })),
+          },
+          {
+            key: "purchase-orders",
+            heading: t("waiting.po-needs-approval"),
+            rows: (waiting.data?.purchaseOrders || []).map((po) => ({
+              key: String(po.po_id),
+              title: po.po_number,
+              detail: [po.supplier_name, `${formatMoney(po.total, language)} ${po.currency}`].filter(Boolean).join(" · "),
+              action: t("waiting.open"),
+              onOpen: () => {
+                const order = purchaseOrders.find((x) => String(x.id) === String(po.po_id))
+                if (order) {
+                  setViewDetailsOrder(order)
+                  setShowDetailsModal(true)
+                }
+              },
+            })),
+          },
+        ]}
       />
 
       <Card>

@@ -47,7 +47,7 @@ export function parseWrittenPrice(written: string | null | undefined): number | 
   return Number.isFinite(price) && price > 0 ? Math.round(price * 100) / 100 : null
 }
 
-export type ReadRow = { row: number; written: string | null }
+export type ReadRow = { row: number; written: string | null; brand?: string | null; code?: string | null }
 
 // Row numbers read from the photo -> unit price per item_id. Rows that are empty, unreadable or not on the
 // request are left out.
@@ -60,6 +60,29 @@ export function pricesByItem<T extends ItemWithId>(items: T[], rows: ReadRow[]):
     if (item && price !== null) prices[item.item_id] = price
   }
   return prices
+}
+
+// Row numbers read from the photo -> what is written in the "الماركة" (brand) or "الكود" (code) box per item_id.
+// Empty boxes and rows not on the request are left out.
+function textByItem<T extends ItemWithId>(items: T[], rows: ReadRow[], box: "brand" | "code"): Record<number, string> {
+  const ordered = sortRequestItems(items)
+  const texts: Record<number, string> = {}
+  for (const read of rows) {
+    const item = ordered[read.row - 1]
+    const text = read[box]?.replace(/\s+/g, " ").trim()
+    if (item && text) texts[item.item_id] = text.slice(0, 60)
+  }
+  return texts
+}
+export const brandsByItem = <T extends ItemWithId>(items: T[], rows: ReadRow[]) => textByItem(items, rows, "brand")
+export const codesByItem = <T extends ItemWithId>(items: T[], rows: ReadRow[]) => textByItem(items, rows, "code")
+
+// "Filter" + "Bosch" -> "Filter – Bosch" (also used for the code: "Filter – Bosch – 0451"). The quotation matches its
+// lines on the part before the first " – ".
+export const BRAND_SEPARATOR = " – "
+export function nameWithBrand(name: string, brand: string): string {
+  const withBrand = `${name.trim()}${BRAND_SEPARATOR}${brand.trim()}`
+  return name.trim().toLowerCase().endsWith(`${BRAND_SEPARATOR}${brand.trim()}`.toLowerCase()) ? name.trim() : withBrand
 }
 
 export const sameRequestNumber = (a: string | null | undefined, b: string | null | undefined) =>

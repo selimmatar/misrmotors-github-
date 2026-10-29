@@ -1,7 +1,7 @@
 // HTML for the Missing Items report (Batch 3). Pure: takes the data from lib/missing-items.ts.
 import { escapeHtml } from "./print-html"
 import type { MissingItemsReport } from "./missing-items"
-import { PRINT_CSS, docTitle } from "./print/print-theme"
+import { PRINT_CSS, docTitle, PRINT_ROWS_SCRIPT } from "./print/print-theme"
 
 const money = (n: number) => `EGP ${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const date = (s: string | null | undefined) => {
@@ -140,6 +140,7 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
     }`
     }
   </div>
+${PRINT_ROWS_SCRIPT}
 </body>
 </html>`
 }

@@ -70,9 +70,12 @@ interface QuotationDetails extends Quotation {
 interface ApproveSalesQuotationsModuleProps {
   userRole: UserRole
   embedded?: boolean
+  // Opens "Approve & Convert" for this quotation once (from the "Waiting for you" list).
+  openQuotationId?: number | null
+  onOpened?: () => void
 }
 
-export function ApproveSalesQuotationsModule({ userRole, embedded = false }: ApproveSalesQuotationsModuleProps) {
+export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQuotationId, onOpened }: ApproveSalesQuotationsModuleProps) {
   const { t, language } = useI18n()
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationDetails | null>(null)
@@ -90,6 +93,13 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false }: App
   useEffect(() => {
     fetchQuotations()
   }, [])
+
+  useEffect(() => {
+    if (!openQuotationId) return
+    openApproveConvertDialog({ id: openQuotationId } as unknown as Quotation)
+    onOpened?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openQuotationId])
 
   // `silent` refreshes the list without the full-page spinner (used after saving from inside the
   // Approve & Convert dialog, which would otherwise be unmounted while the list reloads).

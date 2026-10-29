@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useAppContext } from "@/lib/app-context"
+import { isMaintenanceLive } from "@/lib/workflow-switch"
 import { useI18n } from "@/lib/i18n-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -377,7 +378,7 @@ export function ShippingModule() {
           <TabsTrigger value="returns">
             {t("returns.title")} ({formatNumber(pendingReturns.length)})
           </TabsTrigger>
-          <TabsTrigger value="maintenance">
+          <TabsTrigger value="maintenance" disabled={!isMaintenanceLive()}>
             <Wrench className="w-4 h-4 me-2" />
             {t("common.maintenance")}
           </TabsTrigger>

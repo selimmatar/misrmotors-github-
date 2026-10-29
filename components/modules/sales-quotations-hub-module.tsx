@@ -4,11 +4,16 @@ import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, CheckSquare, FileText } from "lucide-react"
 import type { UserRole } from "@/lib/types"
+import { isMaintenanceLive } from "@/lib/workflow-switch"
 import { useI18n } from "@/lib/i18n-context"
 import { PageHeader } from "@/components/erp/page-header"
 import { SalesOrderModule } from "@/components/modules/sales-order-module"
 import { ApproveSalesQuotationsModule } from "@/components/modules/approve-sales-quotations-module"
 import { SalesQuotationModule } from "@/components/modules/sales-quotation-module"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { MaintenanceApprovalTab } from "@/components/sales/maintenance-approval-tab"
+import { WaitingForYou, useWaiting } from "@/components/notifications/waiting-for-you"
+import type { ReportToReview, UnappliedPrice } from "@/lib/notifications/waiting"
 
 interface SalesQuotationsHubModuleProps {
   userRole: UserRole
@@ -21,6 +26,9 @@ interface SalesQuotationsHubModuleProps {
 export function SalesQuotationsHubModule({ userRole }: SalesQuotationsHubModuleProps) {
   const { t } = useI18n()
   const [activeTab, setActiveTab] = useState("sales-quotations")
+  const [openQuotationId, setOpenQuotationId] = useState<number | null>(null)
+  const [showReports, setShowReports] = useState(false)
+  const waiting = useWaiting<{ prices?: UnappliedPrice[]; reports?: ReportToReview[] }>("sales-orders", userRole)
 
   return (
     <div className="flex flex-col gap-6">
@@ -42,16 +50,65 @@ export function SalesQuotationsHubModule({ userRole }: SalesQuotationsHubModuleP
           </TabsList>
         </PageHeader>
 
+        <WaitingForYou
+          sections={[
+            {
+              key: "prices",
+              heading: t("waiting.price-not-applied"),
+              rows: (waiting.data?.prices || []).map((p) => ({
+                key: String(p.request_id),
+                title: [p.request_number, p.quotation_number, p.customer_name].filter(Boolean).join(" · "),
+                detail: p.items.map((i) => `${i.name}: ${i.price}`).join("، "),
+                action: t("waiting.open-quotation"),
+                onOpen: () => {
+                  setActiveTab("approve-quotations")
+                  setOpenQuotationId(p.quotation_id)
+                },
+              })),
+            },
+            isMaintenanceLive() && {
+              key: "reports",
+              heading: t("waiting.reports-to-review"),
+              rows: (waiting.data?.reports || []).map((r) => ({
+                key: String(r.work_order_id),
+                title: [r.work_order_number, r.customer_name].filter(Boolean).join(" · "),
+                action: t("waiting.open"),
+                onOpen: () => setShowReports(true),
+              })),
+            },
+          ]}
+        />
+
         <TabsContent value="create-quotations" className="mt-0">
           <SalesQuotationModule userRole={userRole} embedded />
         </TabsContent>
         <TabsContent value="approve-quotations" className="mt-0">
-          <ApproveSalesQuotationsModule userRole={userRole} embedded />
+          <ApproveSalesQuotationsModule
+            userRole={userRole}
+            embedded
+            openQuotationId={openQuotationId}
+            onOpened={() => setOpenQuotationId(null)}
+          />
         </TabsContent>
         <TabsContent value="sales-quotations" className="mt-0">
           <SalesOrderModule userRole={userRole} embedded />
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={showReports}
+        onOpenChange={(open) => {
+          setShowReports(open)
+          if (!open) waiting.reload()
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("waiting.reports-to-review")}</DialogTitle>
+          </DialogHeader>
+          <MaintenanceApprovalTab userRole={userRole} />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

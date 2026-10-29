@@ -22,6 +22,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { PageHeader } from "@/components/erp/page-header"
+import { WaitingForYou, useWaiting } from "@/components/notifications/waiting-for-you"
+import type { WaitingPriceRequest } from "@/lib/notifications/waiting"
+import type { UserRole } from "@/lib/types"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { ErpTable, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
@@ -76,9 +79,10 @@ interface PORequest {
 const quotationLine = (request: PORequest) =>
   [request.sales_quotations?.quotation_number, request.sales_quotations?.customer_name].filter(Boolean).join(" · ")
 
-export function PORequestModule() {
+export function PORequestModule({ userRole }: { userRole?: UserRole } = {}) {
   const { toast } = useToast()
   const { t, language } = useI18n()
+  const waiting = useWaiting<{ requests?: WaitingPriceRequest[] }>("po-requests", userRole)
 
   const [requests, setRequests] = useState<PORequest[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -330,6 +334,25 @@ export function PORequestModule() {
             </Button>
           </>
         }
+      />
+
+      <WaitingForYou
+        sections={[
+          {
+            key: "requests",
+            heading: t("waiting.requests-need-price"),
+            rows: (waiting.data?.requests || []).map((r) => ({
+              key: String(r.request_id),
+              title: r.request_number,
+              detail: [r.quotation_number, r.customer_name, r.supplier_name].filter(Boolean).join(" · "),
+              action: t("waiting.enter-price"),
+              onOpen: () => {
+                const request = requests.find((x) => x.request_id === r.request_id)
+                if (request) setQuoteReceivedFor(request)
+              },
+            })),
+          },
+        ]}
       />
 
       {/* Search */}
@@ -648,6 +671,7 @@ export function PORequestModule() {
       onSaved={() => {
         setSelectedRequest(null)
         fetchData()
+        waiting.reload()
       }}
     />
   )}

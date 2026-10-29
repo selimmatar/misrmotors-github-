@@ -1,7 +1,7 @@
 // Sales order print (Batch 3): Arabic RTL A4 HTML built from saved data. Pure; used by GET /api/sales-orders/print.
 import { escapeHtml, moneyCell, renderSoTotalsBlock, TOTALS_BLOCK_CSS } from "./print-html"
 import { computeSoPrintTotals } from "./print-totals"
-import { PRINT_CSS, printHeader, docTitle } from "./print/print-theme"
+import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "./print/print-theme"
 
 export interface SoPrintData {
   so: Record<string, any>
@@ -139,6 +139,7 @@ ${renderSoTotalsBlock(totals)}
     <div class="pm-sign"><div class="signature-label">توقيع العميل</div><div class="pm-sign-line"></div></div>
     <div class="pm-sign"><div class="signature-label">التوقيع المعتمد</div><div class="pm-sign-line"></div></div>
   </div>
+${PRINT_ROWS_SCRIPT}
 </body>
 </html>`
 }

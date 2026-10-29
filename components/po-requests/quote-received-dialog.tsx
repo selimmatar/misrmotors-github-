@@ -5,14 +5,18 @@ import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Camera, Loader2, Upload } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { readItemRows } from "@/lib/excel/read-item-rows"
 import { sameItemName } from "@/lib/po-requests/apply-costs"
-import { sortRequestItems } from "@/lib/po-requests/read-prices"
+import { nameWithBrand, sortRequestItems } from "@/lib/po-requests/read-prices"
 import { shrinkPhoto } from "@/lib/shrink-photo"
+
+type NameBox = "brand" | "code"
+const NAME_BOXES: NameBox[] = ["brand", "code"]
 
 // "Quote received" on a price request (PR): the supplier's unit price per line (typed in, read from the
 // supplier's Excel sheet by item name, or read from a photo of the printed PR with hand-written prices) and,
@@ -40,6 +44,14 @@ export function QuoteReceivedDialog({
   const [reading, setReading] = useState(false)
   const [fromPhoto, setFromPhoto] = useState<Set<number>>(new Set())
   const [photoNote, setPhotoNote] = useState("")
+  // Brand and code read from the "الماركة" / "الكود" boxes per item, and the ticked ones that join the item name
+  // on Save ("name – brand – code").
+  const [boxes, setBoxes] = useState<Record<NameBox, Record<number, string>>>({ brand: {}, code: {} })
+  const [addToName, setAddToName] = useState<Record<NameBox, Set<number>>>({ brand: new Set(), code: new Set() })
+  const boxText = (box: NameBox, itemId: number) => (boxes[box][itemId] || "").trim()
+  const ticked = (box: NameBox, itemId: number) => addToName[box].has(itemId) && !!boxText(box, itemId)
+  const newName = (item: { item_id: number; product_name: string }) =>
+    NAME_BOXES.filter((box) => ticked(box, item.item_id)).reduce((name, box) => nameWithBrand(name, boxText(box, item.item_id)), item.product_name)
 
   const handlePhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const picked = event.target.files?.[0]
@@ -59,6 +71,7 @@ export function QuoteReceivedDialog({
       const read: Record<string, number> = body.prices || {}
       setPrices((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(read).map(([id, price]) => [id, String(price)])) }))
       setFromPhoto(new Set(Object.keys(read).map(Number)))
+      setBoxes((prev) => ({ brand: { ...prev.brand, ...(body.brands || {}) }, code: { ...prev.code, ...(body.codes || {}) } }))
       if (!file) setFile(photo.file)
       const notes = [fill(t("chain.photo-read-result"), { read: String(body.read ?? 0), total: String(body.total ?? items.length) })]
       if (body.request_number_matches === false) notes.unshift(fill(t("chain.photo-wrong-request"), { number: request.request_number }))
@@ -118,7 +131,11 @@ export function QuoteReceivedDialog({
         body: JSON.stringify({
           request_id: request.request_id,
           status: "quoted",
-          items: items.map((i) => ({ item_id: i.item_id, unit_price: prices[i.item_id] === "" ? null : Number(prices[i.item_id]) })),
+          items: items.map((i) => ({
+            item_id: i.item_id,
+            unit_price: prices[i.item_id] === "" ? null : Number(prices[i.item_id]),
+            ...(NAME_BOXES.some((box) => ticked(box, i.item_id)) ? { product_name: newName(i) } : {}),
+          })),
           ...(fileUrl ? { supplier_quote_file_url: fileUrl } : {}),
         }),
       })
@@ -161,27 +178,61 @@ export function QuoteReceivedDialog({
             </p>
           )}
           {items.map((item, index) => (
-            <div key={item.item_id} className="flex items-center gap-2 border rounded-md p-2">
-              <span className="flex-1 min-w-0 text-sm">
-                <span className="block truncate">
-                  <span className="text-muted-foreground">{index + 1}.</span> {item.product_name}{" "}
-                  <span className="text-muted-foreground">× {item.quantity}</span>
+            <div key={item.item_id} className="border rounded-md p-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 min-w-0 text-sm">
+                  <span className="block truncate">
+                    <span className="text-muted-foreground">{index + 1}.</span> {item.product_name}{" "}
+                    <span className="text-muted-foreground">× {item.quantity}</span>
+                  </span>
+                  {fromPhoto.has(item.item_id) && <span className="block text-xs text-amber-700 dark:text-amber-300">{t("chain.photo-check")}</span>}
                 </span>
-                {fromPhoto.has(item.item_id) && <span className="block text-xs text-amber-700 dark:text-amber-300">{t("chain.photo-check")}</span>}
-              </span>
-              <Input
-                className={`w-32 ${fromPhoto.has(item.item_id) ? "border-amber-500 ring-1 ring-amber-500" : ""}`}
-                type="number"
-                min="0"
-                step="0.01"
-                aria-label={fill(t("chain.unit-price-for"), { name: item.product_name })}
-                placeholder={t("field.unit-price")}
-                value={prices[item.item_id] ?? ""}
-                onChange={(e) => {
-                  setPrices((prev) => ({ ...prev, [item.item_id]: e.target.value }))
-                  setFromPhoto((prev) => (prev.has(item.item_id) ? new Set([...prev].filter((id) => id !== item.item_id)) : prev))
-                }}
-              />
+                <Input
+                  className={`w-32 ${fromPhoto.has(item.item_id) ? "border-amber-500 ring-1 ring-amber-500" : ""}`}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  aria-label={fill(t("chain.unit-price-for"), { name: item.product_name })}
+                  placeholder={t("field.unit-price")}
+                  value={prices[item.item_id] ?? ""}
+                  onChange={(e) => {
+                    setPrices((prev) => ({ ...prev, [item.item_id]: e.target.value }))
+                    setFromPhoto((prev) => (prev.has(item.item_id) ? new Set([...prev].filter((id) => id !== item.item_id)) : prev))
+                  }}
+                />
+              </div>
+              {NAME_BOXES.filter((box) => item.item_id in boxes[box]).map((box) => (
+                <div key={box} className="flex flex-wrap items-center gap-2 text-sm">
+                  <Label htmlFor={`${box}-${item.item_id}`} className="text-muted-foreground">
+                    {t(`chain.${box}`)}
+                  </Label>
+                  <Input
+                    id={`${box}-${item.item_id}`}
+                    className="h-8 w-40 border-amber-500"
+                    value={boxes[box][item.item_id]}
+                    onChange={(e) => setBoxes((prev) => ({ ...prev, [box]: { ...prev[box], [item.item_id]: e.target.value } }))}
+                  />
+                  <label className="flex items-center gap-1.5">
+                    <Checkbox
+                      aria-label={`${t(`chain.add-${box}-to-name`)}: ${item.product_name}`}
+                      checked={addToName[box].has(item.item_id)}
+                      disabled={!boxText(box, item.item_id)}
+                      onCheckedChange={(checked) =>
+                        setAddToName((prev) => {
+                          const next = new Set(prev[box])
+                          if (checked) next.add(item.item_id)
+                          else next.delete(item.item_id)
+                          return { ...prev, [box]: next }
+                        })
+                      }
+                    />
+                    {t(`chain.add-${box}-to-name`)}
+                  </label>
+                </div>
+              ))}
+              {NAME_BOXES.some((box) => ticked(box, item.item_id)) && (
+                <span className="block text-xs text-muted-foreground">{newName(item)}</span>
+              )}
             </div>
           ))}
           <div className="space-y-1">

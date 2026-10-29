@@ -11,7 +11,9 @@ import { join } from "node:path"
 import { FakeDb } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import { cannedDb, nreq } from "./hardening-fixtures"
-import { parseWrittenPrice, pricesByItem, sameRequestNumber, sortRequestItems, toEnglishDigits } from "../po-requests/read-prices"
+import { brandsByItem, codesByItem, nameWithBrand, parseWrittenPrice, pricesByItem, sameRequestNumber, sortRequestItems, toEnglishDigits } from "../po-requests/read-prices"
+import { applyChosenCost, sameItemIgnoringBrand, supplierOffers } from "../po-requests/apply-costs"
+import * as poRequestsRoute from "../../app/api/po-requests/route"
 import * as readRoute from "../../app/api/po-requests/read-prices/route"
 import * as prPdf from "../../app/api/po-requests/pdf/route"
 import * as itemsRoute from "../../app/api/quotations/read-items/route"
@@ -120,7 +122,7 @@ test("reader route: prices come back per item (row 1 = lowest item id), nothing 
     async (seen) => {
       const r = await read(PHOTO)
       assert.equal(r.status, 200, JSON.stringify(r.body))
-      assert.deepEqual(r.body, { prices: { 11: 1250 }, read: 1, total: 2, request_number_matches: true })
+      assert.deepEqual(r.body, { prices: { 11: 1250 }, brands: {}, codes: {}, read: 1, total: 2, request_number_matches: true })
       const sent = seen[0].body
       assert.equal(seen[0].headers["x-goog-api-key"], "test-key")
       assert.match(seen[0].url, /^\/v1beta\/models\/gemini-3\.8-flash:generateContent$/)
@@ -142,7 +144,7 @@ test("reader route: a photo of another request is flagged", async () => {
     async () => {
       const r = await read(PHOTO)
       assert.equal(r.status, 200)
-      assert.deepEqual(r.body, { prices: { 12: 80 }, read: 1, total: 2, request_number_matches: false })
+      assert.deepEqual(r.body, { prices: { 12: 80 }, brands: {}, codes: {}, read: 1, total: 2, request_number_matches: false })
     },
   )
 })
@@ -265,9 +267,12 @@ test("PR print: a unit-price box on every row, rows in item-id order, numbers-on
     const html = await (await prPdf.GET(nreq("http://test.local/api/po-requests/pdf?requestId=1"))).text()
     assert.match(html, /سعر الوحدة<\/th>/)
     assert.doesNotMatch(html, /Unit Price|Linked|مرتبط بـ/)
-    assert.equal(html.match(/<div class="pm-price-box"><\/div>/g)?.length, 2)
+    // columns: row, code box, name, quantity, brand box (where the unit was), notes, price box
+    const heads = [...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])
+    assert.deepEqual(heads, ["م", "الكود", "اسم الصنف", "الكمية", "الماركة", "ملاحظات", "سعر الوحدة"])
+    assert.equal(html.match(/<div class="pm-price-box"><\/div>/g)?.length, 6, "a code, a brand and a price box per row")
     assert.ok(html.indexOf("First item") < html.indexOf("Second item"), "row 1 is the lowest item id")
-    assert.match(html, /اكتب سعر الوحدة بالأرقام فقط داخل المربع لكل صنف</)
+    assert.match(html, /اكتب الكود والماركة وسعر الوحدة \(بالأرقام فقط\) داخل المربعات لكل صنف</)
   } finally {
     globalThis.fetch = realFetch
   }
@@ -373,4 +378,97 @@ test("item photo button sits next to Import Excel and adds rows like the Excel i
   assert.match(sq, /setItems\(\(prev\) => \[\.\.\.prev, \.\.\.newItems\]\)/, "added to the rows already there")
   assert.match(sq, /p\.productName\?\.toLowerCase\(\) === name \|\| p\.sku\?\.toLowerCase\(\) === name/)
   assert.match(src("components/po-requests/quote-received-dialog.tsx"), /import \{ shrinkPhoto \} from "@\/lib\/shrink-photo"/)
+})
+
+// ------------------------------------------------- brand box on the printed PR (owner, 2026-10-29)
+test("brand: read per row, trimmed; empty boxes and rows not on the request are left out", () => {
+  const items = [{ item_id: 12 }, { item_id: 10 }]
+  assert.deepEqual(
+    brandsByItem(items, [
+      { row: 1, written: "100", brand: "  Bosch  " },
+      { row: 2, written: null, brand: "" },
+      { row: 3, written: null, brand: "Mann" },
+    ]),
+    { 10: "Bosch" },
+  )
+  assert.equal(nameWithBrand("Filter ", " Bosch"), "Filter – Bosch")
+  assert.equal(nameWithBrand("Filter – Bosch", "bosch"), "Filter – Bosch", "never added twice")
+  assert.equal(nameWithBrand(nameWithBrand("Filter", "Bosch"), "0451"), "Filter – Bosch – 0451", "brand then code")
+  assert.deepEqual(codesByItem([{ item_id: 11 }, { item_id: 12 }], [{ row: 2, written: null, code: " AB 12 " }, { row: 5, written: null, code: "X" }]), { 12: "AB 12" })
+})
+
+test("reader route: the brand comes back per item next to the price; nothing is saved", async () => {
+  const db = mkDb()
+  await withReader(
+    () => message({ request_number: "PR-2026-005", rows: [{ row: 1, written: "50", brand: "SKF", code: " 6204-2RS " }, { row: 2, written: "70", brand: null, code: "" }] }),
+    async (seen) => {
+      const r = await read(PHOTO)
+      assert.equal(r.status, 200, JSON.stringify(r.body))
+      assert.deepEqual(r.body.brands, { 11: "SKF" })
+      assert.deepEqual(r.body.codes, { 11: "6204-2RS" })
+      assert.ok(seen[0].body.generationConfig.responseSchema.properties.rows.items.properties.code, "the reader is asked for the code")
+      assert.match(seen[0].body.systemInstruction.parts[0].text, /الكود/)
+      assert.deepEqual(r.body.prices, { 11: 50, 12: 70 })
+      assert.ok(seen[0].body.generationConfig.responseSchema.properties.rows.items.properties.brand, "the reader is asked for the brand")
+      assert.match(seen[0].body.systemInstruction.parts[0].text, /الماركة/)
+      assert.ok(db.tables.po_request_items.every((i) => i.product_name === "Pump" || i.product_name === "Valve"), "no name changed")
+    },
+  )
+})
+
+test("Save: a ticked brand becomes part of the item name; an unticked one is not kept", async () => {
+  const db = mkDb()
+  const put = (body: unknown) => call(poRequestsRoute.PUT as any, "PUT", body)
+  const r = await put({ request_id: 5, status: "quoted", items: [{ item_id: 11, unit_price: 50, product_name: "Valve – SKF" }, { item_id: 12, unit_price: 70 }] })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const byId = Object.fromEntries(db.tables.po_request_items.map((i) => [i.item_id, i]))
+  assert.deepEqual([byId[11].product_name, byId[11].unit_price], ["Valve – SKF", 50])
+  assert.deepEqual([byId[12].product_name, byId[12].unit_price], ["Pump", 70])
+  assert.equal((await put({ request_id: 5, status: "quoted", items: [{ item_id: 11, unit_price: 5, product_name: "  " }] })).status, 400)
+  assert.equal((await put({ request_id: 5, status: "quoted", items: [{ item_id: 11, unit_price: 5, product_name: "x".repeat(301) }] })).status, 400)
+
+  const dialog = src("components/po-requests/quote-received-dialog.tsx")
+  assert.match(dialog, /const NAME_BOXES: NameBox\[\] = \["brand", "code"\]/)
+  assert.match(dialog, /t\(`chain\.add-\$\{box\}-to-name`\)/)
+  assert.match(dialog, /NAME_BOXES\.some\(\(box\) => ticked\(box, i\.item_id\)\) \? \{ product_name: newName\(i\) \}/)
+  assert.match(dialog, /code: \{ \.\.\.prev\.code, \.\.\.\(body\.codes \|\| \{\}\) \}/)
+  const i18n = src("lib/i18n-context.tsx")
+  for (const key of ["chain.brand", "chain.add-brand-to-name", "chain.code", "chain.add-code-to-name"]) assert.equal(i18n.split(`"${key}":`).length - 1, 2, `${key} in English and Arabic`)
+})
+
+test("a branded PR item still gives its price to the quotation line, and the line takes the branded name", () => {
+  const lines = [{ lineNo: 1, outsourced: true, productName: "Filter", unitCost: null, unitPrice: 0 }]
+  const offers = supplierOffers(lines, [
+    { request_id: 1, request_number: "PR-1", status: "quoted", supplier_id: 2, suppliers: { supplier_name: "A" }, po_request_items: [{ quotation_line_no: 1, product_name: "Filter – Bosch", unit_price: 90 }] },
+    { request_id: 2, request_number: "PR-2", status: "quoted", supplier_id: 3, suppliers: { supplier_name: "B" }, po_request_items: [{ quotation_line_no: 1, product_name: "Filter", unit_price: 80 }] },
+    { request_id: 3, request_number: "PR-3", status: "quoted", supplier_id: 4, po_request_items: [{ quotation_line_no: 1, product_name: "Pump – Bosch", unit_price: 10 }] },
+  ])
+  assert.deepEqual(offers[1].map((o) => [o.requestNumber, o.productName]), [["PR-2", "Filter"], ["PR-1", "Filter – Bosch"]])
+  const branded = applyChosenCost(lines[0], offers[1][1])
+  assert.deepEqual([branded.productName, branded.unitCost], ["Filter – Bosch", 90])
+  // Switching back to the unbranded offer drops the brand again.
+  const back = applyChosenCost(branded, supplierOffers([{ ...branded, lineNo: 1 }], [{ request_id: 2, request_number: "PR-2", status: "quoted", po_request_items: [{ quotation_line_no: 1, product_name: "Filter", unit_price: 80 }] }])[1][0])
+  assert.equal(back.productName, "Filter")
+  assert.equal(sameItemIgnoringBrand("Filter – Bosch", "filter"), true)
+  assert.equal(sameItemIgnoringBrand("Filter – Bosch", "Pump – Bosch"), false)
+})
+
+// ------------------------------------------------- rows never split across pages, also on iPhone (owner, 2026-10-29)
+test("prints: every item table gets the no-split row script", () => {
+  const theme = src("lib/print/print-theme.ts")
+  assert.match(theme, /\.pm-rows tr \{ display: grid;[^}]*break-inside: avoid/)
+  assert.match(theme, /export const PRINT_ROWS_SCRIPT/)
+  for (const file of [
+    "app/api/delivery-permits/pdf/route.ts",
+    "app/api/po-requests/pdf/route.ts",
+    "app/api/quotations/generate/route.ts",
+    "app/api/purchase-orders/pdf/route.ts",
+    "app/api/invoices/ap/[id]/pdf/route.ts",
+    "app/api/invoices/ar/[id]/pdf/route.ts",
+    "app/api/maintenance/work-orders/[id]/pdf/route.ts",
+    "lib/so-print-html.ts",
+    "lib/missing-items-html.ts",
+  ]) {
+    assert.match(src(file), /\$\{PRINT_ROWS_SCRIPT\}\s*<\/body>/, file)
+  }
 })

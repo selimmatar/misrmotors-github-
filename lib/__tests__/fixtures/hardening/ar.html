@@ -15,6 +15,8 @@ img { max-inline-size: 100%; }
 table { border-collapse: collapse; }
 thead { display: table-header-group; }
 tr { break-inside: avoid; page-break-inside: avoid; }
+.pm-rows, .pm-rows > thead, .pm-rows > tbody, .pm-rows > tfoot { display: block; inline-size: 100%; }
+.pm-rows tr { display: grid; grid-template-columns: var(--pm-cols); break-inside: avoid; page-break-inside: avoid; }
 .pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
 .pm-brand { display: flex; align-items: center; gap: 12px; }
 .pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }
@@ -177,6 +179,29 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
       <div class="pm-sign-line"></div>
     </div>
   </div>
+<script>(function () {
+  function keepRowsWhole() {
+    document.querySelectorAll("table.pm-table").forEach(function (table) {
+      var rows = Array.prototype.slice.call(table.rows)
+      var cols = 0
+      rows.forEach(function (row) {
+        var n = 0
+        Array.prototype.forEach.call(row.cells, function (cell) { n += cell.colSpan || 1 })
+        cols = Math.max(cols, n)
+      })
+      var ref = rows.filter(function (row) { return row.cells.length === cols })[0]
+      if (!ref || cols < 2) return
+      var widths = Array.prototype.map.call(ref.cells, function (cell) { return Math.max(1, Math.round(cell.getBoundingClientRect().width)) + "fr" })
+      rows.forEach(function (row) {
+        Array.prototype.forEach.call(row.cells, function (cell) { if (cell.colSpan > 1) cell.style.gridColumn = "span " + cell.colSpan })
+      })
+      table.style.setProperty("--pm-cols", widths.join(" "))
+      table.classList.add("pm-rows")
+    })
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", keepRowsWhole)
+  else keepRowsWhole()
+})()</script>
 </body>
 </html>
     

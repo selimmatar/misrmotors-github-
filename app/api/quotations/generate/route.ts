@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
-import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
+import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 import { computeTotals } from "@/lib/print-totals"
 
 export const dynamic = "force-dynamic"
@@ -136,6 +136,7 @@ export async function GET(request: NextRequest) {
   ${notes ? `<div class="pm-note"><strong>ملاحظات:</strong><br>${escapeHtml(notes)}</div>` : ""}
   <div class="pm-footer"><p>هذا العرض صالح لمدة ${escapeHtml(validity_days)} يوم من تاريخ الإصدار</p>
     <p>نشكركم على ثقتكم في شركة مصر للمحركات</p></div>
+${PRINT_ROWS_SCRIPT}
 </body>
 </html>`
 
