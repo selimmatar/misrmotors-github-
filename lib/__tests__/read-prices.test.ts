@@ -267,9 +267,9 @@ test("PR print: a unit-price box on every row, rows in item-id order, numbers-on
     const html = await (await prPdf.GET(nreq("http://test.local/api/po-requests/pdf?requestId=1"))).text()
     assert.match(html, /سعر الوحدة<\/th>/)
     assert.doesNotMatch(html, /Unit Price|Linked|مرتبط بـ/)
-    // columns: row, code box, name, quantity, brand box (where the unit was), notes, price box
+    // columns: row, name, quantity, code box, brand box, notes, price box
     const heads = [...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])
-    assert.deepEqual(heads, ["م", "الكود", "اسم الصنف", "الكمية", "الماركة", "ملاحظات", "سعر الوحدة"])
+    assert.deepEqual(heads, ["م", "اسم الصنف", "الكمية", "الكود", "الماركة", "ملاحظات", "سعر الوحدة"])
     assert.equal(html.match(/<div class="pm-price-box"><\/div>/g)?.length, 6, "a code, a brand and a price box per row")
     assert.ok(html.indexOf("First item") < html.indexOf("Second item"), "row 1 is the lowest item id")
     assert.match(html, /اكتب الكود والماركة وسعر الوحدة \(بالأرقام فقط\) داخل المربعات لكل صنف</)

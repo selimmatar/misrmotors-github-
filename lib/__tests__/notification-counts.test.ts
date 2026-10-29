@@ -162,11 +162,16 @@ test("maintenance switched off: its reports leave the counter and the list; its 
   assert.match(src("components/modules/sales-quotation-module.tsx"), /<SelectItem value="MAINTENANCE" disabled=\{!isMaintenanceLive\(\)\}>/)
   assert.match(src("components/modules/sales-quotations-hub-module.tsx"), /isMaintenanceLive\(\) && \{\n\s*key: "reports"/)
   assert.match(src("components/layout/nav-config.ts"), /id: "maintenance-invoices",[^}]*disabled: true/)
+  assert.match(src("components/so-type/so-type-selector.tsx"), /<SelectItem value="MAINTENANCE_PARTS" disabled=\{!isMaintenanceLive\(\)\}>/)
 })
 
-test("waiting for you: the box sits on the three screens and opens each item", () => {
+test("waiting for you: the button sits on the three screens and opens each item", () => {
   const box = src("components/notifications/waiting-for-you.tsx")
   assert.match(box, /if \(shown\.length === 0\) return null/)
+  // a small button with the count; the list opens in a pop-up, and opening an item closes it
+  assert.match(box, /<DialogTrigger asChild>/)
+  assert.match(box, /aria-label=\{`\$\{t\("waiting\.title"\)\} \(\$\{total\}\)`\}/)
+  assert.match(box, /setOpen\(false\)\s*row\.onOpen\(\)/)
   const pr = src("components/modules/po-request-module.tsx")
   assert.match(pr, /useWaiting<[^>]*>\("po-requests", userRole\)/)
   assert.match(pr, /if \(request\) setQuoteReceivedFor\(request\)/)
