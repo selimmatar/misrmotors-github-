@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
-import { chainTextForPrint } from "@/lib/po-requests/chain"
 import { sortRequestItems } from "@/lib/po-requests/read-prices"
 import { PRINT_CSS, printHeader, docTitle, infoBox } from "@/lib/print/print-theme"
 
@@ -78,7 +77,6 @@ export async function GET(request: NextRequest) {
     const supplier = poRequest.suppliers || {}
     const items = sortRequestItems(poRequest.po_request_items || [])
 
-    const chainLine = await chainTextForPrint(supabase, { prId: poRequest.request_id })
     const html = `
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -121,20 +119,16 @@ export async function GET(request: NextRequest) {
     })}
     
     <!-- Document Title -->
-    ${docTitle({ titleAr: `طلب عرض أسعار / Quotation Request` })}
+    ${docTitle({ titleAr: `طلب عرض أسعار` })}
     
     <!-- Info Section -->
     <section class="pm-info">
-        <div class="pm-info-title">بيانات الطلب / Request Details</div>
+        <div class="pm-info-title">بيانات الطلب</div>
         <div class="pm-fields">
         <div class="pm-field">
           <div class="pm-label">رقم الطلب:</div>
           <div class="pm-value">${escapeHtml(poRequest.request_number)}</div>
-        </div>${chainLine ? `
-        <div class="pm-field">
-          <div class="pm-label">مرتبط بـ / Linked:</div>
-          <div class="pm-value" dir="ltr">${escapeHtml(chainLine)}</div>
-        </div>` : ""}
+        </div>
         <div class="pm-field">
           <div class="pm-label">تاريخ الطلب:</div>
           <div class="pm-value">${new Date(poRequest.request_date || poRequest.created_at).toLocaleDateString("ar-EG")}</div>
@@ -152,7 +146,7 @@ export async function GET(request: NextRequest) {
         </div>
     </section>
       
-    ${infoBox(`بيانات المورد / Supplier Details`, [
+    ${infoBox(`بيانات المورد`, [
       [`اسم المورد:`, `${escapeHtml(supplier.supplier_name || "-")}`],
       [`التليفون:`, `${escapeHtml(supplier.phone || "-")}`],
       [`البريد الإلكتروني:`, `${escapeHtml(supplier.email || "-")}`],
@@ -160,17 +154,17 @@ export async function GET(request: NextRequest) {
     ])}
     
     <!-- Items Table: the supplier hand-writes one unit price per row in the box (read back from a photo) -->
-    <p class="pm-price-hint">اكتب سعر الوحدة بالأرقام فقط داخل المربع لكل صنف / Write the unit price in numbers only, one per box</p>
+    <p class="pm-price-hint">اكتب سعر الوحدة بالأرقام فقط داخل المربع لكل صنف</p>
     <table class="pm-table">
       <thead>
         <tr>
           <th class="pm-center" style="width: 50px;">م</th>
-          <th>اسم الصنف / Item Description</th>
-          <th class="pm-center" style="width: 100px;">الكود / SKU</th>
-          <th class="pm-center" style="width: 100px;">الكمية / Quantity</th>
-          <th class="pm-center" style="width: 80px;">الوحدة / Unit</th>
-          <th>ملاحظات / Notes</th>
-          <th class="pm-center" style="width: 140px;">سعر الوحدة / Unit Price</th>
+          <th>اسم الصنف</th>
+          <th class="pm-center" style="width: 100px;">الكود</th>
+          <th class="pm-center" style="width: 100px;">الكمية</th>
+          <th class="pm-center" style="width: 80px;">الوحدة</th>
+          <th>ملاحظات</th>
+          <th class="pm-center" style="width: 140px;">سعر الوحدة</th>
         </tr>
       </thead>
       <tbody>
@@ -190,20 +184,20 @@ export async function GET(request: NextRequest) {
     
     <!-- Quotation Request Note -->
     <div class="quotation-request-note pm-note">
-      <h4>مطلوب من المورد / Required from Supplier:</h4>
+      <h4>مطلوب من المورد:</h4>
       <p>يرجى تزويدنا بعرض سعر للأصناف المذكورة أعلاه يتضمن:</p>
       <p>Please provide us with a quotation for the above items including:</p>
       <ul>
-        <li>سعر الوحدة لكل صنف / Unit price for each item</li>
-        <li>مدة الصلاحية / Validity period</li>
-        <li>شروط الدفع / Payment terms</li>
-        <li>مدة التسليم / Delivery time</li>
+        <li>سعر الوحدة لكل صنف</li>
+        <li>مدة الصلاحية</li>
+        <li>شروط الدفع</li>
+        <li>مدة التسليم</li>
       </ul>
     </div>
     
     ${poRequest.notes ? `
     <div class="pm-note">
-      <h4>ملاحظات إضافية / Additional Notes:</h4>
+      <h4>ملاحظات إضافية:</h4>
       <p>${escapeHtml(poRequest.notes)}</p>
     </div>
     ` : ""}
@@ -211,10 +205,10 @@ export async function GET(request: NextRequest) {
     <!-- Signature Section -->
     <div class="pm-signatures">
       <div class="pm-sign">
-        <div>مدير المشتريات / Procurement Manager</div><div class="pm-sign-line"></div>
+        <div>مدير المشتريات</div><div class="pm-sign-line"></div>
       </div>
       <div class="pm-sign">
-        <div>ختم المورد / Supplier Stamp</div><div class="pm-sign-line"></div>
+        <div>ختم المورد</div><div class="pm-sign-line"></div>
       </div>
     </div>
     

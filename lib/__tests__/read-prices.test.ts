@@ -261,10 +261,11 @@ test("PR print: a unit-price box on every row, rows in item-id order, numbers-on
       }),
     )
     const html = await (await prPdf.GET(nreq("http://test.local/api/po-requests/pdf?requestId=1"))).text()
-    assert.match(html, /سعر الوحدة \/ Unit Price<\/th>/)
+    assert.match(html, /سعر الوحدة<\/th>/)
+    assert.doesNotMatch(html, /Unit Price|Linked|مرتبط بـ/)
     assert.equal(html.match(/<div class="pm-price-box"><\/div>/g)?.length, 2)
     assert.ok(html.indexOf("First item") < html.indexOf("Second item"), "row 1 is the lowest item id")
-    assert.match(html, /Write the unit price in numbers only, one per box/)
+    assert.match(html, /اكتب سعر الوحدة بالأرقام فقط داخل المربع لكل صنف</)
   } finally {
     globalThis.fetch = realFetch
   }

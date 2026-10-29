@@ -10,6 +10,31 @@ const date = (s: string | null | undefined) => {
   return Number.isNaN(d.getTime()) ? "-" : d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
+const STATUS_AR: Record<string, string> = {
+  draft: "مسودة", pending: "قيد الانتظار", pending_approval: "بانتظار الاعتماد", approved: "معتمد", confirmed: "مؤكد",
+  in_progress: "قيد التنفيذ", partially_delivered: "تم التسليم جزئياً", delivered: "تم التسليم", completed: "مكتمل",
+  received: "تم الاستلام", partially_received: "تم الاستلام جزئياً", sent: "مرسل", ordered: "تم الطلب",
+  rejected: "مرفوض", cancelled: "ملغي", on_hold: "معلق", closed: "مغلق", invoiced: "تمت الفوترة",
+}
+const statusAr = (s: string | null | undefined) => (s ? STATUS_AR[s.toLowerCase()] || s : "-")
+
+/** The procurement status comes from lib/missing-items.ts in English; the printout shows it in Arabic. */
+export function procurementAr(status: string): string {
+  return status
+    .replace(/\(([^,()]+), ([a-z_]+)\)/g, (_m, qty, st) => `(${qty}، ${statusAr(st)})`)
+    .replace("Stock Item — No PO Needed", "صنف مخزون — لا يحتاج أمر شراء")
+    .replace("In Stock — No PO Needed", "متوفر في المخزن — لا يحتاج أمر شراء")
+    .replace("On Hold — In Stock", "محجوز — متوفر في المخزن")
+    .replace("Not Ordered — Needs PO", "لم يُطلب — يحتاج أمر شراء")
+    .replace("Rejected PO — Needs Reorder", "أمر شراء مرفوض — يحتاج إعادة طلب")
+    .replace(/^Partially ordered /, "تم طلب جزء ")
+    .replace(/^Ordered /, "تم الطلب ")
+    .replace(/^On Hold (\d)/, "محجوز $1")
+    .replace(/^In stock (\d)/, "متوفر في المخزن $1")
+    .replace(/ — Needs PO for (\d+)/, " — يحتاج أمر شراء لـ $1")
+    .replace(/ ⚠ received (\d+) > PO (\d+)/, " ⚠ المستلم $1 أكبر من أمر الشراء $2")
+}
+
 /** `hideCost` removes the Unit Cost column and the total value that depends on it. Nothing else changes. */
 export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideCost: boolean; generatedAt: string }): string {
   const { so, rows } = report
@@ -30,10 +55,10 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
       (r, i) => `
         <tr>
           <td>${i + 1}</td>
-          <td>${escapeHtml(r.name)}${r.sku !== "-" ? `<div class="sku">SKU: ${escapeHtml(r.sku)}</div>` : ""}</td>
-          <td><span class="type-tag ${r.isOutsourced ? "type-outsourced" : "type-stock"}">${r.isOutsourced ? "Outsourced" : r.onHold ? "On Hold" : "Stock"}</span></td>
+          <td>${escapeHtml(r.name)}${r.sku !== "-" ? `<div class="sku">الكود: ${escapeHtml(r.sku)}</div>` : ""}</td>
+          <td><span class="type-tag ${r.isOutsourced ? "type-outsourced" : "type-stock"}">${r.isOutsourced ? "خارجي" : r.onHold ? "محجوز" : "مخزون"}</span></td>
           <td>${escapeHtml(r.supplierName)}</td>
-          ${hideCost ? "" : `<td class="mi-cost">${r.unitCost === null ? "n/a" : money(r.unitCost)}${r.costSource === "po_price" ? '<div class="sku">PO Price</div>' : ""}</td>`}
+          ${hideCost ? "" : `<td class="mi-cost">${r.unitCost === null ? "غير متاح" : money(r.unitCost)}${r.costSource === "po_price" ? '<div class="sku">سعر أمر الشراء</div>' : ""}</td>`}
           <td class="n">${r.ordered}</td>
           <td class="n">${r.outForDelivery}</td>
           <td class="n">${r.delivered}</td>
@@ -42,17 +67,17 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
           <td class="n missing">${r.missing}</td>
           <td class="n">${r.poOrdered}</td>
           <td class="n">${r.received}</td>
-          <td><span class="badge ${badge(r.procurementStatus)}">${escapeHtml(r.procurementStatus)}</span>${r.inProgress > 0 ? `<div class="sku">${r.inProgress} on a permit not yet out for delivery</div>` : ""}</td>
+          <td><span class="badge ${badge(r.procurementStatus)}">${escapeHtml(procurementAr(r.procurementStatus))}</span>${r.inProgress > 0 ? `<div class="sku">${r.inProgress} على إذن تسليم لم يخرج بعد</div>` : ""}</td>
         </tr>`,
     )
     .join("")
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Missing Items — ${escapeHtml(so.so_number)}</title>
+  <title>الأصناف الناقصة — ${escapeHtml(so.so_number)}</title>
   <style>
     ${PRINT_CSS}
     @page { size: A4 landscape; margin: 12mm; }
@@ -71,38 +96,38 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
     .note { font-size: 11px; color: #555; }
     .legend { font-size: 11px; color: #555; margin-block-end: 16px; }
     .empty-state { text-align: center; padding: 40px; border: 1px solid #ccc; color: #555; }
-    .print-button { position: fixed; top: 14px; right: 14px; padding: 10px 18px; background: #1a56db; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; z-index: 1000; }
+    .print-button { position: fixed; top: 14px; inset-inline-end: 14px; padding: 10px 18px; background: #1a56db; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; z-index: 1000; }
     @media screen { body { padding: 24px; } }
     @media print { .no-print { display: none !important; } body { padding: 0; } }
   </style>
 </head>
 <body>
-  <button class="print-button no-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+  <button class="print-button no-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
   <div class="container">
-    ${docTitle({ titleAr: `Missing Items Report` })}
-    <div class="mi-sub">Items on this sales order not yet delivered to the customer</div>
-    <div class="mi-generated">Generated: ${escapeHtml(opts.generatedAt)}</div>
+    ${docTitle({ titleAr: `تقرير الأصناف الناقصة` })}
+    <div class="mi-sub">أصناف أمر البيع التي لم تُسلَّم للعميل بعد</div>
+    <div class="mi-generated">تاريخ الإصدار: ${escapeHtml(opts.generatedAt)}</div>
     <div class="pm-info">
       <div class="pm-fields">
-        <div class="pm-field"><span class="pm-label">Sales Order #:</span> <span class="pm-value">${escapeHtml(so.so_number)}</span></div>
-        <div class="pm-field"><span class="pm-label">Customer:</span> <span class="pm-value">${escapeHtml(so.customerName)}</span></div>
-        <div class="pm-field"><span class="pm-label">Order Date:</span> <span class="pm-value">${date(so.order_date)}</span></div>
-        <div class="pm-field"><span class="pm-label">Delivery Date:</span> <span class="pm-value">${date(so.delivery_date)}</span></div>
-        <div class="pm-field"><span class="pm-label">Order Status:</span> <span class="pm-value">${escapeHtml(so.status)}</span></div>
-        <div class="pm-field"><span class="pm-label">Delivery Permits Issued:</span> <span class="pm-value">${report.permitCount}</span></div>
+        <div class="pm-field"><span class="pm-label">رقم أمر البيع:</span> <span class="pm-value">${escapeHtml(so.so_number)}</span></div>
+        <div class="pm-field"><span class="pm-label">العميل:</span> <span class="pm-value">${escapeHtml(so.customerName)}</span></div>
+        <div class="pm-field"><span class="pm-label">تاريخ الأمر:</span> <span class="pm-value">${date(so.order_date)}</span></div>
+        <div class="pm-field"><span class="pm-label">تاريخ التسليم:</span> <span class="pm-value">${date(so.delivery_date)}</span></div>
+        <div class="pm-field"><span class="pm-label">حالة الأمر:</span> <span class="pm-value">${escapeHtml(statusAr(so.status))}</span></div>
+        <div class="pm-field"><span class="pm-label">أذون التسليم الصادرة:</span> <span class="pm-value">${report.permitCount}</span></div>
       </div>
     </div>
     ${
       missing.length === 0
-        ? `<div class="empty-state">✅ No missing items — every line item on this order has been delivered.</div>`
+        ? `<div class="empty-state">✅ لا توجد أصناف ناقصة — تم تسليم كل أصناف هذا الأمر.</div>`
         : `
-    <div class="legend">Ordered = sales order quantity · Out for Delivery = on permits currently out for delivery · Delivered = on delivered / approved permits · Returned = accepted returns · Net = Delivered − Returned · Missing = Ordered − Net − Out for Delivery · PO Ordered = active purchase orders · Received = goods receipts, or stock already in our warehouse</div>
+    <div class="legend">المطلوب = كمية أمر البيع · خرج للتسليم = على أذون تسليم خرجت حالياً · المُسلَّم = على أذون مُسلَّمة أو معتمدة · المرتجع = مرتجعات مقبولة · الصافي = المُسلَّم − المرتجع · الناقص = المطلوب − الصافي − خرج للتسليم · في أوامر الشراء = أوامر شراء سارية · المستلم = استلام بضاعة، أو مخزون موجود في مخزننا</div>
     <table class="pm-table">
       <thead>
         <tr>
-          <th>#</th><th style="width:20%">Item</th><th>Type</th><th>Supplier</th>
-          ${hideCost ? "" : "<th>Unit Cost</th>"}
-          <th class="n">Ordered</th><th class="n">Out for Delivery</th><th class="n">Delivered</th><th class="n">Returned</th><th class="n">Net Delivered</th><th class="n">Missing</th><th class="n">PO Ordered</th><th class="n">Received</th><th style="width:20%">Procurement</th>
+          <th>#</th><th style="width:20%">الصنف</th><th>النوع</th><th>المورد</th>
+          ${hideCost ? "" : "<th>تكلفة الوحدة</th>"}
+          <th class="n">المطلوب</th><th class="n">خرج للتسليم</th><th class="n">المُسلَّم</th><th class="n">المرتجع</th><th class="n">صافي المُسلَّم</th><th class="n">الناقص</th><th class="n">في أوامر الشراء</th><th class="n">المستلم</th><th style="width:20%">الشراء</th>
         </tr>
       </thead>
       <tbody>${body}
@@ -111,7 +136,7 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
     ${
       hideCost
         ? ""
-        : `<div class="totals">Total cost of missing items: <span class="value">${money(totalValue)}</span>${atPoPrice > 0 ? `<div class="note">${atPoPrice} item${atPoPrice === 1 ? "" : "s"} valued at PO Price (supplier price, not landed cost)</div>` : ""}${uncosted > 0 ? `<div class="note">${uncosted} item${uncosted === 1 ? "" : "s"} with unit cost n/a not included</div>` : ""}</div>`
+        : `<div class="totals">إجمالي تكلفة الأصناف الناقصة: <span class="value">${money(totalValue)}</span>${atPoPrice > 0 ? `<div class="note">${atPoPrice} صنف محسوب بسعر أمر الشراء (سعر المورد، وليس التكلفة الفعلية)</div>` : ""}${uncosted > 0 ? `<div class="note">${uncosted} صنف بدون تكلفة غير محسوب</div>` : ""}</div>`
     }`
     }
   </div>

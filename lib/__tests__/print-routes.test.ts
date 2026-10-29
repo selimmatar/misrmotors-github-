@@ -139,18 +139,18 @@ test("R1. Missing Items: Unit Cost visible by default; hideCost=1 / true hides t
   db.tables.delivery_permits = [] // nothing delivered yet
   const shown = await get(missingRoute.GET, "?soId=1")
   assert.equal(shown.status, 200)
-  assert.match(shown.html, /<th>Unit Cost<\/th>/)
+  assert.match(shown.html, /<th>تكلفة الوحدة<\/th>/)
   assert.match(shown.html, /EGP 4,000\.00/)
-  assert.match(shown.html, /Total cost of missing items/)
+  assert.match(shown.html, /إجمالي تكلفة الأصناف الناقصة/)
   assert.doesNotMatch(shown.html, /EGP 10,000/) // the selling price is never printed as a cost
   for (const q of ["&hideCost=1", "&hideCost=true", "&hideCost=TRUE"]) {
     const hidden = await get(missingRoute.GET, `?soId=1${q}`)
-    assert.doesNotMatch(hidden.html, /Unit Cost/, q)
-    assert.doesNotMatch(hidden.html, /Total cost of missing items/, q)
+    assert.doesNotMatch(hidden.html, /تكلفة الوحدة/, q)
+    assert.doesNotMatch(hidden.html, /إجمالي تكلفة الأصناف الناقصة/, q)
     assert.doesNotMatch(hidden.html, /EGP/, q)
-    assert.match(hidden.html, /Missing/, q)
+    assert.match(hidden.html, /الناقص/, q)
   }
-  for (const q of ["&hideCost=0", "&hideCost=yes", "&hideCost=", "&hideCost=1;drop"]) assert.match((await get(missingRoute.GET, `?soId=1${q}`)).html, /<th>Unit Cost<\/th>/, q)
+  for (const q of ["&hideCost=0", "&hideCost=yes", "&hideCost=", "&hideCost=1;drop"]) assert.match((await get(missingRoute.GET, `?soId=1${q}`)).html, /<th>تكلفة الوحدة<\/th>/, q)
 })
 
 test("R2. Missing Items: a delivered item with no cost shows n/a, no invented total", async () => {
@@ -158,10 +158,10 @@ test("R2. Missing Items: a delivered item with no cost shows n/a, no invented to
   db.tables.delivery_permits = []
   db.tables.delivery_permit_items = []
   const res = await get(missingRoute.GET, "?soId=1")
-  assert.match(res.html, /n\/a/)
+  assert.match(res.html, /غير متاح/)
   assert.doesNotMatch(res.html, /99,999/)
   assert.match(res.html, /EGP 0\.00/)
-  assert.match(res.html, /1 item with unit cost n\/a not included/)
+  assert.match(res.html, /1 صنف بدون تكلفة غير محسوب/)
 })
 
 test("R3. Missing Items: validation, 404, 500; escapes names; read-only", async () => {
@@ -181,15 +181,15 @@ test("R3. Missing Items: validation, 404, 500; escapes names; read-only", async 
 
 test("R4. Missing Items: a fully delivered order says so; returns bring the quantity back", async () => {
   world()
-  assert.match((await get(missingRoute.GET, "?soId=1")).html, /Missing Items Report/)
+  assert.match((await get(missingRoute.GET, "?soId=1")).html, /تقرير الأصناف الناقصة/)
   const db = world()
   db.tables.product_returns = []
   assert.equal(db.tables.delivery_permits.length, 1)
   const done = await get(missingRoute.GET, "?soId=1")
-  assert.match(done.html, /No missing items/)
+  assert.match(done.html, /لا توجد أصناف ناقصة/)
   world({ extra: { product_returns: [{ return_id: 1, permit_id: "1", status: "pending_warehouse", created_at: "2026-10-02T00:00:00Z" }], return_items: [{ return_item_id: 1, return_id: 1, product_id: 7, product_name: "Pump A", returned_quantity: 3 }] } })
   const back = await get(missingRoute.GET, "?soId=1")
-  assert.doesNotMatch(back.html, /No missing items/)
+  assert.doesNotMatch(back.html, /لا توجد أصناف ناقصة/)
   assert.match(back.html, /<td class="n missing">3<\/td>/)
 })
 
@@ -200,9 +200,9 @@ test("R5. Missing Items report has the separate Out for Delivery column with the
   db.tables.product_returns = [{ return_id: 1, permit_id: "2", status: "pending_warehouse", created_at: "2026-10-02T00:00:00Z" }]
   db.tables.return_items = [{ return_item_id: 1, return_id: 1, product_id: 7, product_name: "Pump A", returned_quantity: 1 }]
   const html = (await get(missingRoute.GET, "?soId=1")).html
-  assert.match(html, /<th class="n">Out for Delivery<\/th>/)
+  assert.match(html, /<th class="n">خرج للتسليم<\/th>/)
   const headers = [...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])
-  assert.deepEqual(headers.slice(headers.indexOf("Ordered"), headers.indexOf("Received") + 1), ["Ordered", "Out for Delivery", "Delivered", "Returned", "Net Delivered", "Missing", "PO Ordered", "Received"])
+  assert.deepEqual(headers.slice(headers.indexOf("المطلوب"), headers.indexOf("المستلم") + 1), ["المطلوب", "خرج للتسليم", "المُسلَّم", "المرتجع", "صافي المُسلَّم", "الناقص", "في أوامر الشراء", "المستلم"])
   // Ordered 10 | Out for Delivery 3 | Delivered 4 | Returned 1 | Net 3 | Missing 4
   const cells = [...html.matchAll(/<td class="n( missing)?">(\d+)<\/td>/g)].map((m) => m[2]).slice(0, 8)
   assert.deepEqual(cells, ["10", "3", "4", "1", "3", "4", "0", "0"])
@@ -214,9 +214,9 @@ test("R6. report labels a PO-price valuation and notes it under the cost total",
   db.tables.purchase_orders = [{ po_id: 1, po_number: "PO-1", status: "approved" }]
   db.tables.purchase_order_items = [{ po_item_id: 1, po_id: 1, source_so_item_id: 1, quantity: 4, landed_cost: 0, unit_price: 750 }]
   const html = (await get(missingRoute.GET, "?soId=1")).html
-  assert.match(html, /EGP 750\.00<div class="sku">PO Price<\/div>/)
+  assert.match(html, /EGP 750\.00<div class="sku">سعر أمر الشراء<\/div>/)
   assert.match(html, /EGP 3,000\.00/) // 4 missing x 750
-  assert.match(html, /1 item valued at PO Price/)
+  assert.match(html, /1 صنف محسوب بسعر أمر الشراء/)
   assert.doesNotMatch(html, /99,999/)
-  assert.doesNotMatch((await get(missingRoute.GET, "?soId=1&hideCost=1")).html, /PO Price|EGP/)
+  assert.doesNotMatch((await get(missingRoute.GET, "?soId=1&hideCost=1")).html, /سعر أمر الشراء|EGP/)
 })

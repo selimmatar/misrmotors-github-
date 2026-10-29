@@ -105,12 +105,12 @@ export async function GET(request: NextRequest) {
     const getPaymentTermsDisplay = () => {
       const paymentType = po.payment_type || po.payment_terms || "cash"
       switch (paymentType) {
-        case "cash": return "نقدي / Cash"
-        case "prepaid": return "مدفوع مقدماً / Prepaid"
+        case "cash": return "نقدي"
+        case "prepaid": return "مدفوع مقدماً"
         case "installments":
-        case "installment": return `أقساط (${po.installments || po.remaining_installment_months || 6} شهور) / Installments`
-        case "hybrid": return `مقدم + أقساط / Hybrid (${po.down_payment_percent || 0}% + ${po.remaining_installment_months || 6} months)`
-        case "cheque": return "شيك / Cheque"
+        case "installment": return `أقساط (${po.installments || po.remaining_installment_months || 6} شهور)`
+        case "hybrid": return `مقدم + أقساط (${po.down_payment_percent || 0}% + ${po.remaining_installment_months || 6} شهور)`
+        case "cheque": return "شيك"
         default: return paymentType
       }
     }
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
   </style>
 </head>
 <body>
-  <button class="print-btn" onclick="window.print()">🖨️ طباعة / Print</button>
+  <button class="print-btn" onclick="window.print()">🖨️ طباعة</button>
   
   <div class="container">
     ${printHeader({
@@ -153,17 +153,17 @@ export async function GET(request: NextRequest) {
       taxInfo: `${getTaxInfo()}`,
     })}
     
-    ${docTitle({ titleAr: "أمر شراء / Purchase Order" })}
+    ${docTitle({ titleAr: "أمر شراء" })}
     
     <section class="pm-info">
-        <div class="pm-info-title">بيانات أمر الشراء / PO Details</div>
+        <div class="pm-info-title">بيانات أمر الشراء</div>
         <div class="pm-fields">
         <div class="pm-field">
           <div class="pm-label">رقم أمر الشراء:</div>
           <div class="pm-value">${escapeHtml(po.po_number)}</div>
         </div>${chainLine ? `
         <div class="pm-field">
-          <div class="pm-label">مرتبط بـ / Linked:</div>
+          <div class="pm-label">مرتبط بـ:</div>
           <div class="pm-value" dir="ltr">${escapeHtml(chainLine)}</div>
         </div>` : ""}
         <div class="pm-field">
@@ -199,7 +199,7 @@ export async function GET(request: NextRequest) {
     </section>
       
     <section class="pm-info">
-        <div class="pm-info-title">بيانات المورد / Supplier Details</div>
+        <div class="pm-info-title">بيانات المورد</div>
         <div class="pm-fields">
         <div class="pm-field">
           <div class="pm-label">اسم المورد:</div>
@@ -224,11 +224,11 @@ export async function GET(request: NextRequest) {
       <thead>
         <tr>
           <th class="pm-center" style="width: 50px;">م</th>
-          <th>اسم الصنف / Item</th>
-          <th class="pm-center" style="width: 80px;">الكود / SKU</th>
-          <th class="pm-center" style="width: 100px;">الكمية / Qty</th>
-          <th class="pm-num" style="width: 100px;">تكلفة الوحدة / Unit Cost</th>
-          <th class="pm-num" style="width: 120px;">الإجمالي / Total</th>
+          <th>اسم الصنف</th>
+          <th class="pm-center" style="width: 80px;">الكود</th>
+          <th class="pm-center" style="width: 100px;">الكمية</th>
+          <th class="pm-num" style="width: 100px;">تكلفة الوحدة</th>
+          <th class="pm-num" style="width: 120px;">الإجمالي</th>
         </tr>
       </thead>
       <tbody>
@@ -247,43 +247,43 @@ export async function GET(request: NextRequest) {
     
       <table class="pm-totals">
         <tr>
-          <td>المجموع الفرعي / Subtotal:</td>
+          <td>المجموع الفرعي:</td>
           <td class="pm-num">${subtotal.toFixed(2)} ${escapeHtml(po.currency || "EGP")}</td>
         </tr>
         ${taxAmount > 0 ? `
         <tr>
-          <td>الضرائب / Tax:</td>
+          <td>الضرائب:</td>
           <td class="pm-num">${taxAmount.toFixed(2)} ${escapeHtml(po.currency || "EGP")}</td>
         </tr>
         ` : ""}
         ${otherCosts > 0 ? `
         <tr>
-          <td>تكاليف أخرى / Other Costs:</td>
+          <td>تكاليف أخرى:</td>
           <td class="pm-num">${otherCosts.toFixed(2)} ${escapeHtml(po.currency || "EGP")}</td>
         </tr>
         ` : ""}
         <tr class="pm-total-final">
-          <td>الإجمالي الكلي / Grand Total:</td>
+          <td>الإجمالي الكلي:</td>
           <td class="pm-num">${total.toFixed(2)} ${escapeHtml(po.currency || "EGP")}</td>
         </tr>
       </table>
     
     ${po.notes ? `
     <div class="pm-note">
-      <h4>ملاحظات / Notes:</h4>
+      <h4>ملاحظات:</h4>
       <p>${escapeHtml(po.notes)}</p>
     </div>
     ` : ""}
     
     <div class="pm-signatures">
       <div class="pm-sign">
-        <div>توقيع المشتري / Buyer Signature</div><div class="pm-sign-line"></div>
+        <div>توقيع المشتري</div><div class="pm-sign-line"></div>
       </div>
       <div class="pm-sign">
-        <div>توقيع المورد / Supplier Signature</div><div class="pm-sign-line"></div>
+        <div>توقيع المورد</div><div class="pm-sign-line"></div>
       </div>
       <div class="pm-sign">
-        <div>الاعتماد / Approval</div><div class="pm-sign-line"></div>
+        <div>الاعتماد</div><div class="pm-sign-line"></div>
       </div>
     </div>
     

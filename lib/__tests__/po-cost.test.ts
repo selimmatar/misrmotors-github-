@@ -32,10 +32,11 @@ test("PO from a sales order prefills Cost per unit and shows the SO number and c
 
 test("PO print is a Purchase Order with costs at every status, and never names the customer", () => {
   const s = read("app/api/purchase-orders/pdf/route.ts")
-  assert.match(s, /docTitle\(\{ titleAr: "أمر شراء \/ Purchase Order" \}\)/)
+  assert.match(s, /docTitle\(\{ titleAr: "أمر شراء" \}\)/)
   assert.doesNotMatch(s, /Quotation Request|quotation request|طلب عرض أسعار/)
   assert.doesNotMatch(s, /po\.status !== "pending" \?/)
-  assert.match(s, /تكلفة الوحدة \/ Unit Cost/)
+  assert.match(s, /تكلفة الوحدة</)
+  assert.doesNotMatch(s, / \/ [A-Z][a-z]+/) // Arabic only
   assert.match(s, /pm-totals/)
   assert.doesNotMatch(s, /customer/i)
 })

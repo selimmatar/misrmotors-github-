@@ -32,7 +32,7 @@ const SHEET_SCHEMA = {
 const GOOGLE_TOTAL_MS = 50_000
 const FIRST_MODEL_MS = 28_000
 
-const SYSTEM = `You read photos of a printed price request from Misr Motors. The sheet has a table with numbered rows (column "م"), an item name, and a "سعر الوحدة / Unit Price" box where the supplier hand-writes one unit price per row.
+const SYSTEM = `You read photos of a printed price request from Misr Motors. The sheet has a table with numbered rows (column "م"), an item name, and a "سعر الوحدة" box (older sheets label it "سعر الوحدة / Unit Price") where the supplier hand-writes one unit price per row.
 For every row number you are given, copy exactly what is hand-written in that row's price box, digit by digit, in the same digits the supplier used (Arabic-Indic like ١٢٥٠ or English like 1250), keeping any commas or dots. Do not convert, round or calculate.
 Use null when the box is empty, crossed out, or you cannot read every digit with confidence. Never guess a digit, and never take a number from another column (quantity, code, row number).
 Also copy the request number printed on the sheet (رقم الطلب), or null if you cannot see it.`
