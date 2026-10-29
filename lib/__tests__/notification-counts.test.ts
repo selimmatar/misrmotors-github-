@@ -1,0 +1,127 @@
+// Quiet sidebar counters for the price request chain (owner request, 2026-10-29): the purchasing manager sees
+// sales orders that still need a purchase order and price requests waiting for a supplier price; the sales rep sees
+// price requests whose supplier price is not on the quotation yet. Plus the quotation line under each request number.
+import "./route-harness"
+import test from "node:test"
+import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { FakeDb } from "./fake-db"
+import { call, useDb } from "./route-harness"
+import { rowsNeedPo, unappliedQuotedRequests } from "../notifications/counts"
+import * as pendingCounts from "../../app/api/pending-counts/route"
+
+const src = (p: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), p), "utf8")
+const counts = async (role: string) => (await call(pendingCounts.GET, "GET", undefined, `http://test.local/api/pending-counts?role=${role}`)).body
+
+test("a sales order needs a PO while any line says Needs PO or Needs Reorder", () => {
+  assert.equal(rowsNeedPo([{ procurementStatus: "Not Ordered — Needs PO" }]), true)
+  assert.equal(rowsNeedPo([{ procurementStatus: "In stock 2/5 — Needs PO for 3" }]), true)
+  assert.equal(rowsNeedPo([{ procurementStatus: "Rejected PO — Needs Reorder (PO-1)" }]), true)
+  assert.equal(rowsNeedPo([{ procurementStatus: "In Stock" }, { procurementStatus: "PO Approved (PO-2)" }]), false)
+  assert.equal(rowsNeedPo([]), false)
+})
+
+test("a quoted price request counts until one of its prices is on its open quotation", () => {
+  const requests = [
+    { request_id: 1, sales_quotation_id: 10, po_request_items: [{ product_name: "Pump  A", unit_price: 1250 }] },
+    { request_id: 2, sales_quotation_id: 10, po_request_items: [{ product_name: "Valve", unit_price: 300 }] },
+    { request_id: 3, sales_quotation_id: 20, po_request_items: [{ product_name: "Pump A", unit_price: 1250 }] },
+    { request_id: 4, sales_quotation_id: null, po_request_items: [] },
+  ]
+  const lines = [
+    { quotation_id: 10, product_name: "pump a", unit_cost: "1250.00", item_type: "outsourced" },
+    { quotation_id: 10, product_name: "Valve", unit_cost: 280, item_type: "outsourced" },
+    { quotation_id: 20, product_name: "Pump A", unit_cost: 1250, item_type: "inventory" },
+  ]
+  // 1 applied (same name, same cost); 2 a different cost; 3 only a stock line matches; 4 no quotation
+  assert.equal(unappliedQuotedRequests(requests, new Set([10, 20]), lines), 2)
+  // quotation 20 converted or closed: its request stops counting
+  assert.equal(unappliedQuotedRequests(requests, new Set([10]), lines), 1)
+})
+
+function chainDb() {
+  return new FakeDb({
+    purchase_orders: [],
+    purchase_order_items: [],
+    goods_receipt_lines: [],
+    sales_orders: [
+      { so_id: 1, so_number: "SO-1", status: "accountant_approved", parent_quotation_id: 30, customer_id: 5 },
+      { so_id: 2, so_number: "SO-2", status: "accountant_approved", parent_quotation_id: null, customer_id: 5 },
+      { so_id: 3, so_number: "SO-3", status: "delivered", parent_quotation_id: 31, customer_id: 5 },
+    ],
+    customers: [{ customer_id: 5, customer_name: "Ahmed Trading" }],
+    sales_order_items: [
+      { so_item_id: 11, so_id: 1, product_id: null, quantity: 2, unit_price: 100, item_type: "outsourced", outsourced_name: "Pump A" },
+      { so_item_id: 21, so_id: 2, product_id: null, quantity: 2, unit_price: 100, item_type: "outsourced", outsourced_name: "Pump B" },
+      { so_item_id: 31, so_id: 3, product_id: null, quantity: 2, unit_price: 100, item_type: "outsourced", outsourced_name: "Pump C" },
+    ],
+    products: [], inventory: [], delivery_permits: [], delivery_permit_items: [],
+    returns: [], return_items: [], sales_returns: [], sales_return_items: [],
+    po_requests: [
+      { request_id: 1, request_number: "POR-1", status: "pending", sales_quotation_id: 40 },
+      { request_id: 2, request_number: "POR-2", status: "quoted", sales_quotation_id: 40 },
+      { request_id: 3, request_number: "POR-3", status: "quoted", sales_quotation_id: 40 },
+      { request_id: 4, request_number: "POR-4", status: "cancelled", sales_quotation_id: 40 },
+    ],
+    po_request_items: [
+      { item_id: 1, request_id: 2, product_name: "Pump A", unit_price: 500 },
+      { item_id: 2, request_id: 3, product_name: "Valve", unit_price: 90 },
+    ],
+    sales_quotations: [{ id: 40, quotation_number: "QT-2026-031", customer_name: "Ahmed Trading", status: "sent" }],
+    sales_quotation_items: [{ id: 1, quotation_id: 40, product_name: "Pump A", unit_cost: 500, item_type: "outsourced" }],
+    maintenance_work_orders: [],
+  })
+}
+
+test("purchasing manager: SOs from a quotation that still need a PO, and price requests waiting for a price", async () => {
+  const db = chainDb()
+  useDb(db)
+  for (const role of ["po-rep", "ceo"]) {
+    const body = await counts(role)
+    assert.equal(body["purchase-orders"], 1, `${role}: only SO-1 (from a quotation, open, nothing ordered)`)
+    assert.equal(body["po-requests"], 1, `${role}: one pending request`)
+  }
+  // a PO now covers SO-1's line: the count goes down
+  db.tables.purchase_orders.push({ po_id: 7, po_number: "PO-7", status: "pending" })
+  db.tables.purchase_order_items.push({ po_item_id: 70, po_id: 7, source_so_item_id: 11, quantity: 2, unit_price: 50 })
+  // the pending PO itself still counts as waiting for approval, SO-1 no longer does
+  assert.equal((await counts("po-rep"))["purchase-orders"], 1)
+  db.tables.purchase_orders[0].status = "approved"
+  assert.equal((await counts("po-rep"))["purchase-orders"], 0)
+  // the request gets its price: the pending count goes down
+  db.tables.po_requests[0].status = "quoted"
+  assert.equal((await counts("po-rep"))["po-requests"], 0)
+  assert.equal((await counts("sales-rep"))["po-requests"], undefined)
+})
+
+test("sales rep: a received price counts until it is applied to the quotation or the quotation is converted", async () => {
+  const db = chainDb()
+  useDb(db)
+  // POR-2's price is on the quotation already; POR-3's is not
+  assert.equal((await counts("sales-rep"))["sales-orders"], 1)
+  assert.equal((await counts("po-rep"))["sales-orders"], undefined)
+  db.tables.sales_quotation_items.push({ id: 2, quotation_id: 40, product_name: "valve", unit_cost: 90, item_type: "outsourced" })
+  assert.equal((await counts("sales-rep"))["sales-orders"], 0)
+  db.tables.sales_quotation_items.pop()
+  db.tables.sales_orders.push({ so_id: 4, so_number: "SO-4", status: "pending_accountant", parent_quotation_id: 40, customer_id: 5 })
+  assert.equal((await counts("sales-rep"))["sales-orders"], 0, "converted quotation")
+})
+
+test("price request list: quotation number and customer in small grey text under the request number", () => {
+  const api = src("app/api/po-requests/route.ts")
+  assert.match(api, /sales_quotations \(\s*quotation_number,\s*customer_name\s*\)/)
+  const ui = src("components/modules/po-request-module.tsx")
+  assert.match(ui, /\[request\.sales_quotations\?\.quotation_number, request\.sales_quotations\?\.customer_name\]\.filter\(Boolean\)\.join\(" · "\)/)
+  assert.match(ui, /<div className="text-xs font-normal text-muted-foreground">\{quotationLine\(request\)\}<\/div>/)
+  assert.match(ui, /<span className="block text-xs text-muted-foreground">\{quotationLine\(request\)\}<\/span>/)
+})
+
+test("Excel import: stock items match by name or SKU and keep the stock price when the sheet has none", () => {
+  const ui = src("components/modules/sales-quotation-module.tsx")
+  const excel = ui.slice(ui.indexOf("const handleExcelUpload"), ui.indexOf("const handleItemsPhoto"))
+  assert.doesNotMatch(excel, /matchedProduct\.price\b|p\.name\b|matchedProduct\.name\b/)
+  assert.match(excel, /p\.productName\?\.trim\(\)\.toLowerCase\(\) === name \|\| p\.sku\?\.trim\(\)\.toLowerCase\(\) === name/)
+  assert.match(excel, /product_id: Number\(matchedProduct\.id\)/)
+  assert.match(excel, /unitPrice <= 0 \? matchedProduct\.unitPrice \|\| 0 : unitPrice/)
+})
