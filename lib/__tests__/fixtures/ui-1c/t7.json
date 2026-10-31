@@ -4,17 +4,28 @@
     "components/modules/user-management-module.tsx": {
       "migrated": true,
       "surface": {
-        "api": [],
+        "api": [
+          "\"/api/hr/employees",
+          "\"/api/users",
+          "\"/api/users"
+        ],
         "handlers": [],
         "ids": [
-          "id=\"email\"",
-          "id=\"name\"",
-          "id=\"password\""
+          "id=\"acc-email\"",
+          "id=\"acc-employee\"",
+          "id=\"acc-name\"",
+          "id=\"acc-temp\"",
+          "id=\"acc-username\"",
+          "id=\"m-email\"",
+          "id=\"m-phone\"",
+          "id=\"m-username\"",
+          "id=\"reset-temp\"",
+          "id={`role-${r}`}"
         ],
-        "fetch": 0,
+        "fetch": 3,
         "iso": 0,
-        "t": 32,
-        "onClick": 3
+        "t": 59,
+        "onClick": 12
       }
     },
     "components/modules/hr-management-module.tsx": {
