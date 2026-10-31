@@ -73,3 +73,18 @@ test("PO print in the language picked: Arabic by default, English with lang=en",
   assert.match(ui, /\/api\/purchase-orders\/pdf\?poId=\$\{order\.id\}&lang=\$\{lang\}/)
   assert.match(ui, /t\(lang === "ar" \? "po\.print-arabic" : "po\.print-english"\)/)
 })
+
+test("PO print has no Linked line and has a Terms and Conditions box typed before printing", () => {
+  const s = read("app/api/purchase-orders/pdf/route.ts")
+  assert.doesNotMatch(s, /chainTextForPrint|linkedTo|Linked to|مرتبط بـ/)
+  assert.match(s, /termsTitle: "الشروط والأحكام"/)
+  assert.match(s, /termsTitle: "Terms and Conditions"/)
+  assert.match(s, /<div id="po-terms" class="po-terms-box" contenteditable="true"/)
+  // an empty box is not printed
+  assert.match(s, /@media print \{ \.po-terms:has\(\.po-terms-box:empty\) \{ display: none; \} \}/)
+})
+
+test("new PO: the delivery date can be changed", () => {
+  const ui = read("components/modules/purchase-order-module.tsx")
+  assert.match(ui, /value=\{formData\.dueDate\}\s*onChange=\{\(e\) => setFormData\(\{ \.\.\.formData, dueDate: e\.target\.value \}\)\}/)
+})
