@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { FakeDb } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import { cannedDb, nreq } from "./hardening-fixtures"
+import { photosToPdf } from "../photos-to-pdf"
 import { brandsByItem, codesByItem, nameWithBrand, parseWrittenPrice, pricesByItem, sameRequestNumber, sortRequestItems, toEnglishDigits } from "../po-requests/read-prices"
 import { applyChosenCost, sameItemIgnoringBrand, supplierOffers } from "../po-requests/apply-costs"
 import * as poRequestsRoute from "../../app/api/po-requests/route"
@@ -487,4 +488,26 @@ test("several photos at once: the price request and the quotation pickers take m
 
 test("pop-ups never run past the bottom of a phone screen: they scroll inside", () => {
   assert.match(src("components/ui/dialog.tsx"), /max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto/)
+})
+
+test("all photos are saved: several become one PDF with one page per photo; one photo stays a photo", () => {
+  const jpeg = (n: number) => new Uint8Array([0xff, 0xd8, n, 0xff, 0xd9])
+  const pdf = photosToPdf([{ jpeg: jpeg(1), width: 2000, height: 1500 }, { jpeg: jpeg(2), width: 1500, height: 2000 }, { jpeg: jpeg(3), width: 100, height: 100 }])
+  const text = Buffer.from(pdf).toString("latin1")
+  assert.ok(text.startsWith("%PDF-1.4"))
+  assert.ok(text.trimEnd().endsWith("%%EOF"))
+  assert.match(text, /\/Type \/Pages \/Kids \[3 0 R 6 0 R 9 0 R\] \/Count 3/)
+  assert.equal(text.split("/Filter /DCTDecode").length - 1, 3, "each photo is on its own page")
+  assert.match(text, /\/MediaBox \[0 0 595 446\.25\]/, "a wide photo fits the A4 width")
+  assert.match(text, /\/MediaBox \[0 0 595 793\.33\]/, "a tall photo keeps its shape")
+  // every xref offset points at its object
+  const xref = Number(text.match(/startxref\n(\d+)/)![1])
+  const offsets = text.slice(xref).split("\n").slice(3, 3 + 11).map((l) => Number(l.slice(0, 10)))
+  offsets.forEach((at, i) => assert.ok(text.startsWith(`${i + 1} 0 obj`, at), `object ${i + 1} at its xref offset`))
+  const dialog = src("components/po-requests/quote-received-dialog.tsx")
+  assert.match(dialog, /const attachment = file \|\| \(await photosFile\(\)\)/)
+  assert.match(dialog, /if \(photos\.length === 1\) return photos\[0\]\.file/)
+  assert.match(dialog, /new File\(\[photosToPdf\(pages\)\], `price-photos-\$\{Date\.now\(\)\}\.pdf`, \{ type: "application\/pdf" \}\)/)
+  const handlePhoto = dialog.slice(dialog.indexOf("const handlePhoto"), dialog.indexOf("const handleExcel"))
+  assert.ok(handlePhoto.indexOf("setPhotos(") < handlePhoto.indexOf('fetch("/api/po-requests/read-prices"'), "a photo is kept even when reading it fails")
 })

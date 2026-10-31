@@ -14,6 +14,7 @@ import { readItemRows } from "@/lib/excel/read-item-rows"
 import { sameItemName } from "@/lib/po-requests/apply-costs"
 import { nameWithBrand, sortRequestItems } from "@/lib/po-requests/read-prices"
 import { shrinkPhoto } from "@/lib/shrink-photo"
+import { photosToPdf } from "@/lib/photos-to-pdf"
 
 type NameBox = "brand" | "code"
 const NAME_BOXES: NameBox[] = ["brand", "code"]
@@ -38,6 +39,8 @@ export function QuoteReceivedDialog({
     Object.fromEntries(items.map((i) => [i.item_id, i.unit_price === null || i.unit_price === undefined ? "" : String(i.unit_price)])),
   )
   const [file, setFile] = useState<File | null>(null)
+  // Every photo read (across taps); on Save they are kept together as one PDF unless another file was chosen.
+  const [photos, setPhotos] = useState<{ file: File; width: number; height: number }[]>([])
   const [saving, setSaving] = useState(false)
   const excelRef = useRef<HTMLInputElement>(null)
   const photoRef = useRef<HTMLInputElement>(null)
@@ -54,7 +57,7 @@ export function QuoteReceivedDialog({
     NAME_BOXES.filter((box) => ticked(box, item.item_id)).reduce((name, box) => nameWithBrand(name, boxText(box, item.item_id)), item.product_name)
 
   // Several photos can be picked at once (a long request printed on more than one page): each is read in turn and
-  // what they read is put together. A photo that fails is skipped and counted; the first photo is attached.
+  // what they read is put together. A photo that fails is skipped and counted; every photo read is kept for Save.
   const handlePhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(event.target.files || [])
     event.target.value = ""
@@ -65,10 +68,11 @@ export function QuoteReceivedDialog({
     let wrongRequest = false
     let failed = 0
     let lastError = ""
-    let attached = !!file
     for (const one of picked) {
       try {
         const photo = await shrinkPhoto(one)
+        // kept for Save even when reading it fails
+        setPhotos((prev) => [...prev, { file: photo.file, width: photo.width, height: photo.height }])
         const response = await fetch("/api/po-requests/read-prices", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -80,17 +84,13 @@ export function QuoteReceivedDialog({
         setPrices((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(read).map(([id, price]) => [id, String(price)])) }))
         Object.keys(read).forEach((id) => readIds.add(Number(id)))
         setBoxes((prev) => ({ brand: { ...prev.brand, ...(body.brands || {}) }, code: { ...prev.code, ...(body.codes || {}) } }))
-        if (!attached) {
-          setFile(photo.file)
-          attached = true
-        }
         if (body.request_number_matches === false) wrongRequest = true
       } catch (error) {
         failed += 1
         lastError = error instanceof Error ? error.message : t("chain.photo-read-failed")
       }
     }
-    setFromPhoto(readIds)
+    setFromPhoto((prev) => new Set([...prev, ...readIds]))
     setReading(false)
     if (failed === picked.length) {
       alert(lastError)
@@ -130,13 +130,24 @@ export function QuoteReceivedDialog({
     reader.readAsArrayBuffer(picked)
   }
 
+  // One photo is saved as it is; several are saved as one PDF, one photo per page.
+  const photosFile = async (): Promise<File | null> => {
+    if (photos.length === 0) return null
+    if (photos.length === 1) return photos[0].file
+    const pages = await Promise.all(
+      photos.map(async (p) => ({ jpeg: new Uint8Array(await p.file.arrayBuffer()), width: p.width, height: p.height })),
+    )
+    return new File([photosToPdf(pages)], `price-photos-${Date.now()}.pdf`, { type: "application/pdf" })
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
       let fileUrl = ""
-      if (file) {
+      const attachment = file || (await photosFile())
+      if (attachment) {
         const form = new FormData()
-        form.append("file", file)
+        form.append("file", attachment)
         form.append("quotation_id", `pr-${request.request_id}`)
         form.append("document_type", "supplier_quote")
         const upload = await fetch("/api/documents/upload", { method: "POST", body: form })
@@ -257,8 +268,14 @@ export function QuoteReceivedDialog({
           <div className="space-y-1">
             <Label htmlFor="supplier-quote-file">{t("chain.supplier-quote-file")}</Label>
             <Input id="supplier-quote-file" type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            {file && fromPhoto.size > 0 && file.name.startsWith("price-photo") && (
-              <p className="text-xs text-muted-foreground">{t("chain.photo-attached")}</p>
+            {photos.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {file
+                  ? t("chain.file-replaces-photos")
+                  : photos.length === 1
+                    ? t("chain.photo-attached")
+                    : fill(t("chain.photos-attached"), { count: String(photos.length) })}
+              </p>
             )}
           </div>
         </div>
