@@ -32,11 +32,44 @@ test("PO from a sales order prefills Cost per unit and shows the SO number and c
 
 test("PO print is a Purchase Order with costs at every status, and never names the customer", () => {
   const s = read("app/api/purchase-orders/pdf/route.ts")
-  assert.match(s, /docTitle\(\{ titleAr: "أمر شراء" \}\)/)
+  assert.match(s, /docTitle\(\{ titleAr: L\.title \}\)/)
+  assert.match(s, /title: "أمر شراء",/)
   assert.doesNotMatch(s, /Quotation Request|quotation request|طلب عرض أسعار/)
   assert.doesNotMatch(s, /po\.status !== "pending" \?/)
-  assert.match(s, /تكلفة الوحدة</)
-  assert.doesNotMatch(s, / \/ [A-Z][a-z]+/) // Arabic only
+  assert.match(s, /colCost: "تكلفة الوحدة",/)
+  assert.doesNotMatch(s, / \/ [A-Z][a-z]+/) // one language per print, never "عربي / English" labels
   assert.match(s, /pm-totals/)
   assert.doesNotMatch(s, /customer/i)
+})
+
+test("PO print in the language picked: Arabic by default, English with lang=en", async () => {
+  const { useDb } = await import("./route-harness")
+  const route = await import("../../app/api/purchase-orders/pdf/route")
+  const { cannedDb, nreq } = await import("./hardening-fixtures")
+  const db = () =>
+    cannedDb({
+      purchase_orders: [{ po_id: 1, po_number: "PO-1", status: "approved", payment_type: "cash", currency: "EGP", suppliers: { supplier_name: "Acme" } }],
+      purchase_order_items: [{ po_id: 1, quantity: 2, unit_price: 10, total_price: 20, products: { product_name: "Pump", sku: "P1", unit: "pc" } }],
+    })
+  useDb(db())
+  const ar = await (await route.GET(nreq("http://test.local/x?poId=1"))).text()
+  assert.match(ar, /<html dir="rtl" lang="ar">/)
+  assert.match(ar, /أمر شراء/)
+  assert.match(ar, />معتمد</)
+  assert.match(ar, />نقدي</)
+  useDb(db())
+  const en = await (await route.GET(nreq("http://test.local/x?poId=1&lang=en"))).text()
+  assert.match(en, /<html dir="ltr" lang="en">/)
+  assert.match(en, /<div class="doc-title">Purchase Order<\/div>/)
+  assert.match(en, />Unit cost<\/th>/)
+  assert.match(en, />Approved</)
+  assert.match(en, />Cash</)
+  assert.match(en, /212 Sudan St\./)
+  assert.match(en, /\.print-btn \{ position: fixed; top: 15px; right: 15px;/, "the print button keeps clear of the letterhead")
+  // nothing Arabic left in the English print except the company's Arabic name in the letterhead
+  const leftover = en.replace(/شركة مصر للمحركات/g, "").match(/[\u0600-\u06FF]+/g)
+  assert.equal(leftover, null, `Arabic left in the English PO: ${leftover}`)
+  const ui = read("components/modules/purchase-order-module.tsx")
+  assert.match(ui, /\/api\/purchase-orders\/pdf\?poId=\$\{order\.id\}&lang=\$\{lang\}/)
+  assert.match(ui, /t\(lang === "ar" \? "po\.print-arabic" : "po\.print-english"\)/)
 })
