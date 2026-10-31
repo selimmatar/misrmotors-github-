@@ -3,13 +3,13 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { loginAddress } from "@/lib/auth/decide"
 import { actorUserId } from "@/lib/auth/actor"
 import { isRole } from "@/lib/auth/roles"
+import { setLoginActive } from "@/lib/auth/login-switch"
 import { MIN_PASSWORD, cleanEmployeeId, cleanRoles, loginMetadata, validateNewUser } from "@/lib/auth/users-admin"
 
 export const dynamic = "force-dynamic"
 
 // Admin only (lib/auth/permissions.ts). Accounts are never deleted — turned off instead — so "who did this" history
 // keeps pointing at a real person.
-const BAN_FOREVER = "876000h"
 
 function listShape(row: any) {
   const isUsername = row.login_method === "username"
@@ -148,12 +148,7 @@ export async function PUT(request: Request) {
 
   const turnOn = action === "reactivate"
   if (!turnOn && isSelf) return fail(400, "You cannot turn off your own account")
-  const loginError = await syncLogin({
-    ban_duration: turnOn ? "none" : BAN_FOREVER,
-    app_metadata: loginMetadata(userId, currentRoles, row.full_name, turnOn),
-  })
-  if (loginError) return fail(500, loginError.message || "Could not update the login")
-  const { error } = await db.from("users").update({ is_active: turnOn }).eq("user_id", userId)
-  if (error) return fail(500, error.message || "Could not save")
+  const switchError = await setLoginActive(db, row, turnOn)
+  if (switchError) return fail(500, switchError)
   return NextResponse.json({ user: listShape({ ...row, is_active: turnOn }) })
 }
