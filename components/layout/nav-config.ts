@@ -66,6 +66,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "customers", label: "module.customers", icon: Users },
     { id: "sales-orders", label: "module.sales-orders", icon: TrendingUp },
     { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
+    { id: "operations-management", label: "module.operations-management", icon: Wrench },
     { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
     { id: "balance", label: "module.balance", icon: Wallet },
     { id: "finance-reports", label: "module.finance-reports", icon: FileSpreadsheet },
@@ -125,9 +126,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
   ],
   shipment: [
     { id: "shipment", label: "module.shipping", icon: Truck },
-    { id: "courier-management", label: "module.courier-management", icon: UserCog },
     { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
-    { id: "operations-management", label: "module.operations-management", icon: Users },
   ],
 }
 
