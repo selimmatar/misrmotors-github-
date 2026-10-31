@@ -18,3 +18,12 @@ export function actorName(request: Request): string | null {
     return null
   }
 }
+
+/**
+ * For routes that pass the acting user on as text: the login id (as text) when logged in, otherwise the old value
+ * from the request exactly as it was (so nothing changes while logins are switched off).
+ */
+export function actorOr<T>(request: Request, fallback: T): string | T {
+  const id = positiveInt(request.headers.get("x-mm-user-id"))
+  return id !== null ? String(id) : fallback
+}

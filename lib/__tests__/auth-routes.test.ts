@@ -303,3 +303,60 @@ test("users PUT: an admin cannot turn themselves off or drop their own admin rol
 test("users: DELETE is gone (turn off instead, to keep who-did-what history)", () => {
   assert.equal((usersRoute as any).DELETE, undefined)
 })
+
+// ---------------------------------------------------------------------------------------------------------
+// Task 8: "who did this" comes from the login (x-mm-user-id), not from what the browser sends
+// ---------------------------------------------------------------------------------------------------------
+import * as dpActorRoute from "../../app/api/delivery-permits/route"
+import * as settingsActorRoute from "../../app/api/settings/route"
+import * as pricingActorRoute from "../../app/api/products/update-pricing/route"
+
+async function callAs(handler: (req: any) => Promise<Response>, method: string, body: unknown, actor?: string) {
+  const headers: Record<string, string> = { "content-type": "application/json" }
+  if (actor) headers["x-mm-user-id"] = actor
+  const res = await handler(new Request("http://test.local/api", { method, headers, body: JSON.stringify(body) }))
+  return { status: res.status, body: await res.json().catch(() => null) }
+}
+
+function dpActorDb() {
+  const db = new FakeDb({
+    sales_orders: [{ so_id: 1, so_number: "SO-A-1", customer_id: 5, status: "accountant_approved", fulfillment_status: "PENDING", total: 0 }],
+    sales_order_items: [{ so_item_id: 1, so_id: 1, product_id: 7, quantity: 6, item_type: "stock", unit_price: 100, total: 600 }],
+    delivery_permits: [{ permit_id: 1, permit_no: "DP-A-1", sales_order_id: 1, customer_id: 5, status: "SUBMITTED_SIGNED" }],
+    delivery_permit_items: [{ item_id: 1, permit_id: 1, product_id: 7, item_name_snapshot: "P7", quantity: 6, unit_price: 100, total: 600, warehouse_id: 1 }],
+    inventory: [{ inventory_id: 1, product_id: 7, warehouse_id: 1, quantity: 20, is_returned: false, unit_cost: 50, reorder_point: 5 }],
+    inventory_transactions: [], idempotency_log: [], product_returns: [], return_items: [], workflow_events: [],
+  })
+  useDb(db)
+  return db
+}
+
+test("actor: delivery permit approval records the logged-in person (5), not the body userId (9)", async () => {
+  const db = dpActorDb()
+  const r = await callAs(dpActorRoute.PUT, "PUT", { permitId: "1", action: "APPROVE", userId: "9" }, "5")
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.delivery_permits[0].approved_by_user_id, 5)
+})
+
+test("actor: delivery permit approval with logins off keeps the old body userId", async () => {
+  const db = dpActorDb()
+  const r = await callAs(dpActorRoute.PUT, "PUT", { permitId: "1", action: "APPROVE", userId: "9" })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.delivery_permits[0].approved_by_user_id, 9)
+})
+
+test("actor: company settings record the logged-in person as updated_by", async () => {
+  const db = new FakeDb({ company_settings: [] })
+  useDb(db)
+  const r = await callAs(settingsActorRoute.PUT, "PUT", { key: "x", value: "1", userId: "9" }, "5")
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(String(db.tables.company_settings[0].updated_by), "5")
+})
+
+test("actor: price review records the logged-in person as cost_updated_by", async () => {
+  const db = new FakeDb({ products: [{ product_id: 1, unit_price: 10 }] })
+  useDb(db)
+  const r = await callAs(pricingActorRoute.POST, "POST", { updates: [{ productId: 1, lastLandedCost: 10, markupPercentage: 10 }], userId: "9" }, "5")
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(String(db.tables.products[0].cost_updated_by), "5")
+})

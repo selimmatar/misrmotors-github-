@@ -2,6 +2,7 @@ import { put, del } from "@vercel/blob"
 import { getAdminClient } from "@/lib/supabase/admin"
 import { type NextRequest, NextResponse } from "next/server"
 import { checkUpload } from "@/lib/upload-allowlist"
+import { actorOr } from "@/lib/auth/actor"
 
 export const dynamic = "force-dynamic"
 
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get("file") as File
     const productId = formData.get("productId") as string
-    const uploadedBy = formData.get("uploadedBy") as string
+    const uploadedBy = actorOr(request, formData.get("uploadedBy") as string)
     const poId = formData.get("poId") as string
     const poNumber = formData.get("poNumber") as string
     const notes = formData.get("notes") as string

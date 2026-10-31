@@ -3,13 +3,14 @@ import { put } from "@vercel/blob"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkUpload } from "@/lib/upload-allowlist"
+import { actorOr } from "@/lib/auth/actor"
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const file = formData.get("file") as File
     const soId = formData.get("soId") as string
-    const userId = formData.get("userId") as string
+    const userId = actorOr(request, formData.get("userId") as string)
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })

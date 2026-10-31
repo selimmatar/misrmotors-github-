@@ -131,7 +131,7 @@ test("loginAddress and isIdle", () => {
 
 // ---- Task 5: new-account rules and "who is acting" ----
 import { validateNewUser } from "../auth/users-admin"
-import { actorUserId } from "../auth/actor"
+import { actorOr, actorUserId } from "../auth/actor"
 
 test("validateNewUser: each rule", () => {
   const good = { fullName: " Mona ", loginMethod: "email", email: "Mona@Example.com", roles: ["accountant"], tempPassword: "temp-1234" }
@@ -176,4 +176,13 @@ test("actorUserId: login header first, then the old body value, else null", () =
   assert.equal(actorUserId(req(), "admin-123"), null)
   assert.equal(actorUserId(req("abc"), 5), 5)
   assert.equal(actorUserId(req("0")), null)
+})
+
+test("actorOr: the login id (as text) when logged in, otherwise the old value untouched", () => {
+  const req = (h?: string) => new Request("http://t/api", { headers: h === undefined ? {} : { "x-mm-user-id": h } })
+  assert.equal(actorOr(req("5"), "9"), "5")
+  assert.equal(actorOr(req(), "9"), "9")
+  assert.equal(actorOr(req(), "admin-123"), "admin-123")
+  assert.equal(actorOr(req(), undefined), undefined)
+  assert.equal(actorOr(req("x"), 9), 9)
 })

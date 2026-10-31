@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkIdempotency, completeIdempotency } from "@/lib/idempotency"
 import { arPaymentLogKey, recordArPayment } from "@/lib/ar-payments"
+import { actorOr } from "@/lib/auth/actor"
 
 export const dynamic = "force-dynamic"
 
@@ -555,9 +556,10 @@ export async function PUT(request: NextRequest) {
       poId,
       invoiceFileUrl,
       scheduleType,
-      userId,
+      userId: bodyUserId,
       idempotencyKey: clientIdempotencyKey,
     } = body
+    const userId = actorOr(request, bodyUserId)
 
     if (scheduleId && paidAmount && action !== "ACTIVATE" && action !== "LINK_INVOICE") {
       const scheduleIdNum = Number.parseInt(scheduleId)
