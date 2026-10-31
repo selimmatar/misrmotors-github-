@@ -240,3 +240,16 @@ test("lock-down SQL: written for later, drops open policies, locks the counters 
   assert.match(sql, /alter table public\.document_number_counters enable row level security/i)
   assert.match(sql, /from pg_policies/i)
 })
+
+test("final review: logging out always works, even after the idle timeout or with no login", () => {
+  for (const identity of [null, { userId: 3, roles: ["accountant"], name: "M", active: true }] as (Identity | null)[]) {
+    const d = decide({ mode: "on", path: "/api/auth/logout", method: "POST", identity, idle: true })
+    assert.equal(d.kind, "allow")
+  }
+})
+
+test("final review: a session ended for inactivity is really closed (start screen calls logout)", () => {
+  const page = srcK("app/page.tsx")
+  const onLogout = page.slice(page.indexOf("onLogout:"), page.indexOf("onForbidden:"))
+  assert.match(onLogout, /fetch\("\/api\/auth\/logout", \{ method: "POST" \}\)/)
+})

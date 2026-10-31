@@ -105,7 +105,7 @@ export const RULES: Rule[] = [
 ]
 
 /** Reachable without logging in. */
-export const PUBLIC_PATHS = ["/api/auth/login", "/api/auth/forgot", "/api/auth/me"]
+export const PUBLIC_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/auth/forgot", "/api/auth/me"]
 
 export function ruleFor(path: string): Rule | null {
   let best: Rule | null = null

@@ -59,6 +59,8 @@ export default function Home() {
           setUser(null)
           setMustChange(false)
           setNotice(t("signin.session-ended"))
+          // Close the session on the server too (logout is always allowed, so this can never loop).
+          fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined)
         },
         onForbidden: () => toast({ title: t("signin.no-permission"), variant: "destructive" }),
       }),
