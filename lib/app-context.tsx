@@ -106,7 +106,7 @@ const swrFetcher = async (url: string) => {
     throw new Error("Rate limited")
   }
 
-  if (response.status === 401 && url === "/api/users") {
+  if ((response.status === 401 || response.status === 403) && url === "/api/users") {
     return []
   }
 

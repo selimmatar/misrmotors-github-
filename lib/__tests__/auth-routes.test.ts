@@ -160,3 +160,146 @@ test("callback: exchanges the code and only redirects to same-site paths", async
   assert.equal(await go("?next=//evil.com"), "https://misrmotors.app/")
   assert.equal(await go("?next=/\\evil.com"), "https://misrmotors.app/")
 })
+
+// ---- Task 5: Admin account API (/api/users) ----
+import * as usersRoute from "../../app/api/users/route"
+
+function adminAuth(opts: { failCreate?: string } = {}) {
+  const calls: Calls = { create: [], update: [], del: [] }
+  let n = 0
+  const admin = {
+    createUser: async (args: any) => {
+      calls.create.push(args)
+      if (opts.failCreate) return { data: { user: null }, error: { message: opts.failCreate } }
+      return { data: { user: { id: `auth-new-${++n}` } }, error: null }
+    },
+    updateUserById: async (id: string, attrs: any) => {
+      calls.update.push({ id, attrs })
+      return { data: { user: { id } }, error: null }
+    },
+    deleteUser: async (id: string) => {
+      calls.del.push(id)
+      return { data: {}, error: null }
+    },
+  }
+  return { admin, calls }
+}
+function setupUsers(rows: Record<string, unknown>[], opts?: { failCreate?: string }) {
+  const db: any = new FakeDb({ users: rows })
+  const { admin, calls } = adminAuth(opts)
+  db.auth = { admin }
+  useDb(db)
+  return { db, calls }
+}
+const send = async (method: string, body: unknown, actor?: number) => {
+  const headers: Record<string, string> = { "content-type": "application/json" }
+  if (actor) headers["x-mm-user-id"] = String(actor)
+  const handler = (usersRoute as any)[method]
+  const res: Response = await handler(new Request("http://t/api/users", { method, headers, body: method === "GET" ? undefined : JSON.stringify(body) }))
+  return { status: res.status, body: (await res.json().catch(() => null)) as any }
+}
+const newEmailUser = { fullName: "Mona", loginMethod: "email", email: "mona@example.com", roles: ["accountant", "sales-rep"], tempPassword: "temp-1234" }
+
+test("users POST: makes the login, the row and the login's role data with the same roles", async () => {
+  const { db, calls } = setupUsers([])
+  const r = await send("POST", newEmailUser, 1)
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(calls.create.length, 1)
+  assert.equal(calls.create[0].email, "mona@example.com")
+  assert.equal(calls.create[0].password, "temp-1234")
+  assert.equal(calls.create[0].email_confirm, true)
+  const saved = db.snapshot().users[0]
+  assert.equal(saved.auth_user_id, "auth-new-1")
+  assert.deepEqual(saved.roles, ["accountant", "sales-rep"])
+  assert.equal(saved.role, null)
+  assert.equal(saved.must_change_password, true)
+  assert.equal(saved.is_active, true)
+  assert.equal(calls.update.length, 1)
+  assert.deepEqual(calls.update[0].attrs.app_metadata, { app_user_id: saved.user_id, roles: ["accountant", "sales-rep"], name: "Mona", active: true })
+  assert.equal(r.body.user.userId, saved.user_id)
+})
+
+test("users POST: a username account logs in with the hidden address, which is never listed", async () => {
+  const { calls } = setupUsers([])
+  const r = await send("POST", { ...newEmailUser, loginMethod: "username", username: "ahmed", email: undefined }, 1)
+  assert.equal(r.status, 200)
+  assert.equal(calls.create[0].email, "ahmed@staff.misrmotors.app")
+  const list = await send("GET", undefined, 1)
+  assert.equal(list.body[0].username, "ahmed")
+  assert.equal(list.body[0].email, null)
+  assert.ok(!JSON.stringify(list.body).includes("staff.misrmotors.app"))
+})
+
+test("users POST: bad input → 400; duplicate → 409 with no login made", async () => {
+  const { calls } = setupUsers([{ user_id: 1, full_name: "A", email: "mona@example.com", roles: ["admin"], is_active: true }])
+  assert.equal((await send("POST", { ...newEmailUser, roles: [] }, 1)).status, 400)
+  const dup = await send("POST", newEmailUser, 1)
+  assert.equal(dup.status, 409)
+  assert.equal(calls.create.length, 0)
+})
+
+test("users POST: if saving the row fails, the new login is deleted (no half accounts)", async () => {
+  const { db, calls } = setupUsers([])
+  db.failOn["users:insert"] = "boom"
+  const r = await send("POST", newEmailUser, 1)
+  assert.equal(r.status, 500)
+  assert.deepEqual(calls.del, ["auth-new-1"])
+})
+
+test("users POST: login service refuses (already registered) → 409", async () => {
+  setupUsers([], { failCreate: "A user with this email address has already been registered" })
+  assert.equal((await send("POST", newEmailUser, 1)).status, 409)
+})
+
+const existing = () => [
+  { user_id: 1, full_name: "Owner", email: "owner@example.com", login_method: "email", roles: ["admin"], is_active: true, auth_user_id: "auth-1" },
+  { user_id: 2, full_name: "Mona", email: "mona@example.com", login_method: "email", roles: ["accountant"], is_active: true, auth_user_id: "auth-2" },
+]
+
+test("users PUT update: name, roles and HR link saved and the login's role data kept in step", async () => {
+  const { db, calls } = setupUsers(existing())
+  const r = await send("PUT", { userId: 2, action: "update", fullName: "Mona S", roles: ["accountant", "shipment"], employeeId: 9 }, 1)
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const row2 = db.snapshot().users.find((u: any) => u.user_id === 2)
+  assert.equal(row2.full_name, "Mona S")
+  assert.deepEqual(row2.roles, ["accountant", "shipment"])
+  assert.equal(row2.employee_id, 9)
+  assert.deepEqual(calls.update[0], { id: "auth-2", attrs: { app_metadata: { app_user_id: 2, roles: ["accountant", "shipment"], name: "Mona S", active: true } } })
+  assert.equal((await send("PUT", { userId: 2, action: "update", roles: ["boss"] }, 1)).status, 400)
+})
+
+test("users PUT reset-password: new temporary password and must change it", async () => {
+  const { db, calls } = setupUsers(existing())
+  assert.equal((await send("PUT", { userId: 2, action: "reset-password", tempPassword: "short" }, 1)).status, 400)
+  const r = await send("PUT", { userId: 2, action: "reset-password", tempPassword: "new-temp-99" }, 1)
+  assert.equal(r.status, 200)
+  assert.deepEqual(calls.update.at(-1), { id: "auth-2", attrs: { password: "new-temp-99" } })
+  assert.equal(db.snapshot().users.find((u: any) => u.user_id === 2).must_change_password, true)
+})
+
+test("users PUT deactivate/reactivate: blocks the login and flags it off, then reverses", async () => {
+  const { db, calls } = setupUsers(existing())
+  let r = await send("PUT", { userId: 2, action: "deactivate" }, 1)
+  assert.equal(r.status, 200)
+  assert.equal(db.snapshot().users.find((u: any) => u.user_id === 2).is_active, false)
+  assert.equal(calls.update.at(-1).attrs.ban_duration, "876000h")
+  assert.equal(calls.update.at(-1).attrs.app_metadata.active, false)
+  r = await send("PUT", { userId: 2, action: "reactivate" }, 1)
+  assert.equal(r.status, 200)
+  assert.equal(db.snapshot().users.find((u: any) => u.user_id === 2).is_active, true)
+  assert.equal(calls.update.at(-1).attrs.ban_duration, "none")
+  assert.equal(calls.update.at(-1).attrs.app_metadata.active, true)
+})
+
+test("users PUT: an admin cannot turn themselves off or drop their own admin role; unknown user → 404", async () => {
+  const { calls } = setupUsers(existing())
+  assert.equal((await send("PUT", { userId: 1, action: "deactivate" }, 1)).status, 400)
+  assert.equal((await send("PUT", { userId: 1, action: "update", roles: ["ceo"] }, 1)).status, 400)
+  assert.equal(calls.update.length, 0)
+  assert.equal((await send("PUT", { userId: 99, action: "deactivate" }, 1)).status, 404)
+  assert.equal((await send("PUT", { userId: 2, action: "explode" }, 1)).status, 400)
+})
+
+test("users: DELETE is gone (turn off instead, to keep who-did-what history)", () => {
+  assert.equal((usersRoute as any).DELETE, undefined)
+})

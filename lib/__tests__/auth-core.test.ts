@@ -128,3 +128,52 @@ test("loginAddress and isIdle", () => {
   assert.equal(isIdle(String(now - 13 * 3600000), now), true)
   assert.equal(isIdle("garbage", now), false)
 })
+
+// ---- Task 5: new-account rules and "who is acting" ----
+import { validateNewUser } from "../auth/users-admin"
+import { actorUserId } from "../auth/actor"
+
+test("validateNewUser: each rule", () => {
+  const good = { fullName: " Mona ", loginMethod: "email", email: "Mona@Example.com", roles: ["accountant"], tempPassword: "temp-1234" }
+  const ok = validateNewUser(good)
+  assert.equal(ok.ok, true)
+  if (ok.ok) {
+    assert.equal(ok.value.fullName, "Mona")
+    assert.equal(ok.value.email, "mona@example.com")
+    assert.deepEqual(ok.value.roles, ["accountant"])
+    assert.equal(ok.value.employeeId, null)
+  }
+  const bad = (over: Record<string, unknown>) => {
+    const r = validateNewUser({ ...good, ...over })
+    assert.equal(r.ok, false, JSON.stringify(over))
+    return r.ok ? "" : r.error
+  }
+  bad({ fullName: "  " })
+  bad({ roles: [] })
+  bad({ roles: ["boss"] })
+  bad({ email: "not-an-email" })
+  bad({ email: "x@staff.misrmotors.app" })
+  bad({ loginMethod: "username", username: "a b" })
+  bad({ loginMethod: "username", username: "ab" })
+  assert.equal(bad({ loginMethod: "phone" }), "Phone login is coming soon")
+  bad({ loginMethod: "fax" })
+  bad({ tempPassword: "short" })
+  bad({ employeeId: "abc" })
+  const u = validateNewUser({ ...good, loginMethod: "username", username: "Ahmed.K", email: undefined, roles: ["warehouse-rep", "warehouse-rep"], employeeId: "4" })
+  assert.equal(u.ok, true)
+  if (u.ok) {
+    assert.equal(u.value.username, "ahmed.k")
+    assert.deepEqual(u.value.roles, ["warehouse-rep"])
+    assert.equal(u.value.employeeId, 4)
+  }
+  assert.equal(validateNewUser(null).ok, false)
+})
+
+test("actorUserId: login header first, then the old body value, else null", () => {
+  const req = (h?: string) => new Request("http://t/api", { headers: h === undefined ? {} : { "x-mm-user-id": h } })
+  assert.equal(actorUserId(req("7"), "admin-123"), 7)
+  assert.equal(actorUserId(req(), "12"), 12)
+  assert.equal(actorUserId(req(), "admin-123"), null)
+  assert.equal(actorUserId(req("abc"), 5), 5)
+  assert.equal(actorUserId(req("0")), null)
+})

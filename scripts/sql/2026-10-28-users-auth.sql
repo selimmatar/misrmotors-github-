@@ -10,6 +10,7 @@ alter table public.users add column if not exists employee_id int references pub
 alter table public.users add column if not exists must_change_password boolean not null default false;
 alter table public.users add column if not exists last_login_at timestamptz;
 alter table public.users alter column password_hash drop not null;
+alter table public.users alter column role drop not null; -- the old single role; new accounts use roles[]
 
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'users_login_method_check') then
