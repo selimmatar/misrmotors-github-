@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { PageHeader } from "@/components/erp/page-header"
 import { WaitingForYou, useWaiting } from "@/components/notifications/waiting-for-you"
@@ -1247,18 +1248,24 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       >
         <Eye className="w-4 h-4" />
       </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => {
-          const printUrl = `${window.location.origin}/api/purchase-orders/pdf?poId=${order.id}`
-          window.open(printUrl, "_blank")
-        }}
-        title={t("po.print-po")}
-        aria-label={t("action.print")}
-      >
-        <FileText className="w-4 h-4" />
-      </Button>
+      {/* The PO is printed in the language picked here (Arabic or English). */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" title={t("po.print-po")} aria-label={t("action.print")}>
+            <FileText className="w-4 h-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {(["ar", "en"] as const).map((lang) => (
+            <DropdownMenuItem
+              key={lang}
+              onSelect={() => window.open(`${window.location.origin}/api/purchase-orders/pdf?poId=${order.id}&lang=${lang}`, "_blank")}
+            >
+              {t(lang === "ar" ? "po.print-arabic" : "po.print-english")}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 
