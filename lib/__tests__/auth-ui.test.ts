@@ -38,3 +38,55 @@ test("old /admin/users page only sends people to the app", () => {
   assert.match(src, /redirect\("\/"\)/)
   assert.doesNotMatch(src, /DELETE/)
 })
+
+// ---- Task 7: several roles on one screen ----
+import { effectiveRoleFor, navItemsForRoles, primaryRole } from "../auth/role-nav"
+import { responseAction } from "../auth/client-fetch"
+
+test("navItemsForRoles: union of the roles' screens, each once, in role-priority order", () => {
+  const ids = navItemsForRoles(["warehouse-rep", "accountant"]).map((i) => i.id)
+  assert.equal(ids.filter((id) => id === "accounts-payable").length, 1)
+  assert.equal(ids.filter((id) => id === "warehouse-transfers").length, 1)
+  assert.equal(new Set(ids).size, ids.length)
+  assert.ok(ids.indexOf("accounts-payable") < ids.indexOf("warehouse-delivery"), "accountant items come first")
+  assert.deepEqual(navItemsForRoles([]), [])
+})
+
+test("effectiveRoleFor: the highest-priority role that has the screen, else the main role", () => {
+  assert.equal(effectiveRoleFor("delivery-permits", ["warehouse-rep", "accountant"]), "accountant")
+  assert.equal(effectiveRoleFor("warehouse-delivery", ["warehouse-rep", "accountant"]), "warehouse-rep")
+  assert.equal(effectiveRoleFor("no-such-screen", ["warehouse-rep", "accountant"]), "accountant")
+  assert.equal(primaryRole(["shipment", "admin"]), "admin")
+  assert.equal(primaryRole([]), null)
+})
+
+test("responseAction: 401 AUTH_REQUIRED logs out; 403 FORBIDDEN only tells; others pass", () => {
+  assert.equal(responseAction(401, { code: "AUTH_REQUIRED" }), "logout")
+  assert.equal(responseAction(403, { code: "FORBIDDEN" }), "forbidden")
+  assert.equal(responseAction(401, { error: "Unauthorized" }), null)
+  assert.equal(responseAction(403, { code: "ACCOUNT_OFF" }), null)
+  assert.equal(responseAction(200, { code: "AUTH_REQUIRED" }), null)
+  assert.equal(responseAction(401, null), null)
+})
+
+test("start screen: asks who is logged in, keeps the role picker only when logins are off", () => {
+  const page = read("app/page.tsx")
+  assert.match(page, /fetch\("\/api\/auth\/me"/)
+  assert.match(page, /fetch\("\/api\/auth\/logout", \{ method: "POST" \}\)/)
+  assert.match(page, /mustChangePassword/)
+  assert.match(page, /installAuthFetch\(/)
+  const login = read("components/auth/login-page.tsx")
+  assert.match(login, /mode === "off"/)
+  assert.match(login, /<AccountLogin/)
+  const form = read("components/auth/account-login.tsx")
+  assert.match(form, /fetch\("\/api\/auth\/login"/)
+  assert.match(form, /fetch\("\/api\/auth\/forgot"/)
+  assert.match(form, /type=\{show \? "text" : "password"\}/)
+})
+
+test("dashboard: menu from all roles; each screen opens with the role that owns it", () => {
+  const d = read("components/dashboard/dashboard.tsx")
+  assert.match(d, /navItemsForRoles\(roles\)/)
+  assert.match(d, /effectiveRoleFor\(activeModule, roles\)/)
+  assert.doesNotMatch(d, /ROLE_MODULES\[user\.role\]/)
+})

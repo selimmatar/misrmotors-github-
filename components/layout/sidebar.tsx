@@ -5,34 +5,48 @@ import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
 import type { UserRole } from "@/lib/types"
 import { useI18n } from "@/lib/i18n-context"
-import { ROLE_MODULES, ROLE_DISPLAY_NAMES } from "@/components/layout/nav-config"
+import { ROLE_DISPLAY_NAMES } from "@/components/layout/nav-config"
 import { groupItems, hideIdleApprovals } from "@/lib/nav-groups"
+import { navItemsForRoles } from "@/lib/auth/role-nav"
 import { cn } from "@/lib/utils"
 
 interface SidebarProps {
   activeModule: string
   onModuleChange: (module: any) => void
   userRole: UserRole
+  /** All of the person's roles; the menu joins their screens. Defaults to [userRole]. */
+  roles?: UserRole[]
   onLogout?: () => void
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
 
-export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobileOpen, onMobileClose }: SidebarProps) {
+export function Sidebar({ activeModule, onModuleChange, userRole, roles, onLogout, mobileOpen, onMobileClose }: SidebarProps) {
   const { t } = useI18n()
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({})
 
+  const roleList = roles?.length ? roles : [userRole]
+  const roleKey = roleList.join(",")
+
+  // One count list per role; a screen two roles share shows the larger number.
   const fetchPendingCounts = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/pending-counts?role=${userRole}`)
-      if (response.ok) {
-        const data = await response.json()
-        setPendingCounts(data)
-      }
-    } catch {
-      // silently fail
-    }
-  }, [userRole])
+    const merged: Record<string, number> = {}
+    let any = false
+    await Promise.all(
+      roleKey.split(",").map(async (role) => {
+        try {
+          const response = await fetch(`/api/pending-counts?role=${role}`)
+          if (!response.ok) return
+          const data = (await response.json()) as Record<string, number>
+          any = true
+          for (const [id, n] of Object.entries(data || {})) merged[id] = Math.max(merged[id] || 0, Number(n) || 0)
+        } catch {
+          // silently fail
+        }
+      }),
+    )
+    if (any) setPendingCounts(merged)
+  }, [roleKey])
 
   useEffect(() => {
     fetchPendingCounts()
@@ -40,7 +54,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole, onLogout, mobi
     return () => clearInterval(interval)
   }, [fetchPendingCounts])
 
-  const modules = hideIdleApprovals(ROLE_MODULES[userRole] || [], pendingCounts)
+  const modules = hideIdleApprovals(navItemsForRoles(roleList), pendingCounts)
   const groups = groupItems(modules)
 
   const sidebarContent = (
