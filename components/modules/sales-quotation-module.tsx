@@ -656,22 +656,36 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
   // A photo of a printed item list (table or plain lines): each row's name and quantity are read and added like
   // the Excel import: a name matching a stock product exactly becomes a stock line, any other an outsourced line.
+  // Several photos can be picked at once (a list on more than one page): each is read in turn and their items are
+  // added together. A photo that fails is skipped and counted.
   const handleItemsPhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = event.target.files?.[0]
+    const picked = Array.from(event.target.files || [])
     event.target.value = ""
-    if (!picked) return
+    if (picked.length === 0) return
     setReadingPhoto(true)
     try {
-      const photo = await shrinkPhoto(picked, "items-photo")
-      const response = await fetch("/api/quotations/read-items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: photo.base64, media_type: "image/jpeg" }),
-      })
-      const body = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(body.error || t("sq.items-photo-failed"))
-      const read: PhotoItem[] = Array.isArray(body.items) ? body.items : []
-      const skipped = Number(body.skipped) || 0
+      const read: PhotoItem[] = []
+      let skipped = 0
+      let failed = 0
+      let lastError = ""
+      for (const one of picked) {
+        try {
+          const photo = await shrinkPhoto(one, "items-photo")
+          const response = await fetch("/api/quotations/read-items", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: photo.base64, media_type: "image/jpeg" }),
+          })
+          const body = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(body.error || t("sq.items-photo-failed"))
+          if (Array.isArray(body.items)) read.push(...body.items)
+          skipped += Number(body.skipped) || 0
+        } catch (error) {
+          failed += 1
+          lastError = error instanceof Error ? error.message : t("sq.items-photo-failed")
+        }
+      }
+      if (failed === picked.length) throw new Error(lastError)
       if (read.length === 0) {
         alert(t("sq.items-photo-none"))
         return
@@ -705,6 +719,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       const matchedCount = newItems.filter((i) => i.item_type === "inventory").length
       let note = fill(t("sq.items-photo-result"), { count: newItems.length, matched: matchedCount, outsourced: newItems.length - matchedCount })
       if (skipped > 0) note += " " + fill(t("sq.items-photo-skipped"), { skipped })
+      if (failed > 0) note += " " + fill(t("chain.photos-failed"), { failed, total: picked.length })
       alert(note)
     } catch (error) {
       alert(error instanceof Error ? error.message : t("sq.items-photo-failed"))
@@ -1224,7 +1239,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                 <Upload className="h-4 w-4 me-2" />
                 {t("sq.import-excel")}
               </Button>
-              <input ref={photoInputRef} type="file" accept="image/*" onChange={handleItemsPhoto} className="hidden" />
+              <input ref={photoInputRef} type="file" accept="image/*" multiple onChange={handleItemsPhoto} className="hidden" />
               <Button onClick={() => photoInputRef.current?.click()} size="sm" variant="outline" disabled={readingPhoto}>
                 <Camera className="h-4 w-4 me-2" />
                 {readingPhoto ? t("sq.reading-items-photo") : t("sq.read-items-photo")}

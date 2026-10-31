@@ -288,7 +288,7 @@ test("Quote received screen: photo button fills and highlights prices, same row 
   assert.doesNotMatch(handlePhoto, /\/api\/po-requests"/, "reading a photo does not save the PR")
   assert.doesNotMatch(handlePhoto, /\/api\/documents\/upload/, "the photo is uploaded only on Save")
   const i18n = src("lib/i18n-context.tsx")
-  for (const key of ["chain.read-photo", "chain.photo-check", "chain.photo-read-result", "chain.photo-wrong-request"]) {
+  for (const key of ["chain.read-photo", "chain.photo-check", "chain.photo-read-result", "chain.photo-wrong-request", "chain.photos-failed"]) {
     assert.equal(i18n.split(`"${key}":`).length - 1, 2, `${key} in English and Arabic`)
   }
 })
@@ -374,7 +374,7 @@ test("item photo button sits next to Import Excel and adds rows like the Excel i
   const photo = sq.indexOf('t("sq.read-items-photo")')
   assert.ok(excel > 0 && photo > excel && photo - excel < 800, "photo button right after Import Excel")
   assert.match(sq, /fetch\("\/api\/quotations\/read-items"/)
-  assert.match(sq, /shrinkPhoto\(picked, "items-photo"\)/)
+  assert.match(sq, /shrinkPhoto\(one, "items-photo"\)/)
   assert.match(sq, /setItems\(\(prev\) => \[\.\.\.prev, \.\.\.newItems\]\)/, "added to the rows already there")
   assert.match(sq, /p\.productName\?\.toLowerCase\(\) === name \|\| p\.sku\?\.toLowerCase\(\) === name/)
   assert.match(src("components/po-requests/quote-received-dialog.tsx"), /import \{ shrinkPhoto \} from "@\/lib\/shrink-photo"/)
@@ -471,4 +471,20 @@ test("prints: every item table gets the no-split row script", () => {
   ]) {
     assert.match(src(file), /\$\{PRINT_ROWS_SCRIPT\}\s*<\/body>/, file)
   }
+})
+
+test("several photos at once: the price request and the quotation pickers take many photos and read each in turn", () => {
+  const dialog = src("components/po-requests/quote-received-dialog.tsx")
+  assert.match(dialog, /<input ref=\{photoRef\} type="file" accept="image\/\*" multiple /)
+  assert.match(dialog, /const picked = Array\.from\(event\.target\.files \|\| \[\]\)/)
+  assert.match(dialog, /for \(const one of picked\)/)
+  const sq = src("components/modules/sales-quotation-module.tsx")
+  assert.match(sq, /<input ref=\{photoInputRef\} type="file" accept="image\/\*" multiple /)
+  const handle = sq.slice(sq.indexOf("const handleItemsPhoto"), sq.indexOf("const addItem"))
+  assert.match(handle, /for \(const one of picked\)/)
+  assert.match(handle, /read\.push\(\.\.\.body\.items\)/)
+})
+
+test("pop-ups never run past the bottom of a phone screen: they scroll inside", () => {
+  assert.match(src("components/ui/dialog.tsx"), /max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto/)
 })
