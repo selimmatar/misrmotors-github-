@@ -18,6 +18,7 @@ thead { display: table-header-group; }
 tr { break-inside: avoid; page-break-inside: avoid; }
 .pm-rows, .pm-rows > thead, .pm-rows > tbody, .pm-rows > tfoot { display: block; inline-size: 100%; }
 .pm-rows tr { display: grid; grid-template-columns: var(--pm-cols); break-inside: avoid; page-break-inside: avoid; }
+.pm-rows th, .pm-rows td { inline-size: auto !important; min-inline-size: 0; }
 .pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
 .pm-brand { display: flex; align-items: center; gap: 12px; }
 .pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }

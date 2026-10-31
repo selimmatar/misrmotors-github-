@@ -459,6 +459,8 @@ test("prints: every item table gets the no-split row script", () => {
   const theme = src("lib/print/print-theme.ts")
   assert.match(theme, /\.pm-rows tr \{ display: grid;[^}]*break-inside: avoid/)
   assert.match(theme, /export const PRINT_ROWS_SCRIPT/)
+  // cells must fill their grid column, or a column's own width (e.g. width: 38%) shrinks it and breaks the heading line
+  assert.match(theme, /\.pm-rows th, \.pm-rows td \{ inline-size: auto !important;/)
   for (const file of [
     "app/api/delivery-permits/pdf/route.ts",
     "app/api/po-requests/pdf/route.ts",
