@@ -186,3 +186,57 @@ test("actorOr: the login id (as text) when logged in, otherwise the old value un
   assert.equal(actorOr(req(), undefined), undefined)
   assert.equal(actorOr(req("x"), 9), 9)
 })
+
+// ---------------------------------------------------------------------------------------------------------
+// Task 10: key safety and readiness for the database lock-down
+// ---------------------------------------------------------------------------------------------------------
+import * as fsK from "node:fs"
+import * as pathK from "node:path"
+
+const ROOT_K = process.env.REPO_ROOT || pathK.resolve(__dirname, "..", "..", "..", "..")
+function walkK(dir: string, out: string[] = []): string[] {
+  const abs = pathK.join(ROOT_K, dir)
+  if (!fsK.existsSync(abs)) return out
+  for (const e of fsK.readdirSync(abs, { withFileTypes: true })) {
+    const rel = pathK.join(dir, e.name)
+    if (e.isDirectory()) {
+      if (e.name === "node_modules" || e.name === "__tests__" || e.name.startsWith(".")) continue
+      walkK(rel, out)
+    } else if (/\.(ts|tsx)$/.test(e.name)) out.push(rel)
+  }
+  return out
+}
+const srcK = (rel: string) => fsK.readFileSync(pathK.join(ROOT_K, rel), "utf8")
+
+test("key safety: the server-only database key never appears in browser code", () => {
+  const files = [...walkK("components"), ...walkK("hooks"), ...walkK("app"), ...walkK("lib")]
+  const offenders = files.filter((f) => {
+    const s = srcK(f)
+    const browser = /^\s*["']use client["']/.test(s) || f.startsWith("components/") || f.startsWith("hooks/") || /(^|\/)page\.tsx$/.test(f)
+    return browser && s.includes("SUPABASE_SERVICE_ROLE_KEY")
+  })
+  assert.deepEqual(offenders, [])
+  const publicNames = new Set<string>()
+  for (const f of files) for (const m of srcK(f).matchAll(/NEXT_PUBLIC_[A-Z0-9_]+/g)) publicNames.add(m[0])
+  assert.deepEqual([...publicNames].filter((n) => n.includes("SERVICE")), [])
+})
+
+test("lock-down readiness: no API route reads tables through the logged-in user's limited key", () => {
+  const offenders: string[] = []
+  for (const f of walkK("app/api").filter((x) => x.endsWith("route.ts"))) {
+    const s = srcK(f)
+    for (const m of s.matchAll(/const (\w+)(?:: any)? = await createClient\(\)/g)) {
+      if (new RegExp(`\\b${m[1]}\\s*\\.from\\(|\\b${m[1]}\\s*\\n\\s*\\.from\\(|\\b${m[1]}\\s*\\.storage`).test(s)) offenders.push(f)
+    }
+  }
+  assert.deepEqual(offenders, [])
+})
+
+test("lock-down SQL: written for later, drops open policies, locks the counters table, ends with a check", () => {
+  const sql = srcK("scripts/sql/2026-10-28-rls-lockdown.sql")
+  assert.match(sql, /AUTH_MODE=on/)
+  assert.match(sql, /drop policy/i)
+  assert.match(sql, /'public'|'anon'|'authenticated'/)
+  assert.match(sql, /alter table public\.document_number_counters enable row level security/i)
+  assert.match(sql, /from pg_policies/i)
+})
