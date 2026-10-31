@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { chainTextForPrint } from "@/lib/po-requests/chain"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
@@ -21,7 +20,8 @@ const TEXT = {
     email: "البريد الإلكتروني",
     poInfo: "بيانات أمر الشراء",
     poNumber: "رقم أمر الشراء:",
-    linkedTo: "مرتبط بـ:",
+    termsTitle: "الشروط والأحكام",
+    termsHint: "اكتب الشروط والأحكام هنا قبل الطباعة",
     date: "التاريخ:",
     delivery: "تاريخ التسليم المتوقع:",
     status: "الحالة:",
@@ -61,7 +61,8 @@ const TEXT = {
     email: "Email",
     poInfo: "Purchase order details",
     poNumber: "PO number:",
-    linkedTo: "Linked to:",
+    termsTitle: "Terms and Conditions",
+    termsHint: "Type the terms and conditions here before printing",
     date: "Date:",
     delivery: "Expected delivery:",
     status: "Status:",
@@ -202,7 +203,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const chainLine = await chainTextForPrint(supabase, { poId: po.po_id })
     const html = `<!DOCTYPE html>
 <html dir="${L.dir}" lang="${L.lang}">
 <head>
@@ -220,6 +220,11 @@ export async function GET(request: NextRequest) {
     .status-badge { display: inline-block; }
     .pm-note h4 { margin-block-end: 4px; font-size: 13px; font-weight: 700; }
     .pm-note p { margin-block: 2px; }
+    .po-terms { margin-block: 12px; break-inside: avoid; page-break-inside: avoid; }
+    .po-terms h4 { margin-block-end: 4px; font-size: 13px; font-weight: 700; }
+    .po-terms-box { min-block-size: 60px; padding: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; }
+    @media screen { .po-terms-box { border: 1px dashed #999; border-radius: 4px; background: #fffef5; } .po-terms-box:empty::before { content: attr(data-hint); color: #999; } }
+    @media print { .po-terms:has(.po-terms-box:empty) { display: none; } }
   </style>
 </head>
 <body>
@@ -250,11 +255,7 @@ export async function GET(request: NextRequest) {
         <div class="pm-field">
           <div class="pm-label">${L.poNumber}</div>
           <div class="pm-value">${escapeHtml(po.po_number)}</div>
-        </div>${chainLine ? `
-        <div class="pm-field">
-          <div class="pm-label">${L.linkedTo}</div>
-          <div class="pm-value" dir="ltr">${escapeHtml(chainLine)}</div>
-        </div>` : ""}
+        </div>
         <div class="pm-field">
           <div class="pm-label">${L.date}</div>
           <div class="pm-value">${formatDate(po.order_date || po.created_at)}</div>
@@ -357,6 +358,11 @@ export async function GET(request: NextRequest) {
     </div>
     ` : ""}
     
+    <section class="po-terms">
+      <h4>${L.termsTitle}</h4>
+      <div id="po-terms" class="po-terms-box" contenteditable="true" data-hint="${L.termsHint}"></div>
+    </section>
+
     <div class="pm-signatures">
       <div class="pm-sign">
         <div>${L.signBuyer}</div><div class="pm-sign-line"></div>
@@ -374,6 +380,16 @@ export async function GET(request: NextRequest) {
       <p>${english ? "" : `تاريخ الطباعة: ${new Date().toLocaleDateString("ar-EG")} | `}Printed: ${new Date().toLocaleDateString("en-GB")}</p>
     </div>
   </div>
+<script>(function () {
+  // Terms are typed on this page before printing and remembered in this browser for the next PO (not saved on the PO).
+  var box = document.getElementById("po-terms"), key = "po-terms-${L.lang}"
+  try { box.innerText = localStorage.getItem(key) || "" } catch (e) {}
+  box.addEventListener("input", function () {
+    var text = box.innerText.trim()
+    if (!text) box.innerHTML = ""
+    try { localStorage.setItem(key, text) } catch (e) {}
+  })
+})()</script>
 ${PRINT_ROWS_SCRIPT}
 </body>
 </html>`

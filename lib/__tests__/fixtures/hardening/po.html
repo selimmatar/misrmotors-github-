@@ -17,6 +17,7 @@ thead { display: table-header-group; }
 tr { break-inside: avoid; page-break-inside: avoid; }
 .pm-rows, .pm-rows > thead, .pm-rows > tbody, .pm-rows > tfoot { display: block; inline-size: 100%; }
 .pm-rows tr { display: grid; grid-template-columns: var(--pm-cols); break-inside: avoid; page-break-inside: avoid; }
+.pm-rows th, .pm-rows td { inline-size: auto !important; min-inline-size: 0; }
 .pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
 .pm-brand { display: flex; align-items: center; gap: 12px; }
 .pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }
@@ -78,6 +79,11 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
     .status-badge { display: inline-block; }
     .pm-note h4 { margin-block-end: 4px; font-size: 13px; font-weight: 700; }
     .pm-note p { margin-block: 2px; }
+    .po-terms { margin-block: 12px; break-inside: avoid; page-break-inside: avoid; }
+    .po-terms h4 { margin-block-end: 4px; font-size: 13px; font-weight: 700; }
+    .po-terms-box { min-block-size: 60px; padding: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; }
+    @media screen { .po-terms-box { border: 1px dashed #999; border-radius: 4px; background: #fffef5; } .po-terms-box:empty::before { content: attr(data-hint); color: #999; } }
+    @media print { .po-terms:has(.po-terms-box:empty) { display: none; } }
   </style>
 </head>
 <body>
@@ -201,6 +207,11 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
     </div>
     
     
+    <section class="po-terms">
+      <h4>الشروط والأحكام</h4>
+      <div id="po-terms" class="po-terms-box" contenteditable="true" data-hint="اكتب الشروط والأحكام هنا قبل الطباعة"></div>
+    </section>
+
     <div class="pm-signatures">
       <div class="pm-sign">
         <div>توقيع المشتري</div><div class="pm-sign-line"></div>
@@ -219,6 +230,16 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
       <p>تاريخ الطباعة: <DATE> | Printed: <DATE></p>
     </div>
   </div>
+<script>(function () {
+  // Terms are typed on this page before printing and remembered in this browser for the next PO (not saved on the PO).
+  var box = document.getElementById("po-terms"), key = "po-terms-ar"
+  try { box.innerText = localStorage.getItem(key) || "" } catch (e) {}
+  box.addEventListener("input", function () {
+    var text = box.innerText.trim()
+    if (!text) box.innerHTML = ""
+    try { localStorage.setItem(key, text) } catch (e) {}
+  })
+})()</script>
 <script>(function () {
   function keepRowsWhole() {
     document.querySelectorAll("table.pm-table").forEach(function (table) {

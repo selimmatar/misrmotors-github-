@@ -1499,13 +1499,13 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 </select>
               </div>
               <div>
-                <label className="text-sm font-medium">{t("field.due-date")}</label>
+                <label className="text-sm font-medium">{t("po.delivery-date")}</label>
                 <Input
-                  placeholder={t("field.due-date")}
+                  placeholder={t("po.delivery-date")}
                   type="date"
                   value={formData.dueDate}
-                  readOnly
-                  className="bg-gray-50 cursor-not-allowed mt-1"
+                  onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                  className="mt-1"
                 />
               </div>
               <div>
