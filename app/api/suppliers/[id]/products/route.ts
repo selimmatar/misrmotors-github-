@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { id: supplierId } = await params
 
     // Fetch supplier products with product details
@@ -70,7 +70,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { id: supplierId } = await params
     const body = await request.json()
 
@@ -133,7 +133,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { id: supplierId } = await params
     const { searchParams } = new URL(request.url)
     const productId = searchParams.get("productId")
@@ -172,7 +172,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { id: supplierId } = await params
     const body = await request.json()
 

@@ -5,7 +5,7 @@ import { useAppContext } from "@/lib/app-context"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { MobileTabs } from "@/components/layout/mobile-tabs"
-import { ROLE_MODULES } from "@/components/layout/nav-config"
+import { effectiveRoleFor, navItemsForRoles, primaryRole } from "@/lib/auth/role-nav"
 import { hideIdleApprovals } from "@/lib/nav-groups"
 import { PurchaseOrderModule } from "@/components/modules/purchase-order-module"
 import { PORequestModule } from "@/components/modules/po-request-module"
@@ -93,10 +93,14 @@ type ModuleType =
   | "maintenance-invoices" // Added maintenance-invoices module type
   | "operations-management" // Added operations-management module type
 
-export function Dashboard({ user, onLogout }: DashboardProps) {
+export function Dashboard({ user: account, onLogout }: DashboardProps) {
+  // A person can hold several roles: the menu shows all their screens, and each screen opens with the role that owns it.
+  const roles = account.roles?.length ? account.roles : [account.role]
+  const mainRole = primaryRole(roles) ?? account.role
   const [activeModule, setActiveModule] = useState<ModuleType>(
-    user.role === "shipment" ? "shipment" : user.role === "admin" ? "user-management" : "dashboard",
+    mainRole === "shipment" ? "shipment" : mainRole === "admin" ? "user-management" : "dashboard",
   )
+  const user: User = { ...account, role: effectiveRoleFor(activeModule, roles) }
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const { refreshLists } = useAppContext()
 
@@ -228,7 +232,8 @@ case "po-requests":
       <Sidebar
         activeModule={activeModule}
         onModuleChange={setActiveModule}
-        userRole={user.role}
+        userRole={mainRole}
+        roles={roles}
         onLogout={onLogout}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
@@ -245,7 +250,7 @@ case "po-requests":
         </main>
       </div>
       <MobileTabs
-        items={hideIdleApprovals(ROLE_MODULES[user.role] ?? [], {})}
+        items={hideIdleApprovals(navItemsForRoles(roles), {})}
         activeModule={activeModule}
         onNavigate={(id) => setActiveModule(id as ModuleType)}
         onOpenMenu={() => setMobileSidebarOpen(true)}

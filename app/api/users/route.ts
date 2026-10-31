@@ -1,148 +1,159 @@
-import { createServerClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { loginAddress } from "@/lib/auth/decide"
+import { actorUserId } from "@/lib/auth/actor"
+import { isRole } from "@/lib/auth/roles"
+import { MIN_PASSWORD, cleanEmployeeId, cleanRoles, loginMetadata, validateNewUser } from "@/lib/auth/users-admin"
 
 export const dynamic = "force-dynamic"
 
-export async function GET() {
-  try {
-    const supabase = await createServerClient()
+// Admin only (lib/auth/permissions.ts). Accounts are never deleted — turned off instead — so "who did this" history
+// keeps pointing at a real person.
+const BAN_FOREVER = "876000h"
 
-    // Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Get all users from the users table
-    const { data: users, error: usersError } = await supabase
-      .from("users")
-      .select("id, role, created_at")
-      .order("created_at", { ascending: false })
-
-    if (usersError) {
-      console.error("Error fetching users:", usersError)
-      return NextResponse.json({ error: usersError.message }, { status: 500 })
-    }
-
-    // Get auth users to get email information
-    const { data: authData, error: authUsersError } = await supabase.auth.admin.listUsers()
-
-    if (authUsersError) {
-      console.error("Error fetching auth users:", authUsersError)
-      // Return users without email if we can't get auth data
-      return NextResponse.json(users || [])
-    }
-
-    // Merge user data with auth data
-    const usersWithEmail = users?.map((user) => {
-      const authUser = authData.users.find((au) => au.id === user.id)
-      return {
-        ...user,
-        email: authUser?.email || "N/A",
-      }
-    })
-
-    return NextResponse.json(usersWithEmail || [])
-  } catch (error) {
-    console.error("Error in users API:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+function listShape(row: any) {
+  const isUsername = row.login_method === "username"
+  return {
+    userId: row.user_id,
+    fullName: row.full_name,
+    loginMethod: row.login_method || "email",
+    email: isUsername ? null : row.email,
+    username: isUsername ? row.username : null,
+    roles: (Array.isArray(row.roles) ? row.roles : []).filter(isRole),
+    employeeId: row.employee_id ?? null,
+    active: row.is_active !== false,
+    mustChangePassword: !!row.must_change_password,
+    lastLoginAt: row.last_login_at ?? null,
   }
+}
+const fail = (status: number, error: string) => NextResponse.json({ error }, { status })
+const isDuplicate = (error: any) =>
+  error?.code === "23505" || /already (been )?registered|already exists/i.test(String(error?.message || ""))
+
+export async function GET() {
+  const db: any = createAdminClient()
+  const { data, error } = await db.from("users").select("*").order("full_name", { ascending: true })
+  if (error) return fail(500, error.message || "Could not load accounts")
+  return NextResponse.json((data || []).map(listShape))
+}
+
+export async function POST(request: Request) {
+  const checked = validateNewUser(await request.json().catch(() => null))
+  if (!checked.ok) return fail(400, checked.error)
+  const u = checked.value
+  const address = loginAddress(u.loginMethod === "email" ? u.email! : u.username!)
+  const db: any = createAdminClient()
+
+  const { data: taken } = await db.from("users").select("user_id").eq("email", address).maybeSingle()
+  if (taken) return fail(409, "This email or username is already used")
+
+  const created = await db.auth.admin.createUser({
+    email: address,
+    password: u.tempPassword,
+    email_confirm: true,
+    app_metadata: { roles: u.roles, name: u.fullName, active: true },
+  })
+  const authUser = created?.data?.user
+  if (created?.error || !authUser) {
+    if (isDuplicate(created?.error)) return fail(409, "This email or username is already used")
+    return fail(500, created?.error?.message || "Could not create the login")
+  }
+
+  const { data: row, error: insertError } = await db
+    .from("users")
+    .insert({
+      full_name: u.fullName,
+      email: address,
+      username: u.loginMethod === "username" ? u.username : null,
+      login_method: u.loginMethod,
+      role: null,
+      roles: u.roles,
+      employee_id: u.employeeId ?? null,
+      is_active: true,
+      must_change_password: true,
+      auth_user_id: authUser.id,
+    })
+    .select("*")
+    .single()
+  if (insertError || !row) {
+    await db.auth.admin.deleteUser(authUser.id).catch(() => undefined)
+    if (isDuplicate(insertError)) return fail(409, "This email or username is already used")
+    return fail(500, insertError?.message || "Could not save the account")
+  }
+
+  const meta = await db.auth.admin.updateUserById(authUser.id, {
+    app_metadata: loginMetadata(row.user_id, u.roles, u.fullName, true),
+  })
+  if (meta?.error) return fail(500, "Account saved but its roles could not be attached; edit and save it again")
+  return NextResponse.json({ user: listShape(row) })
 }
 
 export async function PUT(request: Request) {
-  try {
-    const supabase = await createServerClient()
+  const body = await request.json().catch(() => ({}))
+  const userId = Number(body?.userId)
+  const action = String(body?.action || "")
+  if (!Number.isInteger(userId) || userId < 1) return fail(400, "Missing account")
+  if (!["update", "reset-password", "deactivate", "reactivate"].includes(action)) return fail(400, "Unknown action")
 
-    // Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Check if the current user is an admin
-    const { data: currentUserData, error: currentUserError } = await supabase
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-
-    if (currentUserError || currentUserData?.role !== "admin") {
-      return NextResponse.json({ error: "Only administrators can update user roles" }, { status: 403 })
-    }
-
-    // Get userId and role from request body
-    const { userId, role } = await request.json()
-
-    if (!userId || !role) {
-      return NextResponse.json({ error: "User ID and role are required" }, { status: 400 })
-    }
-
-    // Validate role
-    const validRoles = ["ceo", "sales", "purchasing", "accountant", "inventory", "admin"]
-    if (!validRoles.includes(role)) {
-      return NextResponse.json({ error: "Invalid role" }, { status: 400 })
-    }
-
-    // Update user role in the users table
-    const { error: updateError } = await supabase.from("users").update({ role }).eq("id", userId)
-
-    if (updateError) {
-      console.error("Error updating user role:", updateError)
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true, message: "User role updated successfully" })
-  } catch (error) {
-    console.error("Error in update user API:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  const db: any = createAdminClient()
+  const { data: row } = await db.from("users").select("*").eq("user_id", userId).maybeSingle()
+  if (!row) return fail(404, "Account not found")
+  const actor = actorUserId(request)
+  const isSelf = actor !== null && actor === userId
+  const currentRoles = (Array.isArray(row.roles) ? row.roles : []).filter(isRole)
+  const syncLogin = async (attrs: Record<string, unknown>) => {
+    if (!row.auth_user_id) return null
+    const res = await db.auth.admin.updateUserById(row.auth_user_id, attrs)
+    return res?.error || null
   }
-}
 
-export async function DELETE(request: Request) {
-  try {
-    const supabase = await createServerClient()
-
-    // Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (action === "update") {
+    const changes: Record<string, unknown> = {}
+    let fullName = row.full_name
+    let roles = currentRoles
+    if (body.fullName !== undefined) {
+      fullName = String(body.fullName).trim()
+      if (!fullName) return fail(400, "Name is required")
+      changes.full_name = fullName
     }
-
-    // Get user ID from request body
-    const { userId } = await request.json()
-
-    if (!userId) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 })
+    if (body.roles !== undefined) {
+      const cleaned = cleanRoles(body.roles)
+      if (!cleaned) return fail(400, "Choose at least one valid role")
+      if (isSelf && currentRoles.includes("admin") && !cleaned.includes("admin")) {
+        return fail(400, "You cannot remove your own Admin role")
+      }
+      roles = cleaned
+      changes.roles = cleaned
     }
-
-    // Prevent users from deleting themselves
-    if (userId === user.id) {
-      return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 })
+    if (body.employeeId !== undefined) {
+      const employeeId = cleanEmployeeId(body.employeeId)
+      if (employeeId === undefined) return fail(400, "Invalid HR employee")
+      changes.employee_id = employeeId
     }
-
-    // Delete user from auth.users (this will cascade delete from public.users due to ON DELETE CASCADE)
-    const { error: deleteError } = await supabase.auth.admin.deleteUser(userId)
-
-    if (deleteError) {
-      console.error("Error deleting user:", deleteError)
-      return NextResponse.json({ error: deleteError.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true, message: "User deleted successfully" })
-  } catch (error) {
-    console.error("Error in delete user API:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const { error } = await db.from("users").update(changes).eq("user_id", userId)
+    if (error) return fail(500, error.message || "Could not save")
+    const loginError = await syncLogin({ app_metadata: loginMetadata(userId, roles, fullName, row.is_active !== false) })
+    if (loginError) return fail(500, "Saved, but the login could not be updated; save again")
+    return NextResponse.json({ user: listShape({ ...row, ...changes }) })
   }
+
+  if (action === "reset-password") {
+    const tempPassword = String(body.tempPassword || "")
+    if (tempPassword.length < MIN_PASSWORD) return fail(400, `Password must be at least ${MIN_PASSWORD} characters`)
+    const loginError = await syncLogin({ password: tempPassword })
+    if (loginError) return fail(500, loginError.message || "Could not set the password")
+    await db.from("users").update({ must_change_password: true }).eq("user_id", userId)
+    return NextResponse.json({ ok: true })
+  }
+
+  const turnOn = action === "reactivate"
+  if (!turnOn && isSelf) return fail(400, "You cannot turn off your own account")
+  const loginError = await syncLogin({
+    ban_duration: turnOn ? "none" : BAN_FOREVER,
+    app_metadata: loginMetadata(userId, currentRoles, row.full_name, turnOn),
+  })
+  if (loginError) return fail(500, loginError.message || "Could not update the login")
+  const { error } = await db.from("users").update({ is_active: turnOn }).eq("user_id", userId)
+  if (error) return fail(500, error.message || "Could not save")
+  return NextResponse.json({ user: listShape({ ...row, is_active: turnOn }) })
 }

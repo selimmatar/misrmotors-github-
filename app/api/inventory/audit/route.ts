@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { actorOr } from "@/lib/auth/actor"
 
 export const dynamic = "force-dynamic"
 
@@ -230,7 +231,7 @@ export async function POST(request: Request) {
       physical_count: c.physicalCount,
       difference: c.physicalCount - c.systemQuantity,
       notes: c.notes,
-      audited_by: auditedBy || null,
+      audited_by: actorOr(request, auditedBy) || null,
       audit_date: auditDate,
     }))
     if (auditRecords.length > 0) {

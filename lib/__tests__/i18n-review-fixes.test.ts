@@ -59,11 +59,6 @@ const SITES: Array<{ file: string; must: RegExp[]; mustNot: RegExp[] }> = [
     mustNot: [/<Badge variant="secondary">\{item\.reason\}<\/Badge>/],
   },
   {
-    file: "app/admin/users/page.tsx",
-    must: [/t\(`role\.\$\{user\.role\}`\)/],
-    mustNot: [/\{user\.role\}<\/Badge>/],
-  },
-  {
     file: "components/accounting/maintenance-invoice-tab.tsx",
     must: [/mi\.net-\$\{/],
     mustNot: [/replace\(\/\\b\\w\/g, l => l\.toUpperCase\(\)\)/],

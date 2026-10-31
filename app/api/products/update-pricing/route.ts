@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { actorOr } from "@/lib/auth/actor"
 
 export async function POST(request: Request) {
   try {
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
           markup_percentage: markupPercentage,
           unit_price: Number(calculatedPrice.toFixed(2)),
           cost_updated_at: new Date().toISOString(),
-          cost_updated_by: userId,
+          cost_updated_by: actorOr(request, userId),
         })
         .eq("product_id", productId)
         .select()

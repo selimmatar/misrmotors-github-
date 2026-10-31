@@ -5,7 +5,12 @@ export interface User {
   name: string
   email: string
   password: string
+  /** The role of the screen that is open (for people with several roles, see lib/auth/role-nav.ts). */
   role: UserRole
+  /** Every role of the logged-in person; the role picker gives just [role]. */
+  roles?: UserRole[]
+  /** users.user_id of the logged-in person (absent for the role picker). */
+  userId?: number
 }
 
 export interface Supplier {

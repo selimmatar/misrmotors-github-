@@ -5,6 +5,7 @@
 export type Row = Record<string, any>
 
 const PK: Record<string, string> = {
+  users: "user_id",
   product_returns: "return_id",
   return_items: "return_item_id",
   inventory: "inventory_id",
@@ -35,6 +36,7 @@ const PK: Record<string, string> = {
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
+  users: [["email"], ["username"], ["auth_user_id"]],
   inventory: [["product_id", "warehouse_id", "is_returned"]],
   idempotency_log: [["operation_type", "idempotency_key"]],
   accounts_receivable: [["invoice_number"]],

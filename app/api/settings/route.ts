@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { actorOr } from "@/lib/auth/actor"
 
 export const dynamic = "force-dynamic"
 
@@ -43,7 +44,7 @@ export async function PUT(request: Request) {
         setting_key: key,
         setting_value: value,
         updated_at: new Date().toISOString(),
-        updated_by: userId,
+        updated_by: actorOr(request, userId),
       })
       .select()
       .single()

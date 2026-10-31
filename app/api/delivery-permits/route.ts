@@ -7,6 +7,7 @@ import { isSOFullyDelivered, DP_DELIVERED_STATUSES } from "@/lib/delivery-status
 import { planAllocation } from "@/lib/dp-allocate"
 import { isAllowedDpTransition } from "@/lib/dp-transitions"
 import { abortDeduction, deductStockForPermit, finishDeduction, type StockMove } from "@/lib/dp-stock"
+import { actorOr } from "@/lib/auth/actor"
 
 export const dynamic = "force-dynamic"
 
@@ -425,7 +426,7 @@ export async function PUT(request: NextRequest) {
     const {
       permitId,
       action,
-      userId,
+      userId: bodyUserId,
       rejectionReason,
       recipientName,
       recipientPhone,
@@ -433,6 +434,7 @@ export async function PUT(request: NextRequest) {
       driverName,
       courierId,
     } = body
+    const userId = actorOr(request, bodyUserId)
 
     // Get current permit with sales order data
     const { data: currentPermit, error: fetchError } = await withRetry(() =>

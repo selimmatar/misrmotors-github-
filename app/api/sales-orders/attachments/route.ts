@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { put } from "@vercel/blob"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { checkUpload } from "@/lib/upload-allowlist"
+import { actorOr } from "@/lib/auth/actor"
 
 export const dynamic = "force-dynamic"
 
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get("file") as File
     const soId = formData.get("soId") as string
-    const userId = formData.get("userId") as string
+    const userId = actorOr(request, formData.get("userId") as string)
     const note = formData.get("note") as string
 
     if (!file) {
@@ -111,7 +112,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const attachmentId = searchParams.get("id")
-    const userId = searchParams.get("userId")
+    const userId = actorOr(request, searchParams.get("userId"))
 
     if (!attachmentId) {
       return NextResponse.json({ error: "Attachment ID is required" }, { status: 400 })
