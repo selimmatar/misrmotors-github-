@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { FakeDb } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import { cannedDb, nreq } from "./hardening-fixtures"
+import { photosToPdf } from "../photos-to-pdf"
 import { brandsByItem, codesByItem, nameWithBrand, parseWrittenPrice, pricesByItem, sameRequestNumber, sortRequestItems, toEnglishDigits } from "../po-requests/read-prices"
 import { applyChosenCost, sameItemIgnoringBrand, supplierOffers } from "../po-requests/apply-costs"
 import * as poRequestsRoute from "../../app/api/po-requests/route"
@@ -288,7 +289,7 @@ test("Quote received screen: photo button fills and highlights prices, same row 
   assert.doesNotMatch(handlePhoto, /\/api\/po-requests"/, "reading a photo does not save the PR")
   assert.doesNotMatch(handlePhoto, /\/api\/documents\/upload/, "the photo is uploaded only on Save")
   const i18n = src("lib/i18n-context.tsx")
-  for (const key of ["chain.read-photo", "chain.photo-check", "chain.photo-read-result", "chain.photo-wrong-request"]) {
+  for (const key of ["chain.read-photo", "chain.photo-check", "chain.photo-read-result", "chain.photo-wrong-request", "chain.photos-failed"]) {
     assert.equal(i18n.split(`"${key}":`).length - 1, 2, `${key} in English and Arabic`)
   }
 })
@@ -374,7 +375,7 @@ test("item photo button sits next to Import Excel and adds rows like the Excel i
   const photo = sq.indexOf('t("sq.read-items-photo")')
   assert.ok(excel > 0 && photo > excel && photo - excel < 800, "photo button right after Import Excel")
   assert.match(sq, /fetch\("\/api\/quotations\/read-items"/)
-  assert.match(sq, /shrinkPhoto\(picked, "items-photo"\)/)
+  assert.match(sq, /shrinkPhoto\(one, "items-photo"\)/)
   assert.match(sq, /setItems\(\(prev\) => \[\.\.\.prev, \.\.\.newItems\]\)/, "added to the rows already there")
   assert.match(sq, /p\.productName\?\.toLowerCase\(\) === name \|\| p\.sku\?\.toLowerCase\(\) === name/)
   assert.match(src("components/po-requests/quote-received-dialog.tsx"), /import \{ shrinkPhoto \} from "@\/lib\/shrink-photo"/)
@@ -471,4 +472,42 @@ test("prints: every item table gets the no-split row script", () => {
   ]) {
     assert.match(src(file), /\$\{PRINT_ROWS_SCRIPT\}\s*<\/body>/, file)
   }
+})
+
+test("several photos at once: the price request and the quotation pickers take many photos and read each in turn", () => {
+  const dialog = src("components/po-requests/quote-received-dialog.tsx")
+  assert.match(dialog, /<input ref=\{photoRef\} type="file" accept="image\/\*" multiple /)
+  assert.match(dialog, /const picked = Array\.from\(event\.target\.files \|\| \[\]\)/)
+  assert.match(dialog, /for \(const one of picked\)/)
+  const sq = src("components/modules/sales-quotation-module.tsx")
+  assert.match(sq, /<input ref=\{photoInputRef\} type="file" accept="image\/\*" multiple /)
+  const handle = sq.slice(sq.indexOf("const handleItemsPhoto"), sq.indexOf("const addItem"))
+  assert.match(handle, /for \(const one of picked\)/)
+  assert.match(handle, /read\.push\(\.\.\.body\.items\)/)
+})
+
+test("pop-ups never run past the bottom of a phone screen: they scroll inside", () => {
+  assert.match(src("components/ui/dialog.tsx"), /max-h-\[calc\(100dvh-2rem\)\] overflow-y-auto/)
+})
+
+test("all photos are saved: several become one PDF with one page per photo; one photo stays a photo", () => {
+  const jpeg = (n: number) => new Uint8Array([0xff, 0xd8, n, 0xff, 0xd9])
+  const pdf = photosToPdf([{ jpeg: jpeg(1), width: 2000, height: 1500 }, { jpeg: jpeg(2), width: 1500, height: 2000 }, { jpeg: jpeg(3), width: 100, height: 100 }])
+  const text = Buffer.from(pdf).toString("latin1")
+  assert.ok(text.startsWith("%PDF-1.4"))
+  assert.ok(text.trimEnd().endsWith("%%EOF"))
+  assert.match(text, /\/Type \/Pages \/Kids \[3 0 R 6 0 R 9 0 R\] \/Count 3/)
+  assert.equal(text.split("/Filter /DCTDecode").length - 1, 3, "each photo is on its own page")
+  assert.match(text, /\/MediaBox \[0 0 595 446\.25\]/, "a wide photo fits the A4 width")
+  assert.match(text, /\/MediaBox \[0 0 595 793\.33\]/, "a tall photo keeps its shape")
+  // every xref offset points at its object
+  const xref = Number(text.match(/startxref\n(\d+)/)![1])
+  const offsets = text.slice(xref).split("\n").slice(3, 3 + 11).map((l) => Number(l.slice(0, 10)))
+  offsets.forEach((at, i) => assert.ok(text.startsWith(`${i + 1} 0 obj`, at), `object ${i + 1} at its xref offset`))
+  const dialog = src("components/po-requests/quote-received-dialog.tsx")
+  assert.match(dialog, /const attachment = file \|\| \(await photosFile\(\)\)/)
+  assert.match(dialog, /if \(photos\.length === 1\) return photos\[0\]\.file/)
+  assert.match(dialog, /new File\(\[photosToPdf\(pages\)\], `price-photos-\$\{Date\.now\(\)\}\.pdf`, \{ type: "application\/pdf" \}\)/)
+  const handlePhoto = dialog.slice(dialog.indexOf("const handlePhoto"), dialog.indexOf("const handleExcel"))
+  assert.ok(handlePhoto.indexOf("setPhotos(") < handlePhoto.indexOf('fetch("/api/po-requests/read-prices"'), "a photo is kept even when reading it fails")
 })
