@@ -38,6 +38,7 @@
           "\"/api/hr/documents",
           "\"/api/hr/employees",
           "\"/api/hr/employees",
+          "\"/api/hr/employees",
           "\"/api/hr/positions",
           "\"/api/hr/positions",
           "\"/api/hr/salary-payments",
@@ -67,10 +68,10 @@
           "id=\"sal_min\"",
           "id=\"search\""
         ],
-        "fetch": 13,
+        "fetch": 14,
         "iso": 5,
-        "t": 0,
-        "onClick": 7
+        "t": 279,
+        "onClick": 9
       },
       "must": [
         {
@@ -90,7 +91,7 @@
         "ids": [],
         "fetch": 1,
         "iso": 0,
-        "t": 0,
+        "t": 34,
         "onClick": 2
       },
       "must": [
@@ -118,7 +119,7 @@
         "ids": [],
         "fetch": 1,
         "iso": 0,
-        "t": 3,
+        "t": 14,
         "onClick": 2
       },
       "must": [

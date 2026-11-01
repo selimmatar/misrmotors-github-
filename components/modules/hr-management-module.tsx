@@ -40,6 +40,7 @@ import {
   TrendingDown,
 } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
+import { useToast } from "@/hooks/use-toast"
 import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
@@ -114,6 +115,37 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
   const [compensationData, setCompensationData] = useState<Compensation[]>([])
   const [showAddDepartmentDialog, setShowAddDepartmentDialog] = useState(false)
   const [showAddPositionDialog, setShowAddPositionDialog] = useState(false)
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const { toast } = useToast()
+
+  // Delete is only for an employee added by mistake (no salary, pay records, documents or login). The server
+  // refuses otherwise and says to make them Inactive (Edit → Status).
+  const deleteEmployee = async (employee: Employee) => {
+    if (!confirm(fill(t("hr.delete-confirm"), { name: employee.full_name }))) return
+    setDeleting(true)
+    try {
+      const response = await fetch("/api/hr/employees", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee_id: employee.employee_id }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toast({
+          title: response.status === 409 ? t("hr.delete-blocked") : t("error"),
+          description: response.status === 409 ? t("hr.delete-blocked-desc") : data.error || t("hr.delete-failed"),
+          variant: "destructive",
+        })
+        return
+      }
+      toast({ title: t("hr.employee-deleted") })
+      setSelectedEmployee(null)
+      fetchEmployees()
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   // Check authorization
   const isAuthorized = ["ceo", "admin"].includes(userRole)
@@ -557,10 +589,51 @@ export function HRManagementModule({ userRole }: HRManagementModuleProps) {
                 </div>
               </DialogTitle>
             </DialogHeader>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => setEditingEmployee(selectedEmployee)}>
+                <Edit className="w-4 h-4" />
+                {t("action.edit")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 text-destructive"
+                disabled={deleting}
+                onClick={() => deleteEmployee(selectedEmployee)}
+              >
+                <Trash2 className="w-4 h-4" />
+                {t("action.delete")}
+              </Button>
+            </div>
             <EmployeeDetailsView employee={selectedEmployee} compensation={compensationData} />
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Edit Employee Dialog */}
+      <Dialog open={!!editingEmployee} onOpenChange={(open) => !open && setEditingEmployee(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("hr.edit-employee")}</DialogTitle>
+            <DialogDescription>{t("hr.edit-employee-desc")}</DialogDescription>
+          </DialogHeader>
+          {editingEmployee && (
+            <AddEmployeeForm
+              employee={editingEmployee}
+              departments={departments}
+              positions={positions}
+              onSuccess={(saved, loginsTurnedOff) => {
+                setEditingEmployee(null)
+                if (saved) setSelectedEmployee(saved)
+                if (loginsTurnedOff) toast({ title: t("hr.saved"), description: fill(t("hr.logins-turned-off"), { count: loginsTurnedOff }) })
+                else toast({ title: t("hr.saved") })
+                fetchEmployees()
+              }}
+              onCancel={() => setEditingEmployee(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1969,28 +2042,32 @@ function AddPositionForm({
 }
 
 // Add Employee Form Component
+// With `employee` it is the Edit form: filled in, saved with PUT.
 function AddEmployeeForm({
+  employee,
   departments,
   positions,
   onSuccess,
   onCancel,
 }: {
+  employee?: Employee
   departments: Department[]
   positions: Position[]
-  onSuccess: () => void
+  onSuccess: (saved?: Employee, loginsTurnedOff?: number) => void
   onCancel: () => void
 }) {
   const { t } = useI18n()
+  const editing = !!employee
   const [formData, setFormData] = useState({
-    full_name: "",
-    email: "",
-    phone: "",
-    national_id: "",
-    hire_date: new Date().toISOString().split("T")[0],
-    department_id: "",
-    position_id: "",
-    employment_type: "full_time",
-    employment_status: "active",
+    full_name: employee?.full_name ?? "",
+    email: employee?.email ?? "",
+    phone: employee?.phone ?? "",
+    national_id: employee?.national_id ?? "",
+    hire_date: employee?.hire_date ? String(employee.hire_date).slice(0, 10) : new Date().toISOString().split("T")[0],
+    department_id: employee?.department?.department_id ? String(employee.department.department_id) : "",
+    position_id: employee?.position?.position_id ? String(employee.position.position_id) : "",
+    employment_type: employee?.employment_type ?? "full_time",
+    employment_status: employee?.employment_status ?? "active",
   })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -2002,23 +2079,25 @@ function AddEmployeeForm({
 
     try {
       const response = await fetch("/api/hr/employees", {
-        method: "POST",
+        method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          ...(editing ? { employee_id: employee!.employee_id } : {}),
           department_id: formData.department_id ? parseInt(formData.department_id) : null,
           position_id: formData.position_id ? parseInt(formData.position_id) : null,
         }),
       })
 
+      const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.error || "Failed to create employee")
+        throw new Error(data.error || (editing ? t("hr.save-failed") : "Failed to create employee"))
       }
 
-      onSuccess()
+      if (editing) onSuccess(data.employee, data.loginsTurnedOff)
+      else onSuccess()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create employee")
+      setError(err instanceof Error ? err.message : editing ? t("hr.save-failed") : "Failed to create employee")
     } finally {
       setSubmitting(false)
     }
@@ -2147,17 +2226,19 @@ function AddEmployeeForm({
               <SelectItem value="on_leave">{t("hr.status-on-leave")}</SelectItem>
               <SelectItem value="suspended">{t("hr.suspended")}</SelectItem>
               <SelectItem value="terminated">{t("hr.status-terminated")}</SelectItem>
+              <SelectItem value="resigned">{t("hr.resigned")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
+      {editing && <p className="text-xs text-muted-foreground">{t("hr.inactive-login-note")}</p>}
 
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting} className="bg-transparent">
           {t("cancel")}
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? t("common.creating") : t("hr.create-employee")}
+          {submitting ? (editing ? t("common.saving") : t("common.creating")) : editing ? t("action.save") : t("hr.create-employee")}
         </Button>
       </div>
     </form>

@@ -15,13 +15,15 @@ const AR = I18N.slice(AR_AT)
 
 const MAIN_IDS: Record<string, string[]> = { // verbatim from origin/main components/layout/sidebar.tsx
   admin: ["user-management","hr-management","metrics-validation","system-health"],
-  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","delivery-permits","accounts-receivable","balance","finance-reports","metrics-validation","system-health"],
+  // ceo: operations-management added (owner request 2026-10-31).
+  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","delivery-permits","operations-management","accounts-receivable","balance","finance-reports","metrics-validation","system-health"],
   // accountant: quotations swapped for the view-only order list (owner request).
   accountant: ["dashboard","analytics","approve-sales-orders","sales-orders","payment-schedule","purchase-orders","pricing-review","costing-settings","accounts-payable","accounts-receivable","maintenance-invoices","customers","suppliers","delivery-permits","balance","finance-reports"],
   "sales-rep": ["dashboard","analytics","customers","sales-orders","delivery-permits","inventory","lost-sales","accounts-receivable","operations-management"],
   "warehouse-rep": ["dashboard","inventory","inventory-audit","warehouse-transfers","warehouse-delivery","delivery-permits","goods-receipt","goods-receipt-tracking"],
   "po-rep": ["dashboard","analytics","suppliers","products","po-requests","purchase-orders","goods-receipt-tracking","inventory","reorder-suggestions","lost-sales"],
-  shipment: ["shipment","courier-management","delivery-permits","operations-management"],
+  // shipment: courier manager retired, operations moved to sales + CEO (owner request 2026-10-31).
+  shipment: ["shipment","delivery-permits"],
 }
 
 test("each role's item set is unchanged versus main", () => {
@@ -56,7 +58,7 @@ test("mobile tabs", () => {
     t.kind === "home" ? `home:${t.moduleId}` : t.kind === "group" ? `${t.group}:${t.items.length}` : "menu")
   assert.deepEqual(shape("ceo"), ["home:dashboard", "sales:4", "purchasing:6", "inventory:4", "menu"])
   assert.deepEqual(shape("admin"), ["home:user-management", "admin:4", "menu"])
-  assert.deepEqual(shape("shipment"), ["home:shipment", "sales:1", "operations:3", "menu"])
+  assert.deepEqual(shape("shipment"), ["home:shipment", "sales:1", "operations:1", "menu"])
   assert.deepEqual(buildMobileTabs([]).map((t) => t.kind), ["menu"])
 })
 

@@ -1,5 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { actorUserId } from "@/lib/auth/actor"
+import { setLoginActive } from "@/lib/auth/login-switch"
+import { cleanEmployeeUpdate, deleteBlocker, isInactiveStatus, statusDates } from "@/lib/hr/employee-rules"
 
 export const dynamic = "force-dynamic"
 
@@ -122,75 +125,107 @@ export async function POST(request: Request) {
   }
 }
 
+// Edit an employee. Only the form's fields are saved. Moving into Suspended / Terminated / Resigned also switches off
+// any login linked to this employee (owner decision 2026-10-31); coming back does NOT switch the login on again.
 export async function PUT(request: Request) {
   try {
-    const adminClient = createAdminClient()
-    const body = await request.json()
-    const { employee_id, ...updates } = body
-    
-    if (!employee_id) {
+    const db: any = createAdminClient()
+    const body = await request.json().catch(() => null)
+    const employeeId = Number(body?.employee_id)
+    if (!Number.isInteger(employeeId) || employeeId < 1) {
       return NextResponse.json({ error: "Employee ID is required" }, { status: 400 })
     }
-    
-    
-    // Add updated_at timestamp
+    const checked = cleanEmployeeUpdate(body)
+    if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 })
+
+    const { data: before } = await db.from("hr_employees").select("*").eq("employee_id", employeeId).maybeSingle()
+    if (!before) return NextResponse.json({ error: "Employee not found" }, { status: 404 })
+
+    const updates: Record<string, unknown> = { ...checked.value }
+    if (updates.employment_status !== undefined) {
+      Object.assign(updates, statusDates(before.employment_status, updates.employment_status, new Date().toISOString().split("T")[0]))
+    }
     updates.updated_at = new Date().toISOString()
-    
-    const { data, error } = await adminClient
+
+    const { data, error } = await db
       .from("hr_employees")
       .update(updates)
-      .eq("employee_id", employee_id)
+      .eq("employee_id", employeeId)
       .select(`
         *,
         department:departments(department_id, department_name),
         position:job_positions(position_id, position_title)
       `)
       .single()
-    
     if (error) {
       console.error("Error updating employee:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      const duplicate = error.code === "23505"
+      return NextResponse.json(
+        { error: duplicate ? "This email or national ID is already used by another employee" : error.message },
+        { status: duplicate ? 409 : 500 },
+      )
     }
-    
-    return NextResponse.json(data)
+
+    let loginsTurnedOff = 0
+    let loginError: string | null = null
+    if (isInactiveStatus(updates.employment_status) && !isInactiveStatus(before.employment_status)) {
+      const actor = actorUserId(request)
+      const { data: logins } = await db.from("users").select("*").eq("employee_id", employeeId)
+      for (const row of logins || []) {
+        if (row.is_active === false || (actor !== null && row.user_id === actor)) continue
+        const err = await setLoginActive(db, row, false)
+        if (err) loginError = err
+        else loginsTurnedOff++
+      }
+    }
+
+    return NextResponse.json({ employee: data, loginsTurnedOff, loginError })
   } catch (error) {
     console.error("Error in update employee API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
+// Delete an employee for good. Only allowed with no salary payments, pay records, documents or linked login;
+// otherwise the answer is 409 and they should be made Inactive instead.
 export async function DELETE(request: Request) {
   try {
-    const adminClient = createAdminClient()
-    const body = await request.json()
-    const { employee_id, termination_reason } = body
-    
-    if (!employee_id) {
+    const db: any = createAdminClient()
+    const body = await request.json().catch(() => null)
+    const employeeId = Number(body?.employee_id)
+    if (!Number.isInteger(employeeId) || employeeId < 1) {
       return NextResponse.json({ error: "Employee ID is required" }, { status: 400 })
     }
-    
-    
-    // Soft delete: Update status to terminated
-    const { data, error } = await adminClient
-      .from("hr_employees")
-      .update({
-        employment_status: "terminated",
-        termination_date: new Date().toISOString().split("T")[0],
-        termination_reason: termination_reason || "Not specified",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("employee_id", employee_id)
-      .select()
-      .single()
-    
+    const { data: emp } = await db.from("hr_employees").select("employee_id").eq("employee_id", employeeId).maybeSingle()
+    if (!emp) return NextResponse.json({ error: "Employee not found" }, { status: 404 })
+
+    const count = async (table: string) => {
+      const { count: n, error } = await db.from(table).select("employee_id", { count: "exact", head: true }).eq("employee_id", employeeId)
+      if (error) throw error
+      return n || 0
+    }
+    const blocker = deleteBlocker({
+      salaryPayments: await count("salary_payments"),
+      payRecords: await count("employee_compensation"),
+      documents: await count("employee_documents"),
+      logins: await count("users"),
+    })
+    if (blocker) return NextResponse.json({ error: blocker, keep: true }, { status: 409 })
+
+    const { error } = await db.from("hr_employees").delete().eq("employee_id", employeeId)
     if (error) {
-      console.error("Error terminating employee:", error)
+      if (error.code === "23503") {
+        return NextResponse.json(
+          { error: "This employee is used elsewhere in the system (for example a shipment or work order). Make them Inactive instead.", keep: true },
+          { status: 409 },
+        )
+      }
+      console.error("Error deleting employee:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    
-    return NextResponse.json({ success: true, message: "Employee terminated successfully", data })
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error in terminate employee API:", error)
+    console.error("Error in delete employee API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
