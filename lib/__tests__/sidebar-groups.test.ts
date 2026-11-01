@@ -57,7 +57,7 @@ test("pageFor", () => {
 test("mobile tabs", () => {
   const shape = (r: keyof typeof ROLE_MODULES) => buildMobileTabs(ROLE_MODULES[r]).map((t) =>
     t.kind === "home" ? `home:${t.moduleId}` : t.kind === "group" ? `${t.group}:${t.items.length}` : "menu")
-  assert.deepEqual(shape("ceo"), ["home:dashboard", "sales:4", "purchasing:6", "inventory:4", "menu"])
+  assert.deepEqual(shape("ceo"), ["home:dashboard", "sales:5", "purchasing:6", "inventory:6", "menu"])
   assert.deepEqual(shape("admin"), ["home:user-management", "admin:4", "menu"])
   assert.deepEqual(shape("shipment"), ["home:shipment", "sales:1", "operations:1", "menu"])
   assert.deepEqual(buildMobileTabs([]).map((t) => t.kind), ["menu"])
