@@ -15,8 +15,9 @@ const AR = I18N.slice(AR_AT)
 
 const MAIN_IDS: Record<string, string[]> = { // verbatim from origin/main components/layout/sidebar.tsx
   admin: ["user-management","hr-management","metrics-validation","system-health"],
-  // ceo: operations-management added (owner request 2026-10-31).
-  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","delivery-permits","operations-management","accounts-receivable","balance","finance-reports","metrics-validation","system-health"],
+  // ceo: operations-management added (owner request 2026-10-31); every working screen and User Management added
+  // (owner, 2026-11-01: the CEO sees everything and may edit and approve everything).
+  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","goods-receipt","warehouse-transfers","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","approve-sales-orders","delivery-permits","warehouse-delivery","shipment","operations-management","accounts-receivable","balance","finance-reports","user-management","metrics-validation","system-health"],
   // accountant: quotations swapped for the view-only order list (owner request).
   accountant: ["dashboard","analytics","approve-sales-orders","sales-orders","payment-schedule","purchase-orders","pricing-review","costing-settings","accounts-payable","accounts-receivable","maintenance-invoices","customers","suppliers","delivery-permits","balance","finance-reports"],
   "sales-rep": ["dashboard","analytics","customers","sales-orders","delivery-permits","inventory","lost-sales","accounts-receivable","operations-management"],

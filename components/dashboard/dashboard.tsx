@@ -191,6 +191,9 @@ case "po-requests":
         return <SystemHealthModule />
       case "hr-management":
         return <HRManagementModule userRole={user.role} />
+      case "user-management":
+        // Admin and CEO only: the server refuses /api/users to anyone else.
+        return user.role === "ceo" ? <UserManagementModule /> : <FinancialDashboard user={user} />
       case "delivery-permits":
         return <DeliveryPermitsModule userRole={user.role} />
       case "sales-quotations":
