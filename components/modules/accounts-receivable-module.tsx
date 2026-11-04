@@ -29,6 +29,7 @@ import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { Money } from "@/components/erp/money"
+import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-field"
 import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -94,6 +95,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const [dpSelectDialogOpen, setDpSelectDialogOpen] = useState(false)
   const [availableDPs, setAvailableDPs] = useState<any[]>([])
   const [selectedDPs, setSelectedDPs] = useState<string[]>([])
+  const [invoiceManualNumber, setInvoiceManualNumber] = useState("")
   const [isLoading, setIsLoading] = useState(false)
  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState("")
   const [dpReturnHandling, setDpReturnHandling] = useState<Record<string, "exclude" | "credit">>({})
@@ -253,6 +255,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         body: JSON.stringify({
           permit_ids: selectedDPs, // Changed from delivery_permit_ids
           payment_terms: validation.paymentTerm,
+          manualNumber: manualNumberValue(invoiceManualNumber),
         }),
       })
 
@@ -1245,6 +1248,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   <DropdownMenuItem
                     onClick={() => {
                       fetchAvailableDPs()
+                      setInvoiceManualNumber("")
                       setDpSelectDialogOpen(true)
                     }}
                   >
@@ -2221,6 +2225,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               </div>
             </div>
           )}
+          <DocNumberField id="ar-manual-number" value={invoiceManualNumber} onChange={setInvoiceManualNumber} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setDpSelectDialogOpen(false)}>
               {t("button.cancel")}

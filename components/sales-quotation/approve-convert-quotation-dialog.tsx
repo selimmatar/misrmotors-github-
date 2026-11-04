@@ -31,6 +31,7 @@ import { RequestPriceDialog } from "@/components/sales-quotation/request-price-d
 import { applyChosenCost, markupFrom, priceWithMarkup, sameItemName, supplierOffers, type SupplierOffer } from "@/lib/po-requests/apply-costs"
 import { stockShortfall } from "@/lib/quotation-shortfall"
 import { ChainLine } from "@/components/shared/chain-line"
+import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-field"
 
 interface QuotationItemInput {
   id?: number
@@ -161,6 +162,8 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   }
 
   const [approvalDocument, setApprovalDocument] = useState<File | null>(null)
+  // The new sales order's number: empty = the next automatic one
+  const [soManualNumber, setSoManualNumber] = useState("")
   const [saving, setSaving] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [uploadingDocument, setUploadingDocument] = useState(false)
@@ -760,6 +763,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
         body: JSON.stringify({
           quotation_id: quotation.id,
           approval_document_url: documentUrl,
+          manualNumber: manualNumberValue(soManualNumber),
         }),
       })
 
@@ -1036,6 +1040,9 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
               </>
             )}
           </div>
+
+          {/* The sales order number (optional) */}
+          <DocNumberField id="so-manual-number" value={soManualNumber} onChange={setSoManualNumber} disabled={saving} />
 
           {/* Approval document */}
           <div className="border rounded-lg p-4 space-y-2">

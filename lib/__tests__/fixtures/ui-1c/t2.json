@@ -69,7 +69,8 @@
           "handleRemoveItem"
         ],
         "ids": [
-          "id=\"category-name\""
+          "id=\"category-name\"",
+          "id=\"request-manual-number\""
         ],
         "fetch": 5,
         "iso": 0,

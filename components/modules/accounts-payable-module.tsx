@@ -37,6 +37,7 @@ import {
 import type { SupplierInvoice } from "@/lib/types"
 import { apDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
 import { SupplierCreditDialog, UseCreditButton } from "@/components/payment/customer-credit-dialog"
+import { ChangeInvoiceNumberDialog } from "@/components/payment/change-invoice-number-dialog"
 
 interface PaymentScheduleEntry {
   id: string
@@ -59,6 +60,7 @@ export function AccountsPayableModule() {
   const { supplierInvoices, suppliers, purchaseOrders, user, loadData } = useApp()
   const { t, language } = useI18n()
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
+  const [numberDialogInvoice, setNumberDialogInvoice] = useState<SupplierInvoice | null>(null)
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<SupplierInvoice | null>(null)
   const [creditDialogInvoice, setCreditDialogInvoice] = useState<SupplierInvoice | null>(null)
   const [paymentReceiptFile, setPaymentReceiptFile] = useState<File | null>(null)
@@ -736,6 +738,9 @@ export function AccountsPayableModule() {
         <Button size="sm" variant="outline" onClick={() => handleDownloadInvoicePDF(invoice)}>
           <FileText className="w-4 h-4 me-2" />
           {t("action.print-invoice")}
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setNumberDialogInvoice(invoice)}>
+          {t("docNumber.change")}
         </Button>
       </>
     )
@@ -1601,6 +1606,12 @@ export function AccountsPayableModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ChangeInvoiceNumberDialog
+        invoice={numberDialogInvoice}
+        onOpenChange={(open) => !open && setNumberDialogInvoice(null)}
+        onSaved={loadData}
+      />
     </div>
   )
 }

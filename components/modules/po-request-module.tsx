@@ -26,6 +26,7 @@ import { WaitingForYou, useWaiting } from "@/components/notifications/waiting-fo
 import type { WaitingPriceRequest } from "@/lib/notifications/waiting"
 import type { UserRole } from "@/lib/types"
 import { StatusBadge } from "@/components/erp/status-badge"
+import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-field"
 import { ErpTable, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { formatDate } from "@/lib/format"
@@ -100,6 +101,7 @@ export function PORequestModule({ userRole }: { userRole?: UserRole } = {}) {
   // Form state
   const [selectedSupplier, setSelectedSupplier] = useState<string>("")
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<string>("")
+  const [manualNumber, setManualNumber] = useState("")
   const [notes, setNotes] = useState<string>("")
   const [items, setItems] = useState<RequestItem[]>([
     { product_name: "", quantity: 1, unit: "", notes: "" },
@@ -234,6 +236,7 @@ export function PORequestModule({ userRole }: { userRole?: UserRole } = {}) {
         body: JSON.stringify({
           supplier_id: Number(selectedSupplier),
           expected_delivery_date: expectedDeliveryDate || null,
+          manualNumber: manualNumberValue(manualNumber),
           notes,
           items: validItems.map((item) => ({
             product_name: item.product_name,
@@ -256,7 +259,7 @@ export function PORequestModule({ userRole }: { userRole?: UserRole } = {}) {
         const error = await response.json()
         toast({
           title: t("error"),
-          description: error.message || (t("po-req.error-creating-request")),
+          description: error.error || error.message || (t("po-req.error-creating-request")),
           variant: "destructive",
         })
       }
@@ -273,6 +276,7 @@ export function PORequestModule({ userRole }: { userRole?: UserRole } = {}) {
   const resetForm = () => {
     setSelectedSupplier("")
     setExpectedDeliveryDate("")
+    setManualNumber("")
     setNotes("")
     setItems([{ product_name: "", quantity: 1, unit: "", notes: "" }])
   }
@@ -462,6 +466,7 @@ export function PORequestModule({ userRole }: { userRole?: UserRole } = {}) {
                 />
               </div>
             </div>
+            <DocNumberField id="request-manual-number" value={manualNumber} onChange={setManualNumber} />
 
             {/* Items Section - Custom Items Only */}
             <div className="space-y-4">

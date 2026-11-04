@@ -33,6 +33,7 @@ const PK: Record<string, string> = {
   balance_entries: "entry_id",
   po_requests: "request_id",
   po_request_items: "item_id",
+  sales_quotations: "id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
@@ -44,6 +45,10 @@ const UNIQUE: Record<string, string[][]> = {
   invoice_delivery_permits: [["permit_id"]],
   delivery_permits: [["permit_no"]],
   goods_receipts: [["grn_number"]],
+  sales_orders: [["so_number"]],
+  purchase_orders: [["po_number"]],
+  sales_quotations: [["quotation_number"]],
+  po_requests: [["request_number"]],
 }
 const STAMP_CREATED_AT = new Set(["product_returns", "accounts_receivable", "return_items"])
 
@@ -242,6 +247,10 @@ class Query {
     const rows = this.db.tables[this.table]
     const matched = rows.filter((r) => this.filters.every((f) => f(r)))
     if (this.op === "update") {
+      for (const r of matched) {
+        const unique = this.violates(rows.filter((o) => !matched.includes(o)), { ...r, ...this.payload })
+        if (unique) return { data: null, error: { code: "23505", message: `duplicate key (${unique})` } }
+      }
       matched.forEach((r) => Object.assign(r, this.payload))
       return this.wantRows ? this.shape(matched) : { data: null, error: null }
     }

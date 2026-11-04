@@ -33,6 +33,7 @@ import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { Money } from "@/components/erp/money"
+import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-field"
 import { openPendingWindow } from "@/lib/print/pending-window"
 import { isNewQuotationWorkflow, isMaintenanceLive } from "@/lib/workflow-switch"
 import { readItemRows } from "@/lib/excel/read-item-rows"
@@ -55,6 +56,9 @@ interface SalesQuotationModuleProps {
   userRole: UserRole
   embedded?: boolean
 }
+
+/** A typed quotation number the server refused; its message is shown as is. */
+class NumberError extends Error {}
 
 export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotationModuleProps) {
   const { t, language } = useI18n()
@@ -116,6 +120,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
   // Additional fields from sales order form
   const [quotationRequestNumber, setQuotationRequestNumber] = useState("")
+  const [manualNumber, setManualNumber] = useState("")
   const [departmentName, setDepartmentName] = useState("")
   const [receiverName, setReceiverName] = useState("")
   const [deliveryDate, setDeliveryDate] = useState("")
@@ -227,6 +232,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     setItems([])
     setNotes("")
     setQuotationRequestNumber("")
+    setManualNumber("")
     setDepartmentName("")
     setReceiverName("")
     setDeliveryDate("")
@@ -821,7 +827,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   // so asking a supplier for a price first and then printing does not make a second quotation
   const savedFormRef = useRef<string | null>(null)
   const formSnapshot = () =>
-    JSON.stringify([customerName, customerPhone, customerEmail, selectedCustomerId, items, notes, discountType, discountValue, paymentType, paymentDetails, validityDays, deliveryDate, deliveryAddress])
+    JSON.stringify([customerName, customerPhone, customerEmail, selectedCustomerId, items, notes, discountType, discountValue, paymentType, paymentDetails, validityDays, deliveryDate, deliveryAddress, manualNumber])
 
   // Saves the quotation (VAT always applied at 14%) and returns it with its lines for a price request
   const saveQuotation = async () => {
@@ -839,6 +845,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
         customer_phone: customerPhone,
         customer_email: customerEmail,
         quotation_request_number: quotationRequestNumber,
+        manualNumber: manualNumberValue(manualNumber),
         department_name: departmentName,
         receiver_name: receiverName,
         delivery_date: deliveryDate || null,
@@ -876,6 +883,9 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     })
 
     if (!response.ok) {
+      const failure = await response.json().catch(() => ({}))
+      // A typed number that is taken or not allowed: show the server's plain message
+      if (failure?.code === "NUMBER_TAKEN" || failure?.code === "BAD_NUMBER") throw new NumberError(failure.error)
       throw new Error("Failed to save quotation")
     }
 
@@ -938,7 +948,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       return { quotation: { id: quotation.id, quotation_number: String(quotation.quotation_number ?? "") }, lines }
     } catch (error) {
       console.error("Save quotation error:", error)
-      alert(t("sq.failed-to-save-quotation-please"))
+      alert(error instanceof NumberError ? error.message : t("sq.failed-to-save-quotation-please"))
       return null
     } finally {
       setIsCreatingQuotation(false)
@@ -963,7 +973,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     } catch (error) {
       pdfWindow.close()
       console.error("Save quotation error:", error)
-      alert(t("sq.failed-to-save-quotation-please"))
+      alert(error instanceof NumberError ? error.message : t("sq.failed-to-save-quotation-please"))
     } finally {
       setIsCreatingQuotation(false)
     }
@@ -1126,6 +1136,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                 onChange={(e) => setValidityDays(Number(e.target.value))}
               />
             </div>
+            <DocNumberField id="sq-manual-number" value={manualNumber} onChange={setManualNumber} />
             <div className="space-y-2">
               <Label htmlFor="quotationRequestNumber">{t("sq.quotation-request-number")}</Label>
               <Input

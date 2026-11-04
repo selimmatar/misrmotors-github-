@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
+import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
 
 export const dynamic = "force-dynamic"
 
@@ -135,6 +136,14 @@ export async function PUT(request: Request) {
       dbUpdates.remaining_installment_months = updates.remainingInstallmentMonths
     if (updates.monthlyAmount !== undefined) dbUpdates.monthly_amount = updates.monthlyAmount
     if (updates.paymentStartDate !== undefined) dbUpdates.payment_start_date = updates.paymentStartDate
+    // The supplier invoice is created automatically when its PO is approved (APINV-<po number>); the person can
+    // replace that number with the supplier's own one afterwards (lib/doc-number.ts).
+    if (updates.invoiceNumber !== undefined) {
+      const manual = cleanManualNumber(updates.invoiceNumber)
+      if (!manual.ok) return badNumberResponse(manual.error)
+      if (!manual.value) return badNumberResponse("Type the supplier invoice number.")
+      dbUpdates.invoice_number = manual.value
+    }
 
     if (Object.keys(dbUpdates).length === 0) {
       return NextResponse.json({ error: "Nothing to update" }, { status: 400 })
@@ -147,6 +156,7 @@ export async function PUT(request: Request) {
       .select()
       .single()
 
+    if (error && isUniqueViolation(error) && dbUpdates.invoice_number) return numberTakenResponse(dbUpdates.invoice_number)
     if (error) {
       console.error("AP PUT: Error", error.message)
       throw error

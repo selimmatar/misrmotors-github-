@@ -3,6 +3,7 @@ import { parsePositiveId } from "@/lib/parse-id"
 import { isPoAutoApprove } from "@/lib/workflow-switch"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
+import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES, buildApprovalRevert } from "@/lib/po-status"
 import { checkPoOverOrder, linesWithIncreasedQuantity } from "@/lib/po-over-order"
 import {
@@ -270,6 +271,9 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { items, allow_over_order, credits, ...orderData } = body
     const allowOverOrder = allow_over_order === true
+    // Optional PO number typed by the person (lib/doc-number.ts); empty = the next automatic number.
+    const manual = cleanManualNumber(body.manualNumber)
+    if (!manual.ok) return badNumberResponse(manual.error)
 
     const parsedCredits = parseCreditSelections(credits)
     if (!parsedCredits.ok) return NextResponse.json(parsedCredits.result.body, { status: parsedCredits.result.status })
@@ -334,16 +338,16 @@ export async function POST(request: Request) {
       }
     }
 
-    // Always generate the PO number server-side (obfuscated, atomic) — never trust a
-    // client-supplied value, which was previously a predictable, guessable counter.
-    const { data: generatedPoNumber, error: poNumberError } = await supabase.rpc("generate_po_number")
-    if (poNumberError || !generatedPoNumber) {
-      console.error("Purchase Orders POST: Failed to generate PO number", poNumberError)
-      return NextResponse.json({ error: "Failed to generate purchase order number" }, { status: 500 })
+    // The automatic PO number is generated server-side (obfuscated, atomic); po_number / poNumber sent by the client
+    // are ignored. Only `manualNumber`, a number the person typed on purpose, replaces it.
+    const nextPoNumber = async () => {
+      const { data: generatedPoNumber, error: poNumberError } = await supabase.rpc("generate_po_number")
+      if (poNumberError) console.error("Purchase Orders POST: Failed to generate PO number", poNumberError)
+      return poNumberError ? null : ((generatedPoNumber as string) || null)
     }
 
-    const orderWithCurrency = {
-      po_number: generatedPoNumber as string,
+    const orderWithCurrency: Record<string, any> = {
+      po_number: null,
       supplier_id: orderData.supplier_id || orderData.supplierId,
       order_date: orderData.order_date || orderData.orderDate,
       delivery_date: orderData.delivery_date || orderData.deliveryDate,
@@ -405,11 +409,19 @@ export async function POST(request: Request) {
     }
 
 
-    const { data: order, error: orderError } = await supabase
-      .from("purchase_orders")
-      .insert(orderWithCurrency)
-      .select()
-      .single()
+    const created = await insertWithNumber<any>(manual.value, nextPoNumber, (poNumber) =>
+      supabase
+        .from("purchase_orders")
+        .insert({ ...orderWithCurrency, po_number: poNumber })
+        .select()
+        .single(),
+    )
+    if (!created.ok && created.reason === "no_number") {
+      return NextResponse.json({ error: "Failed to generate purchase order number" }, { status: 500 })
+    }
+    if (!created.ok && created.reason === "taken") return numberTakenResponse(created.number)
+    const order: any = created.ok ? created.data : null
+    const orderError = created.ok ? null : created.reason === "error" ? created.error : null
 
     if (orderError) {
       console.error("Purchase Orders POST: Error inserting order", orderError)

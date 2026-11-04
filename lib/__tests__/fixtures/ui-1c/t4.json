@@ -15,6 +15,7 @@
           "handleRejectReceipt"
         ],
         "ids": [
+          "id=\"grn-manual-number\"",
           "id=\"rejection-reason\"",
           "id={`issue-${line.productId}`}",
           "id={`notes-${line.productId}`}",

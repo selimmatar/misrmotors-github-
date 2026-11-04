@@ -14,6 +14,7 @@ import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { Money } from "@/components/erp/money"
+import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-field"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   CheckCircle,
@@ -88,6 +89,7 @@ export function GoodsReceiptModule() {
   // One idempotency key per receipt dialog: a double click / retry of the same submission can never create a second GRN
   const receiveKeyRef = useRef<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [grnManualNumber, setGrnManualNumber] = useState("")
   const [showAddWarehouseDialog, setShowAddWarehouseDialog] = useState(false) // Declared variable
 
   const warehouses = warehousesFromContext
@@ -205,6 +207,7 @@ export function GoodsReceiptModule() {
     setReceiptLines(lines)
     setPhotoNotes({})
     setSelectedPOForPhotos(po)
+    setGrnManualNumber("")
     setShowPhotoModal(true)
   }
 
@@ -344,6 +347,7 @@ export function GoodsReceiptModule() {
           receivedBy: user?.id,
           notes: selectedPOForPhotos.notes || '',
           idempotencyKey: receiveKeyRef.current,
+          manualNumber: manualNumberValue(grnManualNumber),
           lines: allLines,
         }),
       })
@@ -903,6 +907,8 @@ export function GoodsReceiptModule() {
                 </div>
               )}
             </div>
+
+            <DocNumberField id="grn-manual-number" value={grnManualNumber} onChange={setGrnManualNumber} disabled={isSubmitting} />
 
             <div className="flex flex-wrap justify-end gap-2 pt-4 border-t">
               <Button

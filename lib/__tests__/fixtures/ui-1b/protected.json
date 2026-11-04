@@ -32,6 +32,7 @@
     ],
     "ids": [
       "id=\"dp-delivery-address\"",
+      "id=\"dp-manual-number\"",
       "id=\"dp-recipient-name\"",
       "id=\"dp-recipient-phone\"",
       "name=\"${inputName}\"",
@@ -76,6 +77,7 @@
       "id=\"orderDate\"",
       "id=\"quotationRequestNumber\"",
       "id=\"receiverName\"",
+      "id=\"sq-manual-number\"",
       "id=\"validityDays\"",
       "id={`markup-${item.id}`}",
       "id={`price-${item.id}`}",
@@ -205,6 +207,7 @@
       "handleWidgetClick"
     ],
     "ids": [
+      "id=\"ar-manual-number\"",
       "id={`vat-invoice-upload-${invoice.id}`}"
     ],
     "fetch": 13,

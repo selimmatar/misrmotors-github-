@@ -7,6 +7,7 @@ import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, ret
 import { checkSoStock, loadAvailability } from "@/lib/stock-hold"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
 import { reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
+import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
 
 export const dynamic = "force-dynamic"
 
@@ -260,12 +261,19 @@ export async function POST(request: Request) {
 
     // Always generate the SO number server-side (obfuscated, atomic) — never trust a
     // client-supplied value, which was previously a predictable, guessable counter.
-    const { data: generatedSoNumber, error: soNumberError } = await supabase.rpc("generate_so_number")
-    if (soNumberError || !generatedSoNumber) {
-      console.error("Sales Orders POST: Failed to generate SO number", soNumberError)
-      return Response.json({ error: "Failed to generate sales order number" }, { status: 500 })
+    // The one exception is `manualNumber`: a number the person typed on purpose (lib/doc-number.ts).
+    const manual = cleanManualNumber(body.manualNumber)
+    if (!manual.ok) return badNumberResponse(manual.error)
+    const newSoNumber = async () => {
+      const { data: generatedSoNumber, error: soNumberError } = await supabase.rpc("generate_so_number")
+      if (soNumberError || !generatedSoNumber) {
+        console.error("Sales Orders POST: Failed to generate SO number", soNumberError)
+        return null
+      }
+      return generatedSoNumber as string
     }
-    const soNumber = generatedSoNumber as string
+    const soNumber = manual.value ?? (await newSoNumber())
+    if (!soNumber) return Response.json({ error: "Failed to generate sales order number" }, { status: 500 })
     void soNumberCamel
     void soNumberSnake
     const finalCustomerId = customerId || customer_id
@@ -414,7 +422,16 @@ export async function POST(request: Request) {
     }
 
 
-    const { data: order, error: orderError } = await supabase.from("sales_orders").insert(orderData).select().single()
+    let { data: order, error: orderError } = await supabase.from("sales_orders").insert(orderData).select().single()
+    if (orderError && isUniqueViolation(orderError)) {
+      if (manual.value) return numberTakenResponse(manual.value)
+      // A typed number happened to match the next automatic one: take the following number.
+      const retryNumber = await newSoNumber()
+      if (retryNumber) {
+        orderData.so_number = retryNumber
+        ;({ data: order, error: orderError } = await supabase.from("sales_orders").insert(orderData).select().single())
+      }
+    }
 
     if (orderError) {
       console.error("Sales Orders POST: Error inserting order", orderError)

@@ -650,6 +650,13 @@ const translations: Record<Language, Record<string, string>> = {
     "payment.schedule-preview": "Schedule Preview",
     "common.note": "Note",
     "common.optional": "Optional",
+    "docNumber.label": "Number (optional)",
+    "docNumber.placeholder": "Leave empty for the next automatic number",
+    "docNumber.hint": "Type a number only if you need a specific one. It must not be used already.",
+    "docNumber.change": "Change number",
+    "docNumber.new": "New number",
+    "docNumber.save": "Save number",
+    "docNumber.saved": "Number changed",
     months: "months",
 
     // Discount
@@ -3677,6 +3684,13 @@ const translations: Record<Language, Record<string, string>> = {
     "payment.schedule-preview": "معاينة الجدول",
     "common.note": "ملاحظة",
     "common.optional": "اختياري",
+    "docNumber.label": "الرقم (اختياري)",
+    "docNumber.placeholder": "اتركه فارغاً لاستخدام الرقم التلقائي التالي",
+    "docNumber.hint": "اكتب رقماً فقط إذا كنت تحتاج رقماً معيناً. يجب ألا يكون مستخدماً من قبل.",
+    "docNumber.change": "تغيير الرقم",
+    "docNumber.new": "الرقم الجديد",
+    "docNumber.save": "حفظ الرقم",
+    "docNumber.saved": "تم تغيير الرقم",
     months: "أشهر",
 
     // Discount (Arabic)

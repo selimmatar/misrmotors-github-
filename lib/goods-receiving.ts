@@ -24,6 +24,7 @@
 // Every write is checked. If a step fails, the steps already done by THIS request are undone (best effort) and the
 // request fails (never HTTP 200). If an undo itself fails the response carries partialFailure: true and the
 // idempotency row is parked as `partial_failure` so the key cannot be replayed into a second stock increase.
+import { cleanManualNumber, numberTakenMessage } from "./doc-number"
 
 type Db = any // supabase-js client (or a test double)
 
@@ -118,6 +119,8 @@ interface Parsed {
   receivedBy: number | null
   notes: string | null
   idempotencyKey: string | null
+  /** GRN number typed by the person (lib/doc-number.ts); null = the next automatic number */
+  manualNumber: string | null
 }
 
 function parseRequest(body: any): Parsed {
@@ -134,6 +137,8 @@ function parseRequest(body: any): Parsed {
     return reject(400, "idempotencyKey must be 8-100 characters (letters, digits, _ . : -)")
   }
   const idempotencyKey: string = body.idempotencyKey
+  const manual = cleanManualNumber(body.manualNumber)
+  if (!manual.ok) return reject(400, manual.error, { code: "BAD_NUMBER" })
   const lines: ParsedLine[] = body.lines.map((raw: any, index: number): ParsedLine => {
     const n = index + 1
     if (!raw || typeof raw !== "object") return reject(400, `Line ${n}: invalid line`)
@@ -167,6 +172,7 @@ function parseRequest(body: any): Parsed {
     receivedBy: parsePositiveInt(body.receivedBy),
     notes: body.notes ? String(body.notes).slice(0, 4000) : null,
     idempotencyKey,
+    manualNumber: manual.value,
   }
 }
 
@@ -530,6 +536,15 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
   const receiptStatus = hasDiscrepancy ? "discrepancy" : poFullyReceived ? "complete" : "partial"
   const newPoStatus = !poFullyReceived ? "partially_received" : hasDiscrepancy ? "received_with_issues" : "received"
 
+  // ---- 3b. A typed GRN number must be free (checked before anything is written) ---------------------------
+  if (parsed.manualNumber) {
+    const taken = must(
+      await db.from("goods_receipts").select("receipt_id").eq("grn_number", parsed.manualNumber).limit(1),
+      "check goods receipt number",
+    ) as any[]
+    if (taken.length > 0) reject(409, numberTakenMessage(parsed.manualNumber), { code: "NUMBER_TAKEN" })
+  }
+
   // ---- 4. Stock items typed in by hand get a catalogue product (existing behaviour) -------------------
   const productByItem = new Map<number, number>()
   for (const item of items) if (item.product_id) productByItem.set(item.po_item_id, item.product_id)
@@ -557,24 +572,27 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
   }
 
   // ---- 5. GRN header + lines -----------------------------------------------------------------------------
-  const grnSeq = await db.rpc("get_next_grn_number")
-  const grnNumber = `GRN-${new Date().getFullYear()}-${String(grnSeq?.data || 1).padStart(4, "0")}`
-  const receipt = must(
-    await db
-      .from("goods_receipts")
-      .insert({
-        grn_number: grnNumber,
-        po_id: poId,
-        po_number: po.po_number,
-        receipt_date: today(),
-        status: receiptStatus,
-        received_by: parsed.receivedBy,
-        notes: parsed.notes,
-      })
-      .select()
-      .single(),
-    "create goods receipt",
-  )
+  const header = {
+    po_id: poId,
+    po_number: po.po_number,
+    receipt_date: today(),
+    status: receiptStatus,
+    received_by: parsed.receivedBy,
+    notes: parsed.notes,
+  }
+  let receipt: any = null
+  // An automatic number that clashes with a typed one moves on to the next sequence value (up to 3 tries).
+  for (let attempt = 0; attempt < 3 && !receipt; attempt++) {
+    let grnNumber = parsed.manualNumber
+    if (!grnNumber) {
+      const grnSeq = await db.rpc("get_next_grn_number")
+      grnNumber = `GRN-${new Date().getFullYear()}-${String(grnSeq?.data || 1).padStart(4, "0")}`
+    }
+    const inserted = await db.from("goods_receipts").insert({ grn_number: grnNumber, ...header }).select().single()
+    if (!inserted.error) receipt = inserted.data
+    else if (inserted.error.code !== "23505" || parsed.manualNumber) must(inserted, "create goods receipt")
+  }
+  if (!receipt) throw new Error("create goods receipt: could not find a free GRN number")
   onReceipt(receipt.receipt_id)
   undo.push({
     what: `goods receipt ${receipt.receipt_id}`,
@@ -673,7 +691,7 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
     status: 200,
     body: {
       success: true,
-      receipt: { id: String(receipt.receipt_id), grnNumber: receipt.grn_number || grnNumber, status: receiptStatus },
+      receipt: { id: String(receipt.receipt_id), grnNumber: receipt.grn_number, status: receiptStatus },
       poStatus: newPoStatus,
       remaining: items.map((i) => ({ poItemId: i.po_item_id, ordered: Number(i.quantity) || 0, received: after.get(i.po_item_id) || 0 })),
     },

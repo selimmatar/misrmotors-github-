@@ -15,6 +15,7 @@ import { WaitingForYou, useWaiting } from "@/components/notifications/waiting-fo
 import type { PendingPo, SoNeedingPo } from "@/lib/notifications/waiting"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { Money } from "@/components/erp/money"
+import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-field"
 import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { formatDate, formatMoney } from "@/lib/format"
@@ -106,6 +107,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   const [rejectionReason, setRejectionReason] = useState("")
   const [viewDetailsOrder, setViewDetailsOrder] = useState<any | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [poManualNumber, setPoManualNumber] = useState("")
   const [formData, setFormData] = useState({
     supplierId: "",
     dueDate: new Date().toISOString().split("T")[0],
@@ -782,6 +784,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       const newOrder: PurchaseOrder = {
         id: Date.now().toString(),
         poNumber: `PO-2025-${String(purchaseOrders.length + 1).padStart(3, "0")}`,
+        manualNumber: manualNumberValue(poManualNumber),
         supplierId: formData.supplierId,
         ...(selectedPoRequestId && { poRequestId: selectedPoRequestId }),
         orderDate: new Date().toISOString().split("T")[0],
@@ -1165,6 +1168,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
   // Helper to reset the form
   const resetForm = () => {
+    setPoManualNumber("")
     setFormData({
       supplierId: "",
       dueDate: new Date().toISOString().split("T")[0],
@@ -1521,6 +1525,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 />
                 <p className="text-xs text-muted-foreground mt-1">{t("po.expiry-date-hint")}</p>
               </div>
+              <DocNumberField id="po-manual-number" value={poManualNumber} onChange={setPoManualNumber} />
               <div>
                 <label className="text-sm font-medium">{t("field.currency")}</label>
                 <select

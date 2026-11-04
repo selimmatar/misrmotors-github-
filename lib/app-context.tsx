@@ -582,6 +582,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Supplier credits to deduct (reserved by the server on this PO, applied to its supplier invoice on approval)
           ...(options?.credits && options.credits.length > 0 && { credits: options.credits }),
           po_number: order.poNumber,
+          manualNumber: order.manualNumber,
           supplier_id: order.supplierId,
           supplier_name: order.supplierName,
           ...(order.poRequestId && { po_request_id: order.poRequestId }),
@@ -676,6 +677,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           so_number: order.soNumber,
+          manualNumber: order.manualNumber,
           customer_id: order.customerId,
           customer_name: order.customerName,
           order_date: order.orderDate,
