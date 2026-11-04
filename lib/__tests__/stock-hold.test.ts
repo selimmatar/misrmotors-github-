@@ -357,3 +357,68 @@ test("GET /api/inventory: onHold and available are additive fields; existing fie
   assert.equal(rows.find((r) => r.inventoryId === 4).available, 3)
   assert.ok("warehouseId" in row1 && "unitCost" in row1 && "isReturned" in row1)
 })
+
+// ---------------------------------------------------------------------------------------------------------
+// Outsourced items stored in a warehouse, on hold for their order (owner, 2026-11-04)
+// ---------------------------------------------------------------------------------------------------------
+const held = (inventory_id: number, warehouse_id: number, quantity: number, so_number = "SO-T-1", outsourced_name = "Outsourced thing"): Row => ({
+  inventory_id, product_id: null, warehouse_id, quantity, is_returned: false, is_outsourced: true, unit_cost: 0, reorder_point: 0, outsourced_name, so_number,
+})
+
+test("outsourced: APPROVE takes the stored item out of its warehouse row; stock lines as before", async () => {
+  const db = dpDb({ inventory: [inv(1, 7, 1, 20), inv(2, 8, 2, 4), held(9, 3, 2, "SO-T-1", "  outsourced THING ")] })
+  const r = await approve(1)
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(qty(db, 9), 0)
+  assert.equal(qty(db, 1), 14)
+  const audit = db.tables.inventory_transactions
+  assert.ok(audit.every((a) => a.product_id), "no audit row without a product")
+})
+
+test("outsourced: only the item stored for THIS order is taken; never more than stored; nothing stored = approval still works", async () => {
+  const db = dpDb({ inventory: [inv(1, 7, 1, 20), inv(2, 8, 2, 4), held(9, 3, 1), held(10, 3, 5, "SO-T-2")] })
+  const r = await approve(1)
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(qty(db, 9), 0, "1 stored, 2 delivered: takes the 1, never negative")
+  assert.equal(qty(db, 10), 5, "another order's item is untouched")
+  const none = dpDb({ inventory: [inv(1, 7, 1, 20), inv(2, 8, 2, 4)] })
+  assert.equal((await approve(1)).status, 200)
+  void none
+})
+
+test("outsourced only permit: taken once, a repeated APPROVE does not take again", async () => {
+  const db = dpDb({
+    delivery_permit_items: [pitem(3, 1, null, 2, null)],
+    inventory: [held(9, 3, 5)],
+  })
+  assert.equal((await approve(1)).status, 200)
+  assert.equal(qty(db, 9), 3)
+  db.tables.delivery_permits[0].status = "SUBMITTED_SIGNED"
+  assert.equal((await approve(1)).status, 200)
+  assert.equal(qty(db, 9), 3)
+})
+
+test("outsourced: undo puts the stored item back when the permit status update fails", async () => {
+  const db = dpDb({ inventory: [inv(1, 7, 1, 20), inv(2, 8, 2, 4), held(9, 3, 2)] })
+  db.failOn["delivery_permits:update"] = "db down"
+  assert.notEqual((await approve(1)).status, 200)
+  assert.equal(qty(db, 9), 2)
+  assert.equal(qty(db, 1), 20)
+})
+
+test("GET /api/inventory: a stored outsourced item is on hold for its open order (with the customer), free once the order is cancelled", async () => {
+  mk({
+    customers: [{ customer_id: 5, customer_name: "Al Kasrawy" }],
+    sales_orders: [so(1, "accountant_approved"), so(2, "cancelled")],
+    inventory: [held(9, 3, 4, "SO-T-1"), held(10, 3, 2, "SO-T-2"), held(11, 3, 1, "")],
+  })
+  const rows = (await (await inventoryRoute.GET()).json()) as any[]
+  const r9 = rows.find((r) => r.inventoryId === 9)
+  assert.equal(r9.onHold, 4)
+  assert.equal(r9.available, 0)
+  assert.deepEqual(r9.heldFor, { soNumber: "SO-T-1", customerName: "Al Kasrawy" })
+  const r10 = rows.find((r) => r.inventoryId === 10)
+  assert.equal(r10.onHold, 0)
+  assert.equal(r10.heldFor, null)
+  assert.equal(rows.find((r) => r.inventoryId === 11).onHold, 0)
+})

@@ -243,7 +243,7 @@ test("R20. the server ignores client-supplied product / SO link / item type and 
   assert.equal(line.source_so_item_id, 28)
   assert.equal(line.outsourced_name, "Service X")
   assert.equal(line.quantity_ordered, 5)
-  assert.equal(invQty(db), 5, "an outsourced line never touches inventory")
+  assert.equal(invQty(db), 5, "an outsourced line never touches the stock rows")
   assert.equal(db.tables.inventory_batches.length, 0)
 })
 
@@ -884,4 +884,41 @@ test("G1. GET /api/goods-receipts succeeds for outsourced lines (product_id NULL
   assert.deepEqual(forPo.body.map((r: any) => r.id).sort(), ["1", "3"])
   assert.equal(forPo.body.find((r: any) => r.id === "1").lines[0].productId, undefined)
   void asStrings
+})
+
+// Owner, 2026-11-04: an outsourced item received into a chosen warehouse is stored there, on hold for its sales order,
+// at cost 0 so it never counts in the stock value. Without a warehouse it is not stored (goes straight to the customer).
+test("R60. outsourced line with a warehouse: stored on hold for its SO at cost 0", async () => {
+  const db = baseDb({ suppliers: [{ supplier_id: 1, supplier_name: "Supp A" }] })
+  db.tables.sales_order_items.find((i) => i.so_item_id === 28)!.outsourced_name = "Gearbox for car"
+  const res = await post(rec(1, [outs(5, { warehouseId: 2 })]))
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  const held = db.tables.inventory.filter((i) => i.is_outsourced)
+  assert.equal(held.length, 1)
+  assert.equal(held[0].warehouse_id, 2)
+  assert.equal(held[0].quantity, 5)
+  assert.equal(held[0].unit_cost, 0, "never counts in the stock value")
+  assert.equal(held[0].product_id, null)
+  assert.equal(held[0].is_returned, false)
+  assert.equal(held[0].so_number, "SO-T-3")
+  assert.equal(held[0].outsourced_name, "Gearbox for car", "named like the SO line, so the delivery permit finds it")
+  assert.equal(held[0].supplier_name, "Supp A")
+  assert.equal(db.tables.goods_receipt_lines[0].warehouse_id, 2)
+  assert.equal(db.tables.inventory_batches.length, 0)
+})
+
+test("R61. outsourced line without a warehouse is not stored", async () => {
+  const db = baseDb()
+  const res = await post(rec(1, [outs(5)]))
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(db.tables.inventory.filter((i) => i.is_outsourced).length, 0)
+  assert.equal(db.tables.goods_receipt_lines[0].warehouse_id, null)
+})
+
+test("R62. a failed receipt removes the stored outsourced row again", async () => {
+  const db = baseDb()
+  db.failOn["purchase_orders:update"] = "boom"
+  const res = await post(rec(1, [outs(5, { warehouseId: 2 })]))
+  assert.notEqual(res.status, 200)
+  assert.equal(db.tables.inventory.filter((i) => i.is_outsourced).length, 0)
 })

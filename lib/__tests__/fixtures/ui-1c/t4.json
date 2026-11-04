@@ -20,6 +20,7 @@
           "id={`issue-${line.productId}`}",
           "id={`notes-${line.productId}`}",
           "id={`outsourced-qty-${globalIndex}`}",
+          "id={`outsourced-wh-${globalIndex}`}",
           "id={`photo-notes-${line.productId}`}",
           "id={`qty-${line.productId}`}"
         ],
