@@ -44,3 +44,14 @@ export function orderDisplayStatus(order: { status: string; items?: readonly any
   const all = states.length > 0 && states.length === (order.items || []).length && states.every((s) => s === "delivered")
   return some && !all ? "partially_delivered" : order.status
 }
+
+/**
+ * The delivery label on the Sales Orders screen. It used to say "partially delivered" as soon as the order had any
+ * delivery permit, even a draft or pending one (owner, 2026-11-04). Now it reads what was actually delivered: each
+ * line's deliveryState counts only approved/delivered permits (lib/delivery-status.ts).
+ */
+export function soDeliveryLabel(order: { status: string; items?: readonly any[]; deliveryPermits?: readonly unknown[] }): "not_delivered" | "partially_delivered" | "delivered" {
+  if (order.status === "delivered") return "delivered"
+  const some = (order.items || []).some((i) => i.deliveryState === "delivered" || i.deliveryState === "partial")
+  return some ? "partially_delivered" : "not_delivered"
+}

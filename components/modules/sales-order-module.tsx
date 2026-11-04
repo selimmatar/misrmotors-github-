@@ -17,6 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAppContext } from "@/lib/app-context"
 import { getSalesInsights } from "@/lib/ai-utils"
+import { soDeliveryLabel } from "@/lib/customer-order-status"
 import { getCitiesForCountry } from "@/lib/countries-data"
 import { ReportGenerator } from "@/components/report-generator"
 import { isMaintenanceLive } from "@/lib/workflow-switch"
@@ -370,15 +371,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     return customers.find((c) => c.id === customerId)?.name || "Unknown"
   }
 
-  // Overall delivery-fulfillment status for a Sales Order, always one of exactly
-  // three states: no delivery permits created yet, some created but the order
-  // isn't fully delivered, or every delivery permit has been fully processed.
-  const getSODeliveryStatus = (order: any): "not_delivered" | "partially_delivered" | "delivered" => {
-  const deliveryPermits = order.deliveryPermits || order.delivery_permits || []
-  if (deliveryPermits.length === 0) return "not_delivered"
-  if (order.status === "delivered") return "delivered"
-  return "partially_delivered"
-  }
+  // Overall delivery status for a Sales Order, from what was actually delivered (a draft or pending DP is not a
+  // delivery): see soDeliveryLabel in lib/customer-order-status.ts.
+  const getSODeliveryStatus = (order: any) => soDeliveryLabel(order)
 
   // Opens the Missing Items report (items not yet delivered to the customer). The route reads live data on each
   // request, so re-clicking always reflects the current state of the order.

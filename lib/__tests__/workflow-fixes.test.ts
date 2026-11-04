@@ -231,6 +231,25 @@ test("customer order shows partially delivered when only some lines are delivere
   assert.equal(orderDisplayStatus({ status: "approved", items: [] }), "approved")
 })
 
+test("sales order screen: a draft or pending DP is not a delivery", async () => {
+  const { soDeliveryLabel } = await import("../customer-order-status")
+  const items = (...s: (string | null)[]) => s.map((deliveryState) => ({ deliveryState }))
+  const dp = [{ permitId: 1 }]
+  // A DP exists but nothing on it has been approved/delivered yet (owner, 2026-11-04: SO-2026-742962).
+  assert.equal(soDeliveryLabel({ status: "accountant_approved", items: items("not_delivered", "not_delivered"), deliveryPermits: dp }), "not_delivered")
+  assert.equal(soDeliveryLabel({ status: "accountant_approved", items: items("not_delivered") }), "not_delivered")
+  assert.equal(soDeliveryLabel({ status: "ready_for_delivery", items: items("delivered", "not_delivered"), deliveryPermits: dp }), "partially_delivered")
+  assert.equal(soDeliveryLabel({ status: "ready_for_delivery", items: items("partial"), deliveryPermits: dp }), "partially_delivered")
+  assert.equal(soDeliveryLabel({ status: "delivered", items: items("delivered"), deliveryPermits: dp }), "delivered")
+})
+
+test("sales order screen shows the delivery label from delivered lines, not from DP count", () => {
+  const fs = require("node:fs") as typeof import("node:fs")
+  const src = fs.readFileSync(require("node:path").join(process.env.REPO_ROOT || process.cwd(), "components/modules/sales-order-module.tsx"), "utf8")
+  assert.match(src, /soDeliveryLabel\(/)
+  assert.doesNotMatch(src, /if \(deliveryPermits\.length === 0\) return "not_delivered"/)
+})
+
 test("customers tab uses every invoice per order and the derived order status", () => {
   const fs = require("node:fs") as typeof import("node:fs")
   const src = fs.readFileSync(require("node:path").join(process.env.REPO_ROOT || "", "components/modules/customer-module.tsx"), "utf8")
