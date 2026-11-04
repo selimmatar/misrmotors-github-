@@ -8,6 +8,7 @@ import { planAllocation } from "@/lib/dp-allocate"
 import { isAllowedDpTransition } from "@/lib/dp-transitions"
 import { abortDeduction, deductStockForPermit, finishDeduction, type StockMove } from "@/lib/dp-stock"
 import { actorOr } from "@/lib/auth/actor"
+import { badNumberResponse, cleanManualNumber, highestSerial, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 
 export const dynamic = "force-dynamic"
 
@@ -228,6 +229,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     const { salesOrderId, customerId, recipientName, recipientPhone, deliveryAddress, items, createdBy } = body
+    // Optional DP number typed by the person (lib/doc-number.ts); empty = the next automatic number.
+    const manual = cleanManualNumber(body.manualNumber)
+    if (!manual.ok) return badNumberResponse(manual.error)
 
     // Server-side quantity cap: per stock line (product), quantity on non-rejected permits may not exceed the SO line.
     // Outsourced lines are not capped (the browser does not cap them and their names are not a reliable key).
@@ -279,47 +283,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate permit number
+    // Permit number: the typed one, or highest DP-<year>-<digits> + 1. Typed numbers in another form ("OLD-55") are
+    // not counted; a clash with a typed number moves on to the next free number (insertWithNumber).
     const year = new Date().getFullYear()
-    const { data: lastPermit, error: lastPermitError } = await withRetry(() =>
-      supabase
-        .from("delivery_permits")
-        .select("permit_no")
-        .like("permit_no", `DP-${year}-%`)
-        .order("permit_no", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    )
-
-    if (lastPermitError) {
-      console.error("Error fetching last permit:", lastPermitError)
+    let skip = 0
+    const nextPermitNumber = async () => {
+      const { data: yearPermits, error: lastPermitError } = await withRetry(() =>
+        supabase.from("delivery_permits").select("permit_no").like("permit_no", `DP-${year}-%`),
+      )
+      if (lastPermitError) console.error("Error fetching last permit:", lastPermitError)
+      const next = highestSerial((yearPermits || []).map((p: any) => p.permit_no), "DP", year) + 1 + skip++
+      return `DP-${year}-${String(next).padStart(4, "0")}`
     }
-
-    let nextNumber = 1
-    if (lastPermit?.permit_no) {
-      const lastNum = Number.parseInt(lastPermit.permit_no.split("-").pop() || "0")
-      nextNumber = lastNum + 1
-    }
-    const permitNo = `DP-${year}-${String(nextNumber).padStart(4, "0")}`
-
 
     // Create the permit
-    const { data: permit, error: permitError } = await withRetry(() =>
-      supabase
-        .from("delivery_permits")
-        .insert({
-          permit_no: permitNo,
-          sales_order_id: Number.parseInt(salesOrderId),
-          customer_id: customerId ? Number.parseInt(customerId) : null,
-          recipient_name: recipientName,
-          recipient_phone: recipientPhone,
-          delivery_address: deliveryAddress,
-          status: "DRAFT",
-          created_by: null, // Set to null instead of user ID to avoid FK constraint
-        })
-        .select()
-        .single(),
+    const created = await insertWithNumber<any>(manual.value, nextPermitNumber, (permitNo) =>
+      withRetry(() =>
+        supabase
+          .from("delivery_permits")
+          .insert({
+            permit_no: permitNo,
+            sales_order_id: Number.parseInt(salesOrderId),
+            customer_id: customerId ? Number.parseInt(customerId) : null,
+            recipient_name: recipientName,
+            recipient_phone: recipientPhone,
+            delivery_address: deliveryAddress,
+            status: "DRAFT",
+            created_by: null, // Set to null instead of user ID to avoid FK constraint
+          })
+          .select()
+          .single(),
+      ),
     )
+    if (!created.ok && created.reason === "taken") return numberTakenResponse(created.number)
+    const permit: any = created.ok ? created.data : null
+    const permitError = created.ok ? null : created.reason === "error" ? created.error : { message: "Could not number the permit" }
+    const permitNo = created.ok ? created.number : ""
 
     if (permitError) {
       console.error("Delivery Permit creation error:", permitError.message)

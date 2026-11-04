@@ -2,6 +2,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getConvertedSo, getQuotationLockReason } from "@/lib/sales-quotations/converted"
 import { type NextRequest, NextResponse } from "next/server"
+import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 
 export const dynamic = "force-dynamic"
 
@@ -45,15 +46,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    // Generate quotation number
-    const { data: numberData, error: numberError } = await supabase.rpc("generate_quotation_number")
-
-    if (numberError) {
-      console.error("Generate quotation number error:", numberError)
-      return NextResponse.json({ error: "Failed to generate quotation number" }, { status: 500 })
+    // The quotation number: the one the person typed (lib/doc-number.ts), or the next automatic one.
+    const manual = cleanManualNumber(body.manualNumber)
+    if (!manual.ok) return badNumberResponse(manual.error)
+    const nextQuotationNumber = async () => {
+      const { data: numberData, error: numberError } = await supabase.rpc("generate_quotation_number")
+      if (numberError) console.error("Generate quotation number error:", numberError)
+      return numberError ? null : ((numberData as string) || null)
     }
-
-    const quotationNumber = numberData as string
 
     // Calculate totals - use provided values if available
     const subtotal = providedSubtotal || items.reduce((sum: number, item: any) => sum + item.quantity * item.unit_price, 0)
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     const total = net_total || subtotal + tax
 
     // Insert quotation
-    const { data: quotation, error: quotationError } = await supabase
+    const created = await insertWithNumber<any>(manual.value, nextQuotationNumber, (quotationNumber) => supabase
       .from("sales_quotations")
       .insert({
         quotation_number: quotationNumber,
@@ -97,7 +97,13 @@ export async function POST(request: NextRequest) {
         created_by: "current_user", // TODO: Get from auth
       })
       .select()
-      .single()
+      .single())
+    if (!created.ok && created.reason === "no_number") {
+      return NextResponse.json({ error: "Failed to generate quotation number" }, { status: 500 })
+    }
+    if (!created.ok && created.reason === "taken") return numberTakenResponse(created.number)
+    const quotation: any = created.ok ? created.data : null
+    const quotationError = created.ok ? null : created.reason === "error" ? created.error : null
 
     if (quotationError) {
       console.error("Insert quotation error:", quotationError)

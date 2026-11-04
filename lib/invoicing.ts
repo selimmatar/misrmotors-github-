@@ -12,6 +12,7 @@
 // LOWEST invoice_id survives; a higher-id invoice rolls itself back. See createSoInvoice/createDpInvoices.
 
 import { resolveInstallmentCount } from "./payment-type"
+import { numberTakenMessage } from "./doc-number"
 import {
   DELIVERED_PERMIT_STATUSES,
   invoiceablePool,
@@ -537,7 +538,20 @@ async function nextInvoiceNumber(db: Db, attemptOffset: number) {
 
 // Insert an accounts_receivable row, retrying with the next number if another request took the same one
 // (UNIQUE(invoice_number) is the guard).
-async function insertInvoice(db: Db, row: Record<string, any>) {
+// A typed invoice number (lib/doc-number.ts) is used as is: if it is taken, nothing is created and the person is told.
+class InvoiceNumberTaken extends Error {
+  constructor(readonly number: string) {
+    super(numberTakenMessage(number))
+  }
+}
+
+async function insertInvoice(db: Db, row: Record<string, any>, manualNumber: string | null = null) {
+  if (manualNumber) {
+    const { data, error } = await db.from("accounts_receivable").insert({ ...row, invoice_number: manualNumber }).select().single()
+    if (error?.code === "23505") throw new InvoiceNumberTaken(manualNumber)
+    if (error) throw new Error(`create invoice: ${error.message || error}`)
+    return data
+  }
   let lastError: any = null
   for (let attempt = 0; attempt < MAX_NUMBER_ATTEMPTS; attempt++) {
     const invoiceNumber = await nextInvoiceNumber(db, attempt)
@@ -624,7 +638,7 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
 }
 
 // ---- Workflow B: delivery permit(s) -> invoice ------------------------------------------------------------
-export async function createDpInvoices(db: Db, permitIds: number[]): Promise<WorkflowResult> {
+export async function createDpInvoices(db: Db, permitIds: number[], manualNumber: string | null = null): Promise<WorkflowResult> {
   try {
     const permits = must(
       await db.from("delivery_permits").select("permit_id, permit_no, sales_order_id, status").in("permit_id", permitIds),
@@ -719,7 +733,7 @@ export async function createDpInvoices(db: Db, permitIds: number[]): Promise<Wor
       installment_months: resolveInstallmentCount(paymentType, firstState.so.installments) || 1,
       months_paid: 0,
       status: "pending",
-    })
+    }, manualNumber)
 
     const { error: linksError } = await db
       .from("invoice_delivery_permits")
@@ -766,6 +780,7 @@ export async function createDpInvoices(db: Db, permitIds: number[]): Promise<Wor
       },
     }
   } catch (error: any) {
+    if (error instanceof InvoiceNumberTaken) return failure(409, error.message, { code: "NUMBER_TAKEN" })
     console.error("Error creating invoice from DPs:", error)
     return failure(500, error?.message || "Failed to create invoice")
   }

@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 
@@ -78,6 +79,9 @@ export async function POST(request: NextRequest) {
     const supabase = createAdminClient()
     const body = await request.json()
     const { supplier_id, expected_delivery_date, notes, items } = body
+    // Optional request number typed by the person (lib/doc-number.ts); empty = the next automatic number.
+    const manual = cleanManualNumber(body.manualNumber)
+    if (!manual.ok) return badNumberResponse(manual.error)
 
     if (!supplier_id || !items || items.length === 0) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -107,18 +111,14 @@ export async function POST(request: NextRequest) {
       soId = orders?.[0]?.so_id ?? null
     }
 
-    // Generate PO Request number
-    const { data: numberData, error: numberError } = await supabase.rpc("generate_po_request_number")
-
-    if (numberError) {
-      console.error("Generate PO request number error:", numberError)
-      return NextResponse.json({ error: "Failed to generate request number" }, { status: 500 })
+    const nextRequestNumber = async () => {
+      const { data: numberData, error: numberError } = await supabase.rpc("generate_po_request_number")
+      if (numberError) console.error("Generate PO request number error:", numberError)
+      return numberError ? null : ((numberData as string) || null)
     }
 
-    const requestNumber = numberData as string
-
     // Create PO Request
-    const { data: poRequest, error: requestError } = await supabase
+    const created = await insertWithNumber<any>(manual.value, nextRequestNumber, (requestNumber) => supabase
       .from("po_requests")
       .insert({
         request_number: requestNumber,
@@ -130,7 +130,13 @@ export async function POST(request: NextRequest) {
         ...(salesQuotationId !== null ? { sales_quotation_id: salesQuotationId, so_id: soId } : {}),
       })
       .select()
-      .single()
+      .single())
+    if (!created.ok && created.reason === "no_number") {
+      return NextResponse.json({ error: "Failed to generate request number" }, { status: 500 })
+    }
+    if (!created.ok && created.reason === "taken") return numberTakenResponse(created.number)
+    const poRequest: any = created.ok ? created.data : null
+    const requestError = created.ok ? null : created.reason === "error" ? created.error : null
 
     if (requestError) {
       console.error("Create PO request error:", requestError)

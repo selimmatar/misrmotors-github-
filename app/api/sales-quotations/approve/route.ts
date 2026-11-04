@@ -5,6 +5,7 @@ import { loadAvailability } from "@/lib/stock-hold"
 import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
 import { runApprovalSideEffects } from "@/lib/sales-orders/on-approved"
 import { type NextRequest, NextResponse } from "next/server"
+import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 
 // Converts a quotation into a sales order using the values STORED on the quotation.
 // Edits made in the "Approve & Convert" dialog must be saved first (PATCH
@@ -14,6 +15,9 @@ export async function POST(request: NextRequest) {
     const supabase = createAdminClient()
     const body = await request.json()
     const { quotation_id, approval_document_url } = body
+    // Optional sales order number typed by the person (lib/doc-number.ts); empty = the next automatic number.
+    const manual = cleanManualNumber(body.manualNumber)
+    if (!manual.ok) return badNumberResponse(manual.error)
 
     if (!quotation_id) {
       return NextResponse.json({ error: "Quotation ID is required" }, { status: 400 })
@@ -94,15 +98,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate SO number
-    const { data: soNumberData, error: soNumberError } = await supabase.rpc("generate_so_number")
-    
-    if (soNumberError) {
-      console.error("Generate SO number error:", soNumberError)
-      return NextResponse.json({ error: "Failed to generate sales order number" }, { status: 500 })
+    const nextSoNumber = async () => {
+      const { data: soNumberData, error: soNumberError } = await supabase.rpc("generate_so_number")
+      if (soNumberError) console.error("Generate SO number error:", soNumberError)
+      return soNumberError ? null : ((soNumberData as string) || null)
     }
-
-    const soNumber = soNumberData as string
 
     // Payment details come from what is stored on the quotation.
     const paymentDetails = quotation.payment_details || {}
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
     const soStatus = newWorkflow ? "accountant_approved" : "pending_accountant"
 
     // Create a new sales order from the approved quotation
-    const { data: salesOrder, error: soError } = await supabase
+    const created = await insertWithNumber<any>(manual.value, nextSoNumber, (soNumber) => supabase
       .from("sales_orders")
       .insert({
         so_number: soNumber,
@@ -155,7 +155,13 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .select()
-      .single()
+      .single())
+    if (!created.ok && created.reason === "no_number") {
+      return NextResponse.json({ error: "Failed to generate sales order number" }, { status: 500 })
+    }
+    if (!created.ok && created.reason === "taken") return numberTakenResponse(created.number)
+    const salesOrder: any = created.ok ? created.data : null
+    const soError = created.ok ? null : created.reason === "error" ? created.error : null
 
     if (soError || !salesOrder) {
       console.error("Create sales order error:", soError)

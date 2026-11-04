@@ -33,6 +33,7 @@
           "handleRemoveItem"
         ],
         "ids": [
+          "id=\"po-manual-number\"",
           "id=\"po-request-select\"",
           "id=\"poVatEnabled\"",
           "name=\"poSource\"",

@@ -78,6 +78,7 @@ import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { StatusBadge } from "@/components/erp/status-badge"
+import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-field"
 import { ApprovalSteps } from "@/components/erp/approval-steps"
 import { Money } from "@/components/erp/money"
 import { formatDate, formatMoney } from "@/lib/format"
@@ -324,6 +325,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     recipientPhone: "",
     deliveryAddress: "",
   })
+  const [dpManualNumber, setDpManualNumber] = useState("")
 
   const handleQRUploadComplete = (data: { qrNumber: string; fileUrl: string }) => {
     setQrData(data)
@@ -1536,6 +1538,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         console.error("DP fetch failed with status:", response.status)
         setExistingDPsForSO([])
         setSelectedSOForDP(orderForDp)
+        setDpManualNumber("")
         setCreateDPDialogOpen(true)
         return
       }
@@ -1559,6 +1562,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     }
 
     setSelectedSOForDP(orderForDp)
+    setDpManualNumber("")
     setCreateDPDialogOpen(true)
   }
 
@@ -1655,6 +1659,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           recipientPhone: dpDeliveryInfo.recipientPhone,
           deliveryAddress: dpDeliveryInfo.deliveryAddress,
           items: newDpItems,
+          manualNumber: manualNumberValue(dpManualNumber),
           createdBy: "1", // Replace with actual user ID
         }),
       })
@@ -2133,6 +2138,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 <p className="mt-1 text-xs">{t("so.create-a-purchase-order-and")}</p>
               </div>
             )}
+            <DocNumberField id="dp-manual-number" value={dpManualNumber} onChange={setDpManualNumber} />
             <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
               <h3 className="font-semibold text-sm">{t("so.delivery-information")}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

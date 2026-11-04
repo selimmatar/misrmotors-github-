@@ -85,6 +85,8 @@ export interface PaymentDetails {
 export interface PurchaseOrder {
   id: string
   poNumber: string
+  /** A number the person typed instead of the automatic one (sent as manualNumber; lib/doc-number.ts) */
+  manualNumber?: string
   supplierId: string
   /** the price request (PR) this PO answers, if any */
   poRequestId?: string
@@ -276,6 +278,8 @@ export interface Customer {
 export interface SalesOrder {
   id: string
   soNumber: string
+  /** A number the person typed instead of the automatic one (sent as manualNumber; lib/doc-number.ts) */
+  manualNumber?: string
   customerId: string
   orderDate: string
   deliveryDate: string

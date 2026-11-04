@@ -14,6 +14,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { readItemRows } from "@/lib/excel/read-item-rows"
 import type { Supplier } from "@/lib/types"
+import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-field"
 
 // "Request price from supplier" on a saved quotation: makes a price request (PR) for one supplier, linked to the
 // quotation, with the lines that need a supplier price (outsourced lines, and the missing part of stock lines).
@@ -58,6 +59,7 @@ export function RequestPriceDialog({
   const { t } = useI18n()
   const [supplierId, setSupplierId] = useState("")
   const [notes, setNotes] = useState("")
+  const [manualNumber, setManualNumber] = useState("")
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [rows, setRows] = useState<Row[]>(() =>
@@ -120,6 +122,7 @@ export function RequestPriceDialog({
           supplier_id: Number(supplierId),
           sales_quotation_id: quotation.id,
           notes: notes || null,
+          manualNumber: manualNumberValue(manualNumber),
           items: chosen.map((r) => ({
             product_id: r.productId,
             product_name: r.productName.trim(),
@@ -197,6 +200,7 @@ export function RequestPriceDialog({
               </div>
             ))}
           </div>
+          <DocNumberField id="rpd-manual-number" value={manualNumber} onChange={setManualNumber} />
           <div className="space-y-1">
             <Label>{t("notes")}</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("po-req.supplier-notes-placeholder")} />
