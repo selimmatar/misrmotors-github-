@@ -2,7 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { brandsByItem, codesByItem, pricesByItem, sameRequestNumber, sortRequestItems, type ReadRow } from "@/lib/po-requests/read-prices"
-import { askGemini, geminiFailure, geminiJson } from "@/lib/gemini-models"
+import { readPhoto } from "@/lib/photo-reader"
+import { failed } from "@/lib/photo-read-failure"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -34,6 +35,9 @@ Newer sheets also have a "الماركة" (brand) box in each row. Copy the bran
 Newer sheets also have a "الكود" (code) box in each row where the supplier writes the part or item code. Copy it character by character as written (letters, digits, dashes), or null when it is empty or you cannot read every character. Never put a code into "written" or "brand".
 Also copy the request number printed on the sheet (رقم الطلب), or null if you cannot see it.`
 
+// The same shape in words, for the backup reader (Groq), which is told the shape in the prompt.
+const SHEET_SHAPE = `{"request_number": string or null, "rows": [{"row": number, "written": string or null, "brand": string or null, "code": string or null}]}`
+
 // POST { request_id, image (base64, no data: prefix), media_type } -> { prices: {item_id: price}, brands: {item_id: brand}, codes: {item_id: code}, read, total, request_number_matches }
 // Nothing is saved here: the prices go back to the "Quote received" screen for a person to check and save.
 export async function POST(request: NextRequest) {
@@ -48,9 +52,8 @@ export async function POST(request: NextRequest) {
     if (image.length > MAX_IMAGE_BASE64) {
       return NextResponse.json({ error: "The photo is too large" }, { status: 413 })
     }
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: "Reading photos is not set up yet (GEMINI_API_KEY is missing)" }, { status: 503 })
+    if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+      return NextResponse.json({ error: "Reading photos is not set up yet (GEMINI_API_KEY or GROQ_API_KEY is missing)" }, { status: 503 })
     }
 
     const supabase = createAdminClient()
@@ -64,40 +67,18 @@ export async function POST(request: NextRequest) {
     if (!items.length) return NextResponse.json({ error: "This price request has no items" }, { status: 400 })
 
     const rowList = items.map((item, i) => `${i + 1}. ${item.product_name} (× ${item.quantity}${item.unit ? " " + item.unit : ""})`).join("\n")
-    const payload = JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM }] },
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { inline_data: { mime_type: mediaType, data: image } },
-            { text: `Price request ${pr.request_number}. Rows on the sheet:\n${rowList}` },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0,
-        responseMimeType: "application/json",
-        responseSchema: SHEET_SCHEMA,
-        // Copying digits out of boxes needs little reasoning; low thinking answers much faster.
-        thinkingConfig: { thinkingLevel: "low" },
-      },
+    const answer = await readPhoto<{ request_number: string | null; rows: ReadRow[] }>({
+      tag: "read-prices",
+      system: SYSTEM,
+      text: `Price request ${pr.request_number}. Rows on the sheet:\n${rowList}`,
+      image,
+      mediaType,
+      geminiSchema: SHEET_SCHEMA,
+      jsonShape: SHEET_SHAPE,
     })
-    const response = await askGemini(payload, apiKey, "read-prices")
+    if (!answer.ok) return failed(answer.kind, answer.why, "type the prices")
 
-    if (!response.ok) {
-      const { reason, why } = await geminiFailure(response)
-      console.error("read-prices: Gemini error", response.status, reason)
-      if (reason === "API_KEY_INVALID" || response.status === 401 || response.status === 403) {
-        return NextResponse.json({ error: "Reading photos is not set up correctly (the API key was rejected)", detail: why }, { status: 503 })
-      }
-      if (response.status === 429) {
-        return NextResponse.json({ error: "The free photo-reading limit was reached. Please try again later or type the prices.", detail: why }, { status: 429 })
-      }
-      return NextResponse.json({ error: "The photo could not be read. Please try again or type the prices.", detail: why }, { status: 502 })
-    }
-
-    const sheet = await geminiJson<{ request_number: string | null; rows: ReadRow[] }>(response)
+    const sheet = answer.data
     if (!sheet || !Array.isArray(sheet.rows)) {
       return NextResponse.json({ error: "The photo could not be read. Please type the prices." }, { status: 422 })
     }
@@ -113,11 +94,8 @@ export async function POST(request: NextRequest) {
       request_number_matches: sheet.request_number ? sameRequestNumber(sheet.request_number, pr.request_number) : null,
     })
   } catch (error) {
-    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-      console.error("read-prices: Google did not answer in time")
-      return NextResponse.json({ error: "Google took too long to read the photo. Please try again or type the prices.", detail: "timeout" }, { status: 504 })
-    }
     console.error("read-prices error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
+

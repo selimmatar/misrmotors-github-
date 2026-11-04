@@ -13,6 +13,7 @@ import { fill } from "@/lib/i18n-format"
 import { readItemRows } from "@/lib/excel/read-item-rows"
 import { sameItemName } from "@/lib/po-requests/apply-costs"
 import { nameWithBrand, sortRequestItems } from "@/lib/po-requests/read-prices"
+import { photoNumbers, postPhotoRead } from "@/lib/photo-retry"
 import { shrinkPhoto } from "@/lib/shrink-photo"
 import { photosToPdf } from "@/lib/photos-to-pdf"
 
@@ -66,18 +67,14 @@ export function QuoteReceivedDialog({
     setPhotoNote("")
     const readIds = new Set<number>()
     let wrongRequest = false
-    let failed = 0
+    const failedPhotos: number[] = []
     let lastError = ""
-    for (const one of picked) {
+    for (const [index, one] of picked.entries()) {
       try {
         const photo = await shrinkPhoto(one)
         // kept for Save even when reading it fails
         setPhotos((prev) => [...prev, { file: photo.file, width: photo.width, height: photo.height }])
-        const response = await fetch("/api/po-requests/read-prices", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ request_id: request.request_id, image: photo.base64, media_type: "image/jpeg" }),
-        })
+        const response = await postPhotoRead("/api/po-requests/read-prices", { request_id: request.request_id, image: photo.base64, media_type: "image/jpeg" })
         const body = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(body.error || t("chain.photo-read-failed"))
         const read: Record<string, number> = body.prices || {}
@@ -86,19 +83,19 @@ export function QuoteReceivedDialog({
         setBoxes((prev) => ({ brand: { ...prev.brand, ...(body.brands || {}) }, code: { ...prev.code, ...(body.codes || {}) } }))
         if (body.request_number_matches === false) wrongRequest = true
       } catch (error) {
-        failed += 1
+        failedPhotos.push(index)
         lastError = error instanceof Error ? error.message : t("chain.photo-read-failed")
       }
     }
     setFromPhoto((prev) => new Set([...prev, ...readIds]))
     setReading(false)
-    if (failed === picked.length) {
+    if (failedPhotos.length === picked.length) {
       alert(lastError)
       return
     }
     const notes = [fill(t("chain.photo-read-result"), { read: String(readIds.size), total: String(items.length) })]
     if (wrongRequest) notes.unshift(fill(t("chain.photo-wrong-request"), { number: request.request_number }))
-    if (failed > 0) notes.push(fill(t("chain.photos-failed"), { failed: String(failed), total: String(picked.length) }))
+    if (failedPhotos.length > 0) notes.push(fill(t("chain.photos-failed-which"), { which: photoNumbers(failedPhotos), total: String(picked.length) }))
     setPhotoNote(notes.join(" "))
   }
 

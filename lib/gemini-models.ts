@@ -17,10 +17,12 @@ const FIRST_MODEL_MS = 28_000
 
 // Sends one generateContent request (payload is the JSON body), trying the backup model when the main one is busy
 // or slow. Returns the last answer (ok or not); throws a TimeoutError when no model answered in time.
-export async function askGemini(payload: string, apiKey: string, tag: string): Promise<Response> {
+// totalMs: shorter when another reader (lib/photo-reader.ts, Groq) gets the rest of the time.
+export async function askGemini(payload: string, apiKey: string, tag: string, totalMs = GOOGLE_TOTAL_MS): Promise<Response> {
   const base = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com"
   const models = geminiModels()
-  const deadline = Date.now() + GOOGLE_TOTAL_MS
+  const deadline = Date.now() + totalMs
+  const firstModelMs = Math.min(FIRST_MODEL_MS, Math.round(totalMs * 0.56))
   let response: Response | null = null
   for (const [i, model] of models.entries()) {
     const last = i === models.length - 1
@@ -29,7 +31,7 @@ export async function askGemini(payload: string, apiKey: string, tag: string): P
       response = await fetch(`${base}/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-        signal: AbortSignal.timeout(last ? left : Math.min(FIRST_MODEL_MS, left)),
+        signal: AbortSignal.timeout(last ? left : Math.min(firstModelMs, left)),
         body: payload,
       })
     } catch (error) {

@@ -282,7 +282,7 @@ test("PR print: a unit-price box on every row, rows in item-id order, numbers-on
 test("Quote received screen: photo button fills and highlights prices, same row order, saves only on Save", () => {
   const dialog = src("components/po-requests/quote-received-dialog.tsx")
   assert.match(dialog, /const items = sortRequestItems\(request\.po_request_items \|\| \[\]\)/)
-  assert.match(dialog, /fetch\("\/api\/po-requests\/read-prices"/)
+  assert.match(dialog, /postPhotoRead\("\/api\/po-requests\/read-prices"/)
   assert.match(dialog, /accept="image\/\*"/)
   assert.match(dialog, /t\("chain\.photo-check"\)/)
   const handlePhoto = dialog.slice(dialog.indexOf("const handlePhoto"), dialog.indexOf("const handleExcel"))
@@ -374,7 +374,7 @@ test("item photo button sits next to Import Excel and adds rows like the Excel i
   const excel = sq.indexOf('{t("sq.import-excel")}')
   const photo = sq.indexOf('t("sq.read-items-photo")')
   assert.ok(excel > 0 && photo > excel && photo - excel < 800, "photo button right after Import Excel")
-  assert.match(sq, /fetch\("\/api\/quotations\/read-items"/)
+  assert.match(sq, /postPhotoRead\("\/api\/quotations\/read-items"/)
   assert.match(sq, /shrinkPhoto\(one, "items-photo"\)/)
   assert.match(sq, /setItems\(\(prev\) => \[\.\.\.prev, \.\.\.newItems\]\)/, "added to the rows already there")
   assert.match(sq, /p\.productName\?\.toLowerCase\(\) === name \|\| p\.sku\?\.toLowerCase\(\) === name/)
@@ -480,11 +480,15 @@ test("several photos at once: the price request and the quotation pickers take m
   const dialog = src("components/po-requests/quote-received-dialog.tsx")
   assert.match(dialog, /<input ref=\{photoRef\} type="file" accept="image\/\*" multiple /)
   assert.match(dialog, /const picked = Array\.from\(event\.target\.files \|\| \[\]\)/)
-  assert.match(dialog, /for \(const one of picked\)/)
+  assert.match(dialog, /for \(const \[index, one\] of picked\.entries\(\)\)/)
+  assert.match(dialog, /postPhotoRead\("\/api\/po-requests\/read-prices"/)
+  assert.match(dialog, /chain\.photos-failed-which/)
   const sq = src("components/modules/sales-quotation-module.tsx")
   assert.match(sq, /<input ref=\{photoInputRef\} type="file" accept="image\/\*" multiple /)
   const handle = sq.slice(sq.indexOf("const handleItemsPhoto"), sq.indexOf("const addItem"))
-  assert.match(handle, /for \(const one of picked\)/)
+  assert.match(handle, /for \(const \[index, one\] of picked\.entries\(\)\)/)
+  assert.match(handle, /postPhotoRead\("\/api\/quotations\/read-items"/)
+  assert.match(handle, /chain\.photos-failed-which/)
   assert.match(handle, /read\.push\(\.\.\.body\.items\)/)
 })
 
@@ -511,5 +515,117 @@ test("all photos are saved: several become one PDF with one page per photo; one 
   assert.match(dialog, /if \(photos\.length === 1\) return photos\[0\]\.file/)
   assert.match(dialog, /new File\(\[photosToPdf\(pages\)\], `price-photos-\$\{Date\.now\(\)\}\.pdf`, \{ type: "application\/pdf" \}\)/)
   const handlePhoto = dialog.slice(dialog.indexOf("const handlePhoto"), dialog.indexOf("const handleExcel"))
-  assert.ok(handlePhoto.indexOf("setPhotos(") < handlePhoto.indexOf('fetch("/api/po-requests/read-prices"'), "a photo is kept even when reading it fails")
+  assert.ok(handlePhoto.indexOf("setPhotos(") < handlePhoto.indexOf('postPhotoRead("/api/po-requests/read-prices"'), "a photo is kept even when reading it fails")
+})
+
+// ------------------------------------------------------------- the free backup reader (Groq), owner 2026-11-04
+const groqAnswer = (sheet: unknown) => ({ status: 200, json: { choices: [{ message: { role: "assistant", content: JSON.stringify(sheet) } }] } })
+const isGroq = (s: Seen) => s.url === "/openai/v1/chat/completions"
+async function withGroq(fn: () => Promise<void>, geminiKey = true) {
+  const before = { url: process.env.GROQ_BASE_URL, key: process.env.GROQ_API_KEY, gem: process.env.GEMINI_API_KEY }
+  process.env.GROQ_BASE_URL = process.env.GEMINI_BASE_URL
+  process.env.GROQ_API_KEY = "groq-test-key"
+  if (!geminiKey) delete process.env.GEMINI_API_KEY
+  try {
+    await fn()
+  } finally {
+    for (const [name, value] of [["GROQ_BASE_URL", before.url], ["GROQ_API_KEY", before.key], ["GEMINI_API_KEY", before.gem]] as const) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+}
+const limit = { status: 429, json: { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota" } } }
+
+test("backup reader: when Google is over its free limit, Groq reads the photo (same rows, photo sent as an image)", async () => {
+  mkDb()
+  await withReader(
+    (s) => (isGroq(s) ? groqAnswer({ request_number: "PR-2026-005", rows: [{ row: 2, written: "75", brand: "SKF", code: null }] }) : limit),
+    async (seen) =>
+      withGroq(async () => {
+        const r = await read(PHOTO)
+        assert.equal(r.status, 200, JSON.stringify(r.body))
+        assert.deepEqual(r.body.prices, { 12: 75 })
+        assert.deepEqual(r.body.brands, { 12: "SKF" })
+        const groq = seen.filter(isGroq)
+        assert.equal(groq.length, 1)
+        assert.equal(groq[0].headers.authorization, "Bearer groq-test-key")
+        assert.equal(groq[0].body.model, "qwen/qwen3.8-27b")
+        assert.deepEqual(groq[0].body.response_format, { type: "json_object" })
+        assert.equal(groq[0].body.temperature, 0)
+        const user = groq[0].body.messages.find((m: any) => m.role === "user")
+        assert.match(user.content[0].text, /1\. Valve \(× 4\)/)
+        assert.deepEqual(user.content[1], { type: "image_url", image_url: { url: "data:image/jpeg;base64,aGVsbG8=" } })
+      }),
+  )
+})
+
+test("backup reader: works alone with only a Groq key; thinking text and code fences around the answer are ignored", async () => {
+  mkDb()
+  await withReader(
+    (s) => ({ status: 200, json: { choices: [{ message: { content: "<think>looking</think>\n```json\n" + JSON.stringify({ request_number: null, rows: [{ row: 1, written: "10" }] }) + "\n```" } }] } }),
+    async (seen) =>
+      withGroq(async () => {
+        const r = await read(PHOTO)
+        assert.equal(r.status, 200, JSON.stringify(r.body))
+        assert.deepEqual(r.body.prices, { 11: 10 })
+        assert.ok(seen.every(isGroq), "Google not called without its key")
+      }, false),
+  )
+})
+
+test("backup reader: both at their limit gives the limit message; a rejected Groq key says so; nothing set up says which keys", async () => {
+  mkDb()
+  await withReader(() => limit, async () =>
+    withGroq(async () => {
+      const r = await read(PHOTO)
+      assert.equal(r.status, 429)
+      assert.match(r.body.error, /free photo-reading limit/)
+    }),
+  )
+  await withReader((s) => (isGroq(s) ? { status: 401, json: { error: { message: "Invalid API Key" } } } : limit), async () =>
+    withGroq(async () => assert.equal((await read(PHOTO)).status, 429)),
+  )
+  await withReader(() => ({ status: 401, json: { error: { message: "Invalid API Key" } } }), async () =>
+    withGroq(async () => assert.equal((await read(PHOTO)).status, 503), false),
+  )
+  const before = process.env.GEMINI_API_KEY
+  delete process.env.GEMINI_API_KEY
+  const r = await read(PHOTO)
+  if (before !== undefined) process.env.GEMINI_API_KEY = before
+  assert.equal(r.status, 503)
+  assert.match(r.body.error, /GEMINI_API_KEY or GROQ_API_KEY/)
+})
+
+test("backup reader: the item photo on quotations also falls back to Groq", async () => {
+  await withReader(
+    (s) => (isGroq(s) ? groqAnswer({ rows: [{ name: "Filter", quantity: "٣" }] }) : limit),
+    async () =>
+      withGroq(async () => {
+        const r = await call(itemsRoute.POST as any, "POST", { image: "aGVsbG8=", media_type: "image/jpeg" })
+        assert.equal(r.status, 200, JSON.stringify(r.body))
+        assert.deepEqual(r.body.items, [{ productName: "Filter", quantity: 3 }])
+      }),
+  )
+})
+
+test("several photos: a busy answer waits and tries that photo once more; photo numbers are listed", async () => {
+  const { postPhotoRead, photoNumbers, RETRY_STATUSES } = await import("../photo-retry")
+  assert.deepEqual(RETRY_STATUSES, [429, 502, 503, 504])
+  const realFetch = globalThis.fetch
+  const answers = [429, 200]
+  const waits: number[] = []
+  globalThis.fetch = (async () => new Response("{}", { status: answers.shift() ?? 500 })) as any
+  try {
+    const r = await postPhotoRead("/x", { a: 1 }, async (ms) => void waits.push(ms))
+    assert.equal(r.status, 200)
+    assert.deepEqual(waits, [15000])
+    answers.push(400)
+    assert.equal((await postPhotoRead("/x", {}, async (ms) => void waits.push(ms))).status, 400, "bad photo: no retry")
+    assert.equal(waits.length, 1)
+  } finally {
+    globalThis.fetch = realFetch
+  }
+  assert.equal(photoNumbers([1]), "2")
+  assert.equal(photoNumbers([0, 2]), "1, 3")
 })

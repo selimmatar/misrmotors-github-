@@ -85,7 +85,7 @@
       "id={`quantity-${item.id}`}",
       "id={`supplier-${item.id}`}"
     ],
-    "fetch": 6,
+    "fetch": 5,
     "iso": 7,
     "t": 0,
     "onClick": 11
