@@ -39,6 +39,7 @@ import { isNewQuotationWorkflow, isMaintenanceLive } from "@/lib/workflow-switch
 import { readItemRows } from "@/lib/excel/read-item-rows"
 import { shrinkPhoto } from "@/lib/shrink-photo"
 import type { PhotoItem } from "@/lib/quotations/read-items"
+import { photoNumbers, postPhotoRead } from "@/lib/photo-retry"
 import { StockShortfallNote } from "@/components/sales-quotation/stock-shortfall-note"
 
 interface QuotationItem {
@@ -672,26 +673,22 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     try {
       const read: PhotoItem[] = []
       let skipped = 0
-      let failed = 0
+      const failedPhotos: number[] = []
       let lastError = ""
-      for (const one of picked) {
+      for (const [index, one] of picked.entries()) {
         try {
           const photo = await shrinkPhoto(one, "items-photo")
-          const response = await fetch("/api/quotations/read-items", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: photo.base64, media_type: "image/jpeg" }),
-          })
+          const response = await postPhotoRead("/api/quotations/read-items", { image: photo.base64, media_type: "image/jpeg" })
           const body = await response.json().catch(() => ({}))
           if (!response.ok) throw new Error(body.error || t("sq.items-photo-failed"))
           if (Array.isArray(body.items)) read.push(...body.items)
           skipped += Number(body.skipped) || 0
         } catch (error) {
-          failed += 1
+          failedPhotos.push(index)
           lastError = error instanceof Error ? error.message : t("sq.items-photo-failed")
         }
       }
-      if (failed === picked.length) throw new Error(lastError)
+      if (failedPhotos.length === picked.length) throw new Error(lastError)
       if (read.length === 0) {
         alert(t("sq.items-photo-none"))
         return
@@ -725,7 +722,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       const matchedCount = newItems.filter((i) => i.item_type === "inventory").length
       let note = fill(t("sq.items-photo-result"), { count: newItems.length, matched: matchedCount, outsourced: newItems.length - matchedCount })
       if (skipped > 0) note += " " + fill(t("sq.items-photo-skipped"), { skipped })
-      if (failed > 0) note += " " + fill(t("chain.photos-failed"), { failed, total: picked.length })
+      if (failedPhotos.length > 0) note += " " + fill(t("chain.photos-failed-which"), { which: photoNumbers(failedPhotos), total: picked.length })
       alert(note)
     } catch (error) {
       alert(error instanceof Error ? error.message : t("sq.items-photo-failed"))
