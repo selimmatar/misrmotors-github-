@@ -7,7 +7,7 @@ import { join } from "node:path"
 import {
   addMonths, daysBetween, ageBucket, arDueSchedule, apDueSchedule, summarizeDue, unpaidBetween, todayYmd,
 } from "../due-schedule"
-import { lateRows, buildStatement, cashForecast, toSheetRows } from "../reports/finance"
+import { lateRows, buildStatement, cashForecast, toSheetRows, purchaseOrdersForSo } from "../reports/finance"
 
 const ROOT = process.env.REPO_ROOT || join(__dirname, "../../../..")
 const src = (file: string) => readFileSync(join(ROOT, file), "utf8")
@@ -215,4 +215,32 @@ test("shared lists are re-read when a screen is opened and when coming back to t
   assert.match(ctx, /focusThrottleInterval: 30000/)
   assert.match(ctx, /refreshLists/)
   assert.match(src("components/dashboard/dashboard.tsx"), /refreshLists\(\)/)
+})
+
+// ------------------------------------------------- POs bought for one sales order (owner request, 2026-11-08)
+test("POs for a sales order: linked by a line or by its price request; rejected left out; paid and owed from the bill", () => {
+  const purchaseOrders = [
+    { id: "1", poNumber: "PO-1", supplierId: "10", orderDate: "2026-11-02", status: "approved", total: 228,
+      items: [{ sourceSoId: "5", quantity: 2, unitPrice: 50, total: 100 }, { sourceSoId: "6", quantity: 1, unitPrice: 100, total: 100 }] },
+    { id: "2", poNumber: "PO-2", supplierId: "11", orderDate: "2026-11-01", status: "pending", total: 57, poRequestSoId: "5",
+      items: [{ sourceSoId: "", quantity: 1, unitPrice: 50, total: 50 }] },
+    { id: "3", poNumber: "PO-3", supplierId: "10", orderDate: "2026-11-03", status: "rejected", total: 99, items: [{ sourceSoId: "5", total: 99 }] },
+    { id: "4", poNumber: "PO-4", supplierId: "10", orderDate: "2026-11-03", status: "approved", total: 10, items: [{ sourceSoId: "6", total: 10 }] },
+  ]
+  const supplierInvoices = [{ poId: "1", amount: 228, paidAmount: 100, status: "partially_paid" }]
+  const suppliers = [{ id: "10", name: "Pumps Co" }, { id: "11", name: "Valves Co" }]
+  const r = purchaseOrdersForSo({ soId: "5", purchaseOrders, supplierInvoices, suppliers })
+  assert.deepEqual(r.rows.map((x) => x.poNumber), ["PO-2", "PO-1"], "oldest first; PO-3 rejected, PO-4 another order")
+  assert.deepEqual(r.rows[1], { poId: "1", poNumber: "PO-1", supplierName: "Pumps Co", orderDate: "2026-11-02", status: "approved", forThisOrder: 100, poTotal: 228, paid: 100, owed: 128 })
+  assert.equal(r.rows[0].forThisOrder, 50, "linked through the price request: the whole PO")
+  assert.equal(r.rows[0].owed, 0, "no bill before approval")
+  assert.deepEqual(r.totals, { forThisOrder: 150, poTotal: 285, paid: 100, owed: 128 })
+  assert.deepEqual(purchaseOrdersForSo({ soId: "99", purchaseOrders, supplierInvoices, suppliers }).rows, [])
+})
+
+test("Reports page offers the POs-for-a-sales-order report with a sales order picker", () => {
+  const screen = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "components/modules/finance-reports-module.tsx"), "utf8")
+  assert.match(screen, /<SelectItem value="so-pos">\{t\("reports\.so-pos"\)\}<\/SelectItem>/)
+  assert.match(screen, /purchaseOrdersForSo\(/)
+  assert.match(screen, /id="report-so"/)
 })

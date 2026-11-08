@@ -20,9 +20,9 @@ import { formatDate, formatMoney } from "@/lib/format"
 import { escapeHtml } from "@/lib/html-escape"
 import { AGE_BUCKETS, addDays, todayYmd, unpaidBetween, type AgeBucket } from "@/lib/due-schedule"
 import { apPaid, arPaid } from "@/lib/due-schedule"
-import { buildStatement, cashForecast, dueScheduleFor, lateRows, toSheetRows } from "@/lib/reports/finance"
+import { buildStatement, cashForecast, dueScheduleFor, lateRows, purchaseOrdersForSo, toSheetRows } from "@/lib/reports/finance"
 
-type ReportId = "late-ar" | "late-ap" | "customer-statement" | "supplier-statement" | "cash-forecast"
+type ReportId = "late-ar" | "late-ap" | "customer-statement" | "supplier-statement" | "cash-forecast" | "so-pos"
 type Kind = "text" | "date" | "money" | "number"
 interface Column { label: string; kind: Kind }
 type Cell = string | number
@@ -39,6 +39,8 @@ export function FinanceReportsModule() {
   const [from, setFrom] = useState(addDays(todayYmd(), -90))
   const [to, setTo] = useState(todayYmd())
   const [weeks, setWeeks] = useState("8")
+  // "POs for a sales order": the sales order picked
+  const [soId, setSoId] = useState("")
   const [customerPayments, setCustomerPayments] = useState<any[] | null>(null)
   const [supplierPayments, setSupplierPayments] = useState<any[] | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -133,6 +135,33 @@ export function FinanceReportsModule() {
     return { ...st, owedOnRecords: Math.round(owedOnRecords * 100) / 100, allTimeClosing: allTime.closing }
   }, [isStatement, partyId, side, customerPayments, supplierPayments, customerInvoices, supplierInvoices, from, to])
 
+  // Every PO bought for one sales order, with what it cost and what is paid / still owed to the suppliers.
+  const pickedSo = (salesOrders as any[]).find((so) => String(so.id) === soId)
+  const soCustomer = pickedSo ? customers.find((c: any) => String(c.id) === String(pickedSo.customerId))?.name || pickedSo.customerName || "" : ""
+  const soPos = useMemo(
+    () =>
+      report === "so-pos" && soId
+        ? purchaseOrdersForSo({
+            soId,
+            purchaseOrders,
+            supplierInvoices,
+            suppliers: suppliers.map((p: any) => ({ id: String(p.id), name: p.name || "" })),
+          })
+        : null,
+    [report, soId, purchaseOrders, supplierInvoices, suppliers],
+  )
+  const soOptions = useMemo(
+    () =>
+      (salesOrders as any[])
+        .map((so) => ({
+          id: String(so.id),
+          label: [so.soNumber, customers.find((c: any) => String(c.id) === String(so.customerId))?.name || so.customerName].filter(Boolean).join(" · "),
+          date: String(so.orderDate || ""),
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date) || b.label.localeCompare(a.label)),
+    [salesOrders, customers],
+  )
+
   const forecast = useMemo(() => {
     if (report !== "cash-forecast") return null
     const n = Number(weeks) || 8
@@ -192,6 +221,22 @@ export function FinanceReportsModule() {
         totals: [t("reports.closing-balance"), "", "", "", statement.totalDebit, statement.totalCredit, statement.closing],
       }
     }
+    if (soPos) {
+      return {
+        columns: [
+          { label: t("reports.purchase-order"), kind: "text" },
+          { label: t("reports.supplier"), kind: "text" },
+          { label: t("reports.date"), kind: "date" },
+          { label: t("reports.status"), kind: "text" },
+          { label: t("reports.for-this-order"), kind: "money" },
+          { label: t("reports.po-total"), kind: "money" },
+          { label: t("reports.paid"), kind: "money" },
+          { label: t("reports.still-owed"), kind: "money" },
+        ],
+        rows: soPos.rows.map((r) => [r.poNumber, r.supplierName, r.orderDate, t(`po.status.${r.status}`), r.forThisOrder, r.poTotal, r.paid, r.owed]),
+        totals: [t("reports.total"), "", "", "", soPos.totals.forThisOrder, soPos.totals.poTotal, soPos.totals.paid, soPos.totals.owed],
+      }
+    }
     if (forecast) {
       return {
         columns: [
@@ -222,7 +267,7 @@ export function FinanceReportsModule() {
     }
     return null
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [late, statement, forecast, language, side])
+  }, [late, statement, soPos, forecast, language, side])
 
   const reportTitle = {
     "late-ar": t("reports.late-ar"),
@@ -230,8 +275,13 @@ export function FinanceReportsModule() {
     "customer-statement": t("reports.customer-statement"),
     "supplier-statement": t("reports.supplier-statement"),
     "cash-forecast": t("reports.cash-forecast"),
+    "so-pos": t("reports.so-pos"),
   }[report]
-  const subtitle = isStatement
+  const subtitle = report === "so-pos"
+    ? pickedSo
+      ? `${pickedSo.soNumber}${soCustomer ? ` · ${soCustomer}` : ""} · ${t("reports.so-total")} ${formatMoney(Number(pickedSo.total) || 0, language)}`
+      : ""
+    : isStatement
     ? `${partyName} · ${formatDate(from, language)} – ${formatDate(to, language)}`
     : `${partyId !== ALL && partyName ? `${partyName} · ` : ""}${t("reports.as-of")} ${formatDate(asOf, language)}`
 
@@ -277,7 +327,7 @@ ${model.rows.map((r) => row(r)).join("")}${model.totals ? row(model.totals, "tot
     w.print()
   }
 
-  const needsParty = isStatement && partyId === ALL
+  const needsParty = (isStatement && partyId === ALL) || (report === "so-pos" && !soId)
   const loading = isStatement && !needsParty && !statement && !loadError
 
   return (
@@ -314,11 +364,30 @@ ${model.rows.map((r) => row(r)).join("")}${model.totals ? row(model.totals, "tot
                 <SelectItem value="customer-statement">{t("reports.customer-statement")}</SelectItem>
                 <SelectItem value="supplier-statement">{t("reports.supplier-statement")}</SelectItem>
                 <SelectItem value="cash-forecast">{t("reports.cash-forecast")}</SelectItem>
+                <SelectItem value="so-pos">{t("reports.so-pos")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {report !== "cash-forecast" && (
+          {report === "so-pos" && (
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="report-so">{t("reports.sales-order")}</Label>
+              <Select value={soId} onValueChange={setSoId}>
+                <SelectTrigger id="report-so">
+                  <SelectValue placeholder={t("reports.choose")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {soOptions.map((so) => (
+                    <SelectItem key={so.id} value={so.id}>
+                      {so.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {report !== "cash-forecast" && report !== "so-pos" && (
             <div className="space-y-1">
               <Label htmlFor="report-party">{side === "ar" ? t("reports.customer") : t("reports.supplier")}</Label>
               <Select value={partyId} onValueChange={setPartyId}>
@@ -340,7 +409,7 @@ ${model.rows.map((r) => row(r)).join("")}${model.totals ? row(model.totals, "tot
             </div>
           )}
 
-          {isStatement ? (
+          {report === "so-pos" ? null : isStatement ? (
             <>
               <div className="space-y-1">
                 <Label htmlFor="report-from">{t("reports.from")}</Label>
@@ -386,6 +455,15 @@ ${model.rows.map((r) => row(r)).join("")}${model.totals ? row(model.totals, "tot
         </KpiGrid>
       )}
 
+      {soPos && pickedSo && (
+        <KpiGrid>
+          <KpiTile label={t("reports.so-total")} value={<Money value={Number(pickedSo.total) || 0} />} />
+          <KpiTile label={t("reports.for-this-order")} value={<Money value={soPos.totals.forThisOrder} />} sub={`${soPos.rows.length} ${t("reports.pos")}`} strong />
+          <KpiTile label={t("reports.paid")} value={<Money value={soPos.totals.paid} />} />
+          <KpiTile label={t("reports.still-owed")} value={<Money value={soPos.totals.owed} />} />
+        </KpiGrid>
+      )}
+
       {statement && Math.abs(statement.owedOnRecords - statement.allTimeClosing) > 0.01 && (
         <Card className="border-amber-300 bg-amber-50">
           <CardContent className="pt-4 text-sm">
@@ -400,7 +478,7 @@ ${model.rows.map((r) => row(r)).join("")}${model.totals ? row(model.totals, "tot
       <Card>
         <CardContent className="pt-6">
           <h2 className="text-base font-semibold">{reportTitle}</h2>
-          <p className="text-sm text-muted-foreground mb-4">{needsParty ? t("reports.pick-party") : subtitle}</p>
+          <p className="text-sm text-muted-foreground mb-4">{needsParty ? t(report === "so-pos" ? "reports.pick-so" : "reports.pick-party") : subtitle}</p>
           {loadError && <p className="text-sm text-destructive">{t("reports.load-error")}</p>}
           {loading && <p className="text-sm text-muted-foreground">{t("reports.loading")}</p>}
           {model && model.rows.length === 0 && <p className="text-sm text-muted-foreground">{t("reports.nothing")}</p>}
