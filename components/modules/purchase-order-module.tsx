@@ -38,6 +38,7 @@ import {
   AlertCircle,
   FileText,
   CheckCircle,
+  Pencil,
 } from "lucide-react"
 import type { PurchaseOrder, UserRole, PaymentDetails, PaymentType } from "@/lib/types"
 import { useAppContext } from "@/lib/app-context"
@@ -45,6 +46,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { describeOverOrderLines, type OverOrderLine } from "@/lib/po-over-order"
 import { ChainLine } from "@/components/shared/chain-line"
+import { PO_EDITABLE_STATUSES } from "@/lib/po-edit"
 import { SupplierCreditPicker, appliedCreditTotal, creditSelections, type CreditAmounts } from "@/components/supplier/supplier-credit-picker"
 
 interface PurchaseOrderModuleProps {
@@ -65,6 +67,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     setPrepaidBalance,
     inventory,
     addPurchaseOrder,
+    editPurchaseOrder,
     updatePurchaseOrder,
     loadData,
     user,
@@ -79,8 +82,11 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     moq: number
     excess: number
   } | null>(null)
+  // The PO being edited (owner request, 2026-11-08); null = the form makes a new PO.
+  const [editingPoId, setEditingPoId] = useState<string | null>(null)
   const [orderItems, setOrderItems] = useState<
     Array<{
+      id?: string
       productId: string
       productName: string
       quantity: string
@@ -727,6 +733,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         // unit_price is NOT NULL in DB — default to 0 if blank (user can update later)
         const unitPrice = Number.parseFloat(item.unitPrice) || 0
         return {
+          ...(item.id && { id: item.id }),
           productId: isOutsourced ? "" : (item.productId || ""),
           productName: isOutsourced ? item.outsourcedName || "Outsourced Item" : item.productName || "Unknown",
           quantity: qty,
@@ -844,6 +851,22 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         }),
       }
 
+      if (editingPoId) {
+        const save = (allowOverOrder: boolean) => editPurchaseOrder(editingPoId, newOrder, { allowOverOrder, vat: vatEnabled })
+        try {
+          await save(false)
+        } catch (error) {
+          const details = error as { code?: string; lines?: OverOrderLine[] }
+          if (details?.code !== "PO_OVER_ORDER" || !Array.isArray(details.lines)) throw error
+          const lines = describeOverOrderLines(details.lines, newOrder.items as any[], t("po.over-order.line"))
+          if (!confirm(fill(t("po.over-order.confirm"), { lines }))) return
+          await save(true)
+        }
+        alert(t("po.edit-saved"))
+        closeForm()
+        return
+      }
+
       let created: { autoApproved?: boolean }
       try {
         created = await addPurchaseOrder(newOrder, { credits })
@@ -886,6 +909,19 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       setShowForm(false)
     } catch (error) {
       console.error("Error creating PO:", error)
+      if (editingPoId) {
+        const code = (error as { code?: string })?.code
+        const editError: Record<string, string> = {
+          PO_PAID: "po.edit-err-paid",
+          PO_RECEIVED: "po.edit-err-received",
+          PO_NOT_EDITABLE: "po.edit-err-received",
+          PO_CREDIT_SUPPLIER: "po.edit-err-credit-supplier",
+          CREDIT_EXCEEDS_TOTAL: "po.credit.err-exceeds-total",
+        }
+        const reason = code && editError[code] ? t(editError[code]) : error instanceof Error ? error.message : ""
+        alert(reason ? `${t("po.edit-failed")}: ${reason}` : t("po.edit-failed"))
+        return
+      }
       const creditError: Record<string, string> = {
         CREDIT_NOT_AVAILABLE: "po.credit.err-not-available",
         CREDIT_AMOUNT_INVALID: "po.credit.err-amount",
@@ -1166,6 +1202,81 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     setStatusFilter(statusFilter === "pending" ? null : "pending")
   }
 
+  const closeForm = () => {
+    setShowForm(false)
+    setEditingPoId(null)
+    resetForm()
+    setScheduleEntries([])
+    setScheduleMode("AUTO")
+    setVatEnabled(true)
+    setPoType("local")
+  }
+
+  // Edit (owner request, 2026-11-08): the PO form opens filled in from this PO; Save goes to the edit route.
+  // The PO rep edits drafts and pending POs; an approved PO (it has a supplier bill) is edited by those who approve.
+  const canEditPO = (order: PurchaseOrder) =>
+    PO_EDITABLE_STATUSES.includes(order.status) && (order.status === "approved" ? canApprovePO : canCreatePO)
+  const startEdit = (order: PurchaseOrder) => {
+    const o = order as any
+    resetForm()
+    setEditingPoId(order.id)
+    setFormData((prev) => ({
+      ...prev,
+      supplierId: order.supplierId,
+      dueDate: (order.deliveryDate || "").slice(0, 10) || prev.dueDate,
+      currency: (order.currency as "EGP" | "USD" | "EUR") || "EGP",
+      bankName: o.bankName || "",
+      bankAccountNumber: o.bankAccountNumber || "",
+      bankSwiftCode: o.bankSwiftCode || "",
+      bankIban: o.bankIban || "",
+      bankBranch: o.bankBranch || "",
+      bankHolderName: o.bankHolderName || "",
+    }))
+    setPoType(o.poType === "international" ? "international" : "local")
+    setVatEnabled(Number(order.taxAmount) > 0)
+    setOrderItems(
+      (order.items || []).map((item: any) => ({
+        id: item.id,
+        productId: item.productId || "",
+        productName: item.productName || "",
+        quantity: String(item.quantity ?? ""),
+        unitPrice: String(item.unitPrice ?? ""),
+        itemType: item.itemType === "outsourced" ? "outsourced" : "stock",
+        outsourcedName: item.outsourcedName || (item.itemType === "outsourced" ? item.productName : "") || "",
+        outsourcedDescription: item.outsourcedDescription || "",
+        outsourcedUnit: item.outsourcedUnit || "",
+        sourceSoId: item.sourceSoId || "",
+        sourceSoItemId: item.sourceSoItemId || "",
+      })),
+    )
+    const type = (["cash", "bank_transfer", "cheque", "installments", "hybrid"].includes(o.paymentType) ? o.paymentType : "cash") as PaymentType
+    setPaymentType(type)
+    setPaymentDetails((prev) => ({
+      ...prev,
+      paymentType: type,
+      installmentMonths: type === "installments" ? Number(o.installments || o.remainingInstallmentMonths) || 6 : prev.installmentMonths,
+      monthlyAmount: Number(o.monthlyAmount) || 0,
+      chequeNumber: o.chequeNumber || "",
+      chequeBankName: o.chequeBankName || "",
+      chequeDueDate: o.chequeDueDate || "",
+      chequeAmount: Number(o.chequeAmount) || 0,
+      chequeNotes: o.chequeNotes || "",
+      downPaymentType: o.downPaymentType || "cash",
+      downPaymentAmount: Number(o.downPaymentAmount) || 0,
+      downPaymentPercent: Number(o.downPaymentPercent) || prev.downPaymentPercent,
+      remainingAmount: Number(o.remainingAmount) || 0,
+      remainingInstallmentMonths: Number(o.remainingInstallmentMonths) || prev.remainingInstallmentMonths,
+      downPaymentChequeNumber: o.downPaymentChequeNumber || "",
+      downPaymentChequeBank: o.downPaymentChequeBank || "",
+      downPaymentChequeDueDate: o.downPaymentChequeDueDate || "",
+      ...(o.downPaymentDueDate && { downPaymentDueDate: o.downPaymentDueDate }),
+      paymentStartDate: o.paymentStartDate || (prev as any).paymentStartDate,
+    }) as PaymentDetails)
+    setScheduleMode(o.scheduleMode === "MANUAL" ? "MANUAL" : "AUTO")
+    setScheduleEntries(Array.isArray(o.scheduleEntries) ? o.scheduleEntries : [])
+    setShowForm(true)
+  }
+
   // Helper to reset the form
   const resetForm = () => {
     setPoManualNumber("")
@@ -1239,6 +1350,11 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             {t("action.reject")}
           </Button>
         </>
+      )}
+      {canEditPO(order) && (
+        <Button variant="ghost" size="sm" onClick={() => startEdit(order)} title={t("po.edit")} aria-label={t("po.edit")}>
+          <Pencil className="w-4 h-4" />
+        </Button>
       )}
       <Button
         variant="ghost"
@@ -1426,10 +1542,20 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         </CardContent>
       </Card>
 
-      <Dialog open={canCreatePO && showForm} onOpenChange={setShowForm}>
+      <Dialog open={(canCreatePO || !!editingPoId) && showForm} onOpenChange={(open) => (open ? setShowForm(true) : closeForm())}>
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
-            <DialogTitle>{t("po.create-new")}</DialogTitle>
+            <DialogTitle>
+              {editingPoId ? t("po.edit-title") : t("po.create-new")}
+              {editingPoId && (
+                <span className="ms-2 font-normal text-muted-foreground">
+                  {purchaseOrders.find((po) => po.id === editingPoId)?.poNumber}
+                </span>
+              )}
+            </DialogTitle>
+            {editingPoId && purchaseOrders.find((po) => po.id === editingPoId)?.status === "approved" && (
+              <p className="text-sm text-amber-800">{t("po.edit-approved-note")}</p>
+            )}
           </DialogHeader>
 
           <div className="space-y-4">
@@ -1525,12 +1651,13 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 />
                 <p className="text-xs text-muted-foreground mt-1">{t("po.expiry-date-hint")}</p>
               </div>
-              <DocNumberField id="po-manual-number" value={poManualNumber} onChange={setPoManualNumber} />
+              {!editingPoId && <DocNumberField id="po-manual-number" value={poManualNumber} onChange={setPoManualNumber} />}
               <div>
                 <label className="text-sm font-medium">{t("field.currency")}</label>
                 <select
                   className="w-full border rounded px-3 py-2 mt-1"
                   value={formData.currency}
+                  disabled={!!editingPoId}
                   onChange={(e) => {
                     setFormData({ ...formData, currency: e.target.value as "EGP" | "USD" | "EUR" })
                     setCreditAmounts({})
@@ -1543,7 +1670,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               </div>
             </div>
 
-            {/* PO Source: manual or from a sales order */}
+            {/* PO Source: manual or from a sales order (not when editing: the lines are already on the PO) */}
+            {!editingPoId && (
             <div className="border-t pt-4">
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -1686,6 +1814,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 </div>
               )}
             </div>
+            )}
 
             {/* Bank Details */}
             <div className="border-t pt-4">
@@ -1802,6 +1931,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             )}
 
             {/* Invoice Upload */}
+            {!editingPoId && (
             <div className="p-4 border rounded-lg bg-gray-50">
               <label className="text-sm font-medium block mb-2">{t("po.invoice-optional")}</label>
               <div className="flex items-center gap-2">
@@ -1820,6 +1950,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               </div>
               <p className="text-xs text-muted-foreground mt-1">{t("po.invoice-description")}</p>
             </div>
+            )}
 
             {/* Items Section */}
             <div className="border-t pt-4">
@@ -1943,7 +2074,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   )}
                 </div>
               )}
-              {orderItems.length > 0 && formData.currency === "EGP" && (
+              {!editingPoId && orderItems.length > 0 && formData.currency === "EGP" && (
                 <SupplierCreditPicker
                   supplierId={formData.supplierId}
                   orderTotal={grandTotal}
@@ -1956,7 +2087,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
 
             {/* Action Buttons */}
             <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={() => setShowForm(false)}>
+              <Button variant="outline" onClick={closeForm}>
                 {t("action.cancel")}
               </Button>
               <Button onClick={handleCreatePO} disabled={uploadingInvoice}>
@@ -1965,6 +2096,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     <Loader2 className="w-4 h-4 me-2 animate-spin" />
                     {t("status.uploading")}
                   </>
+                ) : editingPoId ? (
+                  t("po.edit-save")
                 ) : (
                   t("action.save")
                 )}
