@@ -37,6 +37,7 @@ interface AppContextType {
   setPurchaseOrders: (orders: PurchaseOrder[]) => void
   addPurchaseOrder: (order: PurchaseOrder, options?: { allowOverOrder?: boolean; credits?: { creditId: number; amount: number }[] }) => Promise<{ autoApproved?: boolean }>
   updatePurchaseOrder: (order: PurchaseOrder | (Partial<SalesOrder> & { id: string })) => Promise<void>
+  editPurchaseOrder: (id: string, order: PurchaseOrder, options?: { allowOverOrder?: boolean; vat?: boolean }) => Promise<{ billUpdated: boolean }>
   salesOrders: SalesOrder[]
   setSalesOrders: (orders: SalesOrder[]) => void
   addSalesOrder: (order: SalesOrder) => Promise<any>
@@ -168,6 +169,52 @@ async function ensureOk(response: Response, fallback: string) {
   const body = await response.json().catch(() => ({}) as any)
   throw new Error(body?.error || body?.message || fallback)
 }
+
+// The form's purchase order as the API reads it; shared by create and edit so both send the same fields.
+const purchaseOrderBody = (order: PurchaseOrder) => ({
+  po_number: order.poNumber,
+  manualNumber: order.manualNumber,
+  supplier_id: order.supplierId,
+  supplier_name: order.supplierName,
+  ...(order.poRequestId && { po_request_id: order.poRequestId }),
+  order_date: order.orderDate,
+  expected_delivery: order.expectedDelivery,
+  delivery_date: order.deliveryDate,
+  status: order.status || "Pending",
+  total: order.total,
+  tax_amount: order.taxAmount ?? null,
+  notes: order.notes,
+  payment_type: order.paymentType,
+  payment_terms: order.paymentTerms,
+  installments: order.installments,
+  paymentDetails: order.paymentDetails,
+  items: order.items,
+  // Hybrid & installment fields — send both camelCase and snake_case for safety
+  down_payment_amount: order.downPaymentAmount ?? order.paymentDetails?.downPaymentAmount ?? null,
+  down_payment_percent: order.downPaymentPercent ?? order.paymentDetails?.downPaymentPercent ?? null,
+  down_payment_type: order.downPaymentType ?? order.paymentDetails?.downPaymentType ?? null,
+  down_payment_due_date: order.downPaymentDueDate ?? order.paymentDetails?.downPaymentDueDate ?? null,
+  down_payment_cheque_number: order.downPaymentChequeNumber ?? order.paymentDetails?.downPaymentChequeNumber ?? null,
+  down_payment_cheque_bank: order.downPaymentChequeBank ?? order.paymentDetails?.downPaymentChequeBank ?? null,
+  down_payment_cheque_due_date: order.downPaymentChequeDueDate ?? order.paymentDetails?.downPaymentChequeDueDate ?? null,
+  remaining_amount: order.remainingAmount ?? order.paymentDetails?.remainingAmount ?? null,
+  remaining_installment_months: order.remainingInstallmentMonths ?? order.paymentDetails?.remainingInstallmentMonths ?? null,
+  monthly_amount: order.monthlyAmount ?? order.paymentDetails?.monthlyAmount ?? null,
+  payment_start_date: order.paymentStartDate ?? order.paymentDetails?.paymentStartDate ?? null,
+  schedule_entries: order.scheduleEntries ? JSON.stringify(order.scheduleEntries) : null,
+  schedule_mode: order.scheduleMode,
+  // Bank details
+  bank_name: order.bankName,
+  bank_account_number: order.bankAccountNumber,
+  bank_swift_code: order.bankSwiftCode,
+  bank_iban: order.bankIban,
+  bank_branch: order.bankBranch,
+  bank_holder_name: order.bankHolderName,
+  // Other
+  currency: order.currency,
+  po_type: order.poType,
+
+})
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [prepaidBalance, setPrepaidBalance] = useState<number>(0)
@@ -582,47 +629,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...(options?.allowOverOrder && { allow_over_order: true }),
           // Supplier credits to deduct (reserved by the server on this PO, applied to its supplier invoice on approval)
           ...(options?.credits && options.credits.length > 0 && { credits: options.credits }),
-          po_number: order.poNumber,
-          manualNumber: order.manualNumber,
-          supplier_id: order.supplierId,
-          supplier_name: order.supplierName,
-          ...(order.poRequestId && { po_request_id: order.poRequestId }),
-          order_date: order.orderDate,
-          expected_delivery: order.expectedDelivery,
-          delivery_date: order.deliveryDate,
-          status: order.status || "Pending",
-          total: order.total,
-          tax_amount: order.taxAmount ?? null,
-          notes: order.notes,
-          payment_type: order.paymentType,
-          payment_terms: order.paymentTerms,
-          installments: order.installments,
-          paymentDetails: order.paymentDetails,
-          items: order.items,
-          // Hybrid & installment fields — send both camelCase and snake_case for safety
-          down_payment_amount: order.downPaymentAmount ?? order.paymentDetails?.downPaymentAmount ?? null,
-          down_payment_percent: order.downPaymentPercent ?? order.paymentDetails?.downPaymentPercent ?? null,
-          down_payment_type: order.downPaymentType ?? order.paymentDetails?.downPaymentType ?? null,
-          down_payment_due_date: order.downPaymentDueDate ?? order.paymentDetails?.downPaymentDueDate ?? null,
-          down_payment_cheque_number: order.downPaymentChequeNumber ?? order.paymentDetails?.downPaymentChequeNumber ?? null,
-          down_payment_cheque_bank: order.downPaymentChequeBank ?? order.paymentDetails?.downPaymentChequeBank ?? null,
-          down_payment_cheque_due_date: order.downPaymentChequeDueDate ?? order.paymentDetails?.downPaymentChequeDueDate ?? null,
-          remaining_amount: order.remainingAmount ?? order.paymentDetails?.remainingAmount ?? null,
-          remaining_installment_months: order.remainingInstallmentMonths ?? order.paymentDetails?.remainingInstallmentMonths ?? null,
-          monthly_amount: order.monthlyAmount ?? order.paymentDetails?.monthlyAmount ?? null,
-          payment_start_date: order.paymentStartDate ?? order.paymentDetails?.paymentStartDate ?? null,
-          schedule_entries: order.scheduleEntries ? JSON.stringify(order.scheduleEntries) : null,
-          schedule_mode: order.scheduleMode,
-          // Bank details
-          bank_name: order.bankName,
-          bank_account_number: order.bankAccountNumber,
-          bank_swift_code: order.bankSwiftCode,
-          bank_iban: order.bankIban,
-          bank_branch: order.bankBranch,
-          bank_holder_name: order.bankHolderName,
-          // Other
-          currency: order.currency,
-          po_type: order.poType,
+          ...purchaseOrderBody(order),
         }),
       })
 
@@ -641,6 +648,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error("Error adding purchase order:", error)
       throw error
     }
+  }
+
+  // Edit a PO after it was made (POST /api/purchase-orders/edit): its approved supplier bill follows on the server.
+  const editPurchaseOrder = async (id: string, order: PurchaseOrder, options?: { allowOverOrder?: boolean; vat?: boolean }) => {
+    const response = await fetch("/api/purchase-orders/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...purchaseOrderBody(order),
+        id,
+        ...(options?.vat !== undefined && { vat: options.vat }),
+        ...(options?.allowOverOrder && { allow_over_order: true }),
+      }),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw Object.assign(new Error(result.error || "Failed to edit purchase order"), { code: result.code, lines: result.lines })
+    }
+    await Promise.all([mutatePurchaseOrders(), mutateSupplierInvoices()])
+    return { billUpdated: result.billUpdated === true }
   }
 
   const updatePurchaseOrder = async (order: PurchaseOrder | (Partial<PurchaseOrder> & { id: string })) => {
@@ -1011,6 +1038,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setPurchaseOrders,
         addPurchaseOrder,
         updatePurchaseOrder,
+        editPurchaseOrder,
         salesOrders,
         setSalesOrders,
         addSalesOrder,
