@@ -823,7 +823,14 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                             {item.supplierName || "—"}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {item.soNumber || "—"}
+                            {item.heldFor ? (
+                              <span className="font-medium text-amber-700">
+                                {fill(t("inventory.held-for"), { so: item.heldFor.soNumber })}
+                                {item.heldFor.customerName ? <span className="block text-xs font-normal">{item.heldFor.customerName}</span> : null}
+                              </span>
+                            ) : (
+                              item.soNumber || "—"
+                            )}
                           </TableCell>
                           {warehouseFilter !== "all" && (
                             <TableCell>
@@ -853,7 +860,9 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                       <>
                         {t("field.quantity")}: {formatNumber(item.quantity)} · {t("inventory.reorder-point")}: {formatNumber(item.reorderPoint)}
                         {item.supplierName ? ` · ${item.supplierName}` : ""}
-                        {item.soNumber ? ` · ${item.soNumber}` : ""}
+                        {item.heldFor
+                          ? ` · ${fill(t("inventory.held-for"), { so: item.heldFor.soNumber })}${item.heldFor.customerName ? ` (${item.heldFor.customerName})` : ""}`
+                          : item.soNumber ? ` · ${item.soNumber}` : ""}
                         {warehouseFilter !== "all" ? ` · ${item.warehouseName || item.location || t("inv.main-warehouse")}` : ""}
                       </>
                     }

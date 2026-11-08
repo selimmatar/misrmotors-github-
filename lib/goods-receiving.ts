@@ -483,7 +483,7 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
   const { poId, lines } = parsed
 
   // ---- 1. The PO must exist and be open for receiving --------------------------------------------------
-  const po = must(await db.from("purchase_orders").select("po_id, po_number, status, cost_finalized").eq("po_id", poId).maybeSingle(), "read purchase order")
+  const po = must(await db.from("purchase_orders").select("po_id, po_number, status, cost_finalized, supplier_id").eq("po_id", poId).maybeSingle(), "read purchase order")
   if (!po) return reject(404, "Purchase order not found")
   if (!RECEIVABLE_PO_STATUSES.includes(po.status)) {
     return reject(409, `Purchase order ${po.po_number} is "${po.status}" and cannot receive goods (only approved or partially received orders can).`, { code: "PO_NOT_RECEIVABLE", poStatus: po.status })
@@ -616,7 +616,8 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
       quantity_received: line.quantity,
       discrepancy_type: line.discrepancyType,
       discrepancy_notes: line.discrepancyNotes,
-      warehouse_id: outsourced ? null : line.warehouseId,
+      // an outsourced line keeps the warehouse it was stored in (null = not stored, it goes straight to the customer)
+      warehouse_id: line.warehouseId,
       unit_cost: line.unitCost ?? (Number(item.unit_price) || 0),
       received_date: today(),
     }
@@ -669,6 +670,9 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
     undo.push({ what: `inventory batch ${batch.batch_id}`, run: async () => must(await db.from("inventory_batches").delete().eq("batch_id", batch.batch_id), "undo: delete batch") })
   }
 
+  // ---- 7b. Outsourced items received into a warehouse (owner, 2026-11-04) ----------------------------------
+  await storeOutsourced(db, po, lineRows, itemById, undo)
+
   // ---- 8. Sales-order linkage (an SO item is fulfilled once the received quantity of its PO item(s) reaches the SO quantity) ----
   await markSalesOrderFulfilment(db, items, new Set(requested.keys()), undo)
 
@@ -712,6 +716,56 @@ async function rollbackAndReject(db: Db, undo: Undo[], status: number, error: st
  * point at it (one PO or several) reaches the SO item's quantity. A partial receipt never marks it. Only SO items that
  * this request touched are considered, and a sales order that is already being delivered is never moved back.
  */
+/**
+ * An outsourced line received into a chosen warehouse gets its own inventory row there, on hold for its sales order
+ * (so_number; the hold is shown by app/api/inventory and ends when the order's delivery permit is approved, see
+ * lib/outsourced-stock.ts). Cost 0: it already belongs to the customer's order, so it never counts in the stock value.
+ * The row is named like the sales-order line so the delivery permit (which copies the SO line name) finds it.
+ */
+async function storeOutsourced(db: Db, po: any, lineRows: any[], itemById: Map<number, PoItem>, undo: Undo[]) {
+  const rows = lineRows.filter((r) => r.item_type === "outsourced" && r.warehouse_id)
+  if (rows.length === 0) return
+  const soItemIds = [...new Set(rows.map((r) => r.source_so_item_id).filter(Boolean))]
+  const soItems: any[] = soItemIds.length
+    ? must(await db.from("sales_order_items").select("so_item_id, so_id, outsourced_name").in("so_item_id", soItemIds), "read sales order lines")
+    : []
+  const soIds = [...new Set(soItems.map((i) => i.so_id))]
+  const orders: any[] = soIds.length ? must(await db.from("sales_orders").select("so_id, so_number").in("so_id", soIds), "read sales orders") : []
+  const supplier = po.supplier_id
+    ? must(await db.from("suppliers").select("supplier_name").eq("supplier_id", po.supplier_id).maybeSingle(), "read supplier")
+    : null
+  for (const row of rows) {
+    const soItem = soItems.find((i) => i.so_item_id === row.source_so_item_id)
+    const soNumber = orders.find((o) => o.so_id === soItem?.so_id)?.so_number ?? null
+    const item = itemById.get(row.po_item_id)!
+    const inserted = must(
+      await db
+        .from("inventory")
+        .insert({
+          product_id: null,
+          warehouse_id: row.warehouse_id,
+          quantity: row.quantity_received,
+          unit_cost: 0,
+          reorder_point: 0,
+          is_outsourced: true,
+          is_returned: false,
+          outsourced_name: soItem?.outsourced_name || item.outsourced_name || item.item_name_snapshot || "Outsourced Item",
+          outsourced_description: `Received on ${po.po_number}${soNumber ? ` for ${soNumber}` : ""}`,
+          supplier_name: supplier?.supplier_name ?? null,
+          so_number: soNumber,
+          last_updated: new Date().toISOString(),
+        })
+        .select("inventory_id")
+        .single(),
+      "store outsourced item",
+    )
+    undo.push({
+      what: `outsourced inventory row ${inserted.inventory_id}`,
+      run: async () => must(await db.from("inventory").delete().eq("inventory_id", inserted.inventory_id), "undo: delete outsourced row"),
+    })
+  }
+}
+
 async function markSalesOrderFulfilment(db: Db, items: PoItem[], touched: Set<number>, undo: Undo[]) {
   const candidates = [...new Set(items.filter((i) => i.source_so_item_id && touched.has(i.po_item_id)).map((i) => i.source_so_item_id as number))]
   if (candidates.length === 0) return

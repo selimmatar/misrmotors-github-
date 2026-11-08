@@ -28,6 +28,8 @@ export interface StockMove {
   before: number
   after: number
   productName: string
+  /** an outsourced item stored for the order (lib/goods-receiving.ts storeOutsourced): no product, no audit row */
+  outsourced?: boolean
 }
 
 export interface ShortLine {
@@ -191,7 +193,19 @@ export async function deductStockForPermit(db: Db, permit: { permit_id: number; 
     return { ok: false, status: 500, body: { error: "Could not read the permit items. Nothing was changed." } }
   }
   const items = ((itemRows || []) as any[]).filter((i) => i.product_id && num(i.quantity) > 0)
-  if (items.length === 0) return { ok: true, state: "nothing" }
+  // Outsourced lines take the item stored for this order, if any (owner, 2026-11-04). Never blocks the approval:
+  // an item that was not stored (delivered straight from the supplier) simply has nothing to take.
+  const outsourcedLines = ((itemRows || []) as any[]).filter((i) => !i.product_id && num(i.quantity) > 0)
+  let storedRows: any[] = []
+  if (outsourcedLines.length > 0) {
+    try {
+      storedRows = await storedOutsourcedRows(db, permit.permit_id)
+    } catch (error: any) {
+      console.error("[dp-stock] could not read stored outsourced items:", error?.message || error)
+      return { ok: false, status: 500, body: { error: "Could not read the stored outsourced items. Nothing was changed." } }
+    }
+  }
+  if (items.length === 0 && storedRows.length === 0) return { ok: true, state: "nothing" }
 
   const claimed = await claim(db, permit.permit_id)
   if (claimed.state === "already") return { ok: true, state: "already" }
@@ -269,6 +283,26 @@ export async function deductStockForPermit(db: Db, permit: { permit_id: number; 
       }
       moves.push({ inventoryId: row.inventory_id, productId: Number(row.product_id), warehouseId: row.warehouse_id ?? null, quantity: need, before: taken.before, after: taken.after, productName: name })
     }
+    // Outsourced: take up to what was delivered from the rows stored for this order with the same name (never more
+    // than stored, never negative). A row changed by someone else in the meantime is skipped, not an error.
+    for (const line of outsourcedLines) {
+      let need = num(line.quantity)
+      const name = sameName(line.item_name_snapshot)
+      for (const row of storedRows) {
+        if (need <= 0) break
+        if (sameName(row.outsourced_name) !== name || num(row.quantity) <= 0) continue
+        const take = Math.min(need, num(row.quantity))
+        const taken = await takeFromRow(db, row.inventory_id, take)
+        if (!taken.ok) continue
+        row.quantity = taken.after
+        need -= take
+        moves.push({ inventoryId: row.inventory_id, productId: 0, warehouseId: row.warehouse_id ?? null, quantity: take, before: taken.before, after: taken.after, productName: line.item_name_snapshot || "", outsourced: true })
+      }
+    }
+    if (moves.length === 0) {
+      await finishClaim(db, permit.permit_id, "completed")
+      return { ok: true, state: "nothing" }
+    }
     return { ok: true, state: "deducted", moves }
   } catch (error: any) {
     console.error("[dp-stock] deduction failed:", error?.message || error)
@@ -277,11 +311,34 @@ export async function deductStockForPermit(db: Db, permit: { permit_id: number; 
   }
 }
 
+const sameName = (v: unknown) => String(v ?? "").trim().replace(/\s+/g, " ").toLowerCase()
+
+/** Non-returned outsourced inventory rows stored for the permit's sales order (matched by so_number). */
+async function storedOutsourcedRows(db: Db, permitId: number): Promise<any[]> {
+  const { data: p, error } = await db.from("delivery_permits").select("sales_order_id").eq("permit_id", permitId).maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!p?.sales_order_id) return []
+  const { data: so, error: soError } = await db.from("sales_orders").select("so_number").eq("so_id", p.sales_order_id).maybeSingle()
+  if (soError) throw new Error(soError.message)
+  if (!so?.so_number) return []
+  const { data: rows, error: rowsError } = await db
+    .from("inventory")
+    .select("inventory_id, warehouse_id, quantity, outsourced_name")
+    .eq("is_outsourced", true)
+    .eq("is_returned", false)
+    .eq("so_number", so.so_number)
+    .order("inventory_id", { ascending: true })
+  if (rowsError) throw new Error(rowsError.message)
+  return (rows || []).filter((r: any) => num(r.quantity) > 0)
+}
+
 /** The permit is now APPROVED: audit rows ('sale') and close the claim. A failed audit insert never undoes the deduction. */
 export async function finishDeduction(db: Db, permit: { permit_id: number; permit_no?: string }, moves: StockMove[], userId?: unknown) {
   try {
+    const stock = moves.filter((m) => !m.outsourced)
+    if (stock.length === 0) return await finishClaim(db, permit.permit_id, "completed")
     const { error } = await db.from("inventory_transactions").insert(
-      moves.map((m) => ({
+      stock.map((m) => ({
         product_id: m.productId,
         transaction_type: "sale",
         reference_type: "DELIVERY_PERMIT",

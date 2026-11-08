@@ -59,6 +59,8 @@ interface ReceiptLineItem {
   discrepancyType: '' | 'missing' | 'damaged' | 'wrong_item' | 'quantity_mismatch' | 'other'
   discrepancyNotes: string
   warehouseAllocations: WarehouseAllocation[]
+  /** outsourced only: warehouse it is stored in, on hold for the customer's order ('' = not stored) */
+  storeWarehouseId: string
 }
 
 interface WarehouseType {
@@ -190,7 +192,9 @@ export function GoodsReceiptModule() {
           warehouseId: String(defaultWh.id),
           warehouseName: defaultWh.name,
           quantity: qty
-        }] : [])
+        }] : []),
+        // Outsourced items are stored in a warehouse, on hold for the customer's order (default warehouse first)
+        storeWarehouseId: isOutsourced && defaultWh ? String(defaultWh.id) : '',
       }
     }).filter((l: ReceiptLineItem) => l.quantityOrdered > 0)
 
@@ -312,12 +316,13 @@ export function GoodsReceiptModule() {
 
       for (const line of lineSpecs) {
         if (line.itemType === 'outsourced') {
-          // Outsourced services: single line, no warehouse
+          // Outsourced items: single line, stored in the chosen warehouse (none = goes straight to the customer)
           allLines.push({
             poItemId: line.poItemId,
             itemType: 'outsourced',
             quantityReceived: line.quantityReceived,
             unitCost: line.unitPrice,
+            ...(line.storeWarehouseId ? { warehouseId: line.storeWarehouseId } : {}),
           })
         } else {
           // Stock items: one line per warehouse allocation. The server resolves product, SO link and cost
@@ -596,7 +601,7 @@ export function GoodsReceiptModule() {
                   <h4 className="font-semibold text-sm flex items-center gap-2">
                     <FileText className="w-4 h-4 text-amber-700" />
                     {t("gr.outsourced-services")}
-                    <span className="text-xs font-normal text-muted-foreground">{t("gr.no-warehouse-allocation")}</span>
+                    <span className="text-xs font-normal text-muted-foreground">{t("gr.outsourced-stored-help")}</span>
                   </h4>
                   {receiptLines
                     .filter(l => l.itemType === 'outsourced')
@@ -627,6 +632,27 @@ export function GoodsReceiptModule() {
                                 }}
                                 className="w-20"
                               />
+                            </div>
+                            <div className="flex items-center gap-3 w-full sm:w-auto">
+                              <Label htmlFor={`outsourced-wh-${globalIndex}`} className="text-sm">{t("gr.store-in")}</Label>
+                              <Select
+                                value={line.storeWarehouseId || "none"}
+                                onValueChange={(value) => {
+                                  setReceiptLines(prev => prev.map((l, i) =>
+                                    i === globalIndex ? { ...l, storeWarehouseId: value === "none" ? '' : value } : l
+                                  ))
+                                }}
+                              >
+                                <SelectTrigger id={`outsourced-wh-${globalIndex}`} className="w-full sm:w-48">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {warehouses.map((w: any) => (
+                                    <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+                                  ))}
+                                  <SelectItem value="none">{t("gr.not-stored")}</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
                         </Card>
