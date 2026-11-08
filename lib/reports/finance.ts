@@ -2,7 +2,7 @@
 // week-by-week cash forecast. Plain functions over the lists the screens already hold; read-only.
 import { round2 } from "@/lib/invoicing"
 import {
-  AGE_BUCKETS, addDays, apDueSchedule, arDueSchedule, findPurchaseOrder, findSalesOrder, summarizeDue,
+  AGE_BUCKETS, addDays, apDueSchedule, apPaid, arDueSchedule, findPurchaseOrder, findSalesOrder, summarizeDue,
   type AgeBucket, type DueEntry,
 } from "@/lib/due-schedule"
 
@@ -188,3 +188,59 @@ export function cashForecast(opts: {
 
 /** Header row plus data rows for an Excel sheet (text stays text, numbers stay numbers). */
 export const toSheetRows = (headers: string[], rows: (string | number)[][]): (string | number)[][] => [headers, ...rows]
+
+export interface SoPoRow {
+  poId: string
+  poNumber: string
+  supplierName: string
+  orderDate: string
+  status: string
+  /** Lines of this PO that are for the sales order (quantity x cost, before VAT). */
+  forThisOrder: number
+  /** The whole PO total, VAT included. */
+  poTotal: number
+  paid: number
+  owed: number
+}
+
+/**
+ * Every purchase order bought for one sales order (owner request, 2026-11-08): a PO counts when one of its lines
+ * names the sales order, or when it answers a price request made for that order. Rejected POs are left out.
+ * `forThisOrder` is the part of the PO for this order (all lines when the link is the price request);
+ * paid / owed come from the PO's supplier bill (nothing paid and nothing owed while it is not approved yet).
+ */
+export function purchaseOrdersForSo(opts: {
+  soId: string
+  purchaseOrders: any[]
+  supplierInvoices: any[]
+  suppliers: { id: any; name?: string }[]
+}): { rows: SoPoRow[]; totals: { forThisOrder: number; poTotal: number; paid: number; owed: number } } {
+  const so = String(opts.soId)
+  const rows: SoPoRow[] = []
+  for (const po of opts.purchaseOrders) {
+    if (String(po.status) === "rejected") continue
+    const items: any[] = po.items || []
+    const mine = items.filter((i) => String(i.sourceSoId ?? i.source_so_id ?? "") === so)
+    const viaRequest = String(po.poRequestSoId ?? "") === so
+    if (mine.length === 0 && !viaRequest) continue
+    const lineTotal = (i: any) => Number(i.total) || (Number(i.quantity) || 0) * (Number(i.unitPrice ?? i.unit_price) || 0)
+    const forThisOrder = round2((mine.length > 0 ? mine : items).reduce((s, i) => s + lineTotal(i), 0))
+    const bills = opts.supplierInvoices.filter((inv) => String(inv.poId ?? inv.po_id ?? "") === String(po.id))
+    const billed = round2(bills.reduce((s, inv) => s + (Number(inv.totalAmount || inv.amount) || 0), 0))
+    const paid = round2(bills.reduce((s, inv) => s + apPaid(inv), 0))
+    rows.push({
+      poId: String(po.id),
+      poNumber: po.poNumber || po.po_number || "",
+      supplierName: opts.suppliers.find((s) => String(s.id) === String(po.supplierId ?? po.supplier_id))?.name || "",
+      orderDate: String(po.orderDate || po.createdAt || "").slice(0, 10),
+      status: String(po.status || ""),
+      forThisOrder,
+      poTotal: round2(Number(po.total) || 0),
+      paid,
+      owed: round2(Math.max(billed - paid, 0)),
+    })
+  }
+  rows.sort((a, b) => a.orderDate.localeCompare(b.orderDate) || a.poNumber.localeCompare(b.poNumber))
+  const sum = (k: "forThisOrder" | "poTotal" | "paid" | "owed") => round2(rows.reduce((s, r) => s + r[k], 0))
+  return { rows, totals: { forThisOrder: sum("forThisOrder"), poTotal: sum("poTotal"), paid: sum("paid"), owed: sum("owed") } }
+}
