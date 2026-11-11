@@ -641,12 +641,16 @@ ${renderTotalsBlock(printTotals)}
                   const stockLimit = item.itemType === "stock" ? getAvailableStock(item.productId) : null
                   // On a delivery permit (and no return): the line is locked; extra quantity goes on a new line.
                   const locked = isLineLocked(item)
+                  // Everything that went out on a permit came back (returned / refused): the line is free again,
+                  // like a line never delivered (owner request, 2026-11-11).
+                  const held = item.onDeliveryPermit && !locked && keptOf(item) > 0
+                  const fixedItem = locked || held
                   return (
                     <div key={item.key} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end p-3 border rounded-md">
                       <div className="col-span-2 lg:col-span-12 text-xs text-muted-foreground">
                         {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
                       </div>
-                      {item.itemType === "stock" && item.onDeliveryPermit ? (
+                      {item.itemType === "stock" && fixedItem ? (
                         <div className="col-span-2 lg:col-span-6 space-y-1">
                           <Label className="text-xs">{t("field.product")}</Label>
                           <div className="text-sm font-medium pt-2">{item.productName}</div>
@@ -671,7 +675,7 @@ ${renderTotalsBlock(printTotals)}
                             <Label className="text-xs">{t("common.item-name")}</Label>
                             <Input
                               value={item.productName}
-                              disabled={item.onDeliveryPermit}
+                              disabled={fixedItem}
                               onChange={(e) => updateItem(item.key, { productName: e.target.value })}
                             />
                           </div>
@@ -679,7 +683,7 @@ ${renderTotalsBlock(printTotals)}
                             <Label className="text-xs">{t("field.supplier")}</Label>
                             <Select
                               value={item.supplierName || ""}
-                              disabled={item.onDeliveryPermit}
+                              disabled={fixedItem}
                               onValueChange={(value) => {
                                 const supplier = suppliers.find((s) => s.name === value)
                                 updateItem(item.key, { supplierName: value, supplierId: supplier?.id || "" })
@@ -746,7 +750,7 @@ ${renderTotalsBlock(printTotals)}
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                      {item.onDeliveryPermit && (
+                      {item.onDeliveryPermit && fixedItem && (
                         <div className="col-span-2 lg:col-span-12">
                           <Badge variant="outline" className="gap-1 whitespace-normal h-auto text-start text-blue-700 border-blue-300 bg-blue-50">
                             {fill(t("so-edit.delivery-summary"), {

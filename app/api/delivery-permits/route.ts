@@ -258,6 +258,10 @@ export async function POST(request: NextRequest) {
           const k = lineKey(it.product_id, null)
           used.set(k, (used.get(k) || 0) + (Number(it.quantity) || 0))
         }
+        // A returned / refused quantity is not with the customer: it may go out again on a new permit.
+        for (const [k, qty] of returnedByKey(await loadReturnLines(supabase, openIds))) {
+          if (used.has(k)) used.set(k, Math.max(0, (used.get(k) || 0) - qty))
+        }
       }
       const requested = new Map<string, number>()
       for (const it of items) {

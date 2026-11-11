@@ -1479,7 +1479,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     }
 
     // Allow DP creation for approved, delivered, or ready_for_delivery orders (for partial/multiple deliveries)
-    const allowedStatuses = ["accountant_approved", "delivered", "ready_for_delivery", "out_for_delivery"]
+    // "shipped": the customer refused something at the door, so it goes out again on a new permit
+    const allowedStatuses = ["accountant_approved", "delivered", "ready_for_delivery", "out_for_delivery", "shipped"]
     if (!allowedStatuses.includes(order.status)) {
       alert(t("so.order-must-be-approved-by"))
       return
@@ -1599,7 +1600,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             return dpItemName === itemName && dpItemName !== ""
           })
           
-          return total + (dpItem ? Number(dpItem.quantity) || 0 : 0)
+          // a returned / refused quantity is not delivered: it can go on a new permit
+          return total + (dpItem ? Math.max(0, (Number(dpItem.quantity) || 0) - (Number(dpItem.returnedQuantity) || 0)) : 0)
         }, 0)
 
         // Calculate remaining
@@ -2191,7 +2193,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 })
                 
                 // Parse quantity as number since it may come as string from DB
-                return total + (dpItem ? Number(dpItem.quantity) || 0 : 0)
+                // a returned / refused quantity is not delivered: it can go on a new permit
+                return total + (dpItem ? Math.max(0, (Number(dpItem.quantity) || 0) - (Number(dpItem.returnedQuantity) || 0)) : 0)
               }, 0)
 
               // Calculate remaining - for outsourced items, still track but allow flexible delivery

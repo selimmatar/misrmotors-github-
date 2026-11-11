@@ -66,7 +66,7 @@ test("E2. edits that would destroy history are refused: below what is kept, remo
   await returnTwoPumps(db)
   const below = await validateSoEdit(db, 1, { items: [lineA(7), lineB(2)] })
   assert.equal(below.ok, false)
-  assert.match((below as any).error, /8 are kept by the customer \(delivered 10, returned 2\)/)
+  assert.match((below as any).error, /8 are kept by the customer or on a delivery permit \(on permits 10, delivered 10, returned 2\)/)
   const removed = await validateSoEdit(db, 1, { items: [lineB(2)] }) // A line dropped
   assert.equal(removed.ok, false)
   assert.match((removed as any).error, /cannot be removed/)
@@ -218,4 +218,46 @@ test("5b. lineDeliveryStates: delivered / partial / not delivered, net of return
   assert.equal(lineDeliveryStates([{ key: "p:2", quantity: 4 }], new Map([["p:2", 3]]))[0].state, "partial")
   // negative net (more returned than delivered) never counts as delivered
   assert.equal(lineDeliveryStates([{ key: "p:2", quantity: 4 }], new Map([["p:2", -1]]))[0].state, "not_delivered")
+})
+
+// ---------------------- returned / refused items are free again (owner request, 2026-11-11)
+test("R1. everything returned: the line may become a different item, change price, or be deleted", async () => {
+  const db = baseDb()
+  await returnTwoPumps(db, 10)
+  assert.deepEqual(await validateSoEdit(db, 1, { items: [{ ...lineA(3), productId: "8", productName: "Pump B", unitPrice: 9000, total: 27000 }] }), { ok: true })
+  assert.deepEqual(await validateSoEdit(db, 1, { items: [lineA(10, { unitPrice: 9500, total: 95000 })] }), { ok: true })
+})
+
+test("R2. an item only on a REJECTED permit (customer never got it) is edited freely, customer included", async () => {
+  const db = baseDb({ delivery_permits: [{ permit_id: 1, permit_no: "DP-T-1", sales_order_id: 1, customer_id: 5, status: "REJECTED" }] })
+  assert.deepEqual(await validateSoEdit(db, 1, { customerId: "6", items: [lineA(4, { unitPrice: 1, total: 4 })] }), { ok: true })
+  assert.deepEqual(await validateSoEdit(db, 1, { items: [lineB(1)] }), { ok: true }) // deleted / swapped
+})
+
+test("R3. part returned while the rest is still on a permit on its way: the line cannot go below what is still out", async () => {
+  const db = baseDb()
+  db.tables.delivery_permits.push({ permit_id: 3, permit_no: "DP-T-3", sales_order_id: 1, customer_id: 5, status: "READY_FOR_PICKUP" })
+  db.tables.delivery_permit_items.push({ item_id: 31, permit_id: 3, product_id: 7, item_name_snapshot: "Pump A", quantity: 3, unit_price: 10000, total: 30000 })
+  db.tables.sales_order_items[0].quantity = 13
+  await returnTwoPumps(db) // 10 delivered + 3 on the way - 2 returned = 11 still out
+  const below = await validateSoEdit(db, 1, { items: [lineA(10)] })
+  assert.equal(below.ok, false)
+  assert.match((below as any).error, /11 are kept by the customer or on a delivery permit/)
+  assert.deepEqual(await validateSoEdit(db, 1, { items: [lineA(11)] }), { ok: true })
+})
+
+test("R4. screens: the edit dialog frees a fully returned line; the new-DP screen takes returns off; a shipped order can get a new DP", () => {
+  const { readFileSync } = require("node:fs") as typeof import("node:fs")
+  const { join } = require("node:path") as typeof import("node:path")
+  const src = (f: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), f), "utf8")
+  const dialog = src("components/sales-order/edit-approved-order-dialog.tsx")
+  assert.match(dialog, /const held = item\.onDeliveryPermit && !locked && keptOf\(item\) > 0/)
+  assert.match(dialog, /item\.itemType === "stock" && fixedItem \?/)
+  assert.equal((dialog.match(/disabled=\{fixedItem\}/g) || []).length, 2)
+  const so = src("components/modules/sales-order-module.tsx")
+  assert.equal((so.match(/\(Number\(dpItem\.quantity\) \|\| 0\) - \(Number\(dpItem\.returnedQuantity\) \|\| 0\)/g) || []).length, 2)
+  assert.match(so, /"out_for_delivery", "shipped"\]/)
+  const route = src("app/api/sales-orders/route.ts")
+  assert.match(route, /if \(permit\.status === "REJECTED"\) continue/)
+  assert.match(route, /minQuantity: firstOfKey \? Math\.max\(0, \(history\?\.permitted\.get\(key\) \|\| 0\) - returnedQuantity\) : 0/)
 })

@@ -48,7 +48,7 @@ export async function GET() {
       // Batch 2: per-line delivery / return history, so the order can be edited safely after a return.
       const allPermits: any[] = ordersData.flatMap((o: any) => (o.delivery_permits || []).map((dp: any) => ({ ...dp, so_id: o.so_id })))
       let returnedByPermitId = new Map<number, number>() // valid returned quantity per delivery permit
-      const historyByOrder = new Map<number, { delivered: Map<string, number>; confirmed: Map<string, number>; onPermit: Set<string>; returned: Map<string, number> }>()
+      const historyByOrder = new Map<number, { delivered: Map<string, number>; confirmed: Map<string, number>; onPermit: Set<string>; returned: Map<string, number>; permitted: Map<string, number> }>()
       if (allPermits.length > 0) {
         try {
           const permitIds = allPermits.map((p) => p.permit_id)
@@ -60,11 +60,14 @@ export async function GET() {
           const returnLines = await loadReturnLines(supabase, permitIds)
           returnedByPermitId = returnedTotalsByPermit(returnLines)
           for (const permit of allPermits) {
-            const entry = historyByOrder.get(permit.so_id) || { delivered: new Map(), confirmed: new Map(), onPermit: new Set(), returned: new Map() }
+            const entry = historyByOrder.get(permit.so_id) || { delivered: new Map(), confirmed: new Map(), onPermit: new Set(), returned: new Map(), permitted: new Map() }
             historyByOrder.set(permit.so_id, entry)
+            // A rejected permit never ships: its items are free again (owner request, 2026-11-11).
+            if (permit.status === "REJECTED") continue
             for (const item of (dpItems || []).filter((i: any) => i.permit_id === permit.permit_id)) {
               const key = lineKey(item.product_id, item.item_name_snapshot)
               entry.onPermit.add(key)
+              entry.permitted.set(key, (entry.permitted.get(key) || 0) + (Number(item.quantity) || 0))
               if (DELIVERED_PERMIT_STATUSES.includes(permit.status)) entry.delivered.set(key, (entry.delivered.get(key) || 0) + (Number(item.quantity) || 0))
               // same permit statuses as isSOFullyDelivered; returns are taken off below
               if (DP_DELIVERED_STATUSES.includes(permit.status)) entry.confirmed.set(key, (entry.confirmed.get(key) || 0) + (Number(item.quantity) || 0))
@@ -148,7 +151,9 @@ export async function GET() {
           confirmedDeliveredQuantity: lineStates[index].deliveredQuantity,
           deliveryState: lineStates[index].state,
           returnedQuantity,
-          minQuantity: firstOfKey ? Math.max(0, deliveredQuantity - returnedQuantity) : 0,
+          // what is still with the customer or on its way (on live permits, less returns): the line cannot go below it;
+          // a returned or refused quantity is free again, to edit or to put on a new delivery permit
+          minQuantity: firstOfKey ? Math.max(0, (history?.permitted.get(key) || 0) - returnedQuantity) : 0,
           onDeliveryPermit: !!history?.onPermit.has(key),
           id: item.so_item_id?.toString() || "",
           productId: item.product_id?.toString() || "",

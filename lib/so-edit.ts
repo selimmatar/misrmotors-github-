@@ -36,7 +36,9 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
   const so = must(await db.from("sales_orders").select("so_id, so_number, customer_id").eq("so_id", soId).maybeSingle(), "load sales order")
   if (!so) return { ok: true } // the route reports "not found" itself
 
-  const permits = must(await db.from("delivery_permits").select("permit_id, status").eq("sales_order_id", soId), "load delivery permits") as any[]
+  // A rejected permit never ships, so it holds nothing back (owner request, 2026-11-11).
+  const permits = (must(await db.from("delivery_permits").select("permit_id, status").eq("sales_order_id", soId), "load delivery permits") as any[])
+    .filter((p) => p.status !== "REJECTED")
   if (permits.length === 0) return { ok: true } // nothing delivered yet: ordinary editing rules
 
   const soLabel = so.so_number || `#${so.so_id}`
@@ -59,15 +61,19 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
   const onPermit = new Set<string>() // items that appear on any permit: their order lines are history
   const names = new Map<string, string>() // item name as printed on the permit, for messages
   const delivered = new Map<string, number>()
+  const permitted = new Map<string, number>() // on live (not rejected) permits, delivered or not
   for (const item of permitItems) {
     const key = lineKey(item.product_id, item.item_name_snapshot)
     onPermit.add(key)
+    permitted.set(key, (permitted.get(key) || 0) + (Number(item.quantity) || 0))
     if (item.item_name_snapshot && !names.has(key)) names.set(key, item.item_name_snapshot)
     const permit = permits.find((p) => p.permit_id === item.permit_id)
     if (permit && DELIVERED_PERMIT_STATUSES.includes(permit.status)) delivered.set(key, (delivered.get(key) || 0) + (Number(item.quantity) || 0))
   }
   const label = (key: string) => names.get(key) || key.slice(2) || "this item"
-  const kept = (key: string) => Math.max(0, (delivered.get(key) || 0) - (returns.get(key) || 0))
+  // What the customer has or is about to get: on live permits, less what came back. A returned / refused quantity is
+  // free again: it may be edited, removed or put on a new delivery permit.
+  const kept = (key: string) => Math.max(0, (permitted.get(key) || 0) - (returns.get(key) || 0))
 
   const incomingById = new Map<number, any>()
   for (const item of input.items) {
@@ -94,7 +100,7 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
       if (kept(key) <= EPS) continue // fully returned: the line may go, its permit and return stay as history
       return { ok: false, status: 409, error: `"${label(key)}" is on a delivery permit of ${soLabel} and cannot be removed while the customer keeps ${kept(key)} of it. Lower the line to ${kept(key)} instead, and add any replacement as a new line.` }
     }
-    if (incomingKey(incoming) !== key) {
+    if (incomingKey(incoming) !== key && kept(key) > EPS) {
       return { ok: false, status: 409, error: `"${label(key)}" is on a delivery permit of ${soLabel}; its line cannot be turned into a different item. Add the replacement as a new line.` }
     }
   }
@@ -111,7 +117,7 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
       return {
         ok: false,
         status: 409,
-        error: `"${label(key)}": ${keep} are kept by the customer (delivered ${delivered.get(key) || 0}, returned ${returns.get(key) || 0}), so the order cannot go below ${keep}.`,
+        error: `"${label(key)}": ${keep} are kept by the customer or on a delivery permit (on permits ${permitted.get(key) || 0}, delivered ${delivered.get(key) || 0}, returned ${returns.get(key) || 0}), so the order cannot go below ${keep}.`,
       }
     }
   }
