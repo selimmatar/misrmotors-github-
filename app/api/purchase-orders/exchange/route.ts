@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
+import { logPoEvent } from "@/lib/po-history"
 import { computePoTotals, poMoney } from "@/lib/po-items"
 import { editBlocker, syncPoStatus } from "@/lib/po-edit"
 import { ADVANCE_CREDIT_TYPE, advanceMethod } from "@/lib/po-bill"
@@ -110,13 +111,11 @@ export async function POST(request: Request) {
 
     const oldSide = { name: lineName(from, names), quantity: qty, unitPrice: fromPrice, total: poMoney(qty * fromPrice) }
     const newSide = { name: lineName(yRow, names), quantity: toQty, unitPrice: toPrice, total: yRow.total }
-    await db.from("workflow_events").insert({
-      entity_type: "PURCHASE_ORDER",
-      entity_id: poId,
+    await logPoEvent(db, poId, {
       event_type: "PO_ITEM_EXCHANGED",
       old_value: JSON.stringify(oldSide),
       new_value: JSON.stringify(newSide),
-      performed_by: parsePositiveId(body?.userId),
+      userId: body?.userId,
       notes: String(body?.notes || "").trim().slice(0, 500) || null,
     })
     return NextResponse.json({ ok: true, total: totals.total, exchange: { from: oldSide, to: newSide, difference: poMoney(newSide.total - oldSide.total) } })
@@ -140,7 +139,7 @@ export async function GET(request: Request) {
     const db = createAdminClient()
     const { data: events, error } = await db
       .from("workflow_events")
-      .select("event_type, old_value, new_value, notes, performed_by, created_at")
+      .select("event_type, old_value, new_value, notes, performed_by, performed_at")
       .eq("entity_type", "PURCHASE_ORDER")
       .eq("entity_id", poId)
       .in("event_type", PO_HISTORY_EVENTS)
@@ -164,12 +163,12 @@ export async function GET(request: Request) {
       .map((e: any) => {
         const from = parse(e.old_value) || {}
         const to = parse(e.new_value) || {}
-        return { date: e.created_at, by: e.performed_by, notes: e.notes, from, to, difference: poMoney((Number(to.total) || 0) - (Number(from.total) || 0)) }
+        return { date: e.performed_at, by: e.performed_by, notes: e.notes, from, to, difference: poMoney((Number(to.total) || 0) - (Number(from.total) || 0)) }
       })
-    const sentBack = (events || []).filter((e: any) => e.event_type === "PO_ITEM_SENT_BACK").map((e: any) => ({ date: e.created_at, ...(parse(e.old_value) || {}), notes: e.notes }))
+    const sentBack = (events || []).filter((e: any) => e.event_type === "PO_ITEM_SENT_BACK").map((e: any) => ({ date: e.performed_at, ...(parse(e.old_value) || {}), notes: e.notes }))
     const closings = (events || [])
       .filter((e: any) => e.event_type === "PO_CLOSED" || e.event_type === "PO_REOPENED")
-      .map((e: any) => ({ date: e.created_at, kind: e.event_type === "PO_CLOSED" ? "closed" : "reopened", notes: e.notes }))
+      .map((e: any) => ({ date: e.performed_at, kind: e.event_type === "PO_CLOSED" ? "closed" : "reopened", notes: e.notes }))
     const byDate = (a: any, b: any) => String(a.date || "").localeCompare(String(b.date || ""))
     return NextResponse.json({
       exchanges: exchanges.sort(byDate),

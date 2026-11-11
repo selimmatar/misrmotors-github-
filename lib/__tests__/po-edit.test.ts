@@ -390,3 +390,17 @@ test("C4. reopening a PO whose bill has return credits linked to it: credits unl
   assert.deepEqual(db.tables.supplier_credits.map((c) => c.invoice_id), [newId, newId], "linked to the new bill")
   assert.equal(db.tables.accounts_payable[0].paid_amount, 0, "active return credits are not taken off automatically")
 })
+
+test("H1. the PO history log uses its real columns (performed_at, a real user or none) and never loses a record silently", () => {
+  for (const f of ["app/api/purchase-orders/exchange/route.ts", "app/api/purchase-orders/close/route.ts", "app/api/purchase-orders/reopen/route.ts", "lib/returns.ts"]) {
+    const code = src(f)
+    assert.doesNotMatch(code, /from\("workflow_events"\)\.insert/, `${f}: writes go through logPoEvent`)
+  }
+  assert.doesNotMatch(src("app/api/purchase-orders/exchange/route.ts"), /e\.created_at|performed_by, created_at/)
+  assert.doesNotMatch(src("app/api/purchase-orders/close/route.ts"), /new_value, created_at/)
+  const history = src("lib/po-history.ts")
+  assert.match(history, /performed_by: await knownUserId\(db, userId\)/)
+  assert.match(history, /if \(error\) console\.error/)
+  // the exchange is also reachable from the PO details popup, with words on the button
+  assert.match(src("components/modules/purchase-order-module.tsx"), /<PoOpenMenu\s+labelled/)
+})

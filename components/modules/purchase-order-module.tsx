@@ -2125,7 +2125,22 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
           <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="text-2xl">{fill(t("po.details-title"), { number: viewDetailsOrder.poNumber })}</DialogTitle>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <DialogTitle className="text-2xl">{fill(t("po.details-title"), { number: viewDetailsOrder.poNumber })}</DialogTitle>
+                <PoOpenMenu
+                  labelled
+                  order={viewDetailsOrder}
+                  closed={isClosedPO(viewDetailsOrder)}
+                  canEdit={canEditPO(viewDetailsOrder)}
+                  role={userRole}
+                  userId={(user as any)?.id ?? null}
+                  products={products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
+                  onDone={async () => {
+                    setShowDetailsModal(false)
+                    await loadData()
+                  }}
+                />
+              </div>
               <ChainLine poId={viewDetailsOrder.id} />
             </DialogHeader>
             

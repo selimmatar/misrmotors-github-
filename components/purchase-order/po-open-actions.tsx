@@ -53,9 +53,11 @@ interface MenuProps {
   products: { id: string; productName: string; sku: string }[]
   inventory?: any[]
   onDone: () => Promise<void> | void
+  /** Show the words next to the icon (in the PO details popup). */
+  labelled?: boolean
 }
 
-export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inventory = [], onDone }: MenuProps) {
+export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inventory = [], onDone, labelled = false }: MenuProps) {
   const { t } = useI18n()
   const [dialog, setDialog] = useState<"exchange" | "advance" | null>(null)
   const [busy, setBusy] = useState(false)
@@ -83,8 +85,9 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" title={t("po.more-actions")} aria-label={t("po.more-actions")} disabled={busy}>
+          <Button variant={labelled ? "outline" : "ghost"} size="sm" title={t("po.more-actions")} aria-label={t("po.more-actions")} disabled={busy}>
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MoreHorizontal className="w-4 h-4" />}
+            {labelled && <span className="ms-1">{t("po.more-actions-long")}</span>}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
