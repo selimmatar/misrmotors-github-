@@ -53,9 +53,11 @@ interface MenuProps {
   products: { id: string; productName: string; sku: string }[]
   inventory?: any[]
   onDone: () => Promise<void> | void
+  /** Show the words next to the icon (in the PO details popup). */
+  labelled?: boolean
 }
 
-export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inventory = [], onDone }: MenuProps) {
+export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inventory = [], onDone, labelled = false }: MenuProps) {
   const { t } = useI18n()
   const [dialog, setDialog] = useState<"exchange" | "advance" | null>(null)
   const [busy, setBusy] = useState(false)
@@ -83,8 +85,9 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" title={t("po.more-actions")} aria-label={t("po.more-actions")} disabled={busy}>
+          <Button variant={labelled ? "outline" : "ghost"} size="sm" title={t("po.more-actions")} aria-label={t("po.more-actions")} disabled={busy}>
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MoreHorizontal className="w-4 h-4" />}
+            {labelled && <span className="ms-1">{t("po.more-actions-long")}</span>}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -129,6 +132,20 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
   )
 }
 
+interface ExchangeRow {
+  key: number
+  fromId: string
+  qty: number
+  kind: "product" | "typed"
+  productId: string
+  name: string
+  toQty: number
+  toPrice: number
+  notes: string
+}
+
+// Several exchanges in one go (owner request, 2026-11-12): each row replaces some or all of a PO line (X) with a new
+// item (Y); they are saved together, all or nothing.
 function ExchangeDialog({
   order,
   userId,
@@ -146,37 +163,40 @@ function ExchangeDialog({
 }) {
   const { t } = useI18n()
   const lines = (order.items || []).filter((i: any) => (Number(i.quantity) || 0) > 0 && i.id)
-  const [fromId, setFromId] = useState<string>(lines[0]?.id || "")
-  const from: any = lines.find((l: any) => l.id === fromId)
-  const [qty, setQty] = useState<number>(Number(from?.quantity) || 1)
-  const [kind, setKind] = useState<"product" | "typed">("typed")
-  const [productId, setProductId] = useState("")
-  const [name, setName] = useState("")
-  const [toQty, setToQty] = useState<number>(Number(from?.quantity) || 1)
-  const [toPrice, setToPrice] = useState<number>(0)
-  const [notes, setNotes] = useState("")
+  const lineOf = (id: string): any => lines.find((l: any) => l.id === id)
+  const nextKey = useState(() => ({ n: 0 }))[0]
+  const newRow = (fromId = lines[0]?.id || ""): ExchangeRow => {
+    const q = Number(lineOf(fromId)?.quantity) || 1
+    return { key: ++nextKey.n, fromId, qty: q, kind: "typed", productId: "", name: "", toQty: q, toPrice: 0, notes: "" }
+  }
+  const [rows, setRows] = useState<ExchangeRow[]>(() => [newRow()])
   const [saving, setSaving] = useState(false)
-
-  const fromCost = money(qty * (Number(from?.unitPrice) || 0))
-  const toCost = money(toQty * toPrice)
-  const diff = money(toCost - fromCost)
+  const update = (key: number, patch: Partial<ExchangeRow>) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)))
+  const fromCost = (r: ExchangeRow) => money(r.qty * (Number(lineOf(r.fromId)?.unitPrice) || 0))
+  const toCost = (r: ExchangeRow) => money(r.toQty * r.toPrice)
+  const total = money(rows.reduce((s, r) => s + toCost(r) - fromCost(r), 0))
+  // the next unused line is offered when another exchange is added
+  const nextFrom = () => lines.find((l: any) => !rows.some((r) => r.fromId === l.id))?.id || lines[0]?.id || ""
 
   const save = async () => {
-    if (!from || !(qty > 0) || !(toQty > 0) || toPrice < 0 || (kind === "product" ? !productId : !name.trim())) {
-      alert(t("po.exchange-fill"))
+    const bad = rows.find((r) => !lineOf(r.fromId) || !(r.qty > 0) || !(r.toQty > 0) || r.toPrice < 0 || (r.kind === "product" ? !r.productId : !r.name.trim()))
+    if (bad) {
+      alert(fill(t("po.exchange-fill-row"), { n: rows.indexOf(bad) + 1 }))
       return
     }
     setSaving(true)
     try {
       await post("/api/purchase-orders/exchange", {
         id: order.id,
-        fromItemId: from.id,
-        quantity: qty,
-        to: kind === "product" ? { productId, quantity: toQty, unitPrice: toPrice } : { name: name.trim(), quantity: toQty, unitPrice: toPrice },
-        notes,
         userId,
+        exchanges: rows.map((r) => ({
+          fromItemId: r.fromId,
+          quantity: r.qty,
+          notes: r.notes,
+          to: r.kind === "product" ? { productId: r.productId, quantity: r.toQty, unitPrice: r.toPrice } : { name: r.name.trim(), quantity: r.toQty, unitPrice: r.toPrice },
+        })),
       })
-      alert(t("po.exchange-saved"))
+      alert(fill(t("po.exchanges-saved"), { n: rows.length }))
       onClose()
       await onDone()
     } catch (error) {
@@ -188,87 +208,96 @@ function ExchangeDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {t("po.exchange-item")} · {order.poNumber}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="rounded-md border p-3 space-y-3">
-            <p className="text-sm font-semibold">{t("po.exchange-replace")}</p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="sm:col-span-2 space-y-1">
-                <Label htmlFor="exchange-from">{t("po.exchange-from")}</Label>
-                <Select
-                  value={fromId}
-                  onValueChange={(v) => {
-                    setFromId(v)
-                    const line: any = lines.find((l: any) => l.id === v)
-                    setQty(Number(line?.quantity) || 1)
-                    setToQty(Number(line?.quantity) || 1)
-                  }}
-                >
-                  <SelectTrigger id="exchange-from">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {lines.map((l: any) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.productName} · {l.quantity} × {Number(l.unitPrice).toLocaleString("en-US")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          {rows.map((r, index) => (
+            <div key={r.key} className="rounded-md border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold">{fill(t("po.exchange-number"), { n: index + 1 })}</p>
+                {rows.length > 1 && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setRows((prev) => prev.filter((x) => x.key !== r.key))}>
+                    {t("po.exchange-remove")}
+                  </Button>
+                )}
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="exchange-from-qty">{t("quantity")}</Label>
-                <Input id="exchange-from-qty" type="number" min={1} max={Number(from?.quantity) || undefined} value={qty} onChange={(e) => setQty(Number(e.target.value) || 0)} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="sm:col-span-2 space-y-1">
+                  <Label htmlFor={`exchange-from-${r.key}`}>{t("po.exchange-from")}</Label>
+                  <Select
+                    value={r.fromId}
+                    onValueChange={(v) => {
+                      const q = Number(lineOf(v)?.quantity) || 1
+                      update(r.key, { fromId: v, qty: q, toQty: q })
+                    }}
+                  >
+                    <SelectTrigger id={`exchange-from-${r.key}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lines.map((l: any) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.productName} · {l.quantity} × {Number(l.unitPrice).toLocaleString("en-US")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`exchange-from-qty-${r.key}`}>{t("quantity")}</Label>
+                  <Input id={`exchange-from-qty-${r.key}`} type="number" min={1} max={Number(lineOf(r.fromId)?.quantity) || undefined} value={r.qty} onChange={(e) => update(r.key, { qty: Number(e.target.value) || 0 })} />
+                </div>
               </div>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {t("po.exchange-cost")} <Money value={fromCost} />
-            </p>
-          </div>
+              <p className="text-xs text-muted-foreground">
+                {t("po.exchange-cost")} <Money value={fromCost(r)} />
+              </p>
 
-          <div className="rounded-md border p-3 space-y-3">
-            <p className="text-sm font-semibold">{t("po.exchange-with")}</p>
-            <div className="flex gap-2">
-              <Button type="button" size="sm" variant={kind === "typed" ? "default" : "outline"} onClick={() => setKind("typed")}>
-                {t("po.exchange-typed")}
-              </Button>
-              <Button type="button" size="sm" variant={kind === "product" ? "default" : "outline"} onClick={() => setKind("product")}>
-                {t("po.exchange-product")}
-              </Button>
-            </div>
-            {kind === "product" ? (
-              <ProductSearchCombobox products={products} inventory={inventory} warehouseId="all" value={productId || undefined} onSelect={setProductId} />
-            ) : (
-              <Input aria-label={t("common.item-name")} placeholder={t("common.item-name")} value={name} onChange={(e) => setName(e.target.value)} />
-            )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="exchange-to-qty">{t("quantity")}</Label>
-                <Input id="exchange-to-qty" type="number" min={1} value={toQty} onChange={(e) => setToQty(Number(e.target.value) || 0)} />
+              <p className="text-sm font-semibold">{t("po.exchange-with")}</p>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant={r.kind === "typed" ? "default" : "outline"} onClick={() => update(r.key, { kind: "typed" })}>
+                  {t("po.exchange-typed")}
+                </Button>
+                <Button type="button" size="sm" variant={r.kind === "product" ? "default" : "outline"} onClick={() => update(r.key, { kind: "product" })}>
+                  {t("po.exchange-product")}
+                </Button>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="exchange-to-price">{t("po.cost-per-unit")}</Label>
-                <Input id="exchange-to-price" type="number" min={0} step="0.01" value={toPrice} onChange={(e) => setToPrice(Number(e.target.value) || 0)} />
+              {r.kind === "product" ? (
+                <ProductSearchCombobox products={products} inventory={inventory} warehouseId="all" value={r.productId || undefined} onSelect={(v) => update(r.key, { productId: v })} />
+              ) : (
+                <Input aria-label={t("common.item-name")} placeholder={t("common.item-name")} value={r.name} onChange={(e) => update(r.key, { name: e.target.value })} />
+              )}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <Label htmlFor={`exchange-to-qty-${r.key}`}>{t("quantity")}</Label>
+                  <Input id={`exchange-to-qty-${r.key}`} type="number" min={1} value={r.toQty} onChange={(e) => update(r.key, { toQty: Number(e.target.value) || 0 })} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`exchange-to-price-${r.key}`}>{t("po.cost-per-unit")}</Label>
+                  <Input id={`exchange-to-price-${r.key}`} type="number" min={0} step="0.01" value={r.toPrice} onChange={(e) => update(r.key, { toPrice: Number(e.target.value) || 0 })} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`exchange-notes-${r.key}`}>{t("po.exchange-notes")}</Label>
+                  <Input id={`exchange-notes-${r.key}`} value={r.notes} onChange={(e) => update(r.key, { notes: e.target.value })} />
+                </div>
               </div>
+              <p className="text-xs text-muted-foreground">
+                {t("po.exchange-cost")} <Money value={toCost(r)} /> · {t("po.exchange-difference")} {toCost(r) - fromCost(r) > 0 ? "+" : ""}
+                <Money value={money(toCost(r) - fromCost(r))} />
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {t("po.exchange-cost")} <Money value={toCost} />
-            </p>
-          </div>
+          ))}
 
-          <div className="space-y-1">
-            <Label htmlFor="exchange-notes">{t("po.exchange-notes")}</Label>
-            <Input id="exchange-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setRows((prev) => [...prev, newRow(nextFrom())])} disabled={lines.length === 0}>
+            {t("po.exchange-add")}
+          </Button>
 
-          <p className={`text-sm font-semibold ${diff > 0 ? "text-red-700" : diff < 0 ? "text-emerald-700" : ""}`}>
-            {t("po.exchange-difference")} {diff > 0 ? "+" : ""}
-            <Money value={diff} />
+          <p className={`text-sm font-semibold ${total > 0 ? "text-red-700" : total < 0 ? "text-emerald-700" : ""}`}>
+            {fill(t("po.exchange-total-difference"), { n: rows.length })} {total > 0 ? "+" : ""}
+            <Money value={total} />
           </p>
           <p className="text-xs text-muted-foreground">{t("po.exchange-stock-note")}</p>
         </div>
@@ -278,7 +307,7 @@ function ExchangeDialog({
           </Button>
           <Button onClick={save} disabled={saving}>
             {saving ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : null}
-            {t("po.exchange-save")}
+            {rows.length > 1 ? fill(t("po.exchanges-save"), { n: rows.length }) : t("po.exchange-save")}
           </Button>
         </DialogFooter>
       </DialogContent>

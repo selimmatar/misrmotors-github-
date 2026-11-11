@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
+import { logPoEvent } from "@/lib/po-history"
 import { PO_CLOSABLE_STATUSES, billsOf, createPoBill, relinkCredits } from "@/lib/po-bill"
 
 export const dynamic = "force-dynamic"
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
     // supplier credits a reopen unlinked from the old bill point at this one again
     const { data: reopenings } = await db
       .from("workflow_events")
-      .select("new_value, created_at")
+      .select("new_value")
       .eq("entity_type", "PURCHASE_ORDER")
       .eq("entity_id", poId)
       .eq("event_type", "PO_REOPENED")
@@ -46,12 +47,10 @@ export async function POST(request: Request) {
       }
     }
     await relinkCredits(db, poId, [...ids])
-    await db.from("workflow_events").insert({
-      entity_type: "PURCHASE_ORDER",
-      entity_id: poId,
+    await logPoEvent(db, poId, {
       event_type: "PO_CLOSED",
       new_value: `APINV-${po.po_number}`,
-      performed_by: parsePositiveId(body?.userId),
+      userId: body?.userId,
       notes: `${po.po_number} closed and sent to Accounts Payable (${po.total})`,
     })
     return NextResponse.json({ ok: true, invoiceNumber: `APINV-${po.po_number}` })

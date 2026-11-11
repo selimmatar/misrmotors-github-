@@ -25,6 +25,7 @@ import { syncSalesOrderNetTotal } from "./so-edit"
 import { creditInvoicedReturn } from "./return-credit"
 import { computePoTotals } from "./po-items"
 import { syncPoStatus } from "./po-edit"
+import { logPoEvent } from "./po-history"
 
 type Db = any // supabase-js client (or a test double)
 
@@ -1155,9 +1156,7 @@ async function sendBackOnOpenPo(db: Db, inventoryId: number, decided: CreditDeci
     undo.push(() => db.from("purchase_orders").update({ total: po.total, tax_amount: po.tax_amount }).eq("po_id", po.po_id))
     await syncPoStatus(db, po, undo)
     if (row.product_id) await settleReturnedBatches(db, row.product_id, row.warehouse_id, "remove")
-    await db.from("workflow_events").insert({
-      entity_type: "PURCHASE_ORDER",
-      entity_id: po.po_id,
+    await logPoEvent(db, po.po_id, {
       event_type: "PO_ITEM_SENT_BACK",
       old_value: JSON.stringify({ name: decided.productName, quantity: decided.lowerBy, unitPrice: decided.unitCost, total: decided.amount, soNumber: decided.soNumber }),
       new_value: String(newQty),

@@ -4,6 +4,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
+import { logPoEvent } from "@/lib/po-history"
 import { billHasPayments, billsOf, removePoBills } from "@/lib/po-bill"
 
 export const dynamic = "force-dynamic"
@@ -26,14 +27,12 @@ export async function POST(request: Request) {
       )
     }
     const { unlinkedCreditIds } = await removePoBills(db, bills)
-    await db.from("workflow_events").insert({
-      entity_type: "PURCHASE_ORDER",
-      entity_id: poId,
+    await logPoEvent(db, poId, {
       event_type: "PO_REOPENED",
       old_value: bills.map((b: any) => b.invoice_number).join(", "),
       // supplier credits that pointed at the removed bill: the next close links them to the new one
       new_value: JSON.stringify({ unlinkedCreditIds }),
-      performed_by: parsePositiveId(body?.userId),
+      userId: body?.userId,
       notes: `${po.po_number} reopened; supplier bill removed`,
     })
     return NextResponse.json({ ok: true })
