@@ -257,3 +257,14 @@ test("customers tab uses every invoice per order and the derived order status", 
   assert.match(src, /\(invoiceMap\[inv\.soId\] \|\|= \[\]\)\.push\(inv\)/)
   assert.match(src, /orderDisplayStatus\(order\)/)
 })
+
+test("POST: a returned / refused quantity can go out again on a new permit (10 ordered, 10 sent, 4 returned -> 4 more ok, 5 not)", async () => {
+  const db = dpDb([permit(1, "APPROVED")], [{ item_id: 1, permit_id: 1, product_id: 7, item_name_snapshot: "P7", quantity: 10 }])
+  db.tables.product_returns = [{ return_id: 1, permit_id: "1", status: "received", created_at: "2026-11-10T00:00:00Z" }]
+  db.tables.return_items = [{ return_item_id: 1, return_id: 1, product_id: 7, product_name: "P7", returned_quantity: 4 }]
+  const over = await post([{ productId: "7", productName: "P7", quantity: 5, unitPrice: 1, total: 5 }])
+  assert.equal(over.status, 409)
+  assert.deepEqual(over.body.lines, [{ productId: 7, ordered: 10, alreadyOnPermits: 6, requested: 5, remaining: 4 }])
+  const ok = await post([{ productId: "7", productName: "P7", quantity: 4, unitPrice: 1, total: 4 }])
+  assert.equal(ok.status, 200, JSON.stringify(ok.body))
+})

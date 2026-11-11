@@ -195,7 +195,7 @@ test("ROUTE. PUT refuses invalid edits server-side and writes nothing", async ()
   const before = JSON.stringify({ order: db.tables.sales_orders, items: db.tables.sales_order_items, permits: db.tables.delivery_permits })
 
   const cases: [string, any, RegExp][] = [
-    ["quantity below what the customer keeps", editPayload([lineA(7), lineB(2)], { notes: "should not be saved" }), /8 are kept by the customer \(delivered 10, returned 2\)/],
+    ["quantity below what the customer keeps", editPayload([lineA(7), lineB(2)], { notes: "should not be saved" }), /8 are kept by the customer or on a delivery permit \(on permits 10, delivered 10, returned 2\)/],
     ["quantity of the kept item set to 0", editPayload([lineA(0), lineB(2)]), /8 are kept/],
     ["a delivered line removed", editPayload([lineB(2)]), /cannot be removed/],
     ["a delivered line overwritten by another item", editPayload([lineA(10, { productId: "8", productName: "Pump B", unitPrice: 12000, total: 120000 })]), /cannot be turned into a different item/],

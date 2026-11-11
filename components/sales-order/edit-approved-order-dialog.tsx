@@ -14,6 +14,15 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, Package, Printer, Trash2, UserPlus } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
@@ -127,6 +136,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
 
   const [itemPoStatus, setItemPoStatus] = useState<Record<string, { poNumber: string; status: string }>>({})
   const [saving, setSaving] = useState(false)
+  // Deleting a returned line asks: keep it on the order marked "returned" (quantity 0), or remove it completely.
+  const [returnedToDelete, setReturnedToDelete] = useState<EditItem | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -185,12 +196,25 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     return map
   }, [items])
   const keptOf = (item: EditItem) => keptByItem.get(lineKey(Number(item.productId) || null, item.productName)) || 0
+  const returnedByItem = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const item of items) {
+      const key = lineKey(Number(item.productId) || null, item.productName)
+      map.set(key, (map.get(key) || 0) + (item.returnedQuantity || 0))
+    }
+    return map
+  }, [items])
+  const returnedOf = (item: EditItem) => returnedByItem.get(lineKey(Number(item.productId) || null, item.productName)) || 0
 
   const updateItem = (key: string, patch: Partial<EditItem>) => {
     setItems((prev) => prev.map((item) => (item.key === key ? { ...item, ...patch } : item)))
   }
 
-  const removeItem = (row: EditItem) => {
+  const removeItem = (row: EditItem, choiceMade = false) => {
+    if (!choiceMade && row.onDeliveryPermit && returnedOf(row) > 0 && (row.quantity || 0) > 0) {
+      setReturnedToDelete(row)
+      return
+    }
     if (row.id && itemPoStatus[row.id]) {
       const status = itemPoStatus[row.id]
       const confirmed = window.confirm(
@@ -567,6 +591,7 @@ ${renderTotalsBlock(printTotals)}
   }
 
   return (
+    <>
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -641,12 +666,16 @@ ${renderTotalsBlock(printTotals)}
                   const stockLimit = item.itemType === "stock" ? getAvailableStock(item.productId) : null
                   // On a delivery permit (and no return): the line is locked; extra quantity goes on a new line.
                   const locked = isLineLocked(item)
+                  // Everything that went out on a permit came back (returned / refused): the line is free again,
+                  // like a line never delivered (owner request, 2026-11-11).
+                  const held = item.onDeliveryPermit && !locked && keptOf(item) > 0
+                  const fixedItem = locked || held
                   return (
                     <div key={item.key} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end p-3 border rounded-md">
                       <div className="col-span-2 lg:col-span-12 text-xs text-muted-foreground">
                         {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
                       </div>
-                      {item.itemType === "stock" && item.onDeliveryPermit ? (
+                      {item.itemType === "stock" && fixedItem ? (
                         <div className="col-span-2 lg:col-span-6 space-y-1">
                           <Label className="text-xs">{t("field.product")}</Label>
                           <div className="text-sm font-medium pt-2">{item.productName}</div>
@@ -671,7 +700,7 @@ ${renderTotalsBlock(printTotals)}
                             <Label className="text-xs">{t("common.item-name")}</Label>
                             <Input
                               value={item.productName}
-                              disabled={item.onDeliveryPermit}
+                              disabled={fixedItem}
                               onChange={(e) => updateItem(item.key, { productName: e.target.value })}
                             />
                           </div>
@@ -679,7 +708,7 @@ ${renderTotalsBlock(printTotals)}
                             <Label className="text-xs">{t("field.supplier")}</Label>
                             <Select
                               value={item.supplierName || ""}
-                              disabled={item.onDeliveryPermit}
+                              disabled={fixedItem}
                               onValueChange={(value) => {
                                 const supplier = suppliers.find((s) => s.name === value)
                                 updateItem(item.key, { supplierName: value, supplierId: supplier?.id || "" })
@@ -746,7 +775,7 @@ ${renderTotalsBlock(printTotals)}
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                      {item.onDeliveryPermit && (
+                      {item.onDeliveryPermit && fixedItem && (
                         <div className="col-span-2 lg:col-span-12">
                           <Badge variant="outline" className="gap-1 whitespace-normal h-auto text-start text-blue-700 border-blue-300 bg-blue-50">
                             {fill(t("so-edit.delivery-summary"), {
@@ -755,6 +784,13 @@ ${renderTotalsBlock(printTotals)}
                               kept: item.minQuantity || 0,
                             })}
                             {locked && <>{" "}{t("so-edit.line-locked")}</>}
+                          </Badge>
+                        </div>
+                      )}
+                      {item.onDeliveryPermit && item.quantity === 0 && returnedOf(item) > 0 && (
+                        <div className="col-span-2 lg:col-span-12">
+                          <Badge variant="outline" className="whitespace-normal h-auto text-start text-red-700 border-red-300 bg-red-50">
+                            {fill(t("so-edit.kept-as-returned"), { n: returnedOf(item) })}
                           </Badge>
                         </div>
                       )}
@@ -840,5 +876,38 @@ ${renderTotalsBlock(printTotals)}
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <AlertDialog open={!!returnedToDelete} onOpenChange={(open) => !open && setReturnedToDelete(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t("so-edit.delete-returned-title")}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {fill(t("so-edit.delete-returned-text"), { name: returnedToDelete?.productName || "", n: returnedToDelete ? returnedOf(returnedToDelete) : 0 })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+          <AlertDialogCancel>{t("action.cancel")}</AlertDialogCancel>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (returnedToDelete) updateItem(returnedToDelete.key, { quantity: 0 })
+              setReturnedToDelete(null)
+            }}
+          >
+            {t("so-edit.keep-as-returned")}
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              const row = returnedToDelete
+              setReturnedToDelete(null)
+              if (row) removeItem(row, true)
+            }}
+          >
+            {t("so-edit.remove-completely")}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
