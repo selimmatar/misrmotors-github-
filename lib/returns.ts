@@ -23,6 +23,8 @@
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "./return-lines"
 import { syncSalesOrderNetTotal } from "./so-edit"
 import { creditInvoicedReturn } from "./return-credit"
+import { computePoTotals } from "./po-items"
+import { syncPoStatus } from "./po-edit"
 
 type Db = any // supabase-js client (or a test double)
 
@@ -879,6 +881,7 @@ type ReceiptCost = {
   unitCost: number
   receivedQty: number
   poId: number
+  poItemId: number | null
   poNumber: string | null
   grnNumber: string | null
   supplierId: number
@@ -946,6 +949,7 @@ async function findOriginatingReceipt(db: Db, row: any, productName: string, soN
     unitCost,
     receivedQty,
     poId: chosen.po.po_id,
+    poItemId: chosen.line.po_item_id ?? null,
     poNumber: chosen.po.po_number || null,
     grnNumber: chosen.receipt.grn_number || null,
     supplierId: chosen.po.supplier_id,
@@ -967,6 +971,10 @@ type CreditDecision = {
   linkedInvoiceId: number | null
   noteParts: string[]
   description: string
+  /** The PO it came from is still open (no supplier bill): its line is lowered instead of making a credit. */
+  lowersPo: boolean
+  /** How many the PO line goes down by (never more than the line holds). */
+  lowerBy: number
 }
 
 // Read-only: which supplier is credited for a returned holding row, and how much (its cost, see findOriginatingReceipt).
@@ -1022,7 +1030,20 @@ async function decideReturnCredit(db: Db, inventoryId: number, input: any): Prom
   }
   const refs = [receipt?.poNumber ? `PO ${receipt.poNumber}` : null, receipt?.grnNumber ? `GRN ${receipt.grnNumber}` : null, soNumber ? `SO ${soNumber}` : null].filter(Boolean)
   const description = `Return of ${productName || "item"} (Qty: ${quantity} @ ${unitCost})${soNumber ? ` from ${soNumber}` : ""}${refs.length ? ` | ${refs.join(" | ")}` : ""}`
-  return { quantity, productName, soNumber, supplierId, unitCost, amount, noCredit, receipt, linkedInvoiceId, noteParts, description }
+  // Owner request, 2026-11-11: while the PO is open (no supplier bill yet) the item going back to the supplier comes off
+  // the PO itself, so the bill made at close is the final one. A closed PO keeps the credit as before.
+  let lowersPo = false
+  let lowerBy = 0
+  if (!noCredit && receipt && receipt.poItemId && receipt.apInvoiceIds.length === 0) {
+    const po = must(await db.from("purchase_orders").select("po_id, status, cost_finalized").eq("po_id", receipt.poId).maybeSingle(), "purchase order of the returned item")
+    const line = must(await db.from("purchase_order_items").select("quantity").eq("po_item_id", receipt.poItemId).maybeSingle(), "purchase order line of the returned item")
+    if (po && line && po.status !== "rejected" && !po.cost_finalized && (Number(line.quantity) || 0) > 0) {
+      lowersPo = true
+      lowerBy = Math.min(quantity, Number(line.quantity) || 0)
+      amount = round2(lowerBy * unitCost)
+    }
+  }
+  return { quantity, productName, soNumber, supplierId, unitCost, amount, noCredit, receipt, linkedInvoiceId, noteParts, description, lowersPo, lowerBy }
 }
 
 /** What writing off a returned holding row would credit the supplier, without changing anything (for the dialog). */
@@ -1042,6 +1063,8 @@ export async function previewReturnedItemCredit(db: Db, input: any): Promise<Wor
         poNumber: decided.receipt?.poNumber ?? null,
         grnNumber: decided.receipt?.grnNumber ?? null,
         basis: decided.receipt ? "receipt" : "fallback",
+        lowersPo: decided.lowersPo,
+        lowerBy: decided.lowerBy,
       },
     }
   } catch (error: any) {
@@ -1058,6 +1081,7 @@ export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowRe
     const decided = await decideReturnCredit(db, inventoryId, input)
     if ("status" in decided) return decided
     const { supplierId, amount, noCredit, linkedInvoiceId, noteParts, description } = decided
+    if (decided.lowersPo) return await sendBackOnOpenPo(db, inventoryId, decided)
 
     // ---- 2. claim the holding row (guarded delete: only one request can win) ----
     const claim = await claimHoldingRow(db, inventoryId)
@@ -1106,6 +1130,53 @@ export async function removeReturnedItem(db: Db, input: any): Promise<WorkflowRe
   } catch (error: any) {
     console.error("[returns] remove error:", errText(error))
     return failure(500, "Failed to remove the returned item. Nothing was changed.")
+  }
+}
+
+// The returned item goes back to the supplier of an OPEN PO: claim the holding row, lower the PO line and the PO total,
+// put the receiving status right and note it in the PO history. No supplier credit. Undone on any failure.
+async function sendBackOnOpenPo(db: Db, inventoryId: number, decided: CreditDecision): Promise<WorkflowResult> {
+  const receipt = decided.receipt!
+  const claim = await claimHoldingRow(db, inventoryId)
+  if (!claim.ok) return claim.result
+  const row = claim.row
+  const undo: (() => PromiseLike<unknown>)[] = []
+  try {
+    const line = must(await db.from("purchase_order_items").select("*").eq("po_item_id", receipt.poItemId).maybeSingle(), "purchase order line")
+    const po = must(await db.from("purchase_orders").select("*").eq("po_id", receipt.poId).maybeSingle(), "purchase order")
+    if (!line || !po) throw new Error("the purchase order line is gone")
+    const newQty = round2(Math.max(0, (Number(line.quantity) || 0) - decided.lowerBy))
+    must(await db.from("purchase_order_items").update({ quantity: newQty, total: round2(newQty * (Number(line.unit_price) || 0)) }).eq("po_item_id", line.po_item_id), "lower purchase order line")
+    undo.push(() => db.from("purchase_order_items").update({ quantity: line.quantity, total: line.total }).eq("po_item_id", line.po_item_id))
+    const lines = must(await db.from("purchase_order_items").select("total").eq("po_id", po.po_id), "purchase order lines") as any[]
+    const vatOn = Number(po.tax_amount) > 0
+    const totals = computePoTotals(lines, vatOn)
+    must(await db.from("purchase_orders").update({ total: totals.total, tax_amount: vatOn ? totals.tax : null }).eq("po_id", po.po_id), "update purchase order total")
+    undo.push(() => db.from("purchase_orders").update({ total: po.total, tax_amount: po.tax_amount }).eq("po_id", po.po_id))
+    await syncPoStatus(db, po, undo)
+    if (row.product_id) await settleReturnedBatches(db, row.product_id, row.warehouse_id, "remove")
+    await db.from("workflow_events").insert({
+      entity_type: "PURCHASE_ORDER",
+      entity_id: po.po_id,
+      event_type: "PO_ITEM_SENT_BACK",
+      old_value: JSON.stringify({ name: decided.productName, quantity: decided.lowerBy, unitPrice: decided.unitCost, total: decided.amount, soNumber: decided.soNumber }),
+      new_value: String(newQty),
+      notes: `Returned by the customer and sent back to the supplier: ${decided.productName} x ${decided.lowerBy} taken off ${po.po_number}`,
+    })
+    return {
+      status: 200,
+      body: { message: "Returned item sent back: the purchase order was lowered", credit: null, loweredPo: { poId: po.po_id, poNumber: po.po_number, quantity: decided.lowerBy, amount: decided.amount, newTotal: totals.total } },
+    }
+  } catch (e) {
+    let clean = true
+    for (const step of undo.reverse()) {
+      const res: any = await step()
+      if (res?.error) clean = false
+    }
+    if (!(await restoreHoldingRow(db, row))) clean = false
+    console.error(`[returns] send back ${inventoryId} failed: ${errText(e)}`)
+    if (!clean) return failure(500, "Sending the item back failed and could not be fully undone. Contact an administrator.", { partialFailure: true, inventoryId })
+    return failure(500, `Failed to send the returned item back: ${errText(e)}. Nothing was changed.`)
   }
 }
 

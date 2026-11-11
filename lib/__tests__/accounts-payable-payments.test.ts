@@ -8,6 +8,7 @@ import { call, useDb } from "./route-harness"
 import * as payRoute from "../../app/api/accounts-payable/payments/route"
 import * as apRoute from "../../app/api/accounts-payable/route"
 import * as poRoute from "../../app/api/purchase-orders/route"
+import * as closeRoute from "../../app/api/purchase-orders/close/route"
 
 const inv = (invoice_id: number, extra: Row = {}): Row => ({
   invoice_id,
@@ -262,11 +263,14 @@ const approvalDb = (paymentType: string) =>
     purchase_orders: [{ po_id: 77, po_number: "PO-T-77", supplier_id: 1, status: "pending", total: 500, payment_type: paymentType }],
   })
 
-test("O1. PO approval creates a pending AP with paid_amount 0 and no ledger rows, for every payment type", async () => {
+test("O1. approving then closing a PO creates a pending AP with paid_amount 0 and no ledger rows, for every payment type", async () => {
   for (const type of ["cash", "prepaid", "bank_transfer", "installment", "cheque", "hybrid"]) {
     const db = approvalDb(type)
     const r = await call(poRoute.PUT, "PUT", { id: 77, status: "approved" })
     assert.equal(r.status, 200, `${type}: ${JSON.stringify(r.body)}`)
+    assert.equal(db.tables.accounts_payable.length, 0, `${type}: no bill at approval`)
+    const c = await call(closeRoute.POST as any, "POST", { id: 77 })
+    assert.equal(c.status, 200, `${type}: ${JSON.stringify(c.body)}`)
     assert.equal(db.tables.accounts_payable.length, 1, type)
     assert.equal(db.tables.accounts_payable[0].status, "pending", type)
     assert.equal(db.tables.accounts_payable[0].paid_amount, 0, type)
@@ -275,12 +279,13 @@ test("O1. PO approval creates a pending AP with paid_amount 0 and no ledger rows
   }
 })
 
-test("O2. AP insert failure at approval is surfaced as an error, not a 200", async () => {
+test("O2. AP insert failure at close is surfaced as an error, not a 200", async () => {
   const db = approvalDb("cash")
+  assert.equal((await call(poRoute.PUT, "PUT", { id: 77, status: "approved" })).status, 200)
   db.failOn["accounts_payable:insert"] = "boom"
-  const r = await call(poRoute.PUT, "PUT", { id: 77, status: "approved" })
+  const r = await call(closeRoute.POST as any, "POST", { id: 77 })
   assert.equal(r.status, 500)
-  assert.equal(r.body.apInvoiceCreated, false)
+  assert.equal(r.body.code, "BILL_FAILED")
   assert.equal(db.tables.supplier_payments.length, 0)
 })
 

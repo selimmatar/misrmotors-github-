@@ -41,6 +41,7 @@ export const OWNED: Record<Area, string[]> = {
     "components/modules/inventory-costing-settings.tsx",
     "components/supplier/",
     "components/po-requests/",
+    "components/purchase-order/",
   ],
   inventory: [
     ...mods(["inventory", "inventory-audit", "goods-receipt", "goods-receipt-tracking", "warehouse-transfers", "warehouse-delivery", "shipping", "courier-management", "operations-management", "maintenance"]),

@@ -101,7 +101,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const [removeReturnedItemDialog, setRemoveReturnedItemDialog] = useState(false)
   const [selectedReturnedItem, setSelectedReturnedItem] = useState<any>(null)
   // The supplier credit the write-off would record (worked out on the server from the item's cost)
-  const [creditPreview, setCreditPreview] = useState<{ loading: boolean; unitCost?: number; amount?: number; error?: string } | null>(null)
+  const [creditPreview, setCreditPreview] = useState<{ loading: boolean; unitCost?: number; amount?: number; error?: string; lowersPo?: boolean; lowerBy?: number; poNumber?: string } | null>(null)
   const [isRemovingItem, setIsRemovingItem] = useState(false)
   const [restockReturnedItemDialog, setRestockReturnedItemDialog] = useState(false)
   const [selectedRestockItem, setSelectedRestockItem] = useState<any>(null)
@@ -351,7 +351,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     fetch(`/api/inventory/remove-returned?${params}`)
       .then(async (res) => {
         const body: any = await res.json().catch(() => ({}))
-        setCreditPreview(res.ok ? { loading: false, unitCost: body.unitCost, amount: body.amount } : { loading: false, error: body.error || body.message })
+        setCreditPreview(
+          res.ok
+            ? { loading: false, unitCost: body.unitCost, amount: body.amount, lowersPo: !!body.lowersPo, lowerBy: body.lowerBy, poNumber: body.poNumber }
+            : { loading: false, error: body.error || body.message },
+        )
       })
       .catch(() => setCreditPreview({ loading: false, error: t("inv.credit-preview-failed") }))
   }
@@ -427,9 +431,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
       if (response.ok) {
         alert(
-          body.credit
-            ? fill(t("inv.removed-with-credit"), { amount: body.credit.amount })
-            : t("inv.removed-no-credit"),
+          body.loweredPo
+            ? fill(t("inv.removed-lowered-po"), { po: body.loweredPo.poNumber, n: body.loweredPo.quantity, amount: body.loweredPo.amount })
+            : body.credit
+              ? fill(t("inv.removed-with-credit"), { amount: body.credit.amount })
+              : t("inv.removed-no-credit"),
         )
         setRemoveReturnedItemDialog(false)
         setSelectedReturnedItem(null)
@@ -1279,9 +1285,15 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                     <p className="text-sm text-amber-900 mt-2">
                       <strong>{t("inv.unit-cost-egp-label")}</strong> <Money value={creditPreview?.unitCost || 0} />
                     </p>
-                    <p className="text-sm text-amber-900 mt-2 font-semibold">
-                      <strong>{t("inv.total-credit-egp-label")}</strong> <Money value={creditPreview?.amount || 0} />
-                    </p>
+                    {creditPreview?.lowersPo ? (
+                      <p className="text-sm text-amber-900 mt-2 font-semibold">
+                        {fill(t("inv.lowers-open-po"), { po: creditPreview.poNumber || "", n: creditPreview.lowerBy ?? 0, amount: formatNumber(creditPreview.amount || 0) })}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-amber-900 mt-2 font-semibold">
+                        <strong>{t("inv.total-credit-egp-label")}</strong> <Money value={creditPreview?.amount || 0} />
+                      </p>
+                    )}
                   </>
                 )}
                 {selectedReturnedItem.supplierName && (
@@ -1311,6 +1323,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                       <Loader2 className="w-4 h-4 me-2 animate-spin" />
                       {t("common.processing")}
                     </>
+                  ) : creditPreview?.lowersPo ? (
+                    t("inv.send-back-lower-po")
                   ) : (
                     t("inv.remove-create-credit")
                   )}

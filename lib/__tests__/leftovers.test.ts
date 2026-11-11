@@ -5,6 +5,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
+import * as closeRoute from "../../app/api/purchase-orders/close/route"
 import * as poRoute from "../../app/api/purchase-orders/route"
 import * as scheduleRoute from "../../app/api/payment-schedules/route"
 import { buildApprovalRevert } from "../po-status"
@@ -31,7 +32,7 @@ test("LO1. a same-status approve does not overwrite total or payment_type", asyn
   assert.equal(getPo(db, 1).total, 500)
   assert.equal(getPo(db, 1).payment_type, "cash")
   assert.equal(getPo(db, 1).approved_at, stamp)
-  assert.equal(db.tables.accounts_payable.length, 1)
+  assert.equal(db.tables.accounts_payable.length, 0, "approving makes no bill (open POs)")
 })
 
 test("LO2. the first approve (pending -> approved) ignores a client total: the stored total is approved and invoiced", async () => {
@@ -41,10 +42,12 @@ test("LO2. the first approve (pending -> approved) ignores a client total: the s
   const r = await putPo({ id: 1, status: "approved", total: 650 })
   assert.equal(r.status, 200)
   assert.equal(getPo(db, 1).total, 500)
+  // the bill is made when the PO is closed, from the stored total
+  assert.equal((await call(closeRoute.POST as any, "POST", { id: 1 })).status, 200)
   assert.equal(db.tables.accounts_payable[0].amount, 500)
 })
 
-test("LO3. a reverted approval restores approved_by, approved_at, rejection_reason and the changed columns", async () => {
+test("LO3. approving never depends on the supplier bill: a bill failure cannot block or revert an approval (open POs)", async () => {
   const db = new FakeDb({
     purchase_orders: [po(1, "pending", { rejection_reason: "earlier note", approved_by: null })],
     purchase_order_items: [],
@@ -52,16 +55,12 @@ test("LO3. a reverted approval restores approved_by, approved_at, rejection_reas
   })
   db.failOn["accounts_payable:insert"] = "boom"
   useDb(db)
-  const r = await putPo({ id: 1, status: "approved", approvedBy: 7, total: 777, paymentType: "cheque", rejectionReason: "stale" })
-  assert.equal(r.status, 500)
-  assert.equal(r.body.poApproved, false)
+  const r = await putPo({ id: 1, status: "approved", approvedBy: 7, total: 777 })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
   const row = getPo(db, 1)
-  assert.equal(row.status, "pending")
-  assert.equal(row.approved_at, null)
-  assert.equal(row.approved_by, null)
-  assert.equal(row.rejection_reason, "earlier note")
-  assert.equal(row.total, 500)
-  assert.equal(row.payment_type, "cash")
+  assert.equal(row.status, "approved")
+  assert.equal(row.total, 500, "the client total is never taken")
+  assert.equal(db.tables.accounts_payable.length, 0)
 })
 
 test("LO3b. buildApprovalRevert only restores columns the request touched plus the approval fields", () => {
