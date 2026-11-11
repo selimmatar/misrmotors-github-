@@ -25,12 +25,14 @@ export async function POST(request: Request) {
         { status: 409 },
       )
     }
-    await removePoBills(db, bills)
+    const { unlinkedCreditIds } = await removePoBills(db, bills)
     await db.from("workflow_events").insert({
       entity_type: "PURCHASE_ORDER",
       entity_id: poId,
       event_type: "PO_REOPENED",
       old_value: bills.map((b: any) => b.invoice_number).join(", "),
+      // supplier credits that pointed at the removed bill: the next close links them to the new one
+      new_value: JSON.stringify({ unlinkedCreditIds }),
       performed_by: parsePositiveId(body?.userId),
       notes: `${po.po_number} reopened; supplier bill removed`,
     })

@@ -142,20 +142,60 @@ export async function createPoBill(db: Db, po: any): Promise<{ message: string }
 /**
  * Removes the bill(s) of a PO so it is open again. Only what the close wrote goes (the bill, the credit / advance rows
  * it recorded, its unpaid schedule); the credits and advances stay reserved on the PO for the next close.
- * The caller has checked that nothing was paid.
+ * Supplier credits that point at the bill (e.g. returns credited while it was closed) are unlinked first, because the
+ * database refuses to delete a bill they point at; their ids are returned so the next close links them again.
+ * The caller has checked that nothing was paid. Any failure puts back everything this call already changed.
  */
-export async function removePoBills(db: Db, bills: any[]): Promise<void> {
-  for (const bill of bills) {
-    const { data: payments, error } = await db.from("supplier_payments").select("payment_id, reference_number, payment_method").eq("invoice_id", bill.invoice_id)
-    if (error) throw new Error(`read supplier payments: ${error.message}`)
-    const own = (payments || []).filter((p: any) => isClosePayment(p, bill.invoice_number))
-    if (own.length > 0) {
-      const { error: e } = await db.from("supplier_payments").delete().in("payment_id", own.map((p: any) => p.payment_id))
-      if (e) throw new Error(`remove credit payments: ${e.message}`)
+export async function removePoBills(db: Db, bills: any[]): Promise<{ unlinkedCreditIds: number[] }> {
+  const undo: (() => PromiseLike<unknown>)[] = []
+  const unlinkedCreditIds: number[] = []
+  try {
+    for (const bill of bills) {
+      const { data: linked, error: linkedError } = await db.from("supplier_credits").select("credit_id").eq("invoice_id", bill.invoice_id)
+      if (linkedError) throw new Error(`read linked supplier credits: ${linkedError.message}`)
+      const ids = (linked || []).map((c: any) => c.credit_id)
+      if (ids.length > 0) {
+        const { error: e } = await db.from("supplier_credits").update({ invoice_id: null }).in("credit_id", ids)
+        if (e) throw new Error(`unlink supplier credits: ${e.message}`)
+        undo.push(() => db.from("supplier_credits").update({ invoice_id: bill.invoice_id }).in("credit_id", ids))
+        unlinkedCreditIds.push(...ids)
+      }
+      const { data: payments, error } = await db.from("supplier_payments").select("*").eq("invoice_id", bill.invoice_id)
+      if (error) throw new Error(`read supplier payments: ${error.message}`)
+      const own = (payments || []).filter((p: any) => isClosePayment(p, bill.invoice_number))
+      if (own.length > 0) {
+        const { error: e } = await db.from("supplier_payments").delete().in("payment_id", own.map((p: any) => p.payment_id))
+        if (e) throw new Error(`remove credit payments: ${e.message}`)
+        undo.push(() => db.from("supplier_payments").insert(own))
+      }
+      const { data: schedules, error: readScheduleError } = await db.from("payment_schedules").select("*").eq("invoice_id", bill.invoice_id)
+      if (readScheduleError) throw new Error(`read payment schedule: ${readScheduleError.message}`)
+      if ((schedules || []).length > 0) {
+        const { error: scheduleError } = await db.from("payment_schedules").delete().eq("invoice_id", bill.invoice_id)
+        if (scheduleError) throw new Error(`remove payment schedule: ${scheduleError.message}`)
+        undo.push(() => db.from("payment_schedules").insert(schedules))
+      }
+      const { error: billError } = await db.from("accounts_payable").delete().eq("invoice_id", bill.invoice_id)
+      if (billError) throw new Error(`remove supplier bill: ${billError.message}`)
     }
-    const { error: scheduleError } = await db.from("payment_schedules").delete().eq("invoice_id", bill.invoice_id)
-    if (scheduleError) throw new Error(`remove payment schedule: ${scheduleError.message}`)
-    const { error: billError } = await db.from("accounts_payable").delete().eq("invoice_id", bill.invoice_id)
-    if (billError) throw new Error(`remove supplier bill: ${billError.message}`)
+    return { unlinkedCreditIds }
+  } catch (error) {
+    for (const step of undo.reverse()) {
+      try {
+        await step()
+      } catch (e) {
+        console.error("PO bill: could not undo a reopen step", e)
+      }
+    }
+    throw error
   }
+}
+
+/** After a close: credits a reopen unlinked from the old bill point at the new one again. */
+export async function relinkCredits(db: Db, poId: number, creditIds: number[]): Promise<void> {
+  if (creditIds.length === 0) return
+  const { data: bill } = await db.from("accounts_payable").select("invoice_id").eq("po_id", poId).limit(1).maybeSingle()
+  if (!bill) return
+  const { error } = await db.from("supplier_credits").update({ invoice_id: bill.invoice_id }).in("credit_id", creditIds).is("invoice_id", null)
+  if (error) console.error("PO bill: could not link the supplier credits to the new bill", error)
 }
