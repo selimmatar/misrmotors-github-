@@ -193,8 +193,9 @@ export function GoodsReceiptModule() {
           warehouseName: defaultWh.name,
           quantity: qty
         }] : []),
-        // Outsourced items are stored in a warehouse, on hold for the customer's order (default warehouse first)
-        storeWarehouseId: isOutsourced && defaultWh ? String(defaultWh.id) : '',
+        // Outsourced items: the person chooses a warehouse (stored on hold for the customer's order) or "delivered
+        // right away" (not stored). Nothing is pre-chosen (owner request, 2026-11-11): '' = not chosen yet.
+        storeWarehouseId: '',
       }
     }).filter((l: ReceiptLineItem) => l.quantityOrdered > 0)
 
@@ -297,6 +298,13 @@ export function GoodsReceiptModule() {
       }
     }
 
+    // Every outsourced item received must say where it goes: a warehouse, or delivered right away (not stored).
+    const unchosen = receiptLines.find((line) => line.itemType === 'outsourced' && line.quantityReceived > 0 && !line.storeWarehouseId)
+    if (unchosen) {
+      alert(fill(t("gr.choose-where"), { name: unchosen.productName }))
+      return
+    }
+
     // Lines that were not received in this delivery are simply not part of this receipt
     // (the server only accepts positive quantities, and the order stays open for the rest).
     const lineSpecs = receiptLines.filter((line) => line.quantityReceived > 0)
@@ -322,7 +330,7 @@ export function GoodsReceiptModule() {
             itemType: 'outsourced',
             quantityReceived: line.quantityReceived,
             unitCost: line.unitPrice,
-            ...(line.storeWarehouseId ? { warehouseId: line.storeWarehouseId } : {}),
+            ...(line.storeWarehouseId && line.storeWarehouseId !== 'none' ? { warehouseId: line.storeWarehouseId } : {}),
           })
         } else {
           // Stock items: one line per warehouse allocation. The server resolves product, SO link and cost
@@ -636,15 +644,15 @@ export function GoodsReceiptModule() {
                             <div className="flex items-center gap-3 w-full sm:w-auto">
                               <Label htmlFor={`outsourced-wh-${globalIndex}`} className="text-sm">{t("gr.store-in")}</Label>
                               <Select
-                                value={line.storeWarehouseId || "none"}
+                                value={line.storeWarehouseId || undefined}
                                 onValueChange={(value) => {
                                   setReceiptLines(prev => prev.map((l, i) =>
-                                    i === globalIndex ? { ...l, storeWarehouseId: value === "none" ? '' : value } : l
+                                    i === globalIndex ? { ...l, storeWarehouseId: value } : l
                                   ))
                                 }}
                               >
-                                <SelectTrigger id={`outsourced-wh-${globalIndex}`} className="w-full sm:w-48">
-                                  <SelectValue />
+                                <SelectTrigger id={`outsourced-wh-${globalIndex}`} className="w-full sm:w-56">
+                                  <SelectValue placeholder={t("gr.choose")} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {warehouses.map((w: any) => (

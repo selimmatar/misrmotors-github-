@@ -922,3 +922,14 @@ test("R62. a failed receipt removes the stored outsourced row again", async () =
   assert.notEqual(res.status, 200)
   assert.equal(db.tables.inventory.filter((i) => i.is_outsourced).length, 0)
 })
+
+test("R63. receiving outsourced items: nothing pre-chosen; a warehouse or 'delivered right away' must be picked", () => {
+  const fs = require("node:fs") as typeof import("node:fs")
+  const path = require("node:path") as typeof import("node:path")
+  const screen = fs.readFileSync(path.join(process.env.REPO_ROOT || process.cwd(), "components/modules/goods-receipt-module.tsx"), "utf8")
+  assert.match(screen, /storeWarehouseId: '',/)
+  assert.doesNotMatch(screen, /storeWarehouseId: isOutsourced && defaultWh/)
+  assert.match(screen, /line\.itemType === 'outsourced' && line\.quantityReceived > 0 && !line\.storeWarehouseId/)
+  assert.match(screen, /line\.storeWarehouseId && line\.storeWarehouseId !== 'none' \? \{ warehouseId: line\.storeWarehouseId \}/)
+  assert.match(screen, /<SelectValue placeholder=\{t\("gr\.choose"\)\} \/>/)
+})
