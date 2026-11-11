@@ -404,3 +404,53 @@ test("H1. the PO history log uses its real columns (performed_at, a real user or
   // the exchange is also reachable from the PO details popup, with words on the button
   assert.match(src("components/modules/purchase-order-module.tsx"), /<PoOpenMenu\s+labelled/)
 })
+
+test("X4. several exchanges at once: each X lowered, each Y added, one total; history has one row per exchange", async () => {
+  const db = mk({
+    purchase_orders: [po({ total: 1700, tax_amount: null })],
+    purchase_order_items: [
+      line({ po_item_id: 7, quantity: 10, unit_price: 100, total: 1000 }),
+      line({ po_item_id: 8, product_id: null, item_type: "outsourced", outsourced_name: "Drill", quantity: 7, unit_price: 100, total: 700 }),
+    ],
+  })
+  const r = await exchange({
+    exchanges: [
+      { fromItemId: "7", quantity: 10, to: { name: "Pump v2", quantity: 10, unitPrice: 110 } },
+      { fromItemId: "8", quantity: 3, to: { productId: "6", quantity: 3, unitPrice: 90 }, notes: "cheaper model" },
+      { fromItemId: "8", quantity: 4, to: { name: "Drill pro", quantity: 4, unitPrice: 120 } },
+    ],
+  })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(r.body.exchanges.length, 3)
+  assert.equal(r.body.difference, 100 - 30 + 80)
+  const live = db.tables.purchase_order_items.filter((l) => l.quantity > 0).map((l) => [l.outsourced_name || l.item_name_snapshot, l.quantity, l.total])
+  assert.deepEqual(live.sort(), [["Drill pro", 4, 480], ["Pump XL", 3, 270], ["Pump v2", 10, 1100]].sort())
+  assert.equal(db.tables.purchase_order_items.some((l) => l.po_item_id === 7 || l.po_item_id === 8), false, "both old lines fully swapped and never received -> removed")
+  assert.equal(db.tables.purchase_orders[0].total, 1850)
+  const h = await history()
+  assert.equal(h.exchanges.length, 3)
+  assert.deepEqual(h.exchanges.map((e: any) => e.difference).sort((a: number, b: number) => a - b), [-30, 80, 100])
+})
+
+test("X5. several exchanges: one wrong row refuses all of them, nothing changes", async () => {
+  const db = mk({ purchase_order_items: [line({ quantity: 5 })] })
+  const before = JSON.stringify([db.tables.purchase_orders, db.tables.purchase_order_items])
+  const tooMany = await exchange({ exchanges: [{ fromItemId: "7", quantity: 3, to: { name: "A", quantity: 3, unitPrice: 1 } }, { fromItemId: "7", quantity: 3, to: { name: "B", quantity: 3, unitPrice: 1 } }] })
+  assert.equal(tooMany.status, 409)
+  assert.equal(tooMany.body.code, "EXCHANGE_TOO_MANY", "6 taken from a line of 5")
+  const missing = await exchange({ exchanges: [{ fromItemId: "7", quantity: 1, to: { name: "A", quantity: 1, unitPrice: 1 } }, { fromItemId: "7", quantity: 1, to: { quantity: 1, unitPrice: 1 } }] })
+  assert.equal(missing.status, 400)
+  assert.match(missing.body.error, /exchange 2/)
+  db.failOn["purchase_orders:update"] = "boom"
+  assert.equal((await exchange({ exchanges: [{ fromItemId: "7", quantity: 1, to: { name: "A", quantity: 1, unitPrice: 1 } }] })).status, 500)
+  assert.equal(JSON.stringify([db.tables.purchase_orders, db.tables.purchase_order_items]), before)
+  assert.equal(db.tables.workflow_events.length, 0)
+})
+
+test("X6. the exchange window holds several rows: add another, remove, total difference, saved together", () => {
+  const menu = src("components/purchase-order/po-open-actions.tsx")
+  assert.match(menu, /setRows\(\(prev\) => \[\.\.\.prev, newRow\(nextFrom\(\)\)\]\)/)
+  assert.match(menu, /exchanges: rows\.map\(/)
+  assert.match(menu, /t\("po\.exchange-add"\)/)
+  assert.match(menu, /t\("po\.exchange-total-difference"\)/)
+})
