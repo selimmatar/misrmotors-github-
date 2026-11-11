@@ -3,7 +3,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
-import { PO_CLOSABLE_STATUSES, billsOf, createPoBill } from "@/lib/po-bill"
+import { PO_CLOSABLE_STATUSES, billsOf, createPoBill, relinkCredits } from "@/lib/po-bill"
 
 export const dynamic = "force-dynamic"
 
@@ -30,6 +30,22 @@ export async function POST(request: Request) {
       console.error("Close PO: the supplier bill could not be made", billError)
       return NextResponse.json({ error: "The supplier bill could not be made. The purchase order stays open; please try again.", code: "BILL_FAILED" }, { status: 500 })
     }
+    // supplier credits a reopen unlinked from the old bill point at this one again
+    const { data: reopenings } = await db
+      .from("workflow_events")
+      .select("new_value, created_at")
+      .eq("entity_type", "PURCHASE_ORDER")
+      .eq("entity_id", poId)
+      .eq("event_type", "PO_REOPENED")
+    const ids = new Set<number>()
+    for (const e of reopenings || []) {
+      try {
+        for (const id of JSON.parse(e.new_value || "{}").unlinkedCreditIds || []) ids.add(Number(id))
+      } catch {
+        // an older reopen without the list
+      }
+    }
+    await relinkCredits(db, poId, [...ids])
     await db.from("workflow_events").insert({
       entity_type: "PURCHASE_ORDER",
       entity_id: poId,

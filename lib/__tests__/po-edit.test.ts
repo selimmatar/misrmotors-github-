@@ -366,3 +366,27 @@ test("S1. PO screen: Open / Closed badge, the More menu (exchange, advance, clos
   }
   assert.match(src("lib/app-context.tsx"), /fetch\("\/api\/purchase-orders\/edit"/)
 })
+
+test("C4. reopening a PO whose bill has return credits linked to it: credits unlinked, then linked to the new bill on close; a failure undoes it", async () => {
+  // PO-2026-801226 case: 4 supplier credits from returns point at the bill (invoice_id), so the bill cannot simply be deleted.
+  const credits = () => [
+    { credit_id: 11, supplier_id: 1, amount: 4500, status: "active", credit_type: "return", invoice_id: 50, reference_type: "inventory" },
+    { credit_id: 12, supplier_id: 1, amount: 700, status: "active", credit_type: "return", invoice_id: 50, reference_type: "inventory" },
+  ]
+  let db = mk({ accounts_payable: [bill()], supplier_credits: credits() })
+  db.failOn["accounts_payable:delete"] = "violates foreign key constraint"
+  const failed = await reopen()
+  assert.equal(failed.status, 500)
+  assert.equal(db.tables.accounts_payable.length, 1, "bill kept")
+  assert.deepEqual(db.tables.supplier_credits.map((c) => c.invoice_id), [50, 50], "credit links put back")
+
+  db = mk({ accounts_payable: [bill()], supplier_credits: credits() })
+  const r = await reopen()
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.accounts_payable.length, 0)
+  assert.deepEqual(db.tables.supplier_credits.map((c) => [c.invoice_id, c.status, c.amount]), [[null, "active", 4500], [null, "active", 700]], "credits kept, only unlinked")
+  assert.equal((await close()).status, 200)
+  const newId = db.tables.accounts_payable[0].invoice_id
+  assert.deepEqual(db.tables.supplier_credits.map((c) => c.invoice_id), [newId, newId], "linked to the new bill")
+  assert.equal(db.tables.accounts_payable[0].paid_amount, 0, "active return credits are not taken off automatically")
+})
