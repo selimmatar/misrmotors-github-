@@ -261,3 +261,16 @@ test("R4. screens: the edit dialog frees a fully returned line; the new-DP scree
   assert.match(route, /if \(permit\.status === "REJECTED"\) continue/)
   assert.match(route, /minQuantity: firstOfKey \? Math\.max\(0, \(history\?\.permitted\.get\(key\) \|\| 0\) - returnedQuantity\) : 0/)
 })
+
+test("R5. deleting a returned line asks: keep it marked as returned (quantity 0) or remove it completely", () => {
+  const { readFileSync } = require("node:fs") as typeof import("node:fs")
+  const { join } = require("node:path") as typeof import("node:path")
+  const dialog = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "components/sales-order/edit-approved-order-dialog.tsx"), "utf8")
+  assert.match(dialog, /if \(!choiceMade && row\.onDeliveryPermit && returnedOf\(row\) > 0 && \(row\.quantity \|\| 0\) > 0\)/)
+  assert.match(dialog, /updateItem\(returnedToDelete\.key, \{ quantity: 0 \}\)/)
+  assert.match(dialog, /removeItem\(row, true\)/)
+  const i18n = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "lib/i18n-context.tsx"), "utf8")
+  for (const key of ["so-edit.delete-returned-title", "so-edit.delete-returned-text", "so-edit.keep-as-returned", "so-edit.remove-completely", "so-edit.kept-as-returned"]) {
+    assert.equal(i18n.split(`"${key}":`).length - 1, 2, key)
+  }
+})

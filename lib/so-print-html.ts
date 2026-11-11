@@ -48,7 +48,9 @@ export function renderSoPrintHtml(data: SoPrintData): string {
     discountValue: n(so.discount_value),
     discountAmount: n(so.discount_amount),
     storedTotal: n(so.total),
-    storedNetTotal: so.net_total === null || so.net_total === undefined ? null : n(so.net_total),
+    // The sales order prints as it stands: a returned item is either replaced (a normal line), kept as a "returned"
+    // line at quantity 0, or removed, so no "returns / adjustments" line is printed (owner request, 2026-11-11).
+    storedNetTotal: null,
   })
 
   const rows = items

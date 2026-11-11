@@ -49,14 +49,16 @@ export async function GET(request: NextRequest) {
       for (const p of must(await db.from("products").select("product_id, product_name").in("product_id", productIds), "load products") as any[]) names.set(p.product_id, p.product_name)
     }
 
-    // returned quantity per line (Batch 2 helpers); handed out to lines of the same product in order, capped at the line quantity
+    // "Returned" is printed only on a line kept at quantity 0 on purpose: the person chose "keep it on the order as
+    // returned" when deleting it. A line still on the order (same or new name / price) is the replacement the customer
+    // will get, so it is printed as a normal line (owner request, 2026-11-11). A deleted line is not printed at all.
     const permits = must(await db.from("delivery_permits").select("permit_id").eq("sales_order_id", soId), "load delivery permits") as any[]
     const returnedLeft = returnedByKey(await loadReturnLines(db, permits.map((p) => p.permit_id)))
     const items = soItems.map((i) => {
       const key = lineKey(i.product_id, i.outsourced_name)
       const qty = Number(i.quantity) || 0
-      const take = Math.min(returnedLeft.get(key) || 0, qty)
-      returnedLeft.set(key, (returnedLeft.get(key) || 0) - take)
+      const take = qty === 0 ? returnedLeft.get(key) || 0 : 0
+      if (take > 0) returnedLeft.set(key, 0)
       return {
         name: i.item_type === "outsourced" ? i.outsourced_name || "-" : names.get(i.product_id) || `Product #${i.product_id}`,
         quantity: qty,

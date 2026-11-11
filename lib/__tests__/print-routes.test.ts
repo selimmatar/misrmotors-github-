@@ -73,23 +73,27 @@ test("P3. every dynamic value is escaped (customer, item names, notes, address, 
   assert.doesNotMatch(res.html, /SO<b>1/)
 })
 
-test("P4. returns: original total, returns adjustment and current net total (agree with the stored Batch 2 net_total)", async () => {
-  const db = world({
-    so: { total: 114000, net_total: 91200 },
-    extra: {
-      product_returns: [{ return_id: 1, permit_id: "1", status: "pending_warehouse", created_at: "2026-10-02T00:00:00Z" }],
-      return_items: [{ return_item_id: 1, return_id: 1, product_id: 7, product_name: "Pump A", returned_quantity: 2 }],
-    },
-  })
+test("P4. returns (owner request, 2026-11-11): a line still on the order is the replacement and prints plain; only a line kept at 0 says returned; no adjustment block", async () => {
+  const returns = {
+    product_returns: [{ return_id: 1, permit_id: "1", status: "pending_warehouse", created_at: "2026-10-02T00:00:00Z" }],
+    return_items: [{ return_item_id: 1, return_id: 1, product_id: 7, product_name: "Pump A", returned_quantity: 2 }],
+  }
+  const db = world({ so: { total: 114000, net_total: 91200 }, extra: returns })
   const res = await get(printRoute.GET, "?soId=1")
-  assert.match(res.html, /الإجمالي الأصلي/)
-  assert.match(res.html, /مرتجعات \/ تسويات/)
-  assert.match(res.html, /صافي الإجمالي الحالي/)
+  assert.doesNotMatch(res.html, /مرتجع/)
+  assert.doesNotMatch(res.html, /صافي الإجمالي الحالي/)
   assert.match(res.html, /114,000/)
-  assert.match(res.html, /-22,800/)
-  assert.match(res.html, />91,200</)
-  assert.match(res.html, /مرتجع: 2/)
   assert.equal(db.tables.sales_orders[0].total, 114000) // nothing rewritten
+  // kept on purpose at quantity 0 ("keep it, marked as returned"): that line says returned
+  world({
+    items: [
+      { so_item_id: 1, so_id: 1, product_id: 7, quantity: 0, unit_price: 10000, total: 0, item_type: "stock", outsourced_name: null },
+      { so_item_id: 2, so_id: 1, product_id: 8, quantity: 2, unit_price: 12000, total: 24000, item_type: "stock", outsourced_name: null },
+    ],
+    extra: returns,
+  })
+  const kept = await get(printRoute.GET, "?soId=1")
+  assert.equal((kept.html.match(/مرتجع: 2/g) || []).length, 1)
   // an order without returns shows one plain total and no adjustment lines
   world()
   const plain = await get(printRoute.GET, "?soId=1")

@@ -14,6 +14,15 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, Package, Printer, Trash2, UserPlus } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
@@ -127,6 +136,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
 
   const [itemPoStatus, setItemPoStatus] = useState<Record<string, { poNumber: string; status: string }>>({})
   const [saving, setSaving] = useState(false)
+  // Deleting a returned line asks: keep it on the order marked "returned" (quantity 0), or remove it completely.
+  const [returnedToDelete, setReturnedToDelete] = useState<EditItem | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -185,12 +196,25 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     return map
   }, [items])
   const keptOf = (item: EditItem) => keptByItem.get(lineKey(Number(item.productId) || null, item.productName)) || 0
+  const returnedByItem = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const item of items) {
+      const key = lineKey(Number(item.productId) || null, item.productName)
+      map.set(key, (map.get(key) || 0) + (item.returnedQuantity || 0))
+    }
+    return map
+  }, [items])
+  const returnedOf = (item: EditItem) => returnedByItem.get(lineKey(Number(item.productId) || null, item.productName)) || 0
 
   const updateItem = (key: string, patch: Partial<EditItem>) => {
     setItems((prev) => prev.map((item) => (item.key === key ? { ...item, ...patch } : item)))
   }
 
-  const removeItem = (row: EditItem) => {
+  const removeItem = (row: EditItem, choiceMade = false) => {
+    if (!choiceMade && row.onDeliveryPermit && returnedOf(row) > 0 && (row.quantity || 0) > 0) {
+      setReturnedToDelete(row)
+      return
+    }
     if (row.id && itemPoStatus[row.id]) {
       const status = itemPoStatus[row.id]
       const confirmed = window.confirm(
@@ -567,6 +591,7 @@ ${renderTotalsBlock(printTotals)}
   }
 
   return (
+    <>
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -762,6 +787,13 @@ ${renderTotalsBlock(printTotals)}
                           </Badge>
                         </div>
                       )}
+                      {item.onDeliveryPermit && item.quantity === 0 && returnedOf(item) > 0 && (
+                        <div className="col-span-2 lg:col-span-12">
+                          <Badge variant="outline" className="whitespace-normal h-auto text-start text-red-700 border-red-300 bg-red-50">
+                            {fill(t("so-edit.kept-as-returned"), { n: returnedOf(item) })}
+                          </Badge>
+                        </div>
+                      )}
                       {poStatus && (
                         <div className="col-span-2 lg:col-span-12">
                           <Badge variant="outline" className="gap-1 whitespace-normal h-auto text-start text-amber-700 border-amber-300 bg-amber-50">
@@ -844,5 +876,38 @@ ${renderTotalsBlock(printTotals)}
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <AlertDialog open={!!returnedToDelete} onOpenChange={(open) => !open && setReturnedToDelete(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t("so-edit.delete-returned-title")}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {fill(t("so-edit.delete-returned-text"), { name: returnedToDelete?.productName || "", n: returnedToDelete ? returnedOf(returnedToDelete) : 0 })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+          <AlertDialogCancel>{t("action.cancel")}</AlertDialogCancel>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (returnedToDelete) updateItem(returnedToDelete.key, { quantity: 0 })
+              setReturnedToDelete(null)
+            }}
+          >
+            {t("so-edit.keep-as-returned")}
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              const row = returnedToDelete
+              setReturnedToDelete(null)
+              if (row) removeItem(row, true)
+            }}
+          >
+            {t("so-edit.remove-completely")}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
