@@ -595,7 +595,7 @@ const withPoAuto = async (on: boolean, fn: () => Promise<void>) => {
   }
 }
 
-test("a new PO is approved when saved and gets its supplier invoice (no CEO step)", async () => {
+test("a new PO is approved when saved (no CEO step) and stays open: no supplier invoice until it is closed", async () => {
   await withPoAuto(true, async () => {
     const db = prDb({ po_requests: [openPr()], accounts_payable: [], supplier_payments: [] })
     const r = await postPo({ po_request_id: 5, created_by: "Mona" })
@@ -606,9 +606,7 @@ test("a new PO is approved when saved and gets its supplier invoice (no CEO step
     assert.equal(po.status, "approved")
     assert.ok(po.approved_at)
     assert.equal(po.approved_by, "Mona")
-    assert.equal(db.tables.accounts_payable.length, 1)
-    assert.equal(db.tables.accounts_payable[0].invoice_number, `APINV-${po.po_number}`)
-    assert.equal(db.tables.accounts_payable[0].amount, po.total)
+    assert.equal(db.tables.accounts_payable.length, 0, "open PO: no bill yet")
     assert.equal(db.tables.po_requests[0].status, "converted")
   })
 })
@@ -623,16 +621,14 @@ test("a draft PO is not approved", async () => {
   })
 })
 
-test("supplier invoice fails: the PO is kept as pending for the CEO/admin to approve", async () => {
+test("a supplier-bill failure can no longer block the automatic approval (no bill is made at approval)", async () => {
   await withPoAuto(true, async () => {
     const db = prDb({ accounts_payable: [] })
     db.failOn["accounts_payable:insert"] = "boom"
     const r = await postPo({})
     assert.equal(r.status, 200, JSON.stringify(r.body))
-    assert.equal(r.body.autoApproved, false)
-    const po = db.tables.purchase_orders[0]
-    assert.equal(po.status, "pending")
-    assert.equal(po.approved_at, null)
+    assert.equal(r.body.autoApproved, true)
+    assert.equal(db.tables.purchase_orders[0].status, "approved")
     assert.equal(db.tables.accounts_payable.length, 0)
   })
 })

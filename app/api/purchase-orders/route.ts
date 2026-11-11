@@ -4,12 +4,11 @@ import { isPoAutoApprove } from "@/lib/workflow-switch"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
-import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES, buildApprovalRevert } from "@/lib/po-status"
+import { isAllowedPoTransition, PO_ITEMS_EDITABLE_STATUSES } from "@/lib/po-status"
 import { checkPoOverOrder, linesWithIncreasedQuantity } from "@/lib/po-over-order"
 import { computePoTotals, mapPoItem, poPaymentColumns } from "@/lib/po-items"
 import {
   SUPPLIER_CREDIT_PAYMENT_METHOD,
-  creditedInvoiceFields,
   parseCreditSelections,
   releaseSupplierCredits,
   mergeReleasedRemainders,
@@ -373,8 +372,8 @@ export async function POST(request: Request) {
     }
     const appliedCredit = Math.round(parsedCredits.selections.reduce((sum, c) => sum + c.amount, 0) * 100) / 100
 
-    // No CEO approval (see lib/workflow-switch.ts): the new PO is approved now and gets its AP invoice, the same way
-    // the approve action does it. If the AP invoice fails the PO stays pending, so it can still be approved by hand.
+    // No CEO approval (see lib/workflow-switch.ts): the new PO is approved now. It gets NO supplier bill: a PO stays
+    // open (work in progress) until it is closed (POST /api/purchase-orders/close, owner request 2026-11-11).
     let autoApproved: boolean | undefined
     if (isPoAutoApprove() && order.status === "pending") {
       autoApproved = false
@@ -388,19 +387,8 @@ export async function POST(request: Request) {
       if (!approvedOrder) {
         console.error("Purchase Orders POST: could not approve the new purchase order", approveError)
       } else {
-        const apError = await ensureApInvoice(supabase, approvedOrder)
-        if (apError) {
-          console.error("Purchase Orders POST: AP invoice failed, the purchase order stays pending", apError)
-          const { error: revertError } = await supabase
-            .from("purchase_orders")
-            .update({ status: "pending", approved_at: null, approved_by: null })
-            .eq("po_id", order.po_id)
-            .eq("status", "approved")
-          if (revertError) console.error("Purchase Orders POST: could not put the purchase order back to pending", revertError)
-        } else {
-          Object.assign(order, approvedOrder)
-          autoApproved = true
-        }
+        Object.assign(order, approvedOrder)
+        autoApproved = true
       }
     }
 
@@ -474,73 +462,6 @@ export async function POST(request: Request) {
     console.error("Purchase Orders POST: Error", error)
     return NextResponse.json({ error: "Failed to create purchase order" }, { status: 500 })
   }
-}
-
-// Creates the AP invoice for an approved PO unless one already exists. Returns the error, or null when the invoice
-// exists afterwards. Payment is a separate explicit step (POST /api/accounts-payable/payments).
-async function ensureApInvoice(supabase: any, currentOrder: any) {
-  // limit(1) rather than maybeSingle(): a PO with duplicate AP rows (historical data) must not error here.
-  const { data: existingInvoices, error: lookupError } = await supabase
-    .from("accounts_payable")
-    .select("invoice_id")
-    .eq("po_id", currentOrder.po_id)
-    .limit(1)
-  if (lookupError) return lookupError
-  if (existingInvoices && existingInvoices.length > 0) return null
-
-  // Supplier credits reserved on this PO settle part of the invoice (FEAT-01). The invoice keeps the gross total.
-  const reserved = await reservedCreditTotal(supabase, currentOrder.po_id)
-  if (reserved.error) return { message: `Could not read the supplier credits: ${reserved.error}` }
-  const credited = creditedInvoiceFields(Number(currentOrder.total) || 0, reserved.total)
-
-  const paymentType = currentOrder.payment_type || currentOrder.payment_terms || "cash"
-  const invoiceData: any = {
-    invoice_number: `APINV-${currentOrder.po_number}`,
-    supplier_id: currentOrder.supplier_id,
-    po_id: currentOrder.po_id,
-    invoice_date: new Date().toISOString().split("T")[0],
-    due_date: currentOrder.down_payment_due_date || currentOrder.payment_start_date || new Date().toISOString().split("T")[0],
-    amount: currentOrder.total,
-    paid_amount: credited.paid_amount,
-    status: credited.status,
-    payment_type: paymentType,
-    payment_terms: paymentType,
-    installment_months: currentOrder.installments || 1,
-    months_paid: 0,
-    down_payment_amount: currentOrder.down_payment_amount || null,
-    down_payment_percent: currentOrder.down_payment_percent || null,
-    down_payment_type: currentOrder.down_payment_type || null,
-    down_payment_due_date: currentOrder.down_payment_due_date || null,
-    remaining_amount: currentOrder.remaining_amount || null,
-    remaining_installment_months: currentOrder.remaining_installment_months || null,
-    monthly_amount: currentOrder.monthly_amount || null,
-    payment_start_date: currentOrder.payment_start_date || null,
-    schedule_entries: currentOrder.schedule_entries || null,
-    schedule_mode: currentOrder.schedule_mode || "AUTO",
-  }
-  const { data: invoice, error: invoiceError } = await supabase.from("accounts_payable").insert(invoiceData).select().single()
-  if (invoiceError) return invoiceError
-  if (credited.paid_amount <= 0) return null
-
-  // The credit offset is recorded as a supplier payment (method supplier_credit) so the invoice history shows it.
-  // It is NOT a cash movement, so no balance_entries row is written. If it cannot be recorded the invoice is removed
-  // again and the approval fails (the caller reverts it); the credits stay reserved on the PO for the retry.
-  const { error: paymentError } = await supabase.from("supplier_payments").insert({
-    invoice_id: invoice.invoice_id,
-    supplier_id: currentOrder.supplier_id ?? null,
-    amount: credited.paid_amount,
-    payment_date: new Date().toISOString().split("T")[0],
-    payment_method: SUPPLIER_CREDIT_PAYMENT_METHOD,
-    reference_number: `${invoice.invoice_number}-CREDIT`,
-    receipt_url: null,
-    recorded_by: null,
-  })
-  if (paymentError) {
-    const { error: removeError } = await supabase.from("accounts_payable").delete().eq("invoice_id", invoice.invoice_id)
-    if (removeError) console.error("Purchase Orders: could not remove the AP invoice after the credit payment failed", removeError)
-    return paymentError
-  }
-  return null
 }
 
 export async function PUT(request: Request) {
@@ -711,43 +632,7 @@ export async function PUT(request: Request) {
       }
     }
 
-    // A repeat approval of an already approved PO repairs a missing AP invoice, except while the original
-    // approval (which owns the AP insert and a possible revert) is still in flight.
-    const approvalInFlight =
-      !approving && current.approved_at && Date.now() - new Date(current.approved_at).getTime() < 30_000
-    if (targetStatus === "approved" && !approvalInFlight) {
-      const apError = await ensureApInvoice(supabase, order)
-
-      if (apError) {
-        console.error("Purchase Orders PUT: Error creating AP invoice on approval", apError)
-        let reverted = false
-        if (approving) {
-          // Put the PO back to pending so the failure is real to the user and the approval can simply be retried.
-          const { data: revertedRows, error: revertError } = await supabase
-            .from("purchase_orders")
-            .update(buildApprovalRevert(current, updates))
-            .eq("po_id", poId)
-            .eq("status", "approved")
-            .select("po_id")
-          reverted = !revertError && Array.isArray(revertedRows) && revertedRows.length > 0
-          if (!reverted) console.error("Purchase Orders PUT: could not revert approval after AP failure", revertError)
-        }
-        return NextResponse.json(
-          reverted
-            ? {
-                error: "The AP invoice could not be created, so the purchase order was NOT approved. Please try again.",
-                poApproved: false,
-                apInvoiceCreated: false,
-              }
-            : {
-                error: "The purchase order is approved but its AP invoice could not be created. Contact an administrator.",
-                poApproved: true,
-                apInvoiceCreated: false,
-              },
-          { status: 500 },
-        )
-      }
-    }
+    // Approving makes no supplier bill: the PO stays open until it is closed (lib/po-bill.ts, owner request 2026-11-11).
 
     // A rejected PO gives its supplier credits back, unless an AP invoice already took them (e.g. a failed cleanup
     // after an approval): then they stay applied there and an administrator settles the invoice.

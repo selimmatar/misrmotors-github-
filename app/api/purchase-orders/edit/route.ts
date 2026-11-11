@@ -1,24 +1,24 @@
-// Edit a purchase order after it was made (owner request, 2026-11-08): supplier, order and delivery dates, the items
-// (quantity, cost, lines added or removed) and the payment terms.
-//  - Allowed while the PO is draft, pending or approved and nothing has been received on it yet.
-//  - An approved PO stays approved; its supplier bill (accounts_payable) follows the new total, supplier and terms.
-//  - Locked once a payment is recorded on that bill (supplier-credit offsets are not payments).
-//  - The supplier cannot change while supplier credits are applied to the PO (they belong to the old supplier).
-// Every step that writes is undone again if a later step fails, so the PO and its bill never disagree.
+// Edit an OPEN purchase order (owner request, 2026-11-08; open POs 2026-11-11): supplier, order and delivery dates,
+// the items (quantity, cost, lines added or removed) and the payment terms.
+//  - Allowed in any status (even after goods were received) while the PO has no supplier bill. A closed PO is
+//    reopened first (POST /api/purchase-orders/reopen).
+//  - Lines are updated in place so receiving records stay linked; a line with goods received is kept at 0 when removed.
+//  - Editing never moves stock. The receiving status follows the new quantities.
+//  - The supplier cannot change while supplier credits / advances are reserved on the PO (they belong to the old one).
+// Every step that writes is undone again if a later step fails.
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { checkPoOverOrder, linesWithIncreasedQuantity } from "@/lib/po-over-order"
 import { computePoTotals, findExistingPoItem, mapPoItem, poPaymentColumns } from "@/lib/po-items"
-import { editBlocker } from "@/lib/po-edit"
-import { creditedInvoiceFields, reservedCreditTotal } from "@/lib/supplier-credit-apply"
+import { editBlocker, syncPoStatus, writePoLines } from "@/lib/po-edit"
+import { reservedCreditTotal } from "@/lib/supplier-credit-apply"
 
 export const dynamic = "force-dynamic"
 
 const refuse = (status: number, code: string, error: string, extra: Record<string, unknown> = {}) =>
   NextResponse.json({ error, code, ...extra }, { status })
 
-const today = () => new Date().toISOString().split("T")[0]
 const isDate = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)
 
 export async function POST(request: Request) {
@@ -71,6 +71,7 @@ export async function POST(request: Request) {
     // Lines: the SO link and outsourced data of an existing line are kept (mapPoItem matches by id / SO line / name).
     const { data: oldRows, error: oldRowsError } = await db.from("purchase_order_items").select("*").eq("po_id", poId)
     if (oldRowsError) throw oldRowsError
+    const used = new Set<number>()
     const newRows = items.map((item: any) => {
       // A line that was already on the PO keeps its sales-order link and outsourced data when the form leaves them out.
       const before = findExistingPoItem(item, oldRows || [])
@@ -80,7 +81,10 @@ export async function POST(request: Request) {
           if (row[key] == null && before[key] != null) (row as any)[key] = before[key]
         }
       }
-      return row
+      // the same line keeps its id (receiving records point at it); a line is matched once
+      const id = before && !used.has(before.po_item_id) ? before.po_item_id : undefined
+      if (id) used.add(id)
+      return { ...row, ...(id ? { po_item_id: id } : {}) }
     })
     const overOrder = await checkPoOverOrder(db, linesWithIncreasedQuantity(newRows, oldRows || []), poId)
     if (!overOrder.ok && !(body.allow_over_order === true && overOrder.code === "PO_OVER_ORDER")) {
@@ -117,59 +121,11 @@ export async function POST(request: Request) {
     if (!order) return refuse(409, "PO_STATUS_CONFLICT", "The purchase order was changed by someone else; reload and try again")
     undo.push(() => db.from("purchase_orders").update(previous).eq("po_id", poId))
 
-    // 2. The lines: replaced; the old rows are put back if anything after this fails.
-    const { error: deleteError } = await db.from("purchase_order_items").delete().eq("po_id", poId)
-    if (deleteError) throw deleteError
-    undo.push(async () => {
-      await db.from("purchase_order_items").delete().eq("po_id", poId)
-      if ((oldRows || []).length > 0) await db.from("purchase_order_items").insert(oldRows)
-    })
-    const { error: insertError } = await db.from("purchase_order_items").insert(newRows)
-    if (insertError) throw insertError
+    // 2. The lines, in place; then the receiving status follows the new quantities.
+    await writePoLines(db, oldRows || [], newRows, undo)
+    const status = await syncPoStatus(db, order, undo)
 
-    // 3. The supplier bill of an approved PO follows the order. Its unpaid payment schedule is made again from it.
-    const { data: bills, error: billsError } = await db.from("accounts_payable").select("*").eq("po_id", poId)
-    if (billsError) throw billsError
-    const billUpdated = (bills || []).length > 0
-    for (const bill of bills || []) {
-      const credited = creditedInvoiceFields(totals.total, reserved.total)
-      const paymentType = order.payment_type || order.payment_terms || "cash"
-      const billChanges: Record<string, any> = {
-        supplier_id: supplierId,
-        amount: totals.total,
-        paid_amount: credited.paid_amount,
-        status: credited.status,
-        due_date: order.down_payment_due_date || order.payment_start_date || bill.due_date || today(),
-        payment_type: paymentType,
-        payment_terms: paymentType,
-        installment_months: order.installments || 1,
-        down_payment_amount: order.down_payment_amount || null,
-        down_payment_percent: order.down_payment_percent || null,
-        down_payment_type: order.down_payment_type || null,
-        down_payment_due_date: order.down_payment_due_date || null,
-        remaining_amount: order.remaining_amount || null,
-        remaining_installment_months: order.remaining_installment_months || null,
-        monthly_amount: order.monthly_amount || null,
-        payment_start_date: order.payment_start_date || null,
-        schedule_entries: order.schedule_entries || null,
-        schedule_mode: order.schedule_mode || "AUTO",
-      }
-      const billBefore: Record<string, any> = {}
-      for (const key of Object.keys(billChanges)) billBefore[key] = bill[key] ?? null
-      const { error: billError } = await db.from("accounts_payable").update(billChanges).eq("invoice_id", bill.invoice_id)
-      if (billError) throw billError
-      undo.push(() => db.from("accounts_payable").update(billBefore).eq("invoice_id", bill.invoice_id))
-
-      const { data: schedules, error: schedulesError } = await db.from("payment_schedules").select("*").eq("invoice_id", bill.invoice_id)
-      if (schedulesError) throw schedulesError
-      if ((schedules || []).length > 0) {
-        const { error: removeError } = await db.from("payment_schedules").delete().eq("invoice_id", bill.invoice_id)
-        if (removeError) throw removeError
-        undo.push(() => db.from("payment_schedules").insert(schedules))
-      }
-    }
-
-    return NextResponse.json({ ...order, id: String(order.po_id), billUpdated })
+    return NextResponse.json({ ...order, status, id: String(order.po_id) })
   } catch (error) {
     console.error("Purchase order edit: failed", error)
     await rollBack()

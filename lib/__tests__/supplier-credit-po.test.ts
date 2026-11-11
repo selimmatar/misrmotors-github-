@@ -8,6 +8,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
+import * as closeRoute from "../../app/api/purchase-orders/close/route"
 import * as poRoute from "../../app/api/purchase-orders/route"
 import * as creditsRoute from "../../app/api/supplier-credits/route"
 import * as apPdf from "../../app/api/invoices/ap/[id]/pdf/route"
@@ -149,16 +150,26 @@ test("C10. a PO without credits is unchanged (no credits key or an empty list)",
   assert.equal((await post("nope")).status, 400)
 })
 
+// Open POs (owner request, 2026-11-11): the bill, with the reserved credits taken off, is made when the PO is closed.
+const close = (id: number) => call(closeRoute.POST as any, "POST", { id })
+async function approveAndClose(poId: number) {
+  const a = await put({ id: poId, status: "approved" })
+  if (a.status !== 200) return a
+  return close(poId)
+}
+
 async function createWithCredit(db: FakeDb, amount: number, creditId = 1) {
   const r = await post([{ creditId, amount }])
   assert.equal(r.status, 200, JSON.stringify(r.body))
   return Number(r.body.id)
 }
 
-test("C11. approval applies the credit to the supplier invoice, without a cash ledger row", async () => {
+test("C11. closing the PO applies the credit to the supplier invoice, without a cash ledger row", async () => {
   const db = mk([credit(1, 1, 300)])
   const poId = await createWithCredit(db, 300)
-  const r = await put({ id: poId, status: "approved" })
+  assert.equal((await put({ id: poId, status: "approved" })).status, 200)
+  assert.equal(db.tables.accounts_payable.length, 0, "no bill at approval")
+  const r = await close(poId)
   assert.equal(r.status, 200, JSON.stringify(r.body))
   const ap = db.tables.accounts_payable
   assert.equal(ap.length, 1)
@@ -177,39 +188,38 @@ test("C11. approval applies the credit to the supplier invoice, without a cash l
 test("C12. a credit covering the whole PO marks the invoice paid", async () => {
   const db = mk([credit(1, 1, 1000)])
   const poId = await createWithCredit(db, 1000)
-  assert.equal((await put({ id: poId, status: "approved" })).status, 200)
+  assert.equal((await approveAndClose(poId)).status, 200)
   assert.equal(db.tables.accounts_payable[0].status, "paid")
   assert.equal(db.tables.accounts_payable[0].paid_amount, 1000)
 })
 
-test("C13. approval without credits is unchanged (pending, paid 0, no payment row)", async () => {
+test("C13. closing without credits: pending, paid 0, no payment row", async () => {
   const db = mk([credit(1, 1, 300)])
   const r = await post(undefined)
-  assert.equal((await put({ id: Number(r.body.id), status: "approved" })).status, 200)
+  assert.equal((await approveAndClose(Number(r.body.id))).status, 200)
   assert.equal(db.tables.accounts_payable[0].paid_amount, 0)
   assert.equal(db.tables.accounts_payable[0].status, "pending")
   assert.equal(db.tables.supplier_payments.length, 0)
 })
 
-test("C14. a repeated approval does not apply the credit twice", async () => {
+test("C14. closing twice does not apply the credit twice", async () => {
   const db = mk([credit(1, 1, 300)])
   const poId = await createWithCredit(db, 300)
-  assert.equal((await put({ id: poId, status: "approved" })).status, 200)
-  db.tables.purchase_orders[0].approved_at = "2026-01-01T00:00:00Z" // outside the in-flight window
-  assert.equal((await put({ id: poId, status: "approved" })).status, 200)
+  assert.equal((await approveAndClose(poId)).status, 200)
+  assert.equal((await close(poId)).status, 409)
   assert.equal(db.tables.accounts_payable.length, 1)
   assert.equal(db.tables.supplier_payments.length, 1)
 })
 
-test("C15. if the credit payment row fails, the invoice is removed and the approval is reverted", async () => {
+test("C15. if the credit payment row fails at close, the invoice is removed and the PO stays open", async () => {
   const db = mk([credit(1, 1, 300)])
   const poId = await createWithCredit(db, 300)
+  assert.equal((await put({ id: poId, status: "approved" })).status, 200)
   db.failOn["supplier_payments:insert"] = "boom"
-  const r = await put({ id: poId, status: "approved" })
+  const r = await close(poId)
   assert.equal(r.status, 500)
-  assert.equal(r.body.poApproved, false)
   assert.equal(db.tables.accounts_payable.length, 0)
-  assert.equal(db.tables.purchase_orders[0].status, "pending")
+  assert.equal(db.tables.purchase_orders[0].status, "approved")
   assert.equal(db.tables.supplier_credits[0].used_in_po_id, poId, "the credit stays reserved for the retry")
 })
 
@@ -249,7 +259,7 @@ test("C18. an item edit may not bring the total below the reserved credit", asyn
 test("C19. credits marked credited manually (no PO) are never counted on a PO", async () => {
   const db = mk([credit(1, 1, 300), credit(2, 1, 400, { status: "used", used_at: "2026-10-02T00:00:00" })])
   const poId = await createWithCredit(db, 300)
-  assert.equal((await put({ id: poId, status: "approved" })).status, 200)
+  assert.equal((await approveAndClose(poId)).status, 200)
   assert.equal(db.tables.accounts_payable[0].paid_amount, 300)
 })
 
@@ -270,7 +280,7 @@ test("C20. GET supplier credits: default lists only active; ?include=used adds t
 test("C21. the supplier invoice print shows the credit deduction and the net amount", async () => {
   const db = mk([credit(1, 1, 300)])
   const poId = await createWithCredit(db, 300)
-  assert.equal((await put({ id: poId, status: "approved" })).status, 200)
+  assert.equal((await approveAndClose(poId)).status, 200)
   const invoiceId = db.tables.accounts_payable[0].invoice_id
   const res = await apPdf.GET(new Request(`http://test.local/api/invoices/ap/${invoiceId}/pdf`) as any, { params: Promise.resolve({ id: String(invoiceId) }) })
   const html = await res.text()
@@ -283,7 +293,7 @@ test("C21. the supplier invoice print shows the credit deduction and the net amo
 test("C22. the supplier invoice print without credit has no credit line", async () => {
   const db = mk([])
   const r = await post(undefined)
-  assert.equal((await put({ id: Number(r.body.id), status: "approved" })).status, 200)
+  assert.equal((await approveAndClose(Number(r.body.id))).status, 200)
   const invoiceId = db.tables.accounts_payable[0].invoice_id
   const res = await apPdf.GET(new Request(`http://test.local/x`) as any, { params: Promise.resolve({ id: String(invoiceId) }) })
   const html = await res.text()

@@ -5,6 +5,7 @@ import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import * as poRoute from "../../app/api/purchase-orders/route"
+import * as closeRoute from "../../app/api/purchase-orders/close/route"
 
 const po = (po_id: number, status: string, extra: Row = {}): Row => ({
   po_id,
@@ -25,33 +26,44 @@ function mk(rows: Row[], extra: Record<string, Row[]> = {}) {
   return db
 }
 const put = (body: Row) => call(poRoute.PUT, "PUT", body)
+const close = (id: number) => call(closeRoute.POST as any, "POST", { id: String(id) })
 const get = (db: FakeDb, id: number) => db.tables.purchase_orders.find((r) => r.po_id === id)!
 
-test("T1. pending -> approved: PO approved, approved_at set, one AP", async () => {
+// Open POs (owner request, 2026-11-11): approving makes NO supplier bill; "Close PO" makes it.
+test("T1. pending -> approved: PO approved, approved_at set, no supplier bill yet (the PO stays open)", async () => {
   const db = mk([po(1, "pending")])
   const r = await put({ id: "1", status: "approved" }) // the UI sends the id as a string
   assert.equal(r.status, 200, JSON.stringify(r.body))
   assert.equal(get(db, 1).status, "approved")
   assert.ok(get(db, 1).approved_at)
-  assert.equal(db.tables.accounts_payable.length, 1)
-  assert.equal(db.tables.accounts_payable[0].po_id, 1)
+  assert.equal(db.tables.accounts_payable.length, 0)
 })
 
-test("T2. re-approving an approved PO is a no-op: no second AP, approved_at kept", async () => {
+test("T2. re-approving an approved PO is a no-op: approved_at kept, still no bill", async () => {
   const db = mk([po(1, "pending")])
   await put({ id: 1, status: "approved" })
   const at = get(db, 1).approved_at
   const r = await put({ id: 1, status: "approved" })
   assert.equal(r.status, 200)
-  assert.equal(db.tables.accounts_payable.length, 1)
+  assert.equal(db.tables.accounts_payable.length, 0)
   assert.equal(get(db, 1).approved_at, at)
 })
 
-test("T3. re-approving an approved PO that has no AP (older failure) repairs the AP", async () => {
+test("T3. closing an approved PO makes its one supplier bill; closing again is refused", async () => {
   const db = mk([po(1, "approved")])
-  const r = await put({ id: 1, status: "approved" })
-  assert.equal(r.status, 200)
+  const r = await close(1)
+  assert.equal(r.status, 200, JSON.stringify(r.body))
   assert.equal(db.tables.accounts_payable.length, 1)
+  assert.equal(db.tables.accounts_payable[0].po_id, 1)
+  assert.equal(db.tables.accounts_payable[0].amount, 500)
+  assert.equal(db.tables.accounts_payable[0].invoice_number, "APINV-PO-T-1")
+  const again = await close(1)
+  assert.equal(again.status, 409)
+  assert.equal(again.body.code, "PO_ALREADY_CLOSED")
+  assert.equal(db.tables.accounts_payable.length, 1)
+  // a pending / rejected PO cannot be closed
+  mk([po(2, "pending")])
+  assert.equal((await close(2)).body.code, "PO_NOT_CLOSABLE")
 })
 
 test("T4. forbidden transitions are rejected with 409 and change nothing", async () => {
@@ -92,28 +104,22 @@ test("T5. allowed transitions: draft->pending and pending->rejected (reason save
   assert.equal(db.tables.accounts_payable.length, 0)
 })
 
-test("T6. AP creation failure reverts the approval, answers truthfully, and a retry then succeeds", async () => {
-  const db = mk([po(1, "pending")])
+test("T6. closing: a bill failure leaves the PO open, and a retry then succeeds", async () => {
+  const db = mk([po(1, "approved")])
   db.failOn["accounts_payable:insert"] = "boom"
-  const r = await put({ id: 1, status: "approved" })
+  const r = await close(1)
   assert.equal(r.status, 500)
-  assert.equal(r.body.poApproved, false)
-  assert.equal(r.body.apInvoiceCreated, false)
-  assert.equal(get(db, 1).status, "pending")
-  assert.equal(get(db, 1).approved_at, null)
-  delete db.failOn["accounts_payable:insert"]
-  const retry = await put({ id: 1, status: "approved" })
-  assert.equal(retry.status, 200)
   assert.equal(get(db, 1).status, "approved")
+  assert.equal(db.tables.accounts_payable.length, 0)
+  delete db.failOn["accounts_payable:insert"]
+  assert.equal((await close(1)).status, 200)
   assert.equal(db.tables.accounts_payable.length, 1)
 })
 
-test("T7. AP lookup failure also reverts (no approved PO without an AP row)", async () => {
-  const db = mk([po(1, "pending")])
+test("T7. closing: a bill lookup failure changes nothing", async () => {
+  const db = mk([po(1, "approved")])
   db.failOn["accounts_payable:select"] = "boom"
-  const r = await put({ id: 1, status: "approved" })
-  assert.equal(r.status, 500)
-  assert.equal(get(db, 1).status, "pending")
+  assert.equal((await close(1)).status, 500)
   assert.equal(db.tables.accounts_payable.length, 0)
 })
 
@@ -131,7 +137,7 @@ test("T9. concurrent approvals: exactly one wins, one AP", async () => {
     // the loser either hits the compare-and-swap (409) or sees the PO already approved (idempotent 200)
     assert.ok(rs.every((r) => r.status === 200 || r.status === 409), JSON.stringify(rs.map((r) => r.status)))
     assert.ok(rs.some((r) => r.status === 200))
-    assert.equal(db.tables.accounts_payable.length, 1)
+    assert.equal(db.tables.accounts_payable.length, 0, "approving makes no bill")
   }
 })
 
@@ -142,7 +148,7 @@ test("T10. concurrent approve vs reject: one winner, consistent end state", asyn
     assert.equal(rs.filter((r) => r.status === 200).length, 1, JSON.stringify(rs.map((r) => r.status)))
     const st = get(db, 1).status
     assert.ok(st === "approved" || st === "rejected")
-    assert.equal(db.tables.accounts_payable.length, st === "approved" ? 1 : 0)
+    assert.equal(db.tables.accounts_payable.length, 0, "approving makes no bill")
   }
 })
 
@@ -210,14 +216,11 @@ test("T17. a request with nothing to write (items only) on a pending PO replaces
   assert.equal(get(db, 1).status, "pending")
 })
 
-test("T18. if the revert after an AP failure also fails, the response says the PO is approved without an AP", async () => {
+test("T18. approving never touches the supplier bill table (a broken bill table cannot block approval)", async () => {
   const db = mk([po(1, "pending")])
   db.failOn["accounts_payable:insert"] = "boom"
-  db.failOn["purchase_orders:update"] = "boom2"
-  db.failAfter["purchase_orders:update"] = 1 // the approval write succeeds, the revert fails
+  db.failOn["accounts_payable:select"] = "boom"
   const r = await put({ id: 1, status: "approved" })
-  assert.equal(r.status, 500)
-  assert.equal(r.body.poApproved, true)
-  assert.equal(r.body.apInvoiceCreated, false)
+  assert.equal(r.status, 200, JSON.stringify(r.body))
   assert.equal(get(db, 1).status, "approved")
 })

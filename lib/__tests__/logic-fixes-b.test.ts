@@ -10,6 +10,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
+import * as closeRoute from "../../app/api/purchase-orders/close/route"
 import * as poRoute from "../../app/api/purchase-orders/route"
 import * as finalizeRoute from "../../app/api/purchase-orders/finalize-cost/route"
 import * as grnRoute from "../../app/api/goods-receipts/route"
@@ -92,6 +93,8 @@ test("A5. PUT approve: a stale client total is ignored; the AP invoice uses the 
   const r = await putPo({ id: "1", status: "approved", total: 99999, payment_type: "cash", notes: "" })
   assert.equal(r.status, 200, JSON.stringify(r.body))
   assert.equal(Number(db.tables.purchase_orders[0].total), 228)
+  assert.equal(db.tables.accounts_payable.length, 0, "no bill at approval (open POs)")
+  assert.equal((await call(closeRoute.POST as any, "POST", { id: 1 })).status, 200)
   assert.equal(Number(db.tables.accounts_payable[0].amount), 228)
 })
 

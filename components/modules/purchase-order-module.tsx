@@ -47,6 +47,7 @@ import { fill } from "@/lib/i18n-format"
 import { describeOverOrderLines, type OverOrderLine } from "@/lib/po-over-order"
 import { ChainLine } from "@/components/shared/chain-line"
 import { PO_EDITABLE_STATUSES } from "@/lib/po-edit"
+import { PoHistory, PoOpenBadge, PoOpenMenu } from "@/components/purchase-order/po-open-actions"
 import { SupplierCreditPicker, appliedCreditTotal, creditSelections, type CreditAmounts } from "@/components/supplier/supplier-credit-picker"
 
 interface PurchaseOrderModuleProps {
@@ -915,6 +916,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           PO_PAID: "po.edit-err-paid",
           PO_RECEIVED: "po.edit-err-received",
           PO_NOT_EDITABLE: "po.edit-err-received",
+          PO_CLOSED: "po.edit-err-closed",
+          PO_COST_FINALIZED: "po.edit-err-cost-finalized",
           PO_CREDIT_SUPPLIER: "po.edit-err-credit-supplier",
           CREDIT_EXCEEDS_TOTAL: "po.credit.err-exceeds-total",
         }
@@ -1212,10 +1215,11 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     setPoType("local")
   }
 
-  // Edit (owner request, 2026-11-08): the PO form opens filled in from this PO; Save goes to the edit route.
-  // The PO rep edits drafts and pending POs; an approved PO (it has a supplier bill) is edited by those who approve.
+  // Open POs (owner request, 2026-11-11): a PO is open (work in progress) until it is closed and sent to Accounts
+  // Payable; closed = it has a supplier bill. An open PO can be edited in any status, even after receiving.
+  const isClosedPO = (order: PurchaseOrder) => (supplierInvoices || []).some((inv: any) => String(inv.poId ?? inv.po_id ?? "") === String(order.id))
   const canEditPO = (order: PurchaseOrder) =>
-    PO_EDITABLE_STATUSES.includes(order.status) && (order.status === "approved" ? canApprovePO : canCreatePO)
+    PO_EDITABLE_STATUSES.includes(order.status) && !isClosedPO(order) && !(order as any).costFinalized && canCreatePO
   const startEdit = (order: PurchaseOrder) => {
     const o = order as any
     resetForm()
@@ -1356,6 +1360,15 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           <Pencil className="w-4 h-4" />
         </Button>
       )}
+      <PoOpenMenu
+        order={order}
+        closed={isClosedPO(order)}
+        canEdit={canEditPO(order)}
+        role={userRole}
+        userId={(user as any)?.id ?? null}
+        products={products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
+        onDone={loadData}
+      />
       <Button
         variant="ghost"
         size="sm"
@@ -1512,7 +1525,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         <NumCell>{formatNumber(order.items?.length || 0)}</NumCell>
                         <NumCell>{formatMoney(order.total, language)}</NumCell>
                         <TableCell>
-                          <StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />
+                          <span className="inline-flex flex-wrap items-center gap-1"><StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />{order.status !== "rejected" && <PoOpenBadge closed={isClosedPO(order)} />}</span>
                         </TableCell>
                         <ActionsCell>{renderRowActions(order)}</ActionsCell>
                       </TableRow>
@@ -1533,7 +1546,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 id={order.poRequestNumber ? `${order.poNumber} · ${order.poRequestNumber}` : order.poNumber}
                 party={[getSupplierName(order.supplierId), getLinkedSalesOrders(order)].filter(Boolean).join(" — ")}
                 amount={formatMoney(order.total, language)}
-                status={<StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />}
+                status={<span className="inline-flex flex-wrap items-center gap-1"><StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />{order.status !== "rejected" && <PoOpenBadge closed={isClosedPO(order)} />}</span>}
                 note={order.status === "rejected" && order.rejectionReason ? renderRejectionReason(order) : undefined}
                 actions={renderRowActions(order)}
               />
@@ -1553,9 +1566,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 </span>
               )}
             </DialogTitle>
-            {editingPoId && purchaseOrders.find((po) => po.id === editingPoId)?.status === "approved" && (
-              <p className="text-sm text-amber-800">{t("po.edit-approved-note")}</p>
-            )}
+            {editingPoId && <p className="text-sm text-muted-foreground">{t("po.edit-open-note")}</p>}
           </DialogHeader>
 
           <div className="space-y-4">
@@ -2130,7 +2141,10 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("po.status-label")}</span>
-                      <StatusBadge status={viewDetailsOrder.status} label={t(`po.status.${viewDetailsOrder.status}`)} />
+                      <span className="inline-flex flex-wrap items-center gap-1">
+                        <StatusBadge status={viewDetailsOrder.status} label={t(`po.status.${viewDetailsOrder.status}`)} />
+                        {viewDetailsOrder.status !== "rejected" && <PoOpenBadge closed={isClosedPO(viewDetailsOrder)} />}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t("po.order-date-label")}</span>
@@ -2222,6 +2236,9 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   </table>
                 </div>
               </div>
+
+              {/* Exchanges, items sent back, advances, close / reopen (open POs, owner request 2026-11-11) */}
+              <PoHistory poId={viewDetailsOrder.id} />
 
               {/* Payment Schedule (if installments or hybrid) */}
               {(viewDetailsOrder.paymentType === "installments" || viewDetailsOrder.paymentType === "hybrid") && (
