@@ -4,7 +4,7 @@
 // item, record an advance, close & send to Accounts Payable, reopen) with its dialogs, and the PO history shown in the
 // PO details (exchanges with their cost difference, items sent back, advances, close / reopen).
 import { useEffect, useState } from "react"
-import { ArrowLeftRight, Banknote, Lock, LockOpen, MoreHorizontal, Loader2 } from "lucide-react"
+import { ArrowLeftRight, Banknote, Lock, LockOpen, MoreHorizontal, Loader2, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,9 +18,31 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
 import { PO_CLOSABLE_STATUSES, PO_CLOSE_ROLES } from "@/lib/po-edit"
+import { toEnglishDigits } from "@/lib/po-requests/read-prices"
+import { typedNumber } from "@/lib/typed-number"
 import type { PurchaseOrder } from "@/lib/types"
 
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+/**
+ * A number box that keeps what is typed (so it can be emptied, or hold "12." while a decimal is typed) and accepts
+ * Arabic digits; a plain number input refused both, so the cost box seemed not to type (owner report, 2026-11-12).
+ */
+function NumberBox({ id, value, onChange, decimals = false }: { id: string; value: string; onChange: (text: string) => void; decimals?: boolean }) {
+  return (
+    <Input
+      id={id}
+      type="text"
+      inputMode={decimals ? "decimal" : "numeric"}
+      autoComplete="off"
+      value={value}
+      onChange={(e) => {
+        const text = toEnglishDigits(e.target.value).replace(/٫/g, ".")
+        if (text === "" || (decimals ? /^\d*[.,]?\d*$/ : /^\d*$/).test(text)) onChange(text)
+      }}
+    />
+  )
+}
 const today = () => new Date().toISOString().split("T")[0]
 
 async function post(url: string, body: unknown) {
@@ -55,11 +77,13 @@ interface MenuProps {
   onDone: () => Promise<void> | void
   /** Show the words next to the icon (in the PO details popup). */
   labelled?: boolean
+  /** Warehouses goods can be taken back from when they are returned to the supplier. */
+  warehouses?: { id: string | number; name: string }[]
 }
 
-export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inventory = [], onDone, labelled = false }: MenuProps) {
+export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inventory = [], onDone, labelled = false, warehouses = [] }: MenuProps) {
   const { t } = useI18n()
-  const [dialog, setDialog] = useState<"exchange" | "advance" | null>(null)
+  const [dialog, setDialog] = useState<"exchange" | "advance" | "return" | null>(null)
   const [busy, setBusy] = useState(false)
   const may = PO_CLOSE_ROLES.includes(role)
   const canClose = may && !closed && PO_CLOSABLE_STATUSES.includes(order.status)
@@ -96,6 +120,11 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
               <ArrowLeftRight className="w-4 h-4 me-2" /> {t("po.exchange-item")}
             </DropdownMenuItem>
           )}
+          {canEdit && (
+            <DropdownMenuItem onSelect={() => setDialog("return")}>
+              <Undo2 className="w-4 h-4 me-2" /> {t("po.return-to-supplier")}
+            </DropdownMenuItem>
+          )}
           {canAdvance && (
             <DropdownMenuItem onSelect={() => setDialog("advance")}>
               <Banknote className="w-4 h-4 me-2" /> {t("po.record-advance")}
@@ -128,6 +157,7 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
         <ExchangeDialog order={order} userId={userId} products={products} inventory={inventory} onClose={() => setDialog(null)} onDone={onDone} />
       )}
       {dialog === "advance" && <AdvanceDialog order={order} userId={userId} onClose={() => setDialog(null)} onDone={onDone} />}
+      {dialog === "return" && <ReturnDialog order={order} userId={userId} warehouses={warehouses} onClose={() => setDialog(null)} onDone={onDone} />}
     </>
   )
 }
@@ -135,12 +165,12 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
 interface ExchangeRow {
   key: number
   fromId: string
-  qty: number
+  qty: string
   kind: "product" | "typed"
   productId: string
   name: string
-  toQty: number
-  toPrice: number
+  toQty: string
+  toPrice: string
   notes: string
 }
 
@@ -166,20 +196,20 @@ function ExchangeDialog({
   const lineOf = (id: string): any => lines.find((l: any) => l.id === id)
   const nextKey = useState(() => ({ n: 0 }))[0]
   const newRow = (fromId = lines[0]?.id || ""): ExchangeRow => {
-    const q = Number(lineOf(fromId)?.quantity) || 1
-    return { key: ++nextKey.n, fromId, qty: q, kind: "typed", productId: "", name: "", toQty: q, toPrice: 0, notes: "" }
+    const q = String(Number(lineOf(fromId)?.quantity) || 1)
+    return { key: ++nextKey.n, fromId, qty: q, kind: "typed", productId: "", name: "", toQty: q, toPrice: "", notes: "" }
   }
   const [rows, setRows] = useState<ExchangeRow[]>(() => [newRow()])
   const [saving, setSaving] = useState(false)
   const update = (key: number, patch: Partial<ExchangeRow>) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)))
-  const fromCost = (r: ExchangeRow) => money(r.qty * (Number(lineOf(r.fromId)?.unitPrice) || 0))
-  const toCost = (r: ExchangeRow) => money(r.toQty * r.toPrice)
+  const fromCost = (r: ExchangeRow) => money(typedNumber(r.qty) * (Number(lineOf(r.fromId)?.unitPrice) || 0))
+  const toCost = (r: ExchangeRow) => money(typedNumber(r.toQty) * typedNumber(r.toPrice))
   const total = money(rows.reduce((s, r) => s + toCost(r) - fromCost(r), 0))
   // the next unused line is offered when another exchange is added
   const nextFrom = () => lines.find((l: any) => !rows.some((r) => r.fromId === l.id))?.id || lines[0]?.id || ""
 
   const save = async () => {
-    const bad = rows.find((r) => !lineOf(r.fromId) || !(r.qty > 0) || !(r.toQty > 0) || r.toPrice < 0 || (r.kind === "product" ? !r.productId : !r.name.trim()))
+    const bad = rows.find((r) => !lineOf(r.fromId) || !(typedNumber(r.qty) > 0) || !(typedNumber(r.toQty) > 0) || r.toPrice.trim() === "" || (r.kind === "product" ? !r.productId : !r.name.trim()))
     if (bad) {
       alert(fill(t("po.exchange-fill-row"), { n: rows.indexOf(bad) + 1 }))
       return
@@ -191,9 +221,12 @@ function ExchangeDialog({
         userId,
         exchanges: rows.map((r) => ({
           fromItemId: r.fromId,
-          quantity: r.qty,
+          quantity: typedNumber(r.qty),
           notes: r.notes,
-          to: r.kind === "product" ? { productId: r.productId, quantity: r.toQty, unitPrice: r.toPrice } : { name: r.name.trim(), quantity: r.toQty, unitPrice: r.toPrice },
+          to:
+            r.kind === "product"
+              ? { productId: r.productId, quantity: typedNumber(r.toQty), unitPrice: typedNumber(r.toPrice) }
+              : { name: r.name.trim(), quantity: typedNumber(r.toQty), unitPrice: typedNumber(r.toPrice) },
         })),
       })
       alert(fill(t("po.exchanges-saved"), { n: rows.length }))
@@ -231,7 +264,7 @@ function ExchangeDialog({
                   <Select
                     value={r.fromId}
                     onValueChange={(v) => {
-                      const q = Number(lineOf(v)?.quantity) || 1
+                      const q = String(Number(lineOf(v)?.quantity) || 1)
                       update(r.key, { fromId: v, qty: q, toQty: q })
                     }}
                   >
@@ -249,7 +282,7 @@ function ExchangeDialog({
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor={`exchange-from-qty-${r.key}`}>{t("quantity")}</Label>
-                  <Input id={`exchange-from-qty-${r.key}`} type="number" min={1} max={Number(lineOf(r.fromId)?.quantity) || undefined} value={r.qty} onChange={(e) => update(r.key, { qty: Number(e.target.value) || 0 })} />
+                  <NumberBox id={`exchange-from-qty-${r.key}`} decimals value={r.qty} onChange={(v) => update(r.key, { qty: v })} />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -273,11 +306,11 @@ function ExchangeDialog({
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1">
                   <Label htmlFor={`exchange-to-qty-${r.key}`}>{t("quantity")}</Label>
-                  <Input id={`exchange-to-qty-${r.key}`} type="number" min={1} value={r.toQty} onChange={(e) => update(r.key, { toQty: Number(e.target.value) || 0 })} />
+                  <NumberBox id={`exchange-to-qty-${r.key}`} decimals value={r.toQty} onChange={(v) => update(r.key, { toQty: v })} />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor={`exchange-to-price-${r.key}`}>{t("po.cost-per-unit")}</Label>
-                  <Input id={`exchange-to-price-${r.key}`} type="number" min={0} step="0.01" value={r.toPrice} onChange={(e) => update(r.key, { toPrice: Number(e.target.value) || 0 })} />
+                  <NumberBox id={`exchange-to-price-${r.key}`} decimals value={r.toPrice} onChange={(v) => update(r.key, { toPrice: v })} />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor={`exchange-notes-${r.key}`}>{t("po.exchange-notes")}</Label>
@@ -315,9 +348,157 @@ function ExchangeDialog({
   )
 }
 
+interface ReturnRow {
+  key: number
+  fromId: string
+  qty: string
+  warehouseId: string
+  reason: string
+}
+
+// Return items to the supplier without an exchange (owner request, 2026-11-12): the PO goes down by what goes back;
+// when the goods are in one of our warehouses they leave stock there too. Several rows, saved together.
+function ReturnDialog({
+  order,
+  userId,
+  warehouses,
+  onClose,
+  onDone,
+}: {
+  order: PurchaseOrder
+  userId?: string | number | null
+  warehouses: { id: string | number; name: string }[]
+  onClose: () => void
+  onDone: () => Promise<void> | void
+}) {
+  const { t } = useI18n()
+  const lines = (order.items || []).filter((i: any) => (Number(i.quantity) || 0) > 0 && i.id)
+  const lineOf = (id: string): any => lines.find((l: any) => l.id === id)
+  const counter = useState(() => ({ n: 0 }))[0]
+  const newRow = (fromId = lines[0]?.id || ""): ReturnRow => ({ key: ++counter.n, fromId, qty: String(Number(lineOf(fromId)?.quantity) || 1), warehouseId: "", reason: "" })
+  const [rows, setRows] = useState<ReturnRow[]>(() => [newRow()])
+  const [saving, setSaving] = useState(false)
+  const update = (key: number, patch: Partial<ReturnRow>) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)))
+  const value = (r: ReturnRow) => money(typedNumber(r.qty) * (Number(lineOf(r.fromId)?.unitPrice) || 0))
+  const total = money(rows.reduce((s, r) => s + value(r), 0))
+  const nextFrom = () => lines.find((l: any) => !rows.some((r) => r.fromId === l.id))?.id || lines[0]?.id || ""
+
+  const save = async () => {
+    const bad = rows.find((r) => !lineOf(r.fromId) || !(typedNumber(r.qty) > 0) || !r.warehouseId)
+    if (bad) {
+      alert(fill(t("po.return-fill-row"), { n: rows.indexOf(bad) + 1 }))
+      return
+    }
+    setSaving(true)
+    try {
+      await post("/api/purchase-orders/return-to-supplier", {
+        id: order.id,
+        userId,
+        items: rows.map((r) => ({ fromItemId: r.fromId, quantity: typedNumber(r.qty), warehouseId: r.warehouseId === "none" ? null : r.warehouseId, reason: r.reason })),
+      })
+      alert(fill(t("po.return-saved"), { n: rows.length }))
+      onClose()
+      await onDone()
+    } catch (error) {
+      alert(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {t("po.return-to-supplier")} · {order.poNumber}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t("po.return-help")}</p>
+          {rows.map((r, index) => (
+            <div key={r.key} className="rounded-md border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold">{fill(t("po.return-number"), { n: index + 1 })}</p>
+                {rows.length > 1 && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setRows((prev) => prev.filter((x) => x.key !== r.key))}>
+                    {t("po.exchange-remove")}
+                  </Button>
+                )}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="sm:col-span-2 space-y-1">
+                  <Label htmlFor={`return-from-${r.key}`}>{t("po.exchange-from")}</Label>
+                  <Select value={r.fromId} onValueChange={(v) => update(r.key, { fromId: v, qty: String(Number(lineOf(v)?.quantity) || 1) })}>
+                    <SelectTrigger id={`return-from-${r.key}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lines.map((l: any) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.productName} · {l.quantity} × {Number(l.unitPrice).toLocaleString("en-US")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`return-qty-${r.key}`}>{t("quantity")}</Label>
+                  <NumberBox id={`return-qty-${r.key}`} decimals value={r.qty} onChange={(v) => update(r.key, { qty: v })} />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor={`return-wh-${r.key}`}>{t("po.return-from-stock")}</Label>
+                  <Select value={r.warehouseId || undefined} onValueChange={(v) => update(r.key, { warehouseId: v })}>
+                    <SelectTrigger id={`return-wh-${r.key}`}>
+                      <SelectValue placeholder={t("gr.choose")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {warehouses.map((w) => (
+                        <SelectItem key={String(w.id)} value={String(w.id)}>
+                          {w.name}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="none">{t("po.return-not-in-stock")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor={`return-reason-${r.key}`}>{t("po.return-reason")}</Label>
+                  <Input id={`return-reason-${r.key}`} value={r.reason} onChange={(e) => update(r.key, { reason: e.target.value })} />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("po.return-value")} <Money value={value(r)} />
+              </p>
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => setRows((prev) => [...prev, newRow(nextFrom())])} disabled={lines.length === 0}>
+            {t("po.return-add")}
+          </Button>
+          <p className="text-sm font-semibold text-emerald-700">
+            {t("po.return-total")} −<Money value={total} />
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            {t("action.cancel")}
+          </Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : null}
+            {t("po.return-save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function AdvanceDialog({ order, userId, onClose, onDone }: { order: PurchaseOrder; userId?: string | number | null; onClose: () => void; onDone: () => Promise<void> | void }) {
   const { t } = useI18n()
-  const [amount, setAmount] = useState<number>(0)
+  const [amountText, setAmountText] = useState("")
+  const amount = typedNumber(amountText)
   const [method, setMethod] = useState("cash")
   const [date, setDate] = useState(today())
   const [reference, setReference] = useState("")
@@ -351,7 +532,7 @@ function AdvanceDialog({ order, userId, onClose, onDone }: { order: PurchaseOrde
           <p className="text-sm text-muted-foreground">{t("po.advance-help")}</p>
           <div className="space-y-1">
             <Label htmlFor="advance-amount">{t("po.advance-amount")}</Label>
-            <Input id="advance-amount" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(Number(e.target.value) || 0)} />
+            <NumberBox id="advance-amount" decimals value={amountText} onChange={setAmountText} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="advance-method">{t("po.advance-method")}</Label>

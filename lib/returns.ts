@@ -1158,7 +1158,7 @@ async function sendBackOnOpenPo(db: Db, inventoryId: number, decided: CreditDeci
     if (row.product_id) await settleReturnedBatches(db, row.product_id, row.warehouse_id, "remove")
     await logPoEvent(db, po.po_id, {
       event_type: "PO_ITEM_SENT_BACK",
-      old_value: JSON.stringify({ name: decided.productName, quantity: decided.lowerBy, unitPrice: decided.unitCost, total: decided.amount, soNumber: decided.soNumber }),
+      old_value: JSON.stringify({ poItemId: line.po_item_id, name: decided.productName, quantity: decided.lowerBy, unitPrice: decided.unitCost, total: decided.amount, soNumber: decided.soNumber }),
       new_value: String(newQty),
       notes: `Returned by the customer and sent back to the supplier: ${decided.productName} x ${decided.lowerBy} taken off ${po.po_number}`,
     })

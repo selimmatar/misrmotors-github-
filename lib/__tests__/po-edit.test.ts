@@ -454,3 +454,84 @@ test("X6. the exchange window holds several rows: add another, remove, total dif
   assert.match(menu, /t\("po\.exchange-add"\)/)
   assert.match(menu, /t\("po\.exchange-total-difference"\)/)
 })
+
+// ------------------------------------------------------------------- return to supplier without an exchange (2026-11-12)
+import * as returnRoute from "../../app/api/purchase-orders/return-to-supplier/route"
+import { typedNumber } from "../typed-number"
+const giveBack = (b: Row) => call(returnRoute.POST as any, "POST", { id: "1", ...b })
+
+test("RS1. return without exchange: the PO line and total go down; goods in a warehouse leave stock there (logged); history shows it", async () => {
+  const db = mk({
+    purchase_orders: [po({ status: "received", total: 1000, tax_amount: null })],
+    purchase_order_items: [
+      line({ po_item_id: 7, quantity: 10, unit_price: 100, total: 1000 }),
+      line({ po_item_id: 8, product_id: null, item_type: "outsourced", outsourced_name: "Drill", quantity: 2, unit_price: 50, total: 100 }),
+    ],
+    inventory: [
+      { inventory_id: 1, product_id: 5, warehouse_id: 3, quantity: 6, is_returned: false },
+      { inventory_id: 2, product_id: null, is_outsourced: true, outsourced_name: "Drill", warehouse_id: 3, quantity: 2, is_returned: false },
+    ],
+    inventory_transactions: [],
+  })
+  receive(db, 7, 10)
+  receive(db, 8, 2)
+  const r = await giveBack({
+    items: [
+      { fromItemId: "7", quantity: 4, warehouseId: "3", reason: "damaged" },
+      { fromItemId: "8", quantity: 2, warehouseId: "3" },
+      { fromItemId: "7", quantity: 1, warehouseId: null },
+    ],
+  })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(r.body.returnedValue, 400 + 100 + 100)
+  assert.deepEqual(db.tables.purchase_order_items.map((l) => [l.po_item_id, l.quantity, l.total]), [[7, 5, 500], [8, 0, 0]])
+  assert.equal(db.tables.purchase_orders[0].total, 500)
+  assert.deepEqual(db.tables.inventory.map((i) => i.quantity), [2, 0])
+  assert.equal(db.tables.inventory_transactions.length, 1, "catalogue item logged; outsourced not")
+  assert.deepEqual([db.tables.inventory_transactions[0].transaction_type, db.tables.inventory_transactions[0].quantity_change], ["return", -4])
+  assert.equal(db.tables.purchase_orders[0].status, "received", "5 ordered, 10 received: still fully received")
+  const h = await history()
+  assert.equal(h.sentBack.length, 3)
+})
+
+test("RS2. return refused, nothing changes: not enough in that warehouse, more than on the PO, closed PO, no warehouse choice", async () => {
+  const db = mk({ inventory: [{ inventory_id: 1, product_id: 5, warehouse_id: 3, quantity: 1, is_returned: false }], inventory_transactions: [] })
+  receive(db, 7, 2)
+  const snap = () => JSON.stringify([db.tables.purchase_orders, db.tables.purchase_order_items, db.tables.inventory.map((i) => i.quantity)])
+  const before = snap()
+  const short = await giveBack({ items: [{ fromItemId: "7", quantity: 2, warehouseId: "3" }] })
+  assert.equal(short.body.code, "NOT_IN_STOCK")
+  assert.match(short.body.error, /only 1 of "Pump"/)
+  assert.equal((await giveBack({ items: [{ fromItemId: "7", quantity: 3, warehouseId: null }] })).body.code, "RETURN_TOO_MANY")
+  assert.equal((await giveBack({ items: [] })).status, 400)
+  assert.equal(snap(), before)
+  mk({ accounts_payable: [bill()] })
+  assert.equal((await giveBack({ items: [{ fromItemId: "7", quantity: 1, warehouseId: null }] })).body.code, "PO_CLOSED")
+})
+
+test("N1. number boxes take Arabic or English digits and decimals, and can be emptied", () => {
+  assert.equal(typedNumber("١٢٥٠"), 1250)
+  assert.equal(typedNumber("12.5"), 12.5)
+  assert.equal(typedNumber("١٢٫٥"), 12.5)
+  assert.equal(typedNumber("12,5"), 12.5)
+  assert.equal(typedNumber(""), 0)
+  const menu = src("components/purchase-order/po-open-actions.tsx")
+  assert.doesNotMatch(menu, /type="number"/, "no plain number inputs left in the exchange / advance / return windows")
+  assert.match(menu, /<NumberBox id=\{`exchange-to-price-\$\{r\.key\}`\} decimals value=\{r\.toPrice\}/)
+  assert.match(menu, /t\("po\.return-to-supplier"\)/)
+})
+
+test("RS3. only what was received (and not yet returned) can go back; not received -> remove it with Edit", async () => {
+  const db = mk({ purchase_orders: [po({ status: "partially_received", total: 1000, tax_amount: null })], purchase_order_items: [line({ quantity: 10, unit_price: 100, total: 1000 })] })
+  const none = await giveBack({ items: [{ fromItemId: "7", quantity: 1, warehouseId: null }] })
+  assert.equal(none.body.code, "NOT_RECEIVED")
+  assert.match(none.body.error, /not received yet.*Edit/)
+  receive(db, 7, 3)
+  assert.equal((await giveBack({ items: [{ fromItemId: "7", quantity: 4, warehouseId: null }] })).body.code, "NOT_RECEIVED")
+  assert.equal((await giveBack({ items: [{ fromItemId: "7", quantity: 2, warehouseId: null }] })).status, 200)
+  const again = await giveBack({ items: [{ fromItemId: "7", quantity: 2, warehouseId: null }] })
+  assert.equal(again.body.code, "NOT_RECEIVED", "3 received, 2 already returned: 1 left")
+  assert.match(again.body.error, /Only 1 of "Pump"/)
+  assert.equal((await giveBack({ items: [{ fromItemId: "7", quantity: 1, warehouseId: null }] })).status, 200)
+  assert.equal(db.tables.purchase_order_items[0].quantity, 7)
+})
