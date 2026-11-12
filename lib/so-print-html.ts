@@ -6,7 +6,23 @@ import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "./print/pri
 export interface SoPrintData {
   so: Record<string, any>
   customer: { customer_name?: string; phone?: string; email?: string } | null
-  items: { name: string; quantity: number; unit_price: number; total: number; returned: number }[]
+  items: { name: string; quantity: number; unit_price: number; total: number; returned: number; delivered?: number }[]
+  /**
+   * Delivery print (owner request, 2026-11-12). "status": every line with Delivered / Remaining and a mark; "delivered":
+   * only what was delivered, valued at the order prices. Delivered = on signed or approved permits, less returns.
+   */
+  delivery?: { mode: "status" | "delivered"; permits: { number: string; date: string | null; status: string }[] }
+}
+
+const DP_STATUS_AR: Record<string, string> = {
+  DRAFT: "مسودة",
+  READY_FOR_SHIPMENT: "جاهز للشحن",
+  PRINTED: "تمت الطباعة",
+  READY_FOR_PICKUP: "جاهز للاستلام",
+  OUT_FOR_DELIVERY: "خرج للتسليم",
+  SUBMITTED_SIGNED: "تم التوقيع والتسليم",
+  APPROVED: "معتمد",
+  REJECTED: "مرفوض",
 }
 
 const PAYMENT_AR: Record<string, string> = {
@@ -40,31 +56,77 @@ const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
 const egp = (v: unknown) => n(v).toLocaleString("en-US", { maximumFractionDigits: 2 })
 
 export function renderSoPrintHtml(data: SoPrintData): string {
-  const { so, customer, items } = data
+  const { so, customer, delivery } = data
+  const deliveredOnly = delivery?.mode === "delivered"
+  const withStatus = delivery?.mode === "status"
+  // Delivered only: what went out, at the order prices; the order's discount applies in the same proportion.
+  const items = deliveredOnly
+    ? data.items
+        .filter((i) => n(i.delivered) > 0)
+        .map((i) => ({ ...i, quantity: n(i.delivered), total: Math.round(n(i.delivered) * n(i.unit_price) * 100) / 100 }))
+    : data.items
+  const fullSubtotal = data.items.reduce((s, i) => s + n(i.total), 0)
   const subtotal = items.reduce((s, i) => s + n(i.total), 0)
+  const share = fullSubtotal > 0 ? subtotal / fullSubtotal : 0
+  const discountAmount = deliveredOnly ? Math.round(n(so.discount_amount) * share * 100) / 100 : n(so.discount_amount)
+  const deliveredTotal = deliveredOnly
+    ? computeSoPrintTotals({ subtotal, discountType: so.discount_type, discountValue: n(so.discount_value), discountAmount, storedTotal: 0, storedNetTotal: null }).total
+    : 0
   const totals = computeSoPrintTotals({
     subtotal,
     discountType: so.discount_type,
     discountValue: n(so.discount_value),
-    discountAmount: n(so.discount_amount),
-    storedTotal: n(so.total),
+    discountAmount,
+    storedTotal: deliveredOnly ? deliveredTotal : n(so.total),
     // The sales order prints as it stands: a returned item is either replaced (a normal line), kept as a "returned"
     // line at quantity 0, or removed, so no "returns / adjustments" line is printed (owner request, 2026-11-11).
     storedNetTotal: null,
   })
 
+  const mark = (ordered: number, delivered: number) =>
+    ordered > 0 && delivered >= ordered ? "✓ تم التسليم" : delivered > 0 ? "جزئي" : "لم يُسلَّم"
   const rows = items
     .map(
       (item, idx) => `
       <tr>
         <td class="center">${idx + 1}</td>
         <td>${escapeHtml(item.name)}${item.returned > 0 ? `<div class="returned">مرتجع: ${item.returned}</div>` : ""}</td>
-        <td class="center">${n(item.quantity)}</td>
+        <td class="center">${n(item.quantity)}</td>${
+          withStatus
+            ? `
+        <td class="center">${n(item.delivered)}</td>
+        <td class="center">${Math.max(0, n(item.quantity) - n(item.delivered))}</td>
+        <td class="center">${mark(n(item.quantity), n(item.delivered))}</td>`
+            : ""
+        }
         ${moneyCell(n(item.unit_price))}
         ${moneyCell(n(item.total))}
       </tr>`,
     )
     .join("")
+  // With delivery status: the value of what was delivered and what is still to go (order prices, the order's
+  // discount in proportion, 14% VAT), owner request 2026-11-12.
+  let deliveredValueBox = ""
+  if (withStatus) {
+    const deliveredSub = data.items.reduce((s, i) => s + n(i.delivered) * n(i.unit_price), 0)
+    const shareD = fullSubtotal > 0 ? deliveredSub / fullSubtotal : 0
+    const dTotals = computeSoPrintTotals({
+      subtotal: deliveredSub,
+      discountType: so.discount_type,
+      discountValue: n(so.discount_value),
+      discountAmount: Math.round(n(so.discount_amount) * shareD * 100) / 100,
+      storedTotal: 0,
+      storedNetTotal: null,
+    })
+    const remaining = Math.max(0, Math.round((totals.total - dTotals.total) * 100) / 100)
+    deliveredValueBox = `<div class="pm-note"><strong>قيمة الأصناف المُسلَّمة (شامل الضريبة):</strong> ${egp(dTotals.total)} جنيه &nbsp;|&nbsp; <strong>المتبقي للتسليم:</strong> ${egp(remaining)} جنيه</div>`
+  }
+  const permitsBox =
+    delivery && delivery.permits.length > 0
+      ? `<div class="pm-note"><strong>أذون التسليم:</strong><div style="margin-top:6px;font-size:10pt;">${delivery.permits
+          .map((p) => `${escapeHtml(p.number)} · ${dateAr(p.date)} · ${escapeHtml(DP_STATUS_AR[p.status] || p.status)}`)
+          .join(" &nbsp;|&nbsp; ")}</div><div style="font-size:9pt;color:#555;margin-top:4px;">المُسلَّم = ما على أذون موقّعة أو معتمدة، بعد خصم المرتجعات.</div></div>`
+      : ""
 
   const type = String(so.payment_type || so.payment_terms || "cash")
   const details: string[] = []
@@ -107,7 +169,7 @@ export function renderSoPrintHtml(data: SoPrintData): string {
     taxInfo: `بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100`,
   })}
 
-  ${docTitle({ titleAr: `أمر بيع` })}
+  ${docTitle({ titleAr: deliveredOnly ? `أمر بيع - الأصناف المُسلَّمة` : withStatus ? `أمر بيع - حالة التسليم` : `أمر بيع` })}
 
   <div class="pm-info"><div class="pm-fields">
     <div class="pm-field"><div class="pm-label">رقم أمر البيع:</div><div class="pm-value">${escapeHtml(so.so_number)}</div></div>
@@ -121,12 +183,24 @@ export function renderSoPrintHtml(data: SoPrintData): string {
 
   <table class="pm-table">
     <thead>
-      <tr>
+      <tr>${
+        withStatus
+          ? `
+        <th class="pm-center" style="width: 5%;">م</th>
+        <th style="width: 27%;">البيان</th>
+        <th class="pm-center" style="width: 7%;">الكمية</th>
+        <th class="pm-center" style="width: 8%;">المُسلَّم</th>
+        <th class="pm-center" style="width: 8%;">المتبقي</th>
+        <th class="pm-center" style="width: 11%;">الحالة</th>
+        <th class="pm-num" style="width: 16%;">سعر الوحدة (جنيه)</th>
+        <th class="pm-num" style="width: 18%;">القيمة (جنيه)</th>`
+          : `
         <th class="pm-center" style="width: 6%;">م</th>
         <th style="width: 38%;">البيان</th>
-        <th class="pm-center" style="width: 8%;">الكمية</th>
+        <th class="pm-center" style="width: 8%;">${deliveredOnly ? "الكمية المُسلَّمة" : "الكمية"}</th>
         <th class="pm-num" style="width: 24%;">سعر الوحدة (جنيه)</th>
-        <th class="pm-num" style="width: 24%;">القيمة (جنيه)</th>
+        <th class="pm-num" style="width: 24%;">القيمة (جنيه)</th>`
+      }
       </tr>
     </thead>
     <tbody>${rows}
@@ -134,7 +208,7 @@ export function renderSoPrintHtml(data: SoPrintData): string {
   </table>
 ${renderSoTotalsBlock(totals)}
 
-  <div class="pm-note"><strong>طريقة الدفع:</strong> ${escapeHtml(PAYMENT_AR[type] || type)}${details.length ? `<div style="margin-top:6px;font-size:10pt;">${details.join(" &nbsp;|&nbsp; ")}</div>` : ""}</div>
+  ${deliveredValueBox}${permitsBox}<div class="pm-note"><strong>طريقة الدفع:</strong> ${escapeHtml(PAYMENT_AR[type] || type)}${details.length ? `<div style="margin-top:6px;font-size:10pt;">${details.join(" &nbsp;|&nbsp; ")}</div>` : ""}</div>
   ${so.notes ? `<div class="pm-note"><strong>ملاحظات إضافية:</strong><br/><span style="font-size: 10pt;">${escapeHtml(so.notes)}</span></div>` : ""}
 
   <div class="pm-signatures">

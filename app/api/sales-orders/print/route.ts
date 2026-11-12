@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { lineKey, loadReturnLines, returnedByKey } from "@/lib/return-lines"
+import { lineDeliveryStates } from "@/lib/delivery-status"
 import { renderSoPrintHtml } from "@/lib/so-print-html"
 import { escapeHtml } from "@/lib/print-html"
 
@@ -52,8 +53,12 @@ export async function GET(request: NextRequest) {
     // "Returned" is printed only on a line kept at quantity 0 on purpose: the person chose "keep it on the order as
     // returned" when deleting it. A line still on the order (same or new name / price) is the replacement the customer
     // will get, so it is printed as a normal line (owner request, 2026-11-11). A deleted line is not printed at all.
-    const permits = must(await db.from("delivery_permits").select("permit_id").eq("sales_order_id", soId), "load delivery permits") as any[]
-    const returnedLeft = returnedByKey(await loadReturnLines(db, permits.map((p) => p.permit_id)))
+    const permits = must(
+      await db.from("delivery_permits").select("permit_id, permit_no, status, submitted_signed_at, created_at").eq("sales_order_id", soId),
+      "load delivery permits",
+    ) as any[]
+    const returnLines = await loadReturnLines(db, permits.map((p) => p.permit_id))
+    const returnedLeft = returnedByKey(returnLines)
     const items = soItems.map((i) => {
       const key = lineKey(i.product_id, i.outsourced_name)
       const qty = Number(i.quantity) || 0
@@ -68,7 +73,37 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return new NextResponse(renderSoPrintHtml({ so, customer, items }), { headers: { "Content-Type": "text/html; charset=utf-8" } })
+    // ?delivery=status | delivered (owner request, 2026-11-12): delivered = on signed / approved permits, less returns.
+    const mode = new URL(request.url).searchParams.get("delivery")
+    let delivery: { mode: "status" | "delivered"; permits: { number: string; date: string | null; status: string }[] } | undefined
+    if (mode === "status" || mode === "delivered") {
+      const signed = permits.filter((p) => ["SUBMITTED_SIGNED", "DELIVERED", "APPROVED"].includes(p.status))
+      const confirmed = new Map<string, number>()
+      if (signed.length > 0) {
+        const dpItems = must(
+          await db.from("delivery_permit_items").select("permit_id, product_id, item_name_snapshot, quantity").in("permit_id", signed.map((p) => p.permit_id)),
+          "load delivery permit items",
+        ) as any[]
+        for (const it of dpItems) {
+          const key = lineKey(it.product_id, it.item_name_snapshot)
+          confirmed.set(key, (confirmed.get(key) || 0) + (Number(it.quantity) || 0))
+        }
+        for (const p of signed) {
+          for (const [key, qty] of returnedByKey(returnLines, { permitId: p.permit_id })) confirmed.set(key, (confirmed.get(key) || 0) - qty)
+        }
+      }
+      const states = lineDeliveryStates(soItems.map((i) => ({ key: lineKey(i.product_id, i.outsourced_name), quantity: Number(i.quantity) || 0 })), confirmed)
+      items.forEach((item: any, idx: number) => (item.delivered = states[idx].deliveredQuantity))
+      delivery = {
+        mode,
+        permits: permits
+          .filter((p) => p.status !== "REJECTED")
+          .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
+          .map((p) => ({ number: p.permit_no || `#${p.permit_id}`, date: p.submitted_signed_at || p.created_at || null, status: p.status })),
+      }
+    }
+
+    return new NextResponse(renderSoPrintHtml({ so, customer, items, delivery }), { headers: { "Content-Type": "text/html; charset=utf-8" } })
   } catch (error) {
     console.error("Sales order print error:", error)
     return errorPage("Failed to Generate Print", "An unexpected error occurred while generating the sales order print.", 500)

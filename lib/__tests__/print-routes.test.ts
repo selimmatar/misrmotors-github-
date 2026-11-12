@@ -224,3 +224,36 @@ test("R6. report labels a PO-price valuation and notes it under the cost total",
   assert.doesNotMatch(html, /99,999/)
   assert.doesNotMatch((await get(missingRoute.GET, "?soId=1&hideCost=1")).html, /سعر أمر الشراء|EGP/)
 })
+
+test("P8. delivery prints: with status (delivered / remaining / mark, values, permits) and delivered items only", async () => {
+  // 10 x Pump A at 10,000; DP 1 signed with 6, DP 2 still out for delivery with 3 (not counted), 1 of the 6 returned.
+  world({
+    extra: {
+      delivery_permits: [
+        { permit_id: 1, permit_no: "DP-1", sales_order_id: 1, status: "SUBMITTED_SIGNED", submitted_signed_at: "2026-11-10T10:00:00Z", created_at: "2026-11-09T10:00:00Z" },
+        { permit_id: 2, permit_no: "DP-2", sales_order_id: 1, status: "OUT_FOR_DELIVERY", created_at: "2026-11-11T10:00:00Z" },
+      ],
+      delivery_permit_items: [
+        { permit_id: 1, product_id: 7, item_name_snapshot: "Pump A", quantity: 6 },
+        { permit_id: 2, product_id: 7, item_name_snapshot: "Pump A", quantity: 3 },
+      ],
+      product_returns: [{ return_id: 1, permit_id: "1", status: "received", created_at: "2026-11-11T00:00:00Z" }],
+      return_items: [{ return_item_id: 1, return_id: 1, product_id: 7, product_name: "Pump A", returned_quantity: 1 }],
+    },
+  })
+  const status = await get(printRoute.GET, "?soId=1&delivery=status")
+  assert.equal(status.status, 200)
+  assert.match(status.html, /أمر بيع - حالة التسليم/)
+  assert.match(status.html, /<td class="center">10<\/td>\s*<td class="center">5<\/td>\s*<td class="center">5<\/td>\s*<td class="center">جزئي<\/td>/)
+  assert.match(status.html, /قيمة الأصناف المُسلَّمة \(شامل الضريبة\):<\/strong> 57,000 جنيه/)
+  assert.match(status.html, /المتبقي للتسليم:<\/strong> 57,000 جنيه/)
+  assert.match(status.html, /DP-1 · 10\/11\/2026 · تم التوقيع والتسليم/)
+  assert.match(status.html, /DP-2 · 11\/11\/2026 · خرج للتسليم/)
+  const only = await get(printRoute.GET, "?soId=1&delivery=delivered")
+  assert.match(only.html, /أمر بيع - الأصناف المُسلَّمة/)
+  assert.match(only.html, /<td class="center">5<\/td>/)
+  assert.match(only.html, />57,000</, "5 x 10,000 + 14% VAT")
+  // the plain print is unchanged
+  const plain = await get(printRoute.GET, "?soId=1")
+  assert.doesNotMatch(plain.html, /المُسلَّم|أذون التسليم/)
+})
