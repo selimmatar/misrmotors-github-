@@ -15,7 +15,7 @@ import { reservedCreditTotal } from "./supplier-credit-apply"
 type Db = any
 export type Undo = () => PromiseLike<unknown>
 export type ExchangeResult =
-  | { ok: true; total: number; exchanges: { from: any; to: any; difference: number; notes: string | null }[]; difference: number }
+  | { ok: true; total: number; exchanges: { from: any; to: any; difference: number; notes: string | null }[]; difference: number; addedItemIds: number[] }
   | { ok: false; status: number; code: string; error: string }
 
 export const lineName = (row: any, products: Map<number, string>) =>
@@ -138,6 +138,7 @@ export async function exchangeOnPo(db: Db, poId: number, pairs: Pair[], userId: 
 
     // 2. Each Y is added; it keeps its X's sales-order link so it still counts for the customer's order.
     const results: { from: any; to: any; difference: number; notes: string | null }[] = []
+    const addedItemIds: number[] = []
     for (const p of pairs) {
       const from = fromById.get(p.fromItemId)
       const outsourced = !p.toProductId
@@ -158,6 +159,7 @@ export async function exchangeOnPo(db: Db, poId: number, pairs: Pair[], userId: 
       const { data: added, error: addError } = await db.from("purchase_order_items").insert(yRow).select("po_item_id").single()
       if (addError) throw addError
       undo.push(() => db.from("purchase_order_items").delete().eq("po_item_id", added.po_item_id))
+      addedItemIds.push(added.po_item_id)
       const fromPrice = Number(from.unit_price) || 0
       const oldSide = { name: lineName(from, names), quantity: p.qty, unitPrice: fromPrice, total: poMoney(p.qty * fromPrice) }
       const newSide = { name: lineName(yRow, names), quantity: p.toQty, unitPrice: p.toPrice, total: yRow.total }
@@ -192,6 +194,6 @@ export async function exchangeOnPo(db: Db, poId: number, pairs: Pair[], userId: 
       })
     }
     const difference = poMoney(results.reduce((s, r) => s + r.difference, 0))
-    return { ok: true, total: totals.total, exchanges: results, difference }
+    return { ok: true, total: totals.total, exchanges: results, difference, addedItemIds }
   }
 }

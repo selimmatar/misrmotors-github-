@@ -21,7 +21,7 @@
 // were invoiced become a customer credit when received (lib/return-credit.ts), applied to the invoice from AR.
 
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "./return-lines"
-import { syncSalesOrderNetTotal, validateSoEdit } from "./so-edit"
+import { reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "./so-edit"
 import { creditInvoicedReturn } from "./return-credit"
 import { computePoTotals } from "./po-items"
 import { syncPoStatus } from "./po-edit"
@@ -1284,6 +1284,7 @@ export async function previewReturnedExchange(db: Db, input: any): Promise<Workf
         paid: f.paid,
         soItemId: f.soItem?.so_item_id ?? null,
         soLineName: f.soItem ? f.soItem.outsourced_name || f.name : null,
+        soQuantity: f.soItem ? Number(f.soItem.quantity) || 0 : null,
         soUnitPrice: f.soItem ? Number(f.soItem.unit_price) || 0 : null,
       },
     }
@@ -1354,9 +1355,20 @@ export async function exchangeReturnedItem(db: Db, input: any): Promise<Workflow
     if (!result.ok) throw Object.assign(new Error(result.error), { refusal: result })
     if (claimedRow.product_id) await settleReturnedBatches(db, claimedRow.product_id, claimedRow.warehouse_id, "remove")
 
-    // 4. Optionally the customer's order line becomes the new item (never fails the exchange).
-    let orderLine: { renamed: boolean; note?: string } = { renamed: false }
-    if (input?.renameOrderLine === true && f.soItem) orderLine = await renameOrderLine(db, f.soItem, { toProductId, toName, sellingPrice: input?.sellingPrice })
+    // 4. Optionally the customer's order follows (owner request, 2026-11-12): the old line goes down by what was
+    //    exchanged (removed at 0) and the new item is added as its own line at the selling price. Never fails the exchange.
+    let orderLine: { updated: boolean; note?: string; oldQuantity?: number; newQuantity?: number } = { updated: false }
+    if ((input?.updateOrder === true || input?.renameOrderLine === true) && f.soItem) {
+      orderLine = await updateOrderForExchange(db, f.soItem, {
+        exchangedQty: f.quantity,
+        toProductId,
+        toName,
+        toQty,
+        sellingPrice: input?.sellingPrice,
+        poId: f.po.po_id,
+        newPoItemId: result.addedItemIds[0] ?? null,
+      })
+    }
 
     return {
       status: 200,
@@ -1392,51 +1404,84 @@ export async function exchangeReturnedItem(db: Db, input: any): Promise<Workflow
   }
 }
 
-/** Renames the customer's order line to the new item (and its selling price, when given), only if the customer kept none of the old one. */
-async function renameOrderLine(db: Db, soItem: any, change: { toProductId: number | null; toName: string; sellingPrice?: unknown }): Promise<{ renamed: boolean; note?: string }> {
+/**
+ * The customer's order after an exchange: the old line goes down by the exchanged quantity (removed when nothing is
+ * left) and the new item is added as a new line at its selling price (the old price when none is given). The new PO
+ * line is linked to the new order line so receiving it counts for that line. Checked like any order edit (the order
+ * never goes below what the customer kept); the totals, the running total and the delivery status follow.
+ */
+async function updateOrderForExchange(
+  db: Db,
+  soItem: any,
+  change: { exchangedQty: number; toProductId: number | null; toName: string; toQty: number; sellingPrice?: unknown; poId: number; newPoItemId: number | null },
+): Promise<{ updated: boolean; note?: string; oldQuantity?: number; newQuantity?: number }> {
   try {
-    const stored = must(await db.from("sales_order_items").select("so_item_id, product_id, outsourced_name, quantity, unit_price, total, item_type").eq("so_id", soItem.so_id), "load order lines") as any[]
+    const stored = must(await db.from("sales_order_items").select("*").eq("so_id", soItem.so_id), "load order lines") as any[]
+    const old = stored.find((l) => l.so_item_id === soItem.so_item_id)
+    if (!old) return { updated: false, note: "The order line is gone; edit the sales order yourself." }
     const price = Number(change.sellingPrice)
-    const newPrice = Number.isFinite(price) && price >= 0 && String(change.sellingPrice ?? "") !== "" ? price : Number(soItem.unit_price) || 0
+    const sellingPrice = String(change.sellingPrice ?? "") !== "" && Number.isFinite(price) && price >= 0 ? price : Number(old.unit_price) || 0
     const productName = change.toProductId
       ? (must(await db.from("products").select("product_name").eq("product_id", change.toProductId).maybeSingle(), "load product") as any)?.product_name || ""
       : change.toName
-    const proposed = stored.map((l) =>
-      l.so_item_id === soItem.so_item_id
-        ? { id: l.so_item_id, productId: change.toProductId ?? undefined, productName, quantity: l.quantity, unitPrice: newPrice }
-        : { id: l.so_item_id, productId: l.product_id ?? undefined, productName: l.outsourced_name || "", quantity: l.quantity, unitPrice: l.unit_price },
-    )
+    const left = round2(Math.max(0, (Number(old.quantity) || 0) - change.exchangedQty))
+    const asInput = (l: any) => ({ id: l.so_item_id, productId: l.product_id ?? undefined, productName: l.outsourced_name || "", quantity: l.quantity, unitPrice: l.unit_price })
+    const proposed = [
+      ...stored.filter((l) => l.so_item_id !== old.so_item_id || left > 0).map((l) => (l.so_item_id === old.so_item_id ? { ...asInput(l), quantity: left } : asInput(l))),
+      { productId: change.toProductId ?? undefined, productName, quantity: change.toQty, unitPrice: sellingPrice },
+    ]
     const verdict = await validateSoEdit(db, soItem.so_id, { items: proposed })
-    if (!verdict.ok) return { renamed: false, note: verdict.error }
-    const quantity = Number(soItem.quantity) || 0
-    must(
+    if (!verdict.ok) return { updated: false, note: verdict.error }
+
+    // old line: lowered, or removed when the whole line was exchanged
+    if (left > 0) {
+      must(await db.from("sales_order_items").update({ quantity: left, total: round2(left * (Number(old.unit_price) || 0)) }).eq("so_item_id", old.so_item_id), "lower order line")
+    } else {
+      must(await db.from("sales_order_items").delete().eq("so_item_id", old.so_item_id), "remove order line")
+    }
+    // new line
+    const outsourced = !change.toProductId
+    const added = must(
       await db
         .from("sales_order_items")
-        .update(
-          change.toProductId
-            ? { product_id: change.toProductId, item_type: "stock", outsourced_name: null, unit_price: newPrice, total: round2(quantity * newPrice) }
-            : { product_id: null, item_type: "outsourced", outsourced_name: change.toName, unit_price: newPrice, total: round2(quantity * newPrice) },
-        )
-        .eq("so_item_id", soItem.so_item_id),
-      "rename order line",
+        .insert({
+          so_id: soItem.so_id,
+          product_id: change.toProductId,
+          quantity: change.toQty,
+          unit_price: sellingPrice,
+          total: round2(change.toQty * sellingPrice),
+          item_type: outsourced ? "outsourced" : "stock",
+          item_category: old.item_category || "EQUIPMENT",
+          outsourced_name: outsourced ? change.toName : null,
+          outsourced_unit: outsourced ? old.outsourced_unit || "unit" : null,
+          outsourced_description: null,
+          supplier_id: old.supplier_id ?? null,
+          cost_estimate: null,
+        })
+        .select("so_item_id")
+        .single(),
+      "add order line",
     )
-    // the order's totals follow a new selling price (same rule as the order screen: discount, then 14% VAT)
-    if (newPrice !== (Number(soItem.unit_price) || 0)) {
-      const so = must(await db.from("sales_orders").select("so_id, discount_type, discount_value, discount_amount").eq("so_id", soItem.so_id).maybeSingle(), "load order")
-      const lines = must(await db.from("sales_order_items").select("total").eq("so_id", soItem.so_id), "load order lines") as any[]
-      const subtotal = round2(lines.reduce((s, l) => s + (Number(l.total) || 0), 0))
-      const totals = computeTotals({
-        subtotal,
-        discountType: so?.discount_type,
-        discountValue: Number(so?.discount_value) || 0,
-        discountAmount: so?.discount_type === "fixed" ? Number(so?.discount_amount) || 0 : 0,
-      })
-      must(await db.from("sales_orders").update({ subtotal, discount_amount: totals.discount, total: totals.total }).eq("so_id", soItem.so_id), "update order totals")
-      await syncSalesOrderNetTotal(db, soItem.so_id)
+    // the new PO line now belongs to the new order line (receiving it counts for that line)
+    if (change.newPoItemId) {
+      must(await db.from("purchase_order_items").update({ source_so_item_id: added.so_item_id, source_so_id: soItem.so_id }).eq("po_item_id", change.newPoItemId), "link new purchase order line")
     }
-    return { renamed: true }
+    // totals (same rule as the order screen: discount, then 14% VAT), running total and delivery status
+    const so = must(await db.from("sales_orders").select("so_id, discount_type, discount_value, discount_amount").eq("so_id", soItem.so_id).maybeSingle(), "load order")
+    const lines = must(await db.from("sales_order_items").select("total").eq("so_id", soItem.so_id), "load order lines") as any[]
+    const subtotal = round2(lines.reduce((s2, l) => s2 + (Number(l.total) || 0), 0))
+    const totals = computeTotals({
+      subtotal,
+      discountType: so?.discount_type,
+      discountValue: Number(so?.discount_value) || 0,
+      discountAmount: so?.discount_type === "fixed" ? Number(so?.discount_amount) || 0 : 0,
+    })
+    must(await db.from("sales_orders").update({ subtotal, discount_amount: totals.discount, total: totals.total }).eq("so_id", soItem.so_id), "update order totals")
+    await syncSalesOrderNetTotal(db, soItem.so_id)
+    await reopenIfNotFullyDelivered(db, soItem.so_id)
+    return { updated: true, oldQuantity: left, newQuantity: change.toQty }
   } catch (error: any) {
-    console.error("[returns] exchange: order line not renamed:", errText(error))
-    return { renamed: false, note: "The order line could not be renamed; edit the sales order yourself." }
+    console.error("[returns] exchange: order not updated:", errText(error))
+    return { updated: false, note: "The order could not be updated; edit the sales order yourself." }
   }
 }
