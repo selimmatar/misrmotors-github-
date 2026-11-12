@@ -805,3 +805,21 @@ async function markSalesOrderFulfilment(db: Db, items: PoItem[], touched: Set<nu
     })
   }
 }
+
+/**
+ * After a sales order is edited (owner report, 2026-11-12): an outsourced line whose quantity was lowered to what was
+ * already received counts as received now, so it can go on a delivery permit. The same rule as receiving uses
+ * (received on its linked PO lines >= the line's quantity). Only marks; never clears a line already marked received.
+ */
+export async function refreshSoFulfilment(db: Db, soId: number): Promise<number> {
+  const lines = must(await db.from("sales_order_items").select("so_item_id").eq("so_id", soId).is("fulfilled_at", null), "read open sales order lines") as any[]
+  const ids = (lines || []).map((l: any) => l.so_item_id)
+  if (ids.length === 0) return 0
+  const linked = must(await db.from("purchase_order_items").select("po_item_id, quantity, source_so_item_id").in("source_so_item_id", ids), "read linked purchase order lines") as any[]
+  if ((linked || []).length === 0) return 0
+  const before = must(await db.from("sales_order_items").select("so_item_id").eq("so_id", soId).not("fulfilled_at", "is", null), "read received lines") as any[]
+  const undo: Undo[] = []
+  await markSalesOrderFulfilment(db, linked as PoItem[], new Set((linked || []).map((l: any) => l.po_item_id)), undo)
+  const after = must(await db.from("sales_order_items").select("so_item_id").eq("so_id", soId).not("fulfilled_at", "is", null), "read received lines") as any[]
+  return (after || []).length - (before || []).length
+}

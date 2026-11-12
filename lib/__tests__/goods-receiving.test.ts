@@ -933,3 +933,35 @@ test("R63. receiving outsourced items: nothing pre-chosen; a warehouse or 'deliv
   assert.match(screen, /line\.storeWarehouseId && line\.storeWarehouseId !== 'none' \? \{ warehouseId: line\.storeWarehouseId \}/)
   assert.match(screen, /<SelectValue placeholder=\{t\("gr\.choose"\)\} \/>/)
 })
+
+test("R64. an outsourced line lowered on the sales order to what was received now counts as received (لاكور: 30 -> 20, 20 received)", async () => {
+  const { refreshSoFulfilment } = await import("../goods-receiving")
+  const db = new FakeDb({
+    sales_orders: [{ so_id: 4, so_number: "SO-4", fulfillment_status: "PENDING" }],
+    sales_order_items: [
+      { so_item_id: 47, so_id: 4, item_type: "outsourced", outsourced_name: "لاكور", quantity: 20, fulfilled_at: null },
+      { so_item_id: 48, so_id: 4, item_type: "outsourced", outsourced_name: "خرطوم", quantity: 10, fulfilled_at: null },
+    ],
+    purchase_order_items: [
+      { po_item_id: 102, po_id: 15, quantity: 20, source_so_item_id: 47 },
+      { po_item_id: 103, po_id: 15, quantity: 10, source_so_item_id: 48 },
+    ],
+    goods_receipt_lines: [{ line_id: 69, receipt_id: 1, po_item_id: 102, quantity_received: 20 }, { line_id: 70, receipt_id: 1, po_item_id: 103, quantity_received: 4 }],
+  })
+  assert.equal(await refreshSoFulfilment(db, 4), 1)
+  assert.ok(db.tables.sales_order_items[0].fulfilled_at, "20 of 20 received: received")
+  assert.equal(db.tables.sales_order_items[1].fulfilled_at, null, "4 of 10: still not received")
+  assert.equal(await refreshSoFulfilment(db, 4), 0, "running again changes nothing")
+  assert.match(require("node:fs").readFileSync(require("node:path").join(process.env.REPO_ROOT || process.cwd(), "app/api/sales-orders/route.ts"), "utf8"), /await refreshSoFulfilment\(supabase, numericId\)/)
+})
+
+test("R65. an outsourced item can go on a DP as soon as some arrived, up to the received quantity", () => {
+  const fs = require("node:fs") as typeof import("node:fs")
+  const path = require("node:path") as typeof import("node:path")
+  const read = (f: string) => fs.readFileSync(path.join(process.env.REPO_ROOT || process.cwd(), f), "utf8")
+  const so = read("components/modules/sales-order-module.tsx")
+  assert.match(so, /const someReceived = \(item: any\) => !!item\.fulfilledAt \|\| Number\(item\.receivedQuantity\) > 0/)
+  assert.match(so, /if \(isOutsourced && !someReceived\(item\)\) return false/)
+  assert.equal((so.match(/Math\.min\(soQuantity, Number\(item\.receivedQuantity\) \|\| 0\)/g) || []).length, 2, "dialog and submit both cap at what arrived")
+  assert.match(read("app/api/sales-orders/route.ts"), /receivedQuantity: receivedBySoItem\.get\(item\.so_item_id\) \|\| 0/)
+})
