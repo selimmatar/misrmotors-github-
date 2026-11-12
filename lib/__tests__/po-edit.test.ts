@@ -535,3 +535,24 @@ test("RS3. only what was received (and not yet returned) can go back; not receiv
   assert.equal((await giveBack({ items: [{ fromItemId: "7", quantity: 1, warehouseId: null }] })).status, 200)
   assert.equal(db.tables.purchase_order_items[0].quantity, 7)
 })
+
+test("X7. exchange with the old item handed back from a warehouse: it leaves stock there; too little there refuses everything", async () => {
+  const db = mk({
+    purchase_orders: [po({ status: "received", total: 1000, tax_amount: null })],
+    purchase_order_items: [line({ quantity: 10, unit_price: 100, total: 1000 })],
+    inventory: [{ inventory_id: 1, product_id: 5, warehouse_id: 3, quantity: 4, is_returned: false }],
+    inventory_transactions: [],
+  })
+  receive(db, 7, 10)
+  const short = await exchange({ exchanges: [{ fromItemId: "7", quantity: 5, handedBackFrom: "3", to: { name: "Pump v2", quantity: 5, unitPrice: 120 } }] })
+  assert.equal(short.body.code, "NOT_IN_STOCK")
+  assert.equal(db.tables.inventory[0].quantity, 4)
+  assert.equal(db.tables.purchase_order_items.length, 1, "nothing added")
+  const ok = await exchange({ exchanges: [{ fromItemId: "7", quantity: 3, handedBackFrom: "3", to: { name: "Pump v2", quantity: 3, unitPrice: 120 } }] })
+  assert.equal(ok.status, 200, JSON.stringify(ok.body))
+  assert.equal(db.tables.inventory[0].quantity, 1)
+  assert.deepEqual([db.tables.inventory_transactions[0].transaction_type, db.tables.inventory_transactions[0].quantity_change], ["return", -3])
+  const menu = src("components/purchase-order/po-open-actions.tsx")
+  assert.match(menu, /handedBackFrom: r\.handedBack === "none" \? null : r\.handedBack/)
+  assert.match(menu, /!r\.handedBack/, "must be chosen")
+})

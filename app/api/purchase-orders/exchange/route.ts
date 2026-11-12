@@ -9,7 +9,9 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
-import { logPoEvent } from "@/lib/po-history"
+import { knownUserId, logPoEvent } from "@/lib/po-history"
+import { undoMoves, type StockMove } from "@/lib/dp-stock"
+import { logHandedBack, takeLineFromStock } from "@/lib/po-stock-out"
 import { computePoTotals, poMoney } from "@/lib/po-items"
 import { editBlocker, syncPoStatus } from "@/lib/po-edit"
 import { ADVANCE_CREDIT_TYPE, advanceMethod } from "@/lib/po-bill"
@@ -33,6 +35,8 @@ interface Pair {
   description: string | null
   unit: string | null
   notes: string | null
+  /** warehouse the old item is handed back from (taken out of stock); null = not in our stock / not given */
+  handedBackFrom: number | null
 }
 
 /** One exchange (fromItemId, quantity, to) or several at once (exchanges: [...]); null + message when one is wrong. */
@@ -59,6 +63,7 @@ function readPairs(body: any): { pairs: Pair[] } | { error: string } {
       description: String(to.description || "").trim() || null,
       unit: String(to.unit || "").trim() || null,
       notes: String(r?.notes ?? body?.notes ?? "").trim().slice(0, 500) || null,
+      handedBackFrom: parsePositiveId(r?.handedBackFrom),
     })
   }
   return { pairs }
@@ -67,6 +72,7 @@ function readPairs(body: any): { pairs: Pair[] } | { error: string } {
 export async function POST(request: Request) {
   const db = createAdminClient()
   const undo: (() => PromiseLike<unknown>)[] = []
+  const moves: StockMove[] = []
   try {
     const body = await request.json().catch(() => null)
     const poId = parsePositiveId(body?.id)
@@ -107,6 +113,17 @@ export async function POST(request: Request) {
       for (const p of products || []) names.set(p.product_id, p.product_name)
     }
     if (pairs.some((p) => p.toProductId && !names.has(p.toProductId))) return refuse(400, "BAD_INPUT", "A new product was not found")
+
+    // 0. Old items handed back from a warehouse leave stock there first (owner request, 2026-11-12).
+    for (const [i, p] of pairs.entries()) {
+      if (p.handedBackFrom === null) continue
+      const from = fromById.get(p.fromItemId)
+      const got = await takeLineFromStock(db, from, p.handedBackFrom, p.qty, moves)
+      if (!got.ok) {
+        await undoMoves(db, moves)
+        return refuse(409, "NOT_IN_STOCK", `Exchange ${i + 1}: only ${got.found} of "${lineName(from, names)}" are in that warehouse. Choose another warehouse, or "Not in our stock".`)
+      }
+    }
 
     // 1. Each X line goes down by what its exchanges take (removed when nothing is left and nothing was received on it).
     for (const [id, taken] of takenById) {
@@ -162,6 +179,7 @@ export async function POST(request: Request) {
     if (reserved.error) throw new Error(reserved.error)
     if (reserved.total > totals.total + 0.005) {
       for (const step of undo.reverse()) await step()
+      await undoMoves(db, moves)
       return refuse(409, "CREDIT_EXCEEDS_TOTAL", `The new total (${totals.total.toFixed(2)}) would be less than the advances and credits on this PO (${reserved.total.toFixed(2)})`)
     }
     const { error: totalError } = await db.from("purchase_orders").update({ total: totals.total, tax_amount: vatOn ? totals.tax : null }).eq("po_id", poId)
@@ -169,6 +187,7 @@ export async function POST(request: Request) {
     undo.push(() => db.from("purchase_orders").update({ total: po.total, tax_amount: po.tax_amount }).eq("po_id", poId))
     await syncPoStatus(db, po, undo)
 
+    await logHandedBack(db, po, moves, await knownUserId(db, body?.userId), "Handed back to the supplier (exchange)")
     for (const r of results) {
       await logPoEvent(db, poId, {
         event_type: "PO_ITEM_EXCHANGED",
@@ -189,6 +208,7 @@ export async function POST(request: Request) {
         console.error("PO exchange: could not undo a step", e)
       }
     }
+    if (moves.length > 0) await undoMoves(db, moves)
     return refuse(500, "EXCHANGE_FAILED", "The exchanges could not be saved. Nothing was changed; please try again.")
   }
 }

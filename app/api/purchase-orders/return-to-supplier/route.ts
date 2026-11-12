@@ -10,7 +10,8 @@ import { logPoEvent, knownUserId } from "@/lib/po-history"
 import { computePoTotals, poMoney } from "@/lib/po-items"
 import { editBlocker, receivedByItem, syncPoStatus } from "@/lib/po-edit"
 import { reservedCreditTotal } from "@/lib/supplier-credit-apply"
-import { takeFromRow, undoMoves, type StockMove } from "@/lib/dp-stock"
+import { undoMoves, type StockMove } from "@/lib/dp-stock"
+import { logHandedBack, takeLineFromStock } from "@/lib/po-stock-out"
 
 export const dynamic = "force-dynamic"
 
@@ -95,24 +96,11 @@ export async function POST(request: Request) {
     for (const r of rows) {
       if (r.warehouseId === null) continue
       const l = lineById.get(r.fromItemId as number)
-      let query = db.from("inventory").select("inventory_id, quantity").eq("warehouse_id", r.warehouseId).eq("is_returned", false)
-      query = l.product_id ? query.eq("product_id", l.product_id) : query.eq("is_outsourced", true).eq("outsourced_name", l.outsourced_name || l.item_name_snapshot || "")
-      const { data: stockRows, error: stockError } = await query.order("inventory_id", { ascending: true })
-      if (stockError) throw stockError
-      let need = r.qty
-      for (const s of stockRows || []) {
-        if (need <= 0) break
-        const take = Math.min(need, Number(s.quantity) || 0)
-        if (take <= 0) continue
-        const res = await takeFromRow(db, s.inventory_id, take)
-        if (!res.ok) continue
-        moves.push({ inventoryId: s.inventory_id, productId: l.product_id ?? null, warehouseId: r.warehouseId, quantity: take, before: res.before, after: res.after, productName: nameOf(l), outsourced: !l.product_id } as StockMove)
-        need = poMoney(need - take)
-      }
-      if (need > 1e-9) {
+      const got = await takeLineFromStock(db, l, r.warehouseId, r.qty, moves)
+      if (!got.ok) {
         await undoMoves(db, moves)
         moves.length = 0
-        return refuse(409, "NOT_IN_STOCK", `Row ${r.n}: only ${poMoney(r.qty - need)} of "${nameOf(l)}" are in that warehouse. Choose another warehouse, or "Not in our stock".`)
+        return refuse(409, "NOT_IN_STOCK", `Row ${r.n}: only ${got.found} of "${nameOf(l)}" are in that warehouse. Choose another warehouse, or "Not in our stock".`)
       }
     }
 
@@ -143,23 +131,7 @@ export async function POST(request: Request) {
     await syncPoStatus(db, po, undo)
 
     // 4. Stock log (catalogue items) and PO history.
-    const createdBy = await knownUserId(db, body?.userId)
-    const stockLog = moves.filter((m: any) => m.productId).map((m: any) => ({
-      product_id: m.productId,
-      transaction_type: "return",
-      reference_type: "PURCHASE_ORDER",
-      reference_id: poId,
-      reference_number: po.po_number ?? null,
-      quantity_change: -m.quantity,
-      quantity_before: m.before,
-      quantity_after: m.after,
-      notes: `Returned to the supplier on ${po.po_number} - warehouse ${m.warehouseId}`,
-      created_by: createdBy,
-    }))
-    if (stockLog.length > 0) {
-      const { error: logError } = await db.from("inventory_transactions").insert(stockLog)
-      if (logError) console.error("Return to supplier: could not write the stock log", logError)
-    }
+    await logHandedBack(db, po, moves, await knownUserId(db, body?.userId), "Returned to the supplier")
     for (const r of rows) {
       const l = lineById.get(r.fromItemId as number)
       const unit = Number(l.unit_price) || 0

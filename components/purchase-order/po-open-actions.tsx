@@ -154,7 +154,7 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
         </DropdownMenuContent>
       </DropdownMenu>
       {dialog === "exchange" && (
-        <ExchangeDialog order={order} userId={userId} products={products} inventory={inventory} onClose={() => setDialog(null)} onDone={onDone} />
+        <ExchangeDialog order={order} userId={userId} products={products} inventory={inventory} warehouses={warehouses} onClose={() => setDialog(null)} onDone={onDone} />
       )}
       {dialog === "advance" && <AdvanceDialog order={order} userId={userId} onClose={() => setDialog(null)} onDone={onDone} />}
       {dialog === "return" && <ReturnDialog order={order} userId={userId} warehouses={warehouses} onClose={() => setDialog(null)} onDone={onDone} />}
@@ -172,6 +172,8 @@ interface ExchangeRow {
   toQty: string
   toPrice: string
   notes: string
+  /** "" = not chosen yet, "none" = not in our stock, else the warehouse the old item is handed back from */
+  handedBack: string
 }
 
 // Several exchanges in one go (owner request, 2026-11-12): each row replaces some or all of a PO line (X) with a new
@@ -181,6 +183,7 @@ function ExchangeDialog({
   userId,
   products,
   inventory,
+  warehouses,
   onClose,
   onDone,
 }: {
@@ -188,6 +191,7 @@ function ExchangeDialog({
   userId?: string | number | null
   products: { id: string; productName: string; sku: string }[]
   inventory: any[]
+  warehouses: { id: string | number; name: string }[]
   onClose: () => void
   onDone: () => Promise<void> | void
 }) {
@@ -197,7 +201,7 @@ function ExchangeDialog({
   const nextKey = useState(() => ({ n: 0 }))[0]
   const newRow = (fromId = lines[0]?.id || ""): ExchangeRow => {
     const q = String(Number(lineOf(fromId)?.quantity) || 1)
-    return { key: ++nextKey.n, fromId, qty: q, kind: "typed", productId: "", name: "", toQty: q, toPrice: "", notes: "" }
+    return { key: ++nextKey.n, fromId, qty: q, kind: "typed", productId: "", name: "", toQty: q, toPrice: "", notes: "", handedBack: "" }
   }
   const [rows, setRows] = useState<ExchangeRow[]>(() => [newRow()])
   const [saving, setSaving] = useState(false)
@@ -209,7 +213,9 @@ function ExchangeDialog({
   const nextFrom = () => lines.find((l: any) => !rows.some((r) => r.fromId === l.id))?.id || lines[0]?.id || ""
 
   const save = async () => {
-    const bad = rows.find((r) => !lineOf(r.fromId) || !(typedNumber(r.qty) > 0) || !(typedNumber(r.toQty) > 0) || r.toPrice.trim() === "" || (r.kind === "product" ? !r.productId : !r.name.trim()))
+    const bad = rows.find(
+      (r) => !lineOf(r.fromId) || !(typedNumber(r.qty) > 0) || !(typedNumber(r.toQty) > 0) || r.toPrice.trim() === "" || !r.handedBack || (r.kind === "product" ? !r.productId : !r.name.trim()),
+    )
     if (bad) {
       alert(fill(t("po.exchange-fill-row"), { n: rows.indexOf(bad) + 1 }))
       return
@@ -223,6 +229,7 @@ function ExchangeDialog({
           fromItemId: r.fromId,
           quantity: typedNumber(r.qty),
           notes: r.notes,
+          handedBackFrom: r.handedBack === "none" ? null : r.handedBack,
           to:
             r.kind === "product"
               ? { productId: r.productId, quantity: typedNumber(r.toQty), unitPrice: typedNumber(r.toPrice) }
@@ -285,6 +292,22 @@ function ExchangeDialog({
                   <NumberBox id={`exchange-from-qty-${r.key}`} decimals value={r.qty} onChange={(v) => update(r.key, { qty: v })} />
                 </div>
               </div>
+              <div className="space-y-1">
+                <Label htmlFor={`exchange-handed-${r.key}`}>{t("po.exchange-handed-back")}</Label>
+                <Select value={r.handedBack || undefined} onValueChange={(v) => update(r.key, { handedBack: v })}>
+                  <SelectTrigger id={`exchange-handed-${r.key}`}>
+                    <SelectValue placeholder={t("gr.choose")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {warehouses.map((w) => (
+                      <SelectItem key={String(w.id)} value={String(w.id)}>
+                        {w.name}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="none">{t("po.return-not-in-stock-exchange")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <p className="text-xs text-muted-foreground">
                 {t("po.exchange-cost")} <Money value={fromCost(r)} />
               </p>
@@ -332,7 +355,7 @@ function ExchangeDialog({
             {fill(t("po.exchange-total-difference"), { n: rows.length })} {total > 0 ? "+" : ""}
             <Money value={total} />
           </p>
-          <p className="text-xs text-muted-foreground">{t("po.exchange-stock-note")}</p>
+          <p className="text-xs text-muted-foreground">{t("po.exchange-stock-note-2")}</p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>
