@@ -295,3 +295,19 @@ test("R6. an order edited down to what the customer kept moves forward to delive
   const path = require("node:path") as typeof import("node:path")
   assert.match(fs.readFileSync(path.join(process.env.REPO_ROOT || process.cwd(), "app/api/sales-orders/route.ts"), "utf8"), /await markDeliveredIfComplete\(supabase, numericId\)/)
 })
+
+test("R7. invoicing a DP after a line returned in full was removed from the order (SO-2026-742962 case)", async () => {
+  // DP 1: 10 x Pump A and 4 x Filter (outsourced). All 4 filters returned and their line removed from the order.
+  const db = baseDb({
+    sales_order_items: [{ so_item_id: 1, so_id: 1, product_id: 7, outsourced_name: null, quantity: 10, unit_price: 10000, total: 100000, item_type: "stock" }],
+    delivery_permit_items: [
+      { item_id: 11, permit_id: 1, product_id: 7, item_name_snapshot: "Pump A", sku_snapshot: "A", quantity: 10, unit_price: 10000, total: 100000, supplier_id: null, outsourced_name: null },
+      { item_id: 12, permit_id: 1, product_id: null, item_name_snapshot: "Filter", sku_snapshot: null, quantity: 4, unit_price: 100, total: 400, supplier_id: null, outsourced_name: "Filter" },
+    ],
+  })
+  const res = await createReturn(db, { permitId: 1, idempotencyKey: `r7-${Math.random().toString(36).slice(2)}-abcdef`, items: [{ productId: null, productName: "Filter", quantityReturned: 4, reason: "customer_refused", condition: "good" }] })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  const inv = await createDpInvoices(db, [1])
+  assert.equal(inv.status, 200, JSON.stringify(inv.body))
+  assert.equal(db.tables.accounts_receivable.length, 1, "the pumps are billed; the returned filters are not")
+})

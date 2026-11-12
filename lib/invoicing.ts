@@ -415,6 +415,9 @@ export function evaluateAfterInsert(state: SoInvoicingState, myInvoiceId: number
   const returnedBefore = mine ? returnedByKey(state.returns || [], { asOfMs: invoiceAsOf(mine) }) : new Map<string, number>()
   const pools = poolByKey(state, returnedBefore)
   for (const [key, qty] of totals) {
+    // Same rule as the check before the insert: a line returned in full has nothing billed and need not be on the
+    // order any more (owner report, 2026-11-12: SO-2026-742962, a returned line removed from the order).
+    if (qty <= QTY_EPSILON) continue
     const orderedQty = ordered.get(key)
     if (orderedQty === undefined || qty > (pools.get(key)?.pool ?? 0) + QTY_EPSILON) {
       return { ok: false, status: 409, error: `Concurrent invoicing would exceed the ordered quantity on sales order ${soLabel(state)}.` }
