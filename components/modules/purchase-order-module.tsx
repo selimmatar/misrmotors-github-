@@ -67,6 +67,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     prepaidBalance,
     setPrepaidBalance,
     inventory,
+    warehouses,
     addPurchaseOrder,
     editPurchaseOrder,
     updatePurchaseOrder,
@@ -1367,6 +1368,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
         role={userRole}
         userId={(user as any)?.id ?? null}
         products={products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
+        warehouses={(warehouses || []).map((w: any) => ({ id: w.id ?? w.warehouse_id, name: w.name || w.warehouse_name || "" }))}
         onDone={loadData}
       />
       <Button
@@ -2135,6 +2137,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   role={userRole}
                   userId={(user as any)?.id ?? null}
                   products={products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
+                  warehouses={(warehouses || []).map((w: any) => ({ id: w.id ?? w.warehouse_id, name: w.name || w.warehouse_name || "" }))}
                   onDone={async () => {
                     setShowDetailsModal(false)
                     await loadData()
