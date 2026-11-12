@@ -615,20 +615,25 @@ test("RX2. closed PO with nothing paid: reopened and exchanged in one step; paid
   assert.equal(db.tables.inventory.filter((x: Row) => x.is_returned).length, 1, "still in Returned items")
 })
 
-test("RX3. rename the customer's order line: done when everything came back; refused (with a note) when the customer kept some", async () => {
+test("RX3. update the customer's order: the old line goes down by what was exchanged, the new item is added as a new line", async () => {
+  // كوريك case: 2 x 3-ton delivered; the customer returns 1 and wants a 5-ton instead (here: Pump A -> Pump B).
   let db = returnDb(true)
-  let holding = await returnToHolding(db, 2)
-  const all = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 2, unitPrice: 31000 }, renameOrderLine: true, sellingPrice: 52000 })
-  assert.equal(all.status, 200, JSON.stringify(all.body))
-  assert.equal(all.body.orderLine.renamed, true, JSON.stringify(all.body.orderLine))
-  const so = db.tables.sales_order_items[0]
-  assert.deepEqual([so.outsourced_name, so.product_id, so.unit_price, so.total], ["Pump B", null, 52000, 104000])
-  assert.equal(db.tables.sales_orders[0].total, 118560, "104,000 + 14% VAT")
-  db = returnDb(true)
-  holding = await returnToHolding(db, 1)
-  const part = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 1, unitPrice: 31000 }, renameOrderLine: true })
+  let holding = await returnToHolding(db, 1)
+  const part = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 1, unitPrice: 31000 }, updateOrder: true, sellingPrice: 52000 })
   assert.equal(part.status, 200, JSON.stringify(part.body))
-  assert.equal(part.body.orderLine.renamed, false)
-  assert.match(part.body.orderLine.note, /kept by the customer|cannot be turned into a different item/)
-  assert.equal(db.tables.sales_order_items[0].product_id, 7, "order line unchanged")
+  assert.equal(part.body.orderLine.updated, true, JSON.stringify(part.body.orderLine))
+  const lines = db.tables.sales_order_items.map((l: Row) => [l.product_id, l.outsourced_name ?? null, l.quantity, l.unit_price, l.total])
+  assert.deepEqual(lines, [[7, null, 1, 50000, 50000], [null, "Pump B", 1, 52000, 52000]], "old line 2 -> 1, new line added")
+  assert.equal(db.tables.sales_orders[0].total, 116280, "(50,000 + 52,000) + 14% VAT")
+  const newPoLine = db.tables.purchase_order_items.find((l: Row) => l.outsourced_name === "Pump B")!
+  const newSoLine = db.tables.sales_order_items.find((l: Row) => l.outsourced_name === "Pump B")!
+  assert.equal(newPoLine.source_so_item_id, newSoLine.so_item_id, "receiving the new item counts for the new order line")
+
+  // the whole line returned and swapped: the old line goes, only the new one stays
+  db = returnDb(true)
+  holding = await returnToHolding(db, 2)
+  const all = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 2, unitPrice: 31000 }, updateOrder: true })
+  assert.equal(all.status, 200, JSON.stringify(all.body))
+  assert.equal(all.body.orderLine.updated, true, JSON.stringify(all.body.orderLine))
+  assert.deepEqual(db.tables.sales_order_items.map((l: Row) => [l.outsourced_name ?? l.product_id, l.quantity, l.unit_price]), [["Pump B", 2, 50000]], "no selling price given: the old one is used")
 })

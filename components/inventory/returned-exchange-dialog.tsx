@@ -25,6 +25,7 @@ interface Preview {
   paid: boolean
   soItemId: number | null
   soLineName: string | null
+  soQuantity: number | null
   soUnitPrice: number | null
   error?: string
 }
@@ -100,7 +101,7 @@ export function ReturnedExchangeDialog({
             kind === "product"
               ? { productId, quantity: typedNumber(qty), unitPrice: typedNumber(cost) }
               : { name: name.trim(), quantity: typedNumber(qty), unitPrice: typedNumber(cost) },
-          renameOrderLine: rename && !!preview?.soItemId,
+          updateOrder: rename && !!preview?.soItemId,
           sellingPrice: rename && selling.trim() !== "" ? typedNumber(selling) : undefined,
         }),
       })
@@ -109,8 +110,8 @@ export function ReturnedExchangeDialog({
         alert(body.error || body.message || t("message.error"))
         return
       }
-      const note = body.orderLine?.renamed
-        ? t("inv.exchange-order-renamed")
+      const note = body.orderLine?.updated
+        ? t("inv.exchange-order-updated")
         : body.orderLine?.note
           ? `${t("inv.exchange-order-not-renamed")} ${body.orderLine.note}`
           : ""
@@ -199,8 +200,20 @@ export function ReturnedExchangeDialog({
               <div className="rounded-md border p-3 space-y-2">
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={rename} onChange={(e) => setRename(e.target.checked)} />
-                  {fill(t("inv.exchange-rename-line"), { name: preview.soLineName || preview.name })}
+                  {t("inv.exchange-update-order")}
                 </label>
+                {rename && (
+                  <p className="text-sm text-muted-foreground">
+                    {fill(t("inv.exchange-order-preview"), {
+                      old: preview.soLineName || preview.name,
+                      from: preview.soQuantity ?? 0,
+                      to: Math.max(0, (preview.soQuantity ?? 0) - preview.quantity),
+                      item: (kind === "product" ? products.find((p) => p.id === productId)?.productName : name.trim()) || "…",
+                      qty: typedNumber(qty),
+                      price: selling.trim() === "" ? String(preview.soUnitPrice ?? 0) : selling,
+                    })}
+                  </p>
+                )}
                 {rename && (
                   <div className="space-y-1">
                     <Label htmlFor="rx-selling">{t("inv.exchange-selling-price")}</Label>
