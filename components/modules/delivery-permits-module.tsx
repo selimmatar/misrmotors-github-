@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { DeliveryPermitCard } from "@/components/delivery-permit"
+import { ApproveRejectControls } from "@/components/delivery-permit/approve-reject-controls"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { StatusBadge } from "@/components/erp/status-badge"
@@ -99,6 +100,24 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
   const handleOpenReviewDialog = (permit: DeliveryPermit) => {
     setPermitToReview(permit)
     setShowReviewDialog(true)
+  }
+
+  // Approve / reject straight from the review window (owner report, 2026-11-12: it only had Close).
+  const reviewAction = async (action: "APPROVE" | "REJECT", extra: Record<string, unknown> = {}) => {
+    if (!permitToReview) return
+    const response = await fetch("/api/delivery-permits", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ permitId: permitToReview.id, action, ...extra }),
+    })
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      alert(body.error || t("message.error"))
+      return
+    }
+    if (body.message && body.stockPutBack === false) alert(body.message)
+    setShowReviewDialog(false)
+    fetchPermits()
   }
 
   const handlePrintSignedDP = () => {
@@ -409,6 +428,16 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
             </div>
           )}
 
+          {permitToReview && canApprove && permitToReview.status === "SUBMITTED_SIGNED" && (
+            <ApproveRejectControls
+              permitId={permitToReview.id}
+              onApprove={() => reviewAction("APPROVE")}
+              onReject={(reason) => reviewAction("REJECT", { rejectionReason: reason })}
+            />
+          )}
+          {permitToReview && !canApprove && permitToReview.status === "SUBMITTED_SIGNED" && (
+            <p className="text-sm text-muted-foreground">{t("permit.approve-roles-note")}</p>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
               {t("action.close")}

@@ -135,6 +135,7 @@
   },
   "components/modules/delivery-permits-module.tsx": {
     "api": [
+      "\"/api/delivery-permits",
       "\"/api/delivery-permits"
     ],
     "handlers": [
@@ -144,7 +145,7 @@
       "handleViewDetails"
     ],
     "ids": [],
-    "fetch": 1,
+    "fetch": 2,
     "iso": 0,
     "t": 45,
     "onClick": 11

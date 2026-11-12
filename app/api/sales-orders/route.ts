@@ -6,7 +6,7 @@ import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } fr
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { checkSoStock, loadAvailability } from "@/lib/stock-hold"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
-import { reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
+import { markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
 import { refreshSoFulfilment } from "@/lib/goods-receiving"
 import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
 
@@ -816,8 +816,10 @@ export async function PUT(request: Request) {
     if (items) {
       try {
         await reopenIfNotFullyDelivered(supabase, numericId)
+        // ...and an order that now matches what the customer kept moves forward to "delivered".
+        await markDeliveredIfComplete(supabase, numericId)
       } catch (reopenError: any) {
-        console.error("Sales Orders PUT: could not re-open the order after the edit:", reopenError?.message)
+        console.error("Sales Orders PUT: could not update the delivery status after the edit:", reopenError?.message)
       }
     }
 

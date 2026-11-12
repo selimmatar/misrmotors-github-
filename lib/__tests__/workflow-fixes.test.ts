@@ -313,3 +313,16 @@ test("SIGN: a permit signed BEFORE this change (no stock taken yet) still has it
   assert.equal((await put(1, "APPROVE")).status, 200)
   assert.equal(db.tables.inventory[0].quantity, 45)
 })
+
+test("DP review window: Approve / Reject for the accountant, admin and CEO; both windows show what was returned; errors show the reason", () => {
+  const fs = require("node:fs") as typeof import("node:fs")
+  const path = require("node:path") as typeof import("node:path")
+  const read = (f: string) => fs.readFileSync(path.join(process.env.REPO_ROOT || process.cwd(), f), "utf8")
+  const mod = read("components/modules/delivery-permits-module.tsx")
+  assert.match(mod, /permitToReview && canApprove && permitToReview\.status === "SUBMITTED_SIGNED" && \(\s*<ApproveRejectControls/)
+  assert.match(mod, /onApprove=\{\(\) => reviewAction\("APPROVE"\)\}/)
+  assert.match(mod, /alert\(body\.error \|\| t\("message\.error"\)\)/)
+  const card = read("components/delivery-permit/delivery-permit-card.tsx")
+  assert.match(card, /\(item as any\)\.returnedQuantity\) > 0/)
+  assert.match(card, /alert\(errorData\.error \|\| t\("message\.error"\)\)/)
+})
