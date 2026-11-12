@@ -1490,14 +1490,16 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     const outsourcedItems = (order.items || []).filter(
       (item: any) => item.itemType === "outsourced" || item.item_type === "outsourced"
     )
-    const unreceivedOutsourced = outsourcedItems.filter((item: any) => !item.fulfilledAt)
+    // An outsourced item can go out as soon as some of it has been received, up to what arrived (owner rule, 2026-11-12).
+    const someReceived = (item: any) => !!item.fulfilledAt || Number(item.receivedQuantity) > 0
+    const unreceivedOutsourced = outsourcedItems.filter((item: any) => !someReceived(item))
 
     // If ALL items (including stock) are unreceived outsourced, nothing to ship yet
     const allItemsUnreceived =
       (order.items || []).length > 0 &&
       (order.items || []).every(
         (item: any) =>
-          (item.itemType === "outsourced" || item.item_type === "outsourced") && !item.fulfilledAt
+          (item.itemType === "outsourced" || item.item_type === "outsourced") && !someReceived(item)
       )
     if (allItemsUnreceived) {
       alert(
@@ -1509,7 +1511,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     // Build order with only available items — exclude unreceived outsourced items
     const availableItems = (order.items || []).filter((item: any) => {
       const isOutsourced = item.itemType === "outsourced" || item.item_type === "outsourced"
-      if (isOutsourced && !item.fulfilledAt) return false
+      if (isOutsourced && !someReceived(item)) return false
       return true
     })
 
@@ -1604,13 +1606,15 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           return total + (dpItem ? Math.max(0, (Number(dpItem.quantity) || 0) - (Number(dpItem.returnedQuantity) || 0)) : 0)
         }, 0)
 
-        // Calculate remaining
+        // Calculate remaining (an outsourced item not fully received: up to what has arrived)
         const soQuantity = Number(item.quantity) || 0
-        const remainingQty = Math.max(0, soQuantity - deliveredQty)
+        const partlyReceived = isOutsourcedItem && !item.fulfilledAt
+        const deliverable = partlyReceived ? Math.min(soQuantity, Number(item.receivedQuantity) || 0) : soQuantity
+        const remainingQty = Math.max(0, deliverable - deliveredQty)
 
         if (quantity > 0) {
-          // Only validate remaining quantity for non-outsourced items
-          if (!isOutsourcedItem && quantity > remainingQty) {
+          // Fully received outsourced items stay flexible; others (and partly received outsourced ones) are capped
+          if ((!isOutsourcedItem || partlyReceived) && quantity > remainingQty) {
             alert(fill(t("so.quantity-for-exceeds-remaining-amount"), { product: item.productName || item.product_name, remainingQty }))
             canSubmit = false
             break
@@ -2197,9 +2201,10 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                 return total + (dpItem ? Math.max(0, (Number(dpItem.quantity) || 0) - (Number(dpItem.returnedQuantity) || 0)) : 0)
               }, 0)
 
-              // Calculate remaining - for outsourced items, still track but allow flexible delivery
+              // Calculate remaining. An outsourced item not fully received can go out up to what has arrived.
               const soQuantity = Number(item.quantity) || 0
-              const remainingQty = Math.max(0, soQuantity - deliveredQty)
+              const deliverable = isOutsourcedItem && !item.fulfilledAt ? Math.min(soQuantity, Number(item.receivedQuantity) || 0) : soQuantity
+              const remainingQty = Math.max(0, deliverable - deliveredQty)
               const isFullyDelivered = remainingQty <= 0
 
               return (
@@ -2214,6 +2219,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                     <div className="text-end">
                       <p className="text-sm text-muted-foreground">{t("so.so-qty")} {item.quantity}</p>
                       {deliveredQty > 0 && <p className="text-sm text-orange-700">{t("so.delivered-2")} {deliveredQty}</p>}
+                      {isOutsourcedItem && !item.fulfilledAt && (
+                        <p className="text-sm text-amber-700">{fill(t("so.received-so-far"), { received: Number(item.receivedQuantity) || 0, ordered: soQuantity })}</p>
+                      )}
                       <p className={`text-sm font-medium ${isFullyDelivered ? "text-green-700" : "text-blue-600"}`}>
                         {t("so.remaining")} {remainingQty}
                       </p>
@@ -2227,7 +2235,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                         key={`${selectedSOForDP?.so_id || selectedSOForDP?.id}-${index}-${deliveredQty}`}
                         type="number"
                         min="0"
-                        max={isOutsourcedItem ? undefined : remainingQty}
+                        max={isOutsourcedItem && item.fulfilledAt ? undefined : remainingQty}
                         name={`dp-quantity-${index}`}
                         defaultValue={isFullyDelivered ? "0" : remainingQty.toString()}
                         disabled={isFullyDelivered}

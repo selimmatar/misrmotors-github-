@@ -7,6 +7,7 @@ import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, ret
 import { checkSoStock, loadAvailability } from "@/lib/stock-hold"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
 import { reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
+import { refreshSoFulfilment } from "@/lib/goods-receiving"
 import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
 
 export const dynamic = "force-dynamic"
@@ -80,6 +81,27 @@ export async function GET() {
         } catch (historyError: any) {
           console.error("Sales Orders GET: could not load delivery/return history (editing stays restricted):", historyError?.message)
         }
+      }
+
+      // Received so far per outsourced order line (its linked PO lines' goods receipts): an outsourced item can be
+      // delivered up to what has arrived, even before all of it is in (owner rule, 2026-11-12).
+      const receivedBySoItem = new Map<number, number>()
+      try {
+        const outsourcedIds = ordersData.flatMap((o: any) => (o.sales_order_items || []).filter((i: any) => !i.product_id).map((i: any) => i.so_item_id))
+        for (let i = 0; i < outsourcedIds.length; i += 200) {
+          const chunk = outsourcedIds.slice(i, i + 200)
+          const { data: poLines } = await supabase.from("purchase_order_items").select("po_item_id, source_so_item_id").in("source_so_item_id", chunk)
+          const poItemIds = (poLines || []).map((l: any) => l.po_item_id)
+          if (poItemIds.length === 0) continue
+          const { data: received } = await supabase.from("goods_receipt_lines").select("po_item_id, quantity_received").in("po_item_id", poItemIds)
+          const soItemOf = new Map<number, number>((poLines || []).map((l: any) => [l.po_item_id, l.source_so_item_id]))
+          for (const r of received || []) {
+            const soItemId = soItemOf.get(r.po_item_id)
+            if (soItemId) receivedBySoItem.set(soItemId, (receivedBySoItem.get(soItemId) || 0) + (Number(r.quantity_received) || 0))
+          }
+        }
+      } catch (receivedError: any) {
+        console.error("Sales Orders GET: could not read received quantities:", receivedError?.message)
       }
 
       const ordersWithItems = ordersData.map((order: any) => ({
@@ -172,6 +194,7 @@ export async function GET() {
           supplierId: item.supplier_id?.toString() || "",
           supplierName: item.suppliers?.supplier_name || "",
           fulfilledAt: item.fulfilled_at || null,
+          receivedQuantity: receivedBySoItem.get(item.so_item_id) || 0,
           }
         }),
         deliveryPermits: (order.delivery_permits || []).map((dp: any) => ({
@@ -777,6 +800,15 @@ export async function PUT(request: Request) {
         } else {
           await supabase.from("sales_order_items").insert(itemRow)
         }
+      }
+    }
+
+    // An outsourced line lowered to what was already received now counts as received (it can go on a DP).
+    if (items) {
+      try {
+        await refreshSoFulfilment(supabase, numericId)
+      } catch (fulfilError: any) {
+        console.error("Sales Orders PUT: could not re-check received items after the edit:", fulfilError?.message)
       }
     }
 
