@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { takeDocumentFor } from "@/lib/open-document"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { DeliveryPermitCard } from "@/components/delivery-permit"
@@ -30,6 +31,8 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
   const [permits, setPermits] = useState<DeliveryPermit[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  // a DP clicked in the order overview: search for it and open its details once the list has loaded
+  const openOnLoad = useRef<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("all")
   const [selectedPermit, setSelectedPermit] = useState<DeliveryPermit | null>(null)
   const [showDetails, setShowDetails] = useState(false)
@@ -86,6 +89,23 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
 
     return matchesSearch && matchesTab
   })
+
+  useEffect(() => {
+    const asked = takeDocumentFor("delivery-permits")
+    if (!asked) return
+    openOnLoad.current = asked
+    setSearchTerm(asked)
+    setActiveTab("all")
+  }, [])
+  useEffect(() => {
+    const asked = openOnLoad.current
+    if (!asked) return
+    const permit = permits.find((p) => p.permitNo === asked)
+    if (!permit) return
+    openOnLoad.current = null
+    setSelectedPermit(permit)
+    setShowDetails(true)
+  }, [permits])
 
   const handleViewDetails = (permit: DeliveryPermit) => {
     setSelectedPermit(permit)

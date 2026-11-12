@@ -42,6 +42,7 @@ import {
 } from "lucide-react"
 import type { PurchaseOrder, UserRole, PaymentDetails, PaymentType } from "@/lib/types"
 import { useAppContext } from "@/lib/app-context"
+import { takeDocumentFor } from "@/lib/open-document"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { describeOverOrderLines, type OverOrderLine } from "@/lib/po-over-order"
@@ -1190,6 +1191,14 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       setFinalizingCost(false)
     }
   }
+
+  // a PO clicked in the order overview: show just that PO
+  useEffect(() => {
+    const asked = takeDocumentFor("purchase-orders")
+    if (!asked) return
+    setStatusFilter(null)
+    setSearchQuery(asked)
+  }, [])
 
   const filteredOrders = purchaseOrders.filter((order) => {
     if (!searchQuery) return true
