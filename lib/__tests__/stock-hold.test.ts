@@ -422,3 +422,9 @@ test("GET /api/inventory: a stored outsourced item is on hold for its open order
   assert.equal(r10.heldFor, null)
   assert.equal(rows.find((r) => r.inventoryId === 11).onHold, 0)
 })
+
+test("Sold tab: returned quantity is not sold; a line returned in full is not listed", () => {
+  const src = require("node:fs").readFileSync(require("node:path").join(process.env.REPO_ROOT || process.cwd(), "components/modules/inventory-module.tsx"), "utf8")
+  assert.match(src, /const sold = \(Number\(item\.quantity\) \|\| 0\) - returned\s+if \(sold <= 0\) return/)
+  assert.match(src, /quantity: sold,/)
+})

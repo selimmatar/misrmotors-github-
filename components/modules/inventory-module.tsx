@@ -222,17 +222,23 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         if (soldDateFrom && new Date(soldDate) < new Date(soldDateFrom)) return
         if (soldDateTo && new Date(soldDate) > new Date(soldDateTo)) return
 
-        dp.items?.forEach((item) => {
+        dp.items?.forEach((item, itemIndex) => {
           const product = products.find((p) => String(p.id) === String(item.productId) || p.id === item.productId)
+          // What came back is not sold (owner report, 2026-11-12): returned / refused quantity comes off; a line
+          // returned in full is not shown. The replacement is sold when its own DP is signed.
+          const returned = Number((item as any).returnedQuantity) || 0
+          const sold = (Number(item.quantity) || 0) - returned
+          if (sold <= 0) return
+          const unit = Number(item.unitPrice) || 0
 
           items.push({
-            id: `${dp.id}-${item.productId}`, // Unique ID per DP and product
+            id: `${dp.id}-${item.productId ?? "x"}-${itemIndex}`, // Unique ID per DP line (outsourced lines have no product)
             productId: item.productId,
             productName: item.itemNameSnapshot || item.productName || product?.productName || "Unknown Product",
             sku: item.skuSnapshot || item.sku || product?.sku || "-",
-            quantity: item.quantity,
+            quantity: sold,
             unitPrice: item.unitPrice,
-            total: item.total,
+            total: returned > 0 ? Math.round(sold * unit * 100) / 100 : item.total,
             soId: so?.id,
             soNumber: so?.soNumber || dp.soNumber,
             customerId: dp.customerId || so?.customerId,
