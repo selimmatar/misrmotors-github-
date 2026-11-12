@@ -5,6 +5,10 @@
 
 import { getAdminClient } from "./supabase/admin"
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** The value when it is a uuid, else null. */
+export const asUuid = (value: unknown): string | null => (typeof value === "string" && UUID.test(value.trim()) ? value.trim() : null)
+
 export type OperationType =
   | "payment"
   | "audit"
@@ -72,7 +76,9 @@ export async function checkIdempotency(
         idempotency_key: idempotencyKey,
         entity_type: entityType,
         entity_id: entityId,
-        user_id: userId,
+        // idempotency_log.user_id is a uuid: a numeric app user id ("6") is left out instead of failing the lock
+        // (owner report, 2026-11-12: approving DP-2722 / DP-2026-0002 failed with "invalid input syntax for type uuid")
+        user_id: asUuid(userId),
         status: "processing",
         created_at: new Date().toISOString(),
       },
