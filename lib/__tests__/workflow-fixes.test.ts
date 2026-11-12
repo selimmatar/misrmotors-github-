@@ -268,3 +268,48 @@ test("POST: a returned / refused quantity can go out again on a new permit (10 o
   const ok = await post([{ productId: "7", productName: "P7", quantity: 4, unitPrice: 1, total: 4 }])
   assert.equal(ok.status, 200, JSON.stringify(ok.body))
 })
+
+// ---- stock leaves when the customer SIGNS (owner rule, 2026-11-12) ----
+const signedItem = (qty: number) => [{ item_id: 1, permit_id: 1, product_id: 7, item_name_snapshot: "P7", quantity: qty, warehouse_id: 1 }]
+test("SIGN: stock leaves when the permit is signed; approving later does not take it again", async () => {
+  const db = dpDb([permit(1, "OUT_FOR_DELIVERY")], signedItem(5))
+  const signed = await put(1, "MARK_SUBMITTED_SIGNED")
+  assert.equal(signed.status, 200, JSON.stringify(signed.body))
+  assert.equal(st(db), "SUBMITTED_SIGNED")
+  assert.equal(db.tables.inventory[0].quantity, 45)
+  assert.ok(db.tables.inventory_transactions.some((t: Row) => t.transaction_type === "sale" && t.quantity_change === -5))
+  const approved = await put(1, "APPROVE")
+  assert.equal(approved.status, 200, JSON.stringify(approved.body))
+  assert.equal(st(db), "APPROVED")
+  assert.equal(db.tables.inventory[0].quantity, 45, "not taken twice")
+})
+
+test("SIGN then REJECT: the stock taken at signing goes back to the same row, logged as a return", async () => {
+  const db = dpDb([permit(1, "OUT_FOR_DELIVERY")], signedItem(5))
+  assert.equal((await put(1, "MARK_SUBMITTED_SIGNED")).status, 200)
+  const r = await put(1, "REJECT", { rejectionReason: "customer refused everything" })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(r.body.stockPutBack, true)
+  assert.equal(st(db), "REJECTED")
+  assert.equal(db.tables.inventory[0].quantity, 50)
+  assert.ok(db.tables.inventory_transactions.some((t: Row) => t.transaction_type === "return" && t.quantity_change === 5))
+  // rejecting a permit that was never signed moves no stock
+  const db2 = dpDb([permit(1, "OUT_FOR_DELIVERY")], signedItem(5))
+  assert.equal((await put(1, "REJECT", { rejectionReason: "x" })).status, 200)
+  assert.equal(db2.tables.inventory[0].quantity, 50)
+})
+
+test("SIGN: not enough stock refuses the signature and changes nothing", async () => {
+  const db = dpDb([permit(1, "OUT_FOR_DELIVERY")], signedItem(60))
+  const r = await put(1, "MARK_SUBMITTED_SIGNED")
+  assert.equal(r.status, 409)
+  assert.equal(r.body.code, "INSUFFICIENT_STOCK")
+  assert.equal(st(db), "OUT_FOR_DELIVERY")
+  assert.equal(db.tables.inventory[0].quantity, 50)
+})
+
+test("SIGN: a permit signed BEFORE this change (no stock taken yet) still has its stock taken when approved", async () => {
+  const db = dpDb([permit(1, "SUBMITTED_SIGNED")], signedItem(5))
+  assert.equal((await put(1, "APPROVE")).status, 200)
+  assert.equal(db.tables.inventory[0].quantity, 45)
+})

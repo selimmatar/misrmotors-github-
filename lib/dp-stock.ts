@@ -332,8 +332,25 @@ async function storedOutsourcedRows(db: Db, permitId: number): Promise<any[]> {
   return (rows || []).filter((r: any) => num(r.quantity) > 0)
 }
 
-/** The permit is now APPROVED: audit rows ('sale') and close the claim. A failed audit insert never undoes the deduction. */
+export { STOCK_OUT_DP_STATUSES } from "./stock-hold"
+
+/**
+ * The permit is now SIGNED (or approved): audit rows ('sale') and close the claim. The moves are also kept in the
+ * permit's history so a later rejection can put exactly that stock back. A failed audit insert never undoes the deduction.
+ */
 export async function finishDeduction(db: Db, permit: { permit_id: number; permit_no?: string }, moves: StockMove[], userId?: unknown) {
+  try {
+    const { error: logError } = await db.from("workflow_events").insert({
+      entity_type: "DELIVERY_PERMIT",
+      entity_id: permit.permit_id,
+      event_type: "DP_STOCK_DEDUCTED",
+      new_value: JSON.stringify(moves),
+      notes: `Stock out for ${permit.permit_no || `permit ${permit.permit_id}`}`,
+    })
+    if (logError) console.error("[dp-stock] could not keep the moves in the permit history:", logError.message)
+  } catch (error: any) {
+    console.error("[dp-stock] could not keep the moves in the permit history:", error?.message || error)
+  }
   try {
     const stock = moves.filter((m) => !m.outsourced)
     if (stock.length === 0) return await finishClaim(db, permit.permit_id, "completed")
@@ -366,5 +383,75 @@ export async function abortDeduction(db: Db, permit: { permit_id: number }, move
     return false
   }
   await finishClaim(db, permit.permit_id, "failed", reason)
+  return true
+}
+
+/**
+ * A signed permit was rejected (owner rule, 2026-11-12: stock leaves at signing): put back exactly the stock it took,
+ * as kept in its history, log it ('return'), and mark its claim "reversed". Returns false when something could not be
+ * put back (reported to the user; the claim is then left for an administrator).
+ */
+export async function reverseDeduction(db: Db, permit: { permit_id: number; permit_no?: string }, userId?: unknown): Promise<boolean> {
+  const { data: claimRow } = await db
+    .from("idempotency_log")
+    .select("status")
+    .eq("operation_type", DP_STOCK_OPERATION)
+    .eq("idempotency_key", dpStockKey(permit.permit_id))
+    .limit(1)
+    .maybeSingle()
+  if (claimRow?.status !== "completed") return true // nothing was taken (or it was already put back)
+  const { data: events, error } = await db
+    .from("workflow_events")
+    .select("new_value")
+    .eq("entity_type", "DELIVERY_PERMIT")
+    .eq("entity_id", permit.permit_id)
+    .eq("event_type", "DP_STOCK_DEDUCTED")
+  if (error) {
+    console.error("[dp-stock] could not read the permit's stock moves:", error.message)
+    return false
+  }
+  const moves: StockMove[] = []
+  for (const e of events || []) {
+    try {
+      moves.push(...(JSON.parse(e.new_value || "[]") as StockMove[]))
+    } catch {
+      // unreadable entry: skipped
+    }
+  }
+  const failed = await undoMoves(db, moves)
+  if (failed.length > 0) {
+    console.error("[dp-stock] rejected permit: some stock could not be put back", permit.permit_id, failed)
+    return false
+  }
+  const stock = moves.filter((m) => !m.outsourced)
+  if (stock.length > 0) {
+    const { error: auditError } = await db.from("inventory_transactions").insert(
+      stock.map((m) => ({
+        product_id: m.productId,
+        transaction_type: "return",
+        reference_type: "DELIVERY_PERMIT",
+        reference_id: permit.permit_id,
+        reference_number: permit.permit_no ?? null,
+        quantity_change: m.quantity,
+        quantity_before: m.after,
+        quantity_after: m.before,
+        notes: `Delivery permit rejected: stock put back${m.warehouseId ? ` - warehouse ${m.warehouseId}` : ""}${userId ? ` - by user ${userId}` : ""}`,
+        created_by: null,
+      })),
+    )
+    if (auditError) console.error("[dp-stock] audit insert failed (stock was put back):", auditError.message)
+  }
+  await db
+    .from("idempotency_log")
+    .update({ status: "reversed", error_message: "permit rejected: stock put back", completed_at: new Date().toISOString() })
+    .eq("operation_type", DP_STOCK_OPERATION)
+    .eq("idempotency_key", dpStockKey(permit.permit_id))
+  await db.from("workflow_events").insert({
+    entity_type: "DELIVERY_PERMIT",
+    entity_id: permit.permit_id,
+    event_type: "DP_STOCK_RETURNED",
+    new_value: JSON.stringify(moves),
+    notes: `Rejected after signing: stock put back`,
+  })
   return true
 }

@@ -57,7 +57,7 @@ test("hold: ready_for_delivery and shipped hold too; draft/pending/rejected/canc
   }
 })
 
-test("hold: an APPROVED permit reduces the hold; permits in other statuses do not", () => {
+test("hold: a SIGNED or APPROVED permit reduces the hold (stock left at signing, 2026-11-12); earlier statuses do not", () => {
   const permits = [
     { permit_id: 1, sales_order_id: 1, status: "APPROVED" },
     { permit_id: 2, sales_order_id: 1, status: "SUBMITTED_SIGNED" },
@@ -68,7 +68,7 @@ test("hold: an APPROVED permit reduces the hold; permits in other statuses do no
     { permit_id: 2, product_id: 7, quantity: 3 },
     { permit_id: 3, product_id: 7, quantity: 2 },
   ]
-  assert.equal(computeHeldByProduct(holdInput({ permits, permitItems })).get(7), 6) // 10 - 4
+  assert.equal(computeHeldByProduct(holdInput({ permits, permitItems })).get(7), 3) // 10 - 4 approved - 3 signed
 })
 
 test("hold: fully covered by approved permits = no hold; over-delivery never goes negative", () => {

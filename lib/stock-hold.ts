@@ -4,7 +4,7 @@
 // The hold is DERIVED, never stored (inventory.pending_outbound is not used):
 //   held(product) = sum over sales orders in HOLDING_SO_STATUSES of
 //                   max(0, ordered qty of the order's STOCK lines of that product - qty already deducted)
-//   deducted      = qty on APPROVED delivery permits of that order for that product. Returns are NOT netted back
+//   deducted      = qty on SIGNED or APPROVED delivery permits of that order for that product (stock leaves at signing). Returns are NOT netted back
 //                   in: a returned unit sits in an is_returned inventory row, which is already excluded from
 //                   on-hand, so holding it again would subtract it twice. (If it is restocked it re-enters on-hand
 //                   through the normal restock path and is simply available again.)
@@ -23,6 +23,9 @@
 import { isNewQuotationWorkflow } from "./workflow-switch"
 
 type Db = any // supabase-js client (or a test double)
+
+/** Delivery-permit statuses whose stock has left: signed by the customer or approved (owner rule, 2026-11-12). */
+export const STOCK_OUT_DP_STATUSES = ["SUBMITTED_SIGNED", "APPROVED"]
 
 /** sales_orders.status values that put the order's undelivered stock on hold ('approved' = accountant approval). */
 export const HOLDING_SO_STATUSES = ["accountant_approved", "ready_for_delivery", "shipped"]
@@ -87,9 +90,10 @@ export function computeHeldByProduct(input: {
     ordered.set(key, (ordered.get(key) || 0) + num(line.quantity))
   }
 
-  // deducted per (so, product): qty on APPROVED permits (no return adjustment, see the header comment)
+  // deducted per (so, product): qty on permits whose stock has left (signed or approved; owner rule 2026-11-12)
+  // (no return adjustment, see the header comment)
   const permitSo = new Map<number, number>()
-  for (const p of input.permits) if (p.status === "APPROVED" && holding.has(p.sales_order_id)) permitSo.set(p.permit_id, p.sales_order_id)
+  for (const p of input.permits) if (STOCK_OUT_DP_STATUSES.includes(p.status) && holding.has(p.sales_order_id)) permitSo.set(p.permit_id, p.sales_order_id)
   const approved = new Map<string, number>()
   for (const item of input.permitItems) {
     const soId = permitSo.get(item.permit_id)
@@ -200,7 +204,7 @@ export async function loadOrderHeldByProduct(db: Db, opts: { excludeSoId?: numbe
   )) as HoldLine[]
   const permits = (await selectInChunks(
     soIds,
-    (chunk) => db.from("delivery_permits").select("permit_id, sales_order_id, status").in("sales_order_id", chunk).eq("status", "APPROVED"),
+    (chunk) => db.from("delivery_permits").select("permit_id, sales_order_id, status").in("sales_order_id", chunk).in("status", STOCK_OUT_DP_STATUSES),
     "load approved permits",
   )) as HoldPermit[]
   const permitIds = permits.map((p) => p.permit_id)
@@ -329,7 +333,7 @@ export async function checkSoStock(db: Db, soId: number, edit: { status?: string
     await db.from("sales_order_items").select("product_id, quantity, item_type").eq("so_id", soId).eq("item_type", "stock"),
     "load order lines",
   ) as any[]
-  const permits = must(await db.from("delivery_permits").select("permit_id").eq("sales_order_id", soId).eq("status", "APPROVED"), "load approved permits") as any[]
+  const permits = must(await db.from("delivery_permits").select("permit_id").eq("sales_order_id", soId).in("status", STOCK_OUT_DP_STATUSES), "load permits whose stock left") as any[]
   const deducted = new Map<number, number>()
   if (permits.length) {
     const items = must(await db.from("delivery_permit_items").select("product_id, quantity").in("permit_id", permits.map((p) => p.permit_id)), "load permit items") as any[]
