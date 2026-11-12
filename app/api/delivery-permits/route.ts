@@ -6,7 +6,7 @@ import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTot
 import { isSOFullyDelivered, DP_DELIVERED_STATUSES } from "@/lib/delivery-status"
 import { planAllocation } from "@/lib/dp-allocate"
 import { isAllowedDpTransition } from "@/lib/dp-transitions"
-import { abortDeduction, deductStockForPermit, finishDeduction, type StockMove } from "@/lib/dp-stock"
+import { abortDeduction, deductStockForPermit, finishDeduction, reverseDeduction, type StockMove } from "@/lib/dp-stock"
 import { actorOr } from "@/lib/auth/actor"
 import { badNumberResponse, cleanManualNumber, highestSerial, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 
@@ -570,7 +570,15 @@ export async function PUT(request: NextRequest) {
         soUpdates.fulfillment_status = "OUT_FOR_DELIVERY"
         break
 
-    case "MARK_SUBMITTED_SIGNED":
+    case "MARK_SUBMITTED_SIGNED": {
+      // Owner rule, 2026-11-12: the customer signed, so the goods have left: the stock goes out NOW (approval then
+      // only confirms it and never takes it twice). Same guarded deduction as approval used: a refusal changes nothing.
+      const deduction = await deductStockForPermit(supabase, currentPermit)
+      if (!deduction.ok) {
+        const body = { ...deduction.body, error: String(deduction.body.error || "").replace(/the permit was not approved/gi, "the permit was not marked signed") }
+        return NextResponse.json(body, { status: deduction.status })
+      }
+      if (deduction.state === "deducted") stockMoves = deduction.moves
       newStatus = "SUBMITTED_SIGNED"
       updates.status = newStatus
       updates.submitted_signed_at = new Date().toISOString()
@@ -594,6 +602,7 @@ export async function PUT(request: NextRequest) {
         }
       }
       break
+    }
 
       case "APPROVE":
         const dpApprovalKey = generateDPApprovalIdempotencyKey(Number.parseInt(permitId))
@@ -789,6 +798,11 @@ export async function PUT(request: NextRequest) {
     }
     if (stockMoves.length > 0) await finishDeduction(supabase, currentPermit, stockMoves, userId)
     if (approvalKey) await completeIdempotency("dp_approval", approvalKey, true)
+    // A signed permit took its stock when it was signed: rejecting it puts exactly that stock back.
+    let stockPutBack: boolean | undefined
+    if (action === "REJECT" && currentPermit.status === "SUBMITTED_SIGNED") {
+      stockPutBack = await reverseDeduction(supabase, currentPermit, userId)
+    }
 
 
     // Update sales order if needed
@@ -819,7 +833,11 @@ export async function PUT(request: NextRequest) {
       id: updatedPermit.permit_id.toString(),
       permitNo: updatedPermit.permit_no,
       status: updatedPermit.status,
-      message: `Permit ${action.toLowerCase().replace(/_/g, " ")} successfully`,
+      message:
+        stockPutBack === false
+          ? "Permit rejected, but its stock could not be fully put back: contact an administrator."
+          : `Permit ${action.toLowerCase().replace(/_/g, " ")} successfully`,
+      ...(stockPutBack === undefined ? {} : { stockPutBack }),
     })
   } catch (error) {
     console.error("Delivery Permit PUT exception:", error)
