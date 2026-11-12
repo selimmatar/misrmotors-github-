@@ -21,10 +21,14 @@
 // were invoiced become a customer credit when received (lib/return-credit.ts), applied to the invoice from AR.
 
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "./return-lines"
-import { syncSalesOrderNetTotal } from "./so-edit"
+import { syncSalesOrderNetTotal, validateSoEdit } from "./so-edit"
 import { creditInvoicedReturn } from "./return-credit"
 import { computePoTotals } from "./po-items"
 import { syncPoStatus } from "./po-edit"
+import { exchangeOnPo, type Pair, type Undo as PoUndo } from "./po-exchange"
+import { billHasPayments, billsOf, createPoBill, relinkCredits, removePoBills } from "./po-bill"
+import { undoMoves, type StockMove } from "./dp-stock"
+import { computeTotals } from "./print-totals"
 import { logPoEvent } from "./po-history"
 
 type Db = any // supabase-js client (or a test double)
@@ -1227,4 +1231,212 @@ async function resolveCreditUnitCost(db: Db, supplierId: number, productName: st
     if (lastBatch?.unit_cost != null) return Number(lastBatch.unit_cost)
   }
   return Number(input?.unitCost) || 0
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// "Exchange with supplier" for a returned item (owner request, 2026-11-12). Instead of putting it back in stock or
+// crediting the supplier, the returned item goes back to the supplier in exchange for another item: the PO it came from
+// gets the exchange (the same one the PO's "Exchange item" does, lib/po-exchange.ts), no credit is made, and the new
+// item waits in Goods Receipt. A closed PO with nothing paid is reopened in the same step; a paid one cannot be.
+// Optionally the customer's order line is renamed to the new item (only when the customer kept none of the old one).
+// ---------------------------------------------------------------------------------------------------------------------
+
+async function exchangeFacts(db: Db, inventoryId: number) {
+  const row = must(await db.from("inventory").select("*").eq("inventory_id", inventoryId).maybeSingle(), "load returned item")
+  if (!row) return { error: failure(404, "Returned item not found (it may already have been restocked or removed)") }
+  if (!row.is_returned) return { error: failure(400, "This item is not a pending return") }
+  const productName: string = row.outsourced_name || ""
+  const soNumber: string | null = row.so_number || null
+  const receipt = await findOriginatingReceipt(db, row, productName, soNumber, null)
+  if (!receipt || !receipt.poItemId) {
+    return { error: failure(409, "The purchase order this item came from could not be found, so it cannot be exchanged here. Put it back in stock, or remove it and credit the supplier.", { code: "NO_PO" }) }
+  }
+  const po = must(await db.from("purchase_orders").select("*").eq("po_id", receipt.poId).maybeSingle(), "load purchase order")
+  const line = must(await db.from("purchase_order_items").select("*").eq("po_item_id", receipt.poItemId).maybeSingle(), "load purchase order line")
+  if (!po || !line) return { error: failure(409, "The purchase order line of this item is gone.", { code: "NO_PO" }) }
+  const product = row.product_id ? must(await db.from("products").select("product_name").eq("product_id", row.product_id).maybeSingle(), "load product") : null
+  const name = product?.product_name || line.outsourced_name || line.item_name_snapshot || productName || "item"
+  const bills = await billsOf(db, po.po_id)
+  const paid = bills.length > 0 && (await billHasPayments(db, bills))
+  const soItem = line.source_so_item_id
+    ? must(await db.from("sales_order_items").select("so_item_id, so_id, product_id, outsourced_name, quantity, unit_price, item_type").eq("so_item_id", line.source_so_item_id).maybeSingle(), "load order line")
+    : null
+  return { row, po, line, name, bills, paid, soItem, quantity: Math.min(Number(row.quantity) || 0, Number(line.quantity) || 0) }
+}
+
+/** What the exchange window shows (read-only). */
+export async function previewReturnedExchange(db: Db, input: any): Promise<WorkflowResult> {
+  const inventoryId = parsePositiveInt(input?.inventoryId)
+  if (inventoryId === null) return failure(400, "inventoryId is required")
+  try {
+    const f: any = await exchangeFacts(db, inventoryId)
+    if (f.error) return f.error
+    return {
+      status: 200,
+      body: {
+        name: f.name,
+        quantity: f.quantity,
+        returnedQuantity: Number(f.row.quantity) || 0,
+        unitCost: Number(f.line.unit_price) || 0,
+        poId: f.po.po_id,
+        poNumber: f.po.po_number,
+        closed: f.bills.length > 0,
+        paid: f.paid,
+        soItemId: f.soItem?.so_item_id ?? null,
+        soLineName: f.soItem ? f.soItem.outsourced_name || f.name : null,
+        soUnitPrice: f.soItem ? Number(f.soItem.unit_price) || 0 : null,
+      },
+    }
+  } catch (error: any) {
+    console.error("[returns] exchange preview error:", errText(error))
+    return failure(500, "Could not read this returned item.")
+  }
+}
+
+export async function exchangeReturnedItem(db: Db, input: any): Promise<WorkflowResult> {
+  const inventoryId = parsePositiveInt(input?.inventoryId)
+  if (inventoryId === null) return failure(400, "inventoryId is required")
+  const to = input?.to || {}
+  const toQty = Number(to.quantity)
+  const toPrice = Number(to.unitPrice)
+  const toProductId = parsePositiveInt(to.productId)
+  const toName = String(to.name || "").trim()
+  if (!(toQty > 0)) return failure(400, "Enter the quantity of the new item")
+  if (!(toPrice >= 0)) return failure(400, "Enter the cost of the new item")
+  if (!toProductId && !toName) return failure(400, "Choose or type the new item")
+
+  const undo: PoUndo[] = []
+  const moves: StockMove[] = []
+  let claimedRow: any = null
+  let reopened: { po: any; unlinked: number[] } | null = null
+  try {
+    const f: any = await exchangeFacts(db, inventoryId)
+    if (f.error) return f.error
+    if (f.po.status === "rejected") return failure(409, "The purchase order of this item was rejected.", { code: "PO_NOT_EDITABLE" })
+    if (f.po.cost_finalized) return failure(409, "The cost of this item's purchase order is finalized, so it can no longer be exchanged. Remove it and credit the supplier instead.", { code: "PO_COST_FINALIZED" })
+    if (f.paid) {
+      return failure(409, `A payment is already recorded on the supplier bill of ${f.po.po_number}, so it cannot be exchanged. Remove the item and credit the supplier, and put the new item on a new purchase order with that credit.`, { code: "PO_PAID" })
+    }
+    if (!(f.quantity > 0)) return failure(409, `Nothing of this item is left on ${f.po.po_number} to exchange.`, { code: "EXCHANGE_TOO_MANY" })
+
+    // 1. The returned item goes back to the supplier: it leaves the returned-items list (guarded, only once).
+    const claim = await claimHoldingRow(db, inventoryId)
+    if (!claim.ok) return claim.result
+    claimedRow = claim.row
+
+    // 2. A closed PO with nothing paid is reopened first (its bill is made again when it is closed).
+    if (f.bills.length > 0) {
+      const { unlinkedCreditIds } = await removePoBills(db, f.bills)
+      reopened = { po: f.po, unlinked: unlinkedCreditIds }
+      await logPoEvent(db, f.po.po_id, {
+        event_type: "PO_REOPENED",
+        old_value: f.bills.map((b: any) => b.invoice_number).join(", "),
+        new_value: JSON.stringify({ unlinkedCreditIds }),
+        notes: `${f.po.po_number} reopened to exchange a returned item`,
+        userId: input?.userId,
+      })
+    }
+
+    // 3. The exchange on the PO, exactly as the PO's own "Exchange item" does it.
+    const pair: Pair = {
+      fromItemId: f.line.po_item_id,
+      qty: f.quantity,
+      toProductId,
+      toName,
+      toQty,
+      toPrice,
+      description: String(to.description || "").trim() || null,
+      unit: String(to.unit || "").trim() || null,
+      notes: `Returned by the customer${f.row.so_number ? ` (${f.row.so_number})` : ""} and exchanged with the supplier`,
+      handedBackFrom: null,
+    }
+    const result = await exchangeOnPo(db, f.po.po_id, [pair], input?.userId, undo, moves)
+    if (!result.ok) throw Object.assign(new Error(result.error), { refusal: result })
+    if (claimedRow.product_id) await settleReturnedBatches(db, claimedRow.product_id, claimedRow.warehouse_id, "remove")
+
+    // 4. Optionally the customer's order line becomes the new item (never fails the exchange).
+    let orderLine: { renamed: boolean; note?: string } = { renamed: false }
+    if (input?.renameOrderLine === true && f.soItem) orderLine = await renameOrderLine(db, f.soItem, { toProductId, toName, sellingPrice: input?.sellingPrice })
+
+    return {
+      status: 200,
+      body: {
+        message: "Exchanged with the supplier",
+        poNumber: f.po.po_number,
+        reopened: !!reopened,
+        exchange: result.exchanges[0],
+        difference: result.difference,
+        orderLine,
+      },
+    }
+  } catch (error: any) {
+    for (const step of undo.reverse()) {
+      try {
+        await step()
+      } catch (e) {
+        console.error("[returns] exchange: could not undo a step", errText(e))
+      }
+    }
+    if (moves.length > 0) await undoMoves(db, moves)
+    if (reopened) {
+      const billError = await createPoBill(db, reopened.po)
+      if (billError) console.error("[returns] exchange: could not make the bill again after a failure", billError)
+      else await relinkCredits(db, reopened.po.po_id, reopened.unlinked)
+    }
+    if (claimedRow && !(await restoreHoldingRow(db, claimedRow))) {
+      return failure(500, "The exchange failed and the returned item could not be put back. Contact an administrator.", { partialFailure: true, inventoryId })
+    }
+    if (error?.refusal) return failure(error.refusal.status, error.refusal.error, { code: error.refusal.code })
+    console.error("[returns] exchange error:", errText(error))
+    return failure(500, "The exchange could not be saved. Nothing was changed; please try again.")
+  }
+}
+
+/** Renames the customer's order line to the new item (and its selling price, when given), only if the customer kept none of the old one. */
+async function renameOrderLine(db: Db, soItem: any, change: { toProductId: number | null; toName: string; sellingPrice?: unknown }): Promise<{ renamed: boolean; note?: string }> {
+  try {
+    const stored = must(await db.from("sales_order_items").select("so_item_id, product_id, outsourced_name, quantity, unit_price, total, item_type").eq("so_id", soItem.so_id), "load order lines") as any[]
+    const price = Number(change.sellingPrice)
+    const newPrice = Number.isFinite(price) && price >= 0 && String(change.sellingPrice ?? "") !== "" ? price : Number(soItem.unit_price) || 0
+    const productName = change.toProductId
+      ? (must(await db.from("products").select("product_name").eq("product_id", change.toProductId).maybeSingle(), "load product") as any)?.product_name || ""
+      : change.toName
+    const proposed = stored.map((l) =>
+      l.so_item_id === soItem.so_item_id
+        ? { id: l.so_item_id, productId: change.toProductId ?? undefined, productName, quantity: l.quantity, unitPrice: newPrice }
+        : { id: l.so_item_id, productId: l.product_id ?? undefined, productName: l.outsourced_name || "", quantity: l.quantity, unitPrice: l.unit_price },
+    )
+    const verdict = await validateSoEdit(db, soItem.so_id, { items: proposed })
+    if (!verdict.ok) return { renamed: false, note: verdict.error }
+    const quantity = Number(soItem.quantity) || 0
+    must(
+      await db
+        .from("sales_order_items")
+        .update(
+          change.toProductId
+            ? { product_id: change.toProductId, item_type: "stock", outsourced_name: null, unit_price: newPrice, total: round2(quantity * newPrice) }
+            : { product_id: null, item_type: "outsourced", outsourced_name: change.toName, unit_price: newPrice, total: round2(quantity * newPrice) },
+        )
+        .eq("so_item_id", soItem.so_item_id),
+      "rename order line",
+    )
+    // the order's totals follow a new selling price (same rule as the order screen: discount, then 14% VAT)
+    if (newPrice !== (Number(soItem.unit_price) || 0)) {
+      const so = must(await db.from("sales_orders").select("so_id, discount_type, discount_value, discount_amount").eq("so_id", soItem.so_id).maybeSingle(), "load order")
+      const lines = must(await db.from("sales_order_items").select("total").eq("so_id", soItem.so_id), "load order lines") as any[]
+      const subtotal = round2(lines.reduce((s, l) => s + (Number(l.total) || 0), 0))
+      const totals = computeTotals({
+        subtotal,
+        discountType: so?.discount_type,
+        discountValue: Number(so?.discount_value) || 0,
+        discountAmount: so?.discount_type === "fixed" ? Number(so?.discount_amount) || 0 : 0,
+      })
+      must(await db.from("sales_orders").update({ subtotal, discount_amount: totals.discount, total: totals.total }).eq("so_id", soItem.so_id), "update order totals")
+      await syncSalesOrderNetTotal(db, soItem.so_id)
+    }
+    return { renamed: true }
+  } catch (error: any) {
+    console.error("[returns] exchange: order line not renamed:", errText(error))
+    return { renamed: false, note: "The order line could not be renamed; edit the sales order yourself." }
+  }
 }

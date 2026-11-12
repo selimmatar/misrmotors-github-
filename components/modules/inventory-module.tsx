@@ -37,9 +37,11 @@ import {
   Warehouse,
   Search,
   RotateCcw,
+  ArrowLeftRight,
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useI18n } from "@/lib/i18n-context"
+import { ReturnedExchangeDialog } from "@/components/inventory/returned-exchange-dialog"
 import { fill } from "@/lib/i18n-format"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
@@ -103,6 +105,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   // The supplier credit the write-off would record (worked out on the server from the item's cost)
   const [creditPreview, setCreditPreview] = useState<{ loading: boolean; unitCost?: number; amount?: number; error?: string; lowersPo?: boolean; lowerBy?: number; poNumber?: string } | null>(null)
   const [isRemovingItem, setIsRemovingItem] = useState(false)
+  // "Exchange with supplier" for a returned item (owner request, 2026-11-12)
+  const [exchangeItem, setExchangeItem] = useState<any | null>(null)
   const [restockReturnedItemDialog, setRestockReturnedItemDialog] = useState(false)
   const [selectedRestockItem, setSelectedRestockItem] = useState<any>(null)
   const [isRestockingItem, setIsRestockingItem] = useState(false)
@@ -655,6 +659,10 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       <Button variant="outline" size="sm" onClick={() => handleRestockReturnedItem(item)} className="gap-1">
         <Warehouse className="w-4 h-4" />
         {t("inv.restock-to-warehouse")}
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => setExchangeItem(item)} className="gap-1">
+        <ArrowLeftRight className="w-4 h-4" />
+        {t("inv.exchange-with-supplier")}
       </Button>
       <Button variant="destructive" size="sm" onClick={() => handleRemoveReturnedItem(item)} className="gap-1">
         <X className="w-4 h-4" />
@@ -1264,6 +1272,17 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {exchangeItem && (
+        <ReturnedExchangeDialog
+          item={exchangeItem}
+          products={products.map((p: any) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
+          onClose={() => setExchangeItem(null)}
+          onDone={async () => {
+            await refreshInventory()
+          }}
+        />
+      )}
 
       {/* Remove Returned Item Dialog */}
       <Dialog open={removeReturnedItemDialog} onOpenChange={setRemoveReturnedItemDialog}>

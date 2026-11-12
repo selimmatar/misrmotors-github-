@@ -301,6 +301,7 @@ function returnDb(openPo: boolean) {
     sales_order_items: [{ so_item_id: 1, so_id: 1, product_id: 7, outsourced_name: null, quantity: 2, unit_price: 50000, total: 100000 }],
     customers: [{ customer_id: 5, customer_name: "Test Customer" }],
     suppliers: [{ supplier_id: 2, supplier_name: "Supplier" }],
+    products: [{ product_id: 7, product_name: "Pump A" }],
     warehouses: [{ warehouse_id: 1 }],
     delivery_permits: [{ permit_id: 1, permit_no: "DP-C-1", sales_order_id: 1, customer_id: 5, status: "APPROVED" }],
     delivery_permit_items: [{ item_id: 11, permit_id: 1, product_id: 7, item_name_snapshot: "Pump", sku_snapshot: "P", quantity: 2, unit_price: 50000, total: 100000, supplier_id: null, outsourced_name: null }],
@@ -308,7 +309,7 @@ function returnDb(openPo: boolean) {
     goods_receipt_lines: [{ line_id: 1, receipt_id: 4, po_item_id: 9, product_id: 7, item_type: "stock", quantity_received: 2, unit_cost: 30000, source_so_item_id: 1 }],
     goods_receipts: [{ receipt_id: 4, grn_number: "GRN-4", po_id: 3 }],
     purchase_orders: [{ po_id: 3, po_number: "PO-3", supplier_id: 2, status: "received", total: 68400, tax_amount: 8400 }],
-    purchase_order_items: [{ po_item_id: 9, po_id: 3, product_id: 7, quantity: 2, unit_price: 30000, total: 60000, item_type: "stock" }],
+    purchase_order_items: [{ po_item_id: 9, po_id: 3, product_id: 7, quantity: 2, unit_price: 30000, total: 60000, item_type: "stock", source_so_id: 1, source_so_item_id: 1 }],
     accounts_payable: openPo ? [] : [{ invoice_id: 1, invoice_number: "APINV-PO-3", po_id: 3, supplier_id: 2, amount: 68400, paid_amount: 0, status: "pending" }],
     accounts_receivable: [], invoice_delivery_permits: [], supplier_credits: [], workflow_events: [],
     product_returns: [], return_items: [], inventory_batches: [], idempotency_log: [], customer_credits: [],
@@ -566,4 +567,68 @@ test("V1. exchanges show on the PO print and the supplier card; old lines kept a
   assert.match(supplier, /<PoHistory poId=\{order\.id\} \/>/)
   assert.match(supplier, /order\.items\.filter\(\(item\) => Number\(item\.quantity\) > 0\)/)
   assert.match(src("components/modules/purchase-order-module.tsx"), /viewDetailsOrder\.items\?\.filter\(\(item: any\) => Number\(item\.quantity\) > 0\)/)
+})
+
+// ------------------------------------------------- "Exchange with supplier" for a returned item (2026-11-12)
+import { exchangeReturnedItem, previewReturnedExchange } from "../returns"
+async function returnToHolding(db: FakeDb, qty: number) {
+  const created = await createReturn(db, { permitId: 1, idempotencyKey: `rx-${Math.random().toString(36).slice(2)}`, createdBy: "t", items: [{ productId: 7, productName: "Pump", quantityReturned: qty, reason: "wrong_item", condition: "good" }] })
+  assert.equal(created.status, 200, JSON.stringify(created.body))
+  const items = db.tables.return_items.filter((i: Row) => i.return_id === created.body.returnId)
+  const res = await processReturn(db, { returnId: created.body.returnId, status: "completed", processedBy: "wh", warehouseAssignments: items.map((i: Row) => ({ returnItemId: i.return_item_id, warehouseId: 1 })) })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  return db.tables.inventory.find((r: Row) => r.is_returned)!
+}
+
+test("RX1. open PO: the returned item is exchanged on its PO (no credit); it leaves Returned items; the new item waits to be received", async () => {
+  const db = returnDb(true)
+  const holding = await returnToHolding(db, 1)
+  const preview = await previewReturnedExchange(db, { inventoryId: holding.inventory_id })
+  assert.equal(preview.status, 200, JSON.stringify(preview.body))
+  assert.deepEqual([preview.body.name, preview.body.quantity, preview.body.unitCost, preview.body.poNumber, preview.body.closed], ["Pump A", 1, 30000, "PO-3", false])
+  const r = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B (new spec)", quantity: 1, unitPrice: 32000 } })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(r.body.difference, 2000)
+  assert.equal(db.tables.supplier_credits.length, 0)
+  assert.equal(db.tables.inventory.filter((x: Row) => x.is_returned).length, 0)
+  assert.deepEqual(db.tables.purchase_order_items.map((l: Row) => l.quantity), [1, 1], "old line 2 -> 1, new line 1")
+  assert.equal(db.tables.purchase_order_items[1].outsourced_name, "Pump B (new spec)")
+  assert.equal(db.tables.purchase_orders[0].status, "partially_received", "the new item is still to be received")
+  assert.ok(db.tables.workflow_events.some((e: Row) => e.event_type === "PO_ITEM_EXCHANGED"))
+})
+
+test("RX2. closed PO with nothing paid: reopened and exchanged in one step; paid: refused and nothing changes", async () => {
+  let db = returnDb(false)
+  let holding = await returnToHolding(db, 1)
+  const ok = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 1, unitPrice: 30000 } })
+  assert.equal(ok.status, 200, JSON.stringify(ok.body))
+  assert.equal(ok.body.reopened, true)
+  assert.equal(db.tables.accounts_payable.length, 0, "bill removed: the PO is open again")
+  db = returnDb(false)
+  db.tables.supplier_payments = [{ payment_id: 1, invoice_id: 1, amount: 100, payment_method: "cash", reference_number: "R1" }]
+  holding = await returnToHolding(db, 1)
+  const before = JSON.stringify([db.tables.purchase_order_items, db.tables.accounts_payable])
+  const paid = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 1, unitPrice: 30000 } })
+  assert.equal(paid.status, 409)
+  assert.equal(paid.body.code, "PO_PAID")
+  assert.equal(JSON.stringify([db.tables.purchase_order_items, db.tables.accounts_payable]), before)
+  assert.equal(db.tables.inventory.filter((x: Row) => x.is_returned).length, 1, "still in Returned items")
+})
+
+test("RX3. rename the customer's order line: done when everything came back; refused (with a note) when the customer kept some", async () => {
+  let db = returnDb(true)
+  let holding = await returnToHolding(db, 2)
+  const all = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 2, unitPrice: 31000 }, renameOrderLine: true, sellingPrice: 52000 })
+  assert.equal(all.status, 200, JSON.stringify(all.body))
+  assert.equal(all.body.orderLine.renamed, true, JSON.stringify(all.body.orderLine))
+  const so = db.tables.sales_order_items[0]
+  assert.deepEqual([so.outsourced_name, so.product_id, so.unit_price, so.total], ["Pump B", null, 52000, 104000])
+  assert.equal(db.tables.sales_orders[0].total, 118560, "104,000 + 14% VAT")
+  db = returnDb(true)
+  holding = await returnToHolding(db, 1)
+  const part = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 1, unitPrice: 31000 }, renameOrderLine: true })
+  assert.equal(part.status, 200, JSON.stringify(part.body))
+  assert.equal(part.body.orderLine.renamed, false)
+  assert.match(part.body.orderLine.note, /kept by the customer|cannot be turned into a different item/)
+  assert.equal(db.tables.sales_order_items[0].product_id, 7, "order line unchanged")
 })
