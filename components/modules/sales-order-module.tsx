@@ -387,9 +387,11 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
   // Opens the server-rendered sales order print. It reads the saved order from the database, so it is correct for
   // every status (draft included) and never depends on what this screen currently holds.
-  const handlePrintSalesOrder = (order: any) => {
+  // `delivery`: "status" adds Delivered / Remaining per line, "delivered" prints only what was delivered
+  // (owner request, 2026-11-12). Delivered = signed or approved delivery permits, less returns.
+  const handlePrintSalesOrder = (order: any, delivery?: "status" | "delivered") => {
     const soIdValue = order.so_id || order.id
-    window.open(`${window.location.origin}/api/sales-orders/print?soId=${soIdValue}`, "_blank")
+    window.open(`${window.location.origin}/api/sales-orders/print?soId=${soIdValue}${delivery ? `&delivery=${delivery}` : ""}`, "_blank")
   }
 
   const getDaysUntilDue = (dueDate: string): number => {
@@ -1698,17 +1700,18 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
   // One action set shared by the table row and the phone card.
   const renderRowActions = (order: any) => (
     <>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation()
-                handlePrintSalesOrder(order)
-              }}
-              title={t("so.print-sales-order")}
-            >
-              <Printer className="w-4 h-4" /> {t("so.print-so")}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()} title={t("so.print-sales-order")}>
+                  <Printer className="w-4 h-4" /> {t("so.print-so")} <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order)}>{t("so.print-plain")}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order, "status")}>{t("so.print-delivery-status")}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order, "delivered")}>{t("so.print-delivered-only")}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)} title={t("action.view-details")}>
               <Eye className="w-4 h-4" /> {t("view")}
             </Button>
