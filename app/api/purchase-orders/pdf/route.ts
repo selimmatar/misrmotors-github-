@@ -38,6 +38,11 @@ const TEXT = {
     colQty: "الكمية",
     colCost: "تكلفة الوحدة",
     colTotal: "الإجمالي",
+    exchangesTitle: "الاستبدالات",
+    colReplaced: "تم استبدال",
+    colWith: "بـ",
+    colDifference: "الفرق",
+    sentBackTitle: "أصناف أُرجعت للمورد",
     subtotal: "المجموع الفرعي:",
     tax: "الضرائب:",
     other: "تكاليف أخرى:",
@@ -79,6 +84,11 @@ const TEXT = {
     colQty: "Quantity",
     colCost: "Unit cost",
     colTotal: "Total",
+    exchangesTitle: "Exchanges",
+    colReplaced: "Replaced",
+    colWith: "With",
+    colDifference: "Difference",
+    sentBackTitle: "Items returned to the supplier",
     subtotal: "Subtotal:",
     tax: "Taxes:",
     other: "Other costs:",
@@ -159,7 +169,25 @@ export async function GET(request: NextRequest) {
       console.error("PO PDF - Error fetching items:", itemsError)
     }
 
-    const poItems = items || []
+    // Lines exchanged or returned in full are kept at quantity 0 (receiving history stays linked): they are not
+    // printed as items; the exchanges and returns are printed in their own section (owner report, 2026-11-12).
+    const poItems = (items || []).filter((i: any) => Number(i.quantity) > 0).sort((a: any, b: any) => a.po_item_id - b.po_item_id)
+    const { data: historyRows } = await supabase
+      .from("workflow_events")
+      .select("event_type, old_value, new_value, performed_at")
+      .eq("entity_type", "PURCHASE_ORDER")
+      .eq("entity_id", Number.parseInt(poId))
+      .in("event_type", ["PO_ITEM_EXCHANGED", "PO_ITEM_SENT_BACK"])
+    const parse = (v: any) => {
+      try {
+        return typeof v === "string" ? JSON.parse(v) : v || {}
+      } catch {
+        return {}
+      }
+    }
+    const byTime = (a: any, b: any) => String(a.performed_at || "").localeCompare(String(b.performed_at || ""))
+    const exchanges = (historyRows || []).filter((e: any) => e.event_type === "PO_ITEM_EXCHANGED").sort(byTime).map((e: any) => ({ from: parse(e.old_value), to: parse(e.new_value) }))
+    const sentBack = (historyRows || []).filter((e: any) => e.event_type === "PO_ITEM_SENT_BACK").sort(byTime).map((e: any) => parse(e.old_value))
     const supplier = po.suppliers || {}
 
     // Fetch logo and convert to base64
@@ -318,7 +346,7 @@ export async function GET(request: NextRequest) {
         ${poItems.map((item, index) => `
           <tr>
             <td class="pm-center">${index + 1}</td>
-            <td>${escapeHtml(item.products?.product_name || item.item_name_snapshot || item.product_name || "Unknown")}</td>
+            <td>${escapeHtml(item.products?.product_name || item.outsourced_name || item.item_name_snapshot || item.product_name || "Unknown")}</td>
             <td class="pm-center">${escapeHtml(item.products?.sku || "-")}</td>
             <td class="pm-center">${escapeHtml(item.quantity)} ${escapeHtml(item.products?.unit || "")}</td>
             <td class="pm-num">${Number(item.unit_price) ? Number(item.unit_price).toFixed(2) : "-"}</td>
@@ -351,7 +379,31 @@ export async function GET(request: NextRequest) {
         </tr>
       </table>
     
-    ${po.notes ? `
+    ${exchanges.length > 0 ? `
+    <div class="pm-note">
+      <h4>${L.exchangesTitle}</h4>
+      <table class="pm-table">
+        <thead><tr><th>${L.colReplaced}</th><th class="pm-num">${L.colTotal}</th><th>${L.colWith}</th><th class="pm-num">${L.colTotal}</th><th class="pm-num">${L.colDifference}</th></tr></thead>
+        <tbody>
+          ${exchanges.map((x: any) => {
+            const diff = (Number(x.to.total) || 0) - (Number(x.from.total) || 0)
+            return `<tr>
+            <td>${escapeHtml(x.from.name || "-")} × ${escapeHtml(x.from.quantity ?? "")}</td>
+            <td class="pm-num">${(Number(x.from.total) || 0).toFixed(2)}</td>
+            <td>${escapeHtml(x.to.name || "-")} × ${escapeHtml(x.to.quantity ?? "")}</td>
+            <td class="pm-num">${(Number(x.to.total) || 0).toFixed(2)}</td>
+            <td class="pm-num">${diff > 0 ? "+" : ""}${diff.toFixed(2)}</td>
+          </tr>`
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+    ` : ""}${sentBack.length > 0 ? `
+    <div class="pm-note">
+      <h4>${L.sentBackTitle}</h4>
+      ${sentBack.map((r: any) => `<p>${escapeHtml(r.name || "-")} × ${escapeHtml(r.quantity ?? "")} (${(Number(r.total) || 0).toFixed(2)})</p>`).join("")}
+    </div>
+    ` : ""}${po.notes ? `
     <div class="pm-note">
       <h4>${L.notes}</h4>
       <p>${escapeHtml(po.notes)}</p>
