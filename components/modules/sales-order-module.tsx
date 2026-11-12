@@ -51,6 +51,7 @@ import {
   PackageX,
   Pencil,
   ChevronDown,
+  LayoutDashboard,
 } from "lucide-react"
 import {
   PaymentTypeSelector,
@@ -85,6 +86,7 @@ import { Money } from "@/components/erp/money"
 import { formatDate, formatMoney } from "@/lib/format"
 import { canEditSalesOrder } from "@/lib/so-edit-eligibility"
 import { NotesButton, useNoteCounts } from "@/components/notes/notes-button"
+import { OrderOverviewDialog } from "@/components/sales-order/order-overview-dialog"
 import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
 import { ChainLine } from "@/components/shared/chain-line"
 
@@ -121,6 +123,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null)
   const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null)
+  const [overviewOrder, setOverviewOrder] = useState<any | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [aiInsights, setAiInsights] = useState<any>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -1704,6 +1707,17 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
   const renderRowActions = (order: any) => (
     <>
       <NotesButton type="so" id={order.so_id || order.id} title={order.soNumber || order.so_number || ""} count={soNotes.counts[String(order.so_id || order.id)] || 0} onChanged={soNotes.refresh} />
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={(e) => {
+          e.stopPropagation()
+          setOverviewOrder(order)
+        }}
+        title={t("ov.title")}
+      >
+        <LayoutDashboard className="w-4 h-4" /> {t("ov.button")}
+      </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()} title={t("so.print-sales-order")}>
@@ -2269,6 +2283,16 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         </DialogContent>
       </Dialog>
 
+      {overviewOrder && Number(overviewOrder.so_id || overviewOrder.id) > 0 && (
+        <OrderOverviewDialog
+          soId={Number(overviewOrder.so_id || overviewOrder.id)}
+          userRole={userRole}
+          onClose={() => setOverviewOrder(null)}
+          onNewDp={() => handleOpenCreateDpDialog(overviewOrder)}
+          onOpenOrder={() => setSelectedOrder(overviewOrder)}
+          onPrint={() => handlePrintSalesOrder(overviewOrder, "status")}
+        />
+      )}
       {editingOrder && (
         <EditApprovedOrderDialog
           order={editingOrder}
