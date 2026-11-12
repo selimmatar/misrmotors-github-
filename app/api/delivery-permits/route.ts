@@ -7,6 +7,8 @@ import { isSOFullyDelivered, DP_DELIVERED_STATUSES } from "@/lib/delivery-status
 import { planAllocation } from "@/lib/dp-allocate"
 import { isAllowedDpTransition } from "@/lib/dp-transitions"
 import { abortDeduction, deductStockForPermit, finishDeduction, reverseDeduction, type StockMove } from "@/lib/dp-stock"
+import { knownUserId } from "@/lib/po-history"
+import { asUuid } from "@/lib/idempotency"
 import { actorOr } from "@/lib/auth/actor"
 import { badNumberResponse, cleanManualNumber, highestSerial, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 
@@ -438,6 +440,11 @@ export async function PUT(request: NextRequest) {
       courierId,
     } = body
     const userId = actorOr(request, bodyUserId)
+    // The *_by columns are numbers pointing at users.user_id; approved_by_user_id is a login (auth) uuid. A value that
+    // is neither a known user nor a uuid is left empty instead of making the whole save fail (owner report,
+    // 2026-11-12: approving failed with "invalid input syntax for type uuid: \"6\"").
+    const actorId = await knownUserId(supabase, userId)
+    const actorUuid = asUuid(userId)
 
     // Get current permit with sales order data
     const { data: currentPermit, error: fetchError } = await withRetry(() =>
@@ -533,7 +540,7 @@ export async function PUT(request: NextRequest) {
         newStatus = "READY_FOR_SHIPMENT"
         updates.status = newStatus
         updates.allocated_at = new Date().toISOString()
-        updates.allocated_by = userId ? Number.parseInt(userId) : null
+        updates.allocated_by = actorId
         soUpdates.fulfillment_status = "READY_FOR_SHIPMENT"
         break
 
@@ -541,7 +548,7 @@ export async function PUT(request: NextRequest) {
         newStatus = "READY_FOR_PICKUP"
         updates.status = newStatus
         updates.printed_at = new Date().toISOString()
-        updates.printed_by = userId ? Number.parseInt(userId) : null
+        updates.printed_by = actorId
         soUpdates.fulfillment_status = "READY_FOR_PICKUP"
         soUpdates.status = "ready_for_delivery"
         break
@@ -550,14 +557,14 @@ export async function PUT(request: NextRequest) {
         newStatus = "PRINTED"
         updates.status = newStatus
         updates.printed_at = new Date().toISOString()
-        updates.printed_by = userId ? Number.parseInt(userId) : null
+        updates.printed_by = actorId
         break
 
       case "MARK_OUT_FOR_DELIVERY":
         newStatus = "OUT_FOR_DELIVERY"
         updates.status = newStatus
         updates.out_for_delivery_at = new Date().toISOString()
-        updates.out_for_delivery_by = userId ? Number.parseInt(userId) : null
+        updates.out_for_delivery_by = actorId
         if (driverName) {
           updates.driver_name = driverName
         }
@@ -582,7 +589,7 @@ export async function PUT(request: NextRequest) {
       newStatus = "SUBMITTED_SIGNED"
       updates.status = newStatus
       updates.submitted_signed_at = new Date().toISOString()
-      updates.submitted_signed_by = userId ? Number.parseInt(userId) : null
+      updates.submitted_signed_by = actorId
       
       // Only mark the SO as delivered once every line item's ordered quantity has been
       // covered by delivered permits — a single delivered DP does not mean the whole SO shipped.
@@ -629,7 +636,8 @@ export async function PUT(request: NextRequest) {
           newStatus = "APPROVED"
           updates.status = newStatus
           updates.approved_at = new Date().toISOString()
-          updates.approved_by_user_id = userId ? Number.parseInt(userId) : null
+          updates.approved_by = actorId
+          updates.approved_by_user_id = actorUuid
           updates.approval_processing = true
 
           // Activate payment plan when FIRST DP is approved, but only mark SO as delivered when ALL DPs are delivered
@@ -824,7 +832,7 @@ export async function PUT(request: NextRequest) {
         event_type: "STATUS_CHANGED",
         old_value: currentPermit.status,
         new_value: newStatus,
-        performed_by: userId ? Number.parseInt(userId) : null,
+        performed_by: actorId,
         notes: action === "REJECT" ? `Rejected: ${rejectionReason}` : `Action: ${action}`,
       }),
     )
