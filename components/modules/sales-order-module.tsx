@@ -52,6 +52,7 @@ import {
   Pencil,
   ChevronDown,
   LayoutDashboard,
+  MoreHorizontal,
 } from "lucide-react"
 import {
   PaymentTypeSelector,
@@ -69,7 +70,7 @@ import { QuotationRequestUploadWidget } from "@/components/sales-order/quotation
 import { SalesOrderMaintenanceTab } from "@/components/sales-order/maintenance-tab"
 import { MaintenanceApprovalTab } from "@/components/sales/maintenance-approval-tab"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Textarea } from "@/components/ui/textarea"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { EditApprovedOrderDialog } from "@/components/sales-order/edit-approved-order-dialog"
@@ -1704,104 +1705,76 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
   // Notes / latest updates per order (owner request, 2026-11-12)
   const soNotes = useNoteCounts("so")
   // One action set shared by the table row and the phone card.
-  const renderRowActions = (order: any) => (
-    <>
-      <NotesButton type="so" id={order.so_id || order.id} title={order.soNumber || order.so_number || ""} count={soNotes.counts[String(order.so_id || order.id)] || 0} onChanged={soNotes.refresh} />
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={(e) => {
-          e.stopPropagation()
-          setOverviewOrder(order)
-        }}
-        title={t("ov.title")}
-      >
-        <LayoutDashboard className="w-4 h-4" /> {t("ov.button")}
-      </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()} title={t("so.print-sales-order")}>
-                  <Printer className="w-4 h-4" /> {t("so.print-so")} <ChevronDown className="w-3 h-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order)}>{t("so.print-plain")}</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order, "status")}>{t("so.print-delivery-status")}</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order, "delivered")}>{t("so.print-delivered-only")}</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(order)} title={t("action.view-details")}>
-              <Eye className="w-4 h-4" /> {t("view")}
-            </Button>
-      {getSODeliveryStatus(order) !== "delivered" && (
-        <>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => e.stopPropagation()}
-                title={t("so.print-a-report-of-items")}
-              >
-                <PackageX className="w-4 h-4" /> {t("so.missing-items")} <ChevronDown className="w-3 h-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, false)}>
-                {t("so.print-with-unit-cost")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, true)}>
-                {t("so.print-without-unit-cost-hide")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
-      )}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={(e) => {
-          e.stopPropagation()
-          handleOpenCreateDpDialog(order)
-        }}
-        title={
-          order.status === "draft" 
-            ? t("so.approve-quotation-first") 
-            : order.status === "pending_accountant"
-            ? t("so.waiting-for-accountant-approval")
-            : t("so.create-delivery-permit")
-        }
-        disabled={order.status === "draft" || order.status === "pending_accountant" || order.status === "pending" || order.status === "pending_ceo"}
-      >
-        <FileText className="w-4 h-4" /> {t("so.create-dp")}
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={(e) => {
-          e.stopPropagation()
-          setSelectedOrder(order)
-        }}
-        disabled={!isMaintenanceLive()}
-        title={isMaintenanceLive() ? t("so.manage-maintenance-for-this-order") : t("maintenance.not-live")}
-      >
-        <Wrench className="w-4 h-4" /> {t("common.maintenance")}
-      </Button>
-      {showEditButton(order) && (
+  // Row actions, organised (owner request, 2026-11-12): the two everyday actions as buttons, notes with its count,
+  // and everything else in one "More" menu so a card fits a phone screen.
+  const renderRowActions = (order: any) => {
+    const dpBlocked = order.status === "draft" || order.status === "pending_accountant" || order.status === "pending" || order.status === "pending_ceo"
+    return (
+      <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <Button variant="default" size="sm" onClick={() => setOverviewOrder(order)} title={t("ov.title")}>
+          <LayoutDashboard className="w-4 h-4" /> {t("ov.button")}
+        </Button>
         <Button
           variant="outline"
           size="sm"
-          onClick={(e) => {
-            e.stopPropagation()
-            setEditingOrder(order)
-          }}
-          title={hasReturns(order) ? t("so.edit-this-order-after-a") : t("so.edit-this-approved-order-items")}
+          onClick={() => handleOpenCreateDpDialog(order)}
+          title={
+            order.status === "draft"
+              ? t("so.approve-quotation-first")
+              : order.status === "pending_accountant"
+                ? t("so.waiting-for-accountant-approval")
+                : t("so.create-delivery-permit")
+          }
+          disabled={dpBlocked}
         >
-          <Pencil className="w-4 h-4" /> {t("edit")}
+          <FileText className="w-4 h-4" /> {t("so.create-dp")}
         </Button>
-      )}
-    </>
-  )
+        <NotesButton type="so" id={order.so_id || order.id} title={order.soNumber || order.so_number || ""} count={soNotes.counts[String(order.so_id || order.id)] || 0} onChanged={soNotes.refresh} />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" title={t("so.more-actions")} aria-label={t("so.more-actions")}>
+              <MoreHorizontal className="w-4 h-4" /> <span className="sr-only sm:not-sr-only">{t("so.more")}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuItem onSelect={() => setSelectedOrder(order)}>
+              <Eye className="w-4 h-4 me-2" /> {t("action.view-details")}
+            </DropdownMenuItem>
+            {showEditButton(order) && (
+              <DropdownMenuItem onSelect={() => setEditingOrder(order)}>
+                <Pencil className="w-4 h-4 me-2" /> {t("edit")}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              <Printer className="w-3.5 h-3.5 inline me-1" /> {t("so.print-sales-order")}
+            </DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order)}>{t("so.print-plain")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order, "status")}>{t("so.print-delivery-status")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order, "delivered")}>{t("so.print-delivered-only")}</DropdownMenuItem>
+            {getSODeliveryStatus(order) !== "delivered" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  <PackageX className="w-3.5 h-3.5 inline me-1" /> {t("so.missing-items")}
+                </DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, false)}>{t("so.print-with-unit-cost")}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handlePrintMissingItems(order, true)}>{t("so.print-without-unit-cost-hide")}</DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={!isMaintenanceLive()}
+              title={isMaintenanceLive() ? t("so.manage-maintenance-for-this-order") : t("maintenance.not-live")}
+              onSelect={() => setSelectedOrder(order)}
+            >
+              <Wrench className="w-4 h-4 me-2" /> {t("common.maintenance")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

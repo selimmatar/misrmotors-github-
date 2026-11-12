@@ -41,7 +41,7 @@
     "fetch": 4,
     "iso": 10,
     "t": 53,
-    "onClick": 20
+    "onClick": 16
   },
   "components/modules/sales-quotation-module.tsx": {
     "api": [

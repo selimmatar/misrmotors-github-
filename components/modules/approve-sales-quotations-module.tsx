@@ -321,10 +321,13 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQ
             <div className="space-y-4">
               {filteredQuotations.map((quotation) => (
                 <div key={quotation.id} className="border rounded-lg p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
-                    <div>
-                      <p className="text-sm text-muted-foreground">{t("quote.quotation-number")}</p>
-                      <p className="font-semibold">{quotation.quotation_number}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-3 items-start md:items-center">
+                    <div className="col-span-2 md:col-span-1 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-muted-foreground">{t("quote.quotation-number")}</p>
+                        <p className="font-semibold">{quotation.quotation_number}</p>
+                      </div>
+                      <NotesButton type="quotation" id={quotation.id} title={quotation.quotation_number} count={quoteNotes.counts[String(quotation.id)] || 0} onChanged={quoteNotes.refresh} />
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">{t("so.customer")}</p>
@@ -343,12 +346,12 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQ
                       <StatusBadge status={quotation.status} label={quotation.status === "sent" ? t("quote.sent-to-customer") : undefined} />
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-4">
-                    <NotesButton type="quotation" id={quotation.id} title={quotation.quotation_number} count={quoteNotes.counts[String(quotation.id)] || 0} onChanged={quoteNotes.refresh} labelled />
+                  {/* Approve first and full width on a phone; Print and Reject share the next row (owner request, 2026-11-12) */}
+                  <div className="grid grid-cols-2 gap-2 mt-4 sm:flex sm:flex-wrap sm:justify-end">
                     <Button
                       size="sm"
                       variant="outline"
-                      className="gap-2 bg-transparent"
+                      className="gap-2 bg-transparent order-2 sm:order-none"
                       onClick={() => handlePrintPreview(quotation)}
                     >
                       <Printer className="w-4 h-4" />
@@ -357,7 +360,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQ
                     <Button
                       size="sm"
                       variant="destructive"
-                      className="gap-2"
+                      className="gap-2 order-3 sm:order-none"
                       onClick={() => {
                         setSelectedQuotation(quotation as any)
                         setShowRejectDialog(true)
@@ -369,7 +372,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQ
                     </Button>
                     <Button
                       size="sm"
-                      className="gap-2"
+                      className="gap-2 col-span-2 order-1 sm:order-none"
                       onClick={() => openApproveConvertDialog(quotation)}
                       disabled={actionLoading}
                     >
