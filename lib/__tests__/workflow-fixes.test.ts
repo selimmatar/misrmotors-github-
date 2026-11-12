@@ -326,3 +326,17 @@ test("DP review window: Approve / Reject for the accountant, admin and CEO; both
   assert.match(card, /\(item as any\)\.returnedQuantity\) > 0/)
   assert.match(card, /alert\(errorData\.error \|\| t\("message\.error"\)\)/)
 })
+
+test("approval lock: a numeric user id (\"6\") is not written to the uuid column (it made approving fail)", async () => {
+  const { asUuid } = await import("../idempotency")
+  assert.equal(asUuid("6"), null)
+  assert.equal(asUuid(6), null)
+  assert.equal(asUuid(undefined), null)
+  assert.equal(asUuid("1b4e28ba-2fa1-11d2-883f-0016d3cca427"), "1b4e28ba-2fa1-11d2-883f-0016d3cca427")
+  // approving a signed permit with a numeric user id works end to end
+  const db = dpDb([permit(1, "SUBMITTED_SIGNED")], signedItem(5))
+  const r = await put(1, "APPROVE", { userId: "6" })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(st(db), "APPROVED")
+  assert.ok(db.tables.idempotency_log.every((row: Row) => row.user_id == null), "no numeric id in the uuid column")
+})
