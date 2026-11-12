@@ -46,6 +46,7 @@ export const OWNED: Record<Area, string[]> = {
   inventory: [
     ...mods(["inventory", "inventory-audit", "goods-receipt", "goods-receipt-tracking", "warehouse-transfers", "warehouse-delivery", "shipping", "courier-management", "operations-management", "maintenance"]),
     "components/shipping/",
+    "components/inventory/",
   ],
   overview: [
     ...mods(["financial-dashboard", "analytics-dashboard", "ceo-chat-assistant"], ".tsx"),

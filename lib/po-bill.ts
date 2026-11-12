@@ -8,12 +8,12 @@
 // PO) settle part of the bill when it is made: each becomes a supplier_payments row with a reference number that marks
 // it as made by the close, so a reopen can take it off again. They are not cash movements at close: an advance wrote its
 // cash entry when it was paid, a return credit never moves cash.
-import { SUPPLIER_CREDIT_PAYMENT_METHOD, creditedInvoiceFields } from "@/lib/supplier-credit-apply"
+import { SUPPLIER_CREDIT_PAYMENT_METHOD, creditedInvoiceFields } from "./supplier-credit-apply"
 
 type Db = any
 
 export const ADVANCE_CREDIT_TYPE = "advance"
-export { PO_CLOSE_ROLES, PO_CLOSABLE_STATUSES } from "@/lib/po-edit"
+export { PO_CLOSE_ROLES, PO_CLOSABLE_STATUSES } from "./po-edit"
 
 const today = () => new Date().toISOString().split("T")[0]
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100

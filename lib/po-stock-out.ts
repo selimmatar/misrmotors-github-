@@ -1,7 +1,7 @@
 // Goods of a PO line handed back to the supplier from one of our warehouses (owner request, 2026-11-12): used by
 // "Return to supplier" and by an exchange whose old item is still in stock. Catalogue items are taken from the
 // product's row in that warehouse; outsourced items from the rows stored under the same name there.
-import { takeFromRow, type StockMove } from "@/lib/dp-stock"
+import { takeFromRow, type StockMove } from "./dp-stock"
 
 type Db = any
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
