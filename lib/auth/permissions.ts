@@ -49,6 +49,7 @@ export const RULES: Rule[] = [
   rule("/api/quotations", ALL, SALES),
   rule("/api/notes", ALL, ALL),
   rule("/api/sales-orders", ALL, SALES),
+  rule("/api/sales-orders/overview/profit", ONLY_TOP, ONLY_TOP),
   rule("/api/lost-sales", ["sales-rep", "po-rep"], ["sales-rep"]),
   rule("/api/lost-sales-summary", ["sales-rep", "po-rep"], ["sales-rep"]),
   // Purchasing
