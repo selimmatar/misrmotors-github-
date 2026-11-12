@@ -48,6 +48,7 @@ import { describeOverOrderLines, type OverOrderLine } from "@/lib/po-over-order"
 import { ChainLine } from "@/components/shared/chain-line"
 import { PO_EDITABLE_STATUSES } from "@/lib/po-edit"
 import { PoHistory, PoOpenBadge, PoOpenMenu } from "@/components/purchase-order/po-open-actions"
+import { NotesButton, useNoteCounts } from "@/components/notes/notes-button"
 import { SupplierCreditPicker, appliedCreditTotal, creditSelections, type CreditAmounts } from "@/components/supplier/supplier-credit-picker"
 
 interface PurchaseOrderModuleProps {
@@ -1327,9 +1328,12 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     setDownPaymentInputMode(null) // Reset input mode on form reset
   }
 
+  // Notes / latest updates per PO (owner request, 2026-11-12)
+  const poNotes = useNoteCounts("po")
   // Row actions, shared by the table's actions cell and the phone card.
   const renderRowActions = (order: PurchaseOrder) => (
     <div className="flex items-center gap-2">
+      <NotesButton type="po" id={order.id} title={order.poNumber} count={poNotes.counts[String(order.id)] || 0} onChanged={poNotes.refresh} />
       {canApprovePO && order.status === "pending" && (
         <>
           <Button
