@@ -84,6 +84,7 @@ import { ApprovalSteps } from "@/components/erp/approval-steps"
 import { Money } from "@/components/erp/money"
 import { formatDate, formatMoney } from "@/lib/format"
 import { canEditSalesOrder } from "@/lib/so-edit-eligibility"
+import { NotesButton, useNoteCounts } from "@/components/notes/notes-button"
 import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
 import { ChainLine } from "@/components/shared/chain-line"
 
@@ -1697,9 +1698,12 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     </Button>
   )
 
+  // Notes / latest updates per order (owner request, 2026-11-12)
+  const soNotes = useNoteCounts("so")
   // One action set shared by the table row and the phone card.
   const renderRowActions = (order: any) => (
     <>
+      <NotesButton type="so" id={order.so_id || order.id} title={order.soNumber || order.so_number || ""} count={soNotes.counts[String(order.so_id || order.id)] || 0} onChanged={soNotes.refresh} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()} title={t("so.print-sales-order")}>

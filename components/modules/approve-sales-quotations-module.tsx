@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Eye, CheckCircle, XCircle, FileText, Loader2, AlertCircle, Printer, Search } from "lucide-react"
+import { NotesButton, useNoteCounts } from "@/components/notes/notes-button"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { formatDate } from "@/lib/format"
@@ -78,6 +79,8 @@ interface ApproveSalesQuotationsModuleProps {
 export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQuotationId, onOpened }: ApproveSalesQuotationsModuleProps) {
   const { t, language } = useI18n()
   const [quotations, setQuotations] = useState<Quotation[]>([])
+  // Notes / latest updates per quotation (owner request, 2026-11-12)
+  const quoteNotes = useNoteCounts("quotation")
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
@@ -341,6 +344,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQ
                     </div>
                   </div>
                   <div className="flex gap-2 mt-4">
+                    <NotesButton type="quotation" id={quotation.id} title={quotation.quotation_number} count={quoteNotes.counts[String(quotation.id)] || 0} onChanged={quoteNotes.refresh} labelled />
                     <Button
                       size="sm"
                       variant="outline"
