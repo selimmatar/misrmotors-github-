@@ -340,3 +340,18 @@ test("approval lock: a numeric user id (\"6\") is not written to the uuid column
   assert.equal(st(db), "APPROVED")
   assert.ok(db.tables.idempotency_log.every((row: Row) => row.user_id == null), "no numeric id in the uuid column")
 })
+
+test("approve: the approver is written to approved_by (a known user) and never as a number into the uuid column", async () => {
+  let db = dpDb([permit(1, "SUBMITTED_SIGNED")], signedItem(5))
+  db.tables.users.push({ user_id: 6 })
+  let r = await put(1, "APPROVE", { userId: "6" })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const row = db.tables.delivery_permits[0]
+  assert.deepEqual([row.status, row.approved_by, row.approved_by_user_id ?? null], ["APPROVED", 6, null])
+  // an unknown user id is left empty instead of failing the save
+  db = dpDb([permit(1, "OUT_FOR_DELIVERY")], signedItem(5))
+  r = await put(1, "MARK_SUBMITTED_SIGNED", { userId: "99" })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.delivery_permits[0].submitted_signed_by ?? null, null)
+  assert.doesNotMatch(require("node:fs").readFileSync(require("node:path").join(process.env.REPO_ROOT || process.cwd(), "app/api/delivery-permits/route.ts"), "utf8"), /approved_by_user_id = userId \? Number\.parseInt/)
+})

@@ -326,6 +326,7 @@ function dpActorDb() {
     delivery_permit_items: [{ item_id: 1, permit_id: 1, product_id: 7, item_name_snapshot: "P7", quantity: 6, unit_price: 100, total: 600, warehouse_id: 1 }],
     inventory: [{ inventory_id: 1, product_id: 7, warehouse_id: 1, quantity: 20, is_returned: false, unit_cost: 50, reorder_point: 5 }],
     inventory_transactions: [], idempotency_log: [], product_returns: [], return_items: [], workflow_events: [],
+    users: [{ user_id: 5 }, { user_id: 9 }],
   })
   useDb(db)
   return db
@@ -335,14 +336,18 @@ test("actor: delivery permit approval records the logged-in person (5), not the 
   const db = dpActorDb()
   const r = await callAs(dpActorRoute.PUT, "PUT", { permitId: "1", action: "APPROVE", userId: "9" }, "5")
   assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(db.tables.delivery_permits[0].approved_by_user_id, 5)
+  // approved_by is the users.user_id number; approved_by_user_id is a login uuid and never gets a plain number
+  // (owner report, 2026-11-12: that made approving fail with "invalid input syntax for type uuid")
+  assert.equal(db.tables.delivery_permits[0].approved_by, 5)
+  assert.equal(db.tables.delivery_permits[0].approved_by_user_id ?? null, null)
 })
 
 test("actor: delivery permit approval with logins off keeps the old body userId", async () => {
   const db = dpActorDb()
   const r = await callAs(dpActorRoute.PUT, "PUT", { permitId: "1", action: "APPROVE", userId: "9" })
   assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(db.tables.delivery_permits[0].approved_by_user_id, 9)
+  assert.equal(db.tables.delivery_permits[0].approved_by, 9)
+  assert.equal(db.tables.delivery_permits[0].approved_by_user_id ?? null, null)
 })
 
 test("actor: company settings record the logged-in person as updated_by", async () => {
