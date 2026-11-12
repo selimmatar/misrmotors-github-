@@ -162,3 +162,23 @@ test("O9. the Overview button is on the sales order list and profit is only aske
   assert.match(dialog, /const PROFIT_ROLES: UserRole\[\] = \["ceo", "admin"\]/)
   assert.match(dialog, /if \(seesProfit\) \{\s*fetch\(`\/api\/sales-orders\/overview\/profit/)
 })
+
+test("O10. clicking a DP or PO in the overview opens that screen once, on that document", async () => {
+  const { openDocument, takeDocumentFor } = await import("../open-document")
+  const seen: string[] = []
+  ;(globalThis as any).window = { dispatchEvent: (e: any) => seen.push(e.detail) }
+  ;(globalThis as any).CustomEvent ||= class { type: string; detail: any; constructor(type: string, init: any) { this.type = type; this.detail = init?.detail } }
+  openDocument("delivery-permits", "DP-2026-0002")
+  assert.deepEqual(seen, ["delivery-permits"])
+  assert.equal(takeDocumentFor("purchase-orders"), null) // another screen does not take it
+  assert.equal(takeDocumentFor("delivery-permits"), "DP-2026-0002")
+  assert.equal(takeDocumentFor("delivery-permits"), null) // only once
+  openDocument("purchase-orders", "PO-1")
+  assert.equal(takeDocumentFor("purchase-orders", Date.now() + 61_000), null) // too old
+  const dialog = src("components/sales-order/order-overview-dialog.tsx")
+  assert.match(dialog, /openDoc\("delivery-permits", p\.number\)/)
+  assert.match(dialog, /openDoc\("purchase-orders", po\.number\)/)
+  assert.match(src("components/modules/delivery-permits-module.tsx"), /takeDocumentFor\("delivery-permits"\)[\s\S]*setShowDetails\(true\)/)
+  assert.match(src("components/modules/purchase-order-module.tsx"), /takeDocumentFor\("purchase-orders"\)[\s\S]*setSearchQuery\(asked\)/)
+  delete (globalThis as any).window
+})

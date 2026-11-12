@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Money } from "@/components/erp/money"
 import { NotesButton } from "@/components/notes/notes-button"
 import { useI18n } from "@/lib/i18n-context"
+import { openDocument, type DocumentScreen } from "@/lib/open-document"
 import { fill } from "@/lib/i18n-format"
 import type { SoOverview, SoProfit, OverviewLine, OverviewTodo, OverviewEvent } from "@/lib/so-overview"
 import type { UserRole } from "@/lib/types"
@@ -129,6 +130,10 @@ export function OrderOverviewDialog({
     load()
   }, [load])
 
+  const openDoc = (screen: DocumentScreen, number: string) => {
+    onClose()
+    openDocument(screen, number)
+  }
   const go = (module: string) => {
     onClose()
     window.dispatchEvent(new CustomEvent("navigate-to-module", { detail: module }))
@@ -350,7 +355,18 @@ export function OrderOverviewDialog({
                           {l.returned > 0 && <div className="text-xs text-destructive">{fill(t("ov.returned-n"), { qty: qty(l.returned) })}</div>}
                         </td>
                         <td className="p-2"><Pill kind={LINE_TONE[l.state]}>{lineStatus(l)}</Pill></td>
-                        <td className="p-2 text-xs text-muted-foreground">{[...l.poNumbers, ...l.dpNumbers].join(" · ") || "—"}</td>
+                        <td className="p-2 text-xs text-muted-foreground">
+                          {l.poNumbers.length + l.dpNumbers.length === 0
+                            ? "—"
+                            : [
+                                ...l.poNumbers.map((n) => ["purchase-orders", n] as const),
+                                ...l.dpNumbers.map((n) => ["delivery-permits", n] as const),
+                              ].map(([screen, n]) => (
+                                <button key={n} type="button" onClick={() => openDoc(screen, n)} className="me-2 text-primary underline underline-offset-2 whitespace-nowrap">
+                                  {n}
+                                </button>
+                              ))}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -364,9 +380,9 @@ export function OrderOverviewDialog({
                     <p className="text-sm text-muted-foreground">{t("ov.none-yet")}</p>
                   ) : (
                     data.permits.map((p) => (
-                      <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 first:border-0 first:pt-0 text-sm">
+                      <button type="button" key={p.id} onClick={() => openDoc("delivery-permits", p.number)} title={fill(t("ov.open-doc"), { doc: p.number })} className="w-full text-start flex flex-wrap items-center justify-between gap-2 border-t pt-2 first:border-0 first:pt-0 text-sm rounded-md hover:bg-muted/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary px-1 -mx-1">
                         <span>
-                          <span className="font-medium">{p.number}</span>{" "}
+                          <span className="font-medium text-primary underline underline-offset-2">{p.number}</span>{" "}
                           <span className="text-muted-foreground">· {when(p.date, language, false)} · <Money value={p.value} /></span>
                         </span>
                         <span className="flex flex-wrap gap-1">
@@ -376,7 +392,7 @@ export function OrderOverviewDialog({
                             <Pill kind={p.invoiced ? "good" : "warn"}>{p.invoiced ? t("ov.invoiced") : t("ov.not-invoiced")}</Pill>
                           )}
                         </span>
-                      </div>
+                      </button>
                     ))
                   )}
                 </div>
@@ -386,9 +402,9 @@ export function OrderOverviewDialog({
                     <p className="text-sm text-muted-foreground">{t("ov.none-yet")}</p>
                   ) : (
                     data.pos.map((po) => (
-                      <div key={po.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 first:border-0 first:pt-0 text-sm">
+                      <button type="button" key={po.id} onClick={() => openDoc("purchase-orders", po.number)} title={fill(t("ov.open-doc"), { doc: po.number })} className="w-full text-start flex flex-wrap items-center justify-between gap-2 border-t pt-2 first:border-0 first:pt-0 text-sm rounded-md hover:bg-muted/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary px-1 -mx-1">
                         <span className="min-w-0">
-                          <span className="font-medium">{po.number} · {po.supplier}</span>
+                          <span className="font-medium"><span className="text-primary underline underline-offset-2">{po.number}</span> · {po.supplier}</span>
                           <span className="block text-xs text-muted-foreground">
                             {t("ov.for-this-order")} <Money value={po.forThisOrder} /> · {t("ov.po-total")} <Money value={po.total} /> · {t("ov.paid")} <Money value={po.paid} />
                           </span>
@@ -397,7 +413,7 @@ export function OrderOverviewDialog({
                           <Pill kind={po.closed ? "good" : "warn"}>{po.closed ? t("ov.closed") : t("ov.open")}</Pill>
                           {po.exchanges > 0 && <Pill kind="info">{fill(t("ov.exchanges-n"), { n: po.exchanges })}</Pill>}
                         </span>
-                      </div>
+                      </button>
                     ))
                   )}
                 </div>
