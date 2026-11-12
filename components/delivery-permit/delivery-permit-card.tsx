@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n-context"
+import { fill } from "@/lib/i18n-format"
 import { useAppContext } from "@/lib/app-context"
 import { PermitStatusBadge } from "./permit-status-badge"
 import { SignedUploadWidget } from "./signed-upload-widget"
@@ -41,12 +42,9 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
       if (!response.ok) {
         const errorData = await response.json()
         console.error("DeliveryPermitCard - Update failed:", errorData)
-        if (errorData.code === "INSUFFICIENT_STOCK" || errorData.code === "DP_ALREADY_APPROVED") {
-          // Stock is deducted on approval: show which lines are short (the permit stays as it was)
-          alert(errorData.error)
-          return
-        }
-        throw new Error(errorData.error || "Failed to update permit")
+        // Always show the server's reason (not enough stock, already approved, not allowed in this status, ...)
+        alert(errorData.error || t("message.error"))
+        return
       }
 
       const result = await response.json()
@@ -156,7 +154,14 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
                   <span>
                     {item.itemNameSnapshot} {item.skuSnapshot && `(${item.skuSnapshot})`}
                   </span>
-                  <span className="font-medium">× {item.quantity}</span>
+                  <span className="font-medium text-end">
+                    × {item.quantity}
+                    {Number((item as any).returnedQuantity) > 0 && (
+                      <span className="block text-xs text-red-700">
+                        {fill(t("permit.returned-net"), { returned: (item as any).returnedQuantity, net: Number(item.quantity) - Number((item as any).returnedQuantity) })}
+                      </span>
+                    )}
+                  </span>
                 </div>
               ))}
             </div>

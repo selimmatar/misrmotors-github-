@@ -168,3 +168,27 @@ export async function reopenIfNotFullyDelivered(db: Db, soId: number): Promise<b
   ) as any[]
   return rows.length === 1
 }
+
+/**
+ * After an edit (owner report, 2026-11-12, SO-2026-742962): an order whose lines now match what the customer kept
+ * (delivered less returned, e.g. a returned line removed or lowered) IS fully delivered, so it moves forward to
+ * "delivered", the same way signing the last permit does. Only an order that is being delivered (a signed / approved
+ * permit exists) and is not already delivered, cancelled or waiting for approval. Returns true when it was moved.
+ */
+export async function markDeliveredIfComplete(db: Db, soId: number): Promise<boolean> {
+  const so = must(await db.from("sales_orders").select("so_id, status, fulfillment_status").eq("so_id", soId).maybeSingle(), "load sales order")
+  if (!so || !["accountant_approved", "ready_for_delivery", "shipped"].includes(String(so.status))) return false
+  const permits = must(await db.from("delivery_permits").select("permit_id, status").eq("sales_order_id", soId), "load delivery permits") as any[]
+  if (!permits.some((p) => ["SUBMITTED_SIGNED", "DELIVERED", "APPROVED"].includes(p.status))) return false
+  if (!(await isSOFullyDelivered(db, soId))) return false
+  const rows = must(
+    await db
+      .from("sales_orders")
+      .update({ status: "delivered", fulfillment_status: "DELIVERED" })
+      .eq("so_id", soId)
+      .eq("status", so.status)
+      .select("so_id"),
+    "mark sales order delivered",
+  ) as any[]
+  return rows.length === 1
+}

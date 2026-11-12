@@ -274,3 +274,24 @@ test("R5. deleting a returned line asks: keep it marked as returned (quantity 0)
     assert.equal(i18n.split(`"${key}":`).length - 1, 2, key)
   }
 })
+
+test("R6. an order edited down to what the customer kept moves forward to delivered (SO-2026-742962 case)", async () => {
+  const { markDeliveredIfComplete } = await import("../so-edit")
+  // 10 delivered on a SIGNED permit, 2 returned, order still partially delivered
+  const db = baseDb({ delivery_permits: [{ permit_id: 1, permit_no: "DP-T-1", sales_order_id: 1, customer_id: 5, status: "SUBMITTED_SIGNED" }] })
+  db.tables.sales_orders[0].status = "ready_for_delivery"
+  db.tables.sales_orders[0].fulfillment_status = "PARTIALLY_DELIVERED"
+  await returnTwoPumps(db)
+  assert.equal(await markDeliveredIfComplete(db, 1), false, "10 ordered, 8 kept: not complete yet")
+  db.tables.sales_order_items[0].quantity = 8 // the edit: lowered to what is kept
+  assert.equal(await markDeliveredIfComplete(db, 1), true)
+  assert.deepEqual([db.tables.sales_orders[0].status, db.tables.sales_orders[0].fulfillment_status], ["delivered", "DELIVERED"])
+  assert.equal(await markDeliveredIfComplete(db, 1), false, "already delivered: nothing to do")
+  // an order with no signed / approved permit is never moved
+  const db2 = baseDb({ delivery_permits: [{ permit_id: 1, permit_no: "DP-T-1", sales_order_id: 1, customer_id: 5, status: "OUT_FOR_DELIVERY" }] })
+  db2.tables.sales_orders[0].status = "ready_for_delivery"
+  assert.equal(await markDeliveredIfComplete(db2, 1), false)
+  const fs = require("node:fs") as typeof import("node:fs")
+  const path = require("node:path") as typeof import("node:path")
+  assert.match(fs.readFileSync(path.join(process.env.REPO_ROOT || process.cwd(), "app/api/sales-orders/route.ts"), "utf8"), /await markDeliveredIfComplete\(supabase, numericId\)/)
+})
