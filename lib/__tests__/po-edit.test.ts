@@ -556,3 +556,14 @@ test("X7. exchange with the old item handed back from a warehouse: it leaves sto
   assert.match(menu, /handedBackFrom: r\.handedBack === "none" \? null : r\.handedBack/)
   assert.match(menu, /!r\.handedBack/, "must be chosen")
 })
+
+test("V1. exchanges show on the PO print and the supplier card; old lines kept at 0 are not listed as items", async () => {
+  const pdf = src("app/api/purchase-orders/pdf/route.ts")
+  assert.match(pdf, /\.filter\(\(i: any\) => Number\(i\.quantity\) > 0\)/)
+  assert.match(pdf, /\.in\("event_type", \["PO_ITEM_EXCHANGED", "PO_ITEM_SENT_BACK"\]\)/)
+  assert.match(pdf, /L\.exchangesTitle/)
+  const supplier = src("components/modules/supplier-module.tsx")
+  assert.match(supplier, /<PoHistory poId=\{order\.id\} \/>/)
+  assert.match(supplier, /order\.items\.filter\(\(item\) => Number\(item\.quantity\) > 0\)/)
+  assert.match(src("components/modules/purchase-order-module.tsx"), /viewDetailsOrder\.items\?\.filter\(\(item: any\) => Number\(item\.quantity\) > 0\)/)
+})

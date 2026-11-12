@@ -2242,7 +2242,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       </tr>
                     </thead>
                     <tbody>
-                      {viewDetailsOrder.items?.map((item: any, idx: number) => (
+                      {/* lines exchanged / returned in full stay at 0 on the PO: shown under Exchanges instead */}
+                      {viewDetailsOrder.items?.filter((item: any) => Number(item.quantity) > 0).map((item: any, idx: number) => (
                         <tr key={idx} className="border-t">
                           <td className="p-3">{item.productName || item.product_name || "-"}</td>
                           <td className="p-3">{formatNumber(item.quantity)}</td>

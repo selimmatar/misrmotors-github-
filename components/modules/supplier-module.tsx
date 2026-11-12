@@ -6,6 +6,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useApp } from "@/lib/app-context"
+import { PoHistory } from "@/components/purchase-order/po-open-actions"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { parseRemainderNote } from "@/lib/supplier-credit-note"
@@ -551,7 +552,8 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                           <div className="mt-3 pt-3 border-t">
                             <p className="text-sm text-muted-foreground mb-2">{t("supplier.items")}</p>
                             <div className="space-y-2">
-                              {order.items.map((item, itemIdx) => (
+                              {/* lines exchanged / returned in full are kept at 0: shown under Exchanges instead */}
+                              {order.items.filter((item) => Number(item.quantity) > 0).map((item, itemIdx) => (
                                 <div key={item.id ?? `${item.productId}-${itemIdx}`} className="text-sm bg-muted/50 rounded p-2">
                                   <div className="flex justify-between items-start">
                                     <div>
@@ -569,6 +571,9 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
                             </div>
                           </div>
                         )}
+                        <div className="mt-3">
+                          <PoHistory poId={order.id} />
+                        </div>
                       </div>
                     )
                   })}
