@@ -2,7 +2,7 @@
 
 import { DialogFooter } from "@/components/ui/dialog"
 
-import { Fragment, useEffect, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -1237,12 +1237,24 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   }
 
   // a PO clicked in the order overview: show just that PO
+  const openPoOnLoad = useRef<string | null>(null)
   useEffect(() => {
     const asked = takeDocumentFor("purchase-orders")
     if (!asked) return
+    openPoOnLoad.current = asked
     setStatusFilter(null)
     setSearchQuery(asked)
   }, [])
+  // ...and open its details window once the list has it
+  useEffect(() => {
+    const asked = openPoOnLoad.current
+    if (!asked) return
+    const order = purchaseOrders.find((o) => o.poNumber === asked)
+    if (!order) return
+    openPoOnLoad.current = null
+    setViewDetailsOrder(order)
+    setShowDetailsModal(true)
+  }, [purchaseOrders])
 
   const filteredOrders = purchaseOrders.filter((order) => {
     if (!searchQuery) return true
@@ -1502,6 +1514,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               title: [o.so_number, o.customer_name].filter(Boolean).join(" · "),
               detail: o.items.join("، "),
               action: t("waiting.make-po"),
+              dismissKey: o.dismiss_key,
+              hidden: o.hidden,
               // New PO from this sales order: the person picks the supplier, the order is already searched for.
               onOpen: () => {
                 setPoSource("sales_order")
@@ -1520,6 +1534,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               title: po.po_number,
               detail: [po.supplier_name, `${formatMoney(po.total, language)} ${po.currency}`].filter(Boolean).join(" · "),
               action: t("waiting.open"),
+              dismissKey: po.dismiss_key,
+              hidden: po.hidden,
               onOpen: () => {
                 const order = purchaseOrders.find((x) => String(x.id) === String(po.po_id))
                 if (order) {
@@ -1530,6 +1546,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             })),
           },
         ]}
+        onChanged={waiting.reload}
       />
 
       <Card>

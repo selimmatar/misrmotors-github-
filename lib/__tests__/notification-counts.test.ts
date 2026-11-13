@@ -124,11 +124,11 @@ test("waiting for you: each screen's list holds exactly the items behind its cou
     { work_order_id: 6, work_order_number: "WO-6", customer_name: "Nile Co", status: "completed" },
   )
   const po = await details("purchase-orders", "po-rep")
-  assert.deepEqual(po.orders, [{ so_id: 1, so_number: "SO-1", customer_name: "Ahmed Trading", items: ["Pump A"] }])
-  assert.deepEqual(po.purchaseOrders, [{ po_id: 8, po_number: "PO-8", supplier_name: "Cairo Parts", total: 1500, currency: "EGP" }])
+  assert.deepEqual(po.orders, [{ so_id: 1, so_number: "SO-1", customer_name: "Ahmed Trading", items: ["Pump A"], dismiss_key: "so-needs-po:1:Pump A", hidden: false }])
+  assert.deepEqual(po.purchaseOrders, [{ po_id: 8, po_number: "PO-8", supplier_name: "Cairo Parts", total: 1500, currency: "EGP", dismiss_key: "po-pending:8", hidden: false }])
   const pr = await details("po-requests", "po-rep")
   assert.deepEqual(pr.requests, [
-    { request_id: 1, request_number: "POR-1", quotation_number: "QT-2026-031", customer_name: "Ahmed Trading", supplier_name: "Cairo Parts" },
+    { request_id: 1, request_number: "POR-1", quotation_number: "QT-2026-031", customer_name: "Ahmed Trading", supplier_name: "Cairo Parts", dismiss_key: "price-request:1", hidden: false },
   ])
   const sales = await details("sales-orders", "sales-rep")
   assert.deepEqual(sales.prices, [
@@ -167,7 +167,7 @@ test("maintenance switched off: its reports leave the counter and the list; its 
 
 test("waiting for you: the button sits on the three screens and opens each item", () => {
   const box = src("components/notifications/waiting-for-you.tsx")
-  assert.match(box, /if \(shown\.length === 0\) return null/)
+  assert.match(box, /if \(shown\.length === 0 && hiddenRows\.length === 0\) return null/)
   // a small button with the count; the list opens in a pop-up, and opening an item closes it
   assert.match(box, /<DialogTrigger asChild>/)
   assert.match(box, /aria-label=\{`\$\{t\("waiting\.title"\)\} \(\$\{total\}\)`\}/)
@@ -203,4 +203,32 @@ test("Excel import: stock items match by name or SKU and keep the stock price wh
   assert.match(excel, /p\.productName\?\.trim\(\)\.toLowerCase\(\) === name \|\| p\.sku\?\.trim\(\)\.toLowerCase\(\) === name/)
   assert.match(excel, /product_id: Number\(matchedProduct\.id\)/)
   assert.match(excel, /unitPrice <= 0 \? matchedProduct\.unitPrice \|\| 0 : unitPrice/)
+})
+
+test("hiding a suggestion (owner request, 2026-11-13): out of the counter, listed as hidden, back on 'Show again' or when it changes", async () => {
+  const dismiss = await import("../../app/api/pending-counts/dismiss/route")
+  const db = chainDb()
+  db.tables.workflow_events = []
+  useDb(db)
+  const so1 = (await details("purchase-orders", "po-rep")).orders[0]
+  assert.equal(so1.hidden, false)
+  const por1 = (await details("po-requests", "po-rep")).requests[0]
+  // hide SO-1 and POR-1
+  for (const key of [so1.dismiss_key, por1.dismiss_key]) {
+    const r = await call(dismiss.POST as any, "POST", { key, hide: true })
+    assert.equal(r.status, 200, JSON.stringify(r.body))
+  }
+  assert.deepEqual([(await counts("po-rep"))["purchase-orders"], (await counts("po-rep"))["po-requests"]], [0, 0])
+  assert.equal((await details("purchase-orders", "po-rep")).orders[0].hidden, true) // still listed, as hidden
+  // the shortfall changes (another line now needs a PO): it shows again by itself
+  db.tables.sales_order_items.push({ so_item_id: 12, so_id: 1, product_id: null, quantity: 1, unit_price: 10, item_type: "outsourced", outsourced_name: "Valve" })
+  assert.equal((await counts("po-rep"))["purchase-orders"], 1)
+  // "Show again" for the request
+  await call(dismiss.POST as any, "POST", { key: por1.dismiss_key, hide: false })
+  assert.equal((await counts("po-rep"))["po-requests"], 1)
+  assert.equal(db.tables.workflow_events.filter((e) => e.new_value === por1.dismiss_key).length, 0)
+  // bad input
+  assert.equal((await call(dismiss.POST as any, "POST", { key: "anything", hide: true })).status, 400)
+  assert.equal((await call(dismiss.POST as any, "POST", { key: so1.dismiss_key })).status, 400)
+  assert.match(src("components/notifications/waiting-for-you.tsx"), /\/api\/pending-counts\/dismiss/)
 })

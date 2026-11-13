@@ -7,6 +7,7 @@ import {
   loadSalesOrdersNeedingPo,
   loadUnappliedPrices,
 } from "@/lib/notifications/waiting"
+import { loadDismissed } from "@/lib/notifications/dismissed"
 
 export const dynamic = "force-dynamic"
 
@@ -24,11 +25,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ prices, reports })
     }
     if (screen === "purchase-orders" && ["po-rep", "ceo"].includes(role)) {
-      const [orders, purchaseOrders] = await Promise.all([loadSalesOrdersNeedingPo(db), loadPendingPurchaseOrders(db)])
+      const dismissed = await loadDismissed(db)
+      const [orders, purchaseOrders] = await Promise.all([loadSalesOrdersNeedingPo(db, dismissed), loadPendingPurchaseOrders(db, dismissed)])
       return NextResponse.json({ orders, purchaseOrders })
     }
     if (screen === "po-requests" && ["po-rep", "ceo"].includes(role)) {
-      return NextResponse.json({ requests: await loadPendingPriceRequests(db) })
+      return NextResponse.json({ requests: await loadPendingPriceRequests(db, await loadDismissed(db)) })
     }
     return NextResponse.json({})
   } catch (error) {

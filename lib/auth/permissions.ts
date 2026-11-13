@@ -101,6 +101,7 @@ export const RULES: Rule[] = [
   rule("/api/system-health", ONLY_TOP, ONLY_TOP),
   // Counters and links shown to everyone
   rule("/api/pending-counts", ALL, ONLY_TOP),
+  rule("/api/pending-counts/dismiss", ["po-rep"], ["po-rep"]),
   rule("/api/chain", ALL, ONLY_TOP),
   // Own session (any logged-in person)
   rule("/api/auth", ALL, ALL),
