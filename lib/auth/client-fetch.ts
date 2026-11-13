@@ -11,6 +11,15 @@ export function responseAction(status: number, body: unknown): AuthAction {
 
 const INSTALLED = Symbol.for("mm.authFetch")
 
+/** A request sent with this header never shows the "no permission" message (background loads). The server drops all
+ * x-mm-* headers it did not set itself (middleware), so it carries no meaning there. */
+export const QUIET_HEADER = "x-mm-quiet"
+const isQuiet = (input: RequestInfo | URL, init?: RequestInit) => {
+  const fromInit = init?.headers ? new Headers(init.headers).get(QUIET_HEADER) : null
+  const fromRequest = typeof Request !== "undefined" && input instanceof Request ? input.headers.get(QUIET_HEADER) : null
+  return fromInit === "1" || fromRequest === "1"
+}
+
 /** Wraps window.fetch once. Returns a function that removes the wrapper. */
 export function installAuthFetch(handlers: { onLogout: () => void; onForbidden: (message?: string) => void }): () => void {
   const w = window as any
@@ -22,7 +31,7 @@ export function installAuthFetch(handlers: { onLogout: () => void; onForbidden: 
       const body = await res.clone().json().catch(() => null)
       const action = responseAction(res.status, body)
       if (action === "logout") handlers.onLogout()
-      else if (action === "forbidden") handlers.onForbidden(body?.error)
+      else if (action === "forbidden" && !isQuiet(input, init)) handlers.onForbidden(body?.error)
     }
     return res
   }

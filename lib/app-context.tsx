@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode, useCallback } from "react"
+import { QUIET_HEADER } from "@/lib/auth/client-fetch"
 import useSWR from "swr"
 import type {
   InventoryItem,
@@ -96,7 +97,9 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
 const swrFetcher = async (url: string) => {
-  const response = await fetch(url)
+  // shared lists load in the background for every screen: a list the person's role may not read is just left empty,
+  // without the red "no permission" message (lib/auth/client-fetch.ts)
+  const response = await fetch(url, { headers: { [QUIET_HEADER]: "1" } })
 
   const contentType = response.headers.get("content-type")
   const isJson = contentType?.includes("application/json")

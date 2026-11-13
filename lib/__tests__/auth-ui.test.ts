@@ -90,3 +90,22 @@ test("dashboard: menu from all roles; each screen opens with the role that owns 
   assert.match(d, /effectiveRoleFor\(activeModule, roles\)/)
   assert.doesNotMatch(d, /ROLE_MODULES\[user\.role\]/)
 })
+
+test("background lists (quiet) never show the 'no permission' message; a person's own action still does; 401 still logs out", async () => {
+  const { installAuthFetch, QUIET_HEADER } = await import("../auth/client-fetch")
+  const g = globalThis as any
+  const savedWindow = g.window
+  const forbidden: string[] = []
+  let logouts = 0
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } })
+  g.window = { fetch: async (url: string) => (url === "/bye" ? json(401, { code: "AUTH_REQUIRED" }) : json(403, { code: "FORBIDDEN", error: "no" })) }
+  const remove = installAuthFetch({ onLogout: () => logouts++, onForbidden: (m) => forbidden.push(m || "") })
+  await g.window.fetch("/api/users", { headers: { [QUIET_HEADER]: "1" } })
+  assert.deepEqual(forbidden, [])
+  await g.window.fetch("/api/users")
+  assert.deepEqual(forbidden, ["no"])
+  await g.window.fetch("/bye", { headers: { [QUIET_HEADER]: "1" } })
+  assert.equal(logouts, 1)
+  remove()
+  g.window = savedWindow
+})
