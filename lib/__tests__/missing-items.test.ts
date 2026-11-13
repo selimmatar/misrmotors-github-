@@ -80,7 +80,9 @@ test("M3. multiple POs on one SO line are summed, not just detected", async () =
 test("M4. partial PO (less than ordered) is reported as partial", async () => {
   const r = await only({ lines: [outLine(1, "Borescope", 10)], pos: [po(1)], poItems: [poi(1, 1, 1, 3)] })
   assert.equal(r.poOrdered, 3)
-  assert.match(r.procurementStatus, /^Partially ordered 3\/10/)
+  assert.match(r.procurementStatus, /^Partially ordered 3\/10 — Needs PO for 7 — /)
+  // so the order is listed under "sales orders that need a PO" (e.g. after items went back to the supplier)
+  assert.match(r.procurementStatus, /Needs PO/)
 })
 
 test("M5. a rejected PO does not count; it asks for a reorder", async () => {

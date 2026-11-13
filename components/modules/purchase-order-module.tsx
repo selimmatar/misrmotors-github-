@@ -2,7 +2,7 @@
 
 import { DialogFooter } from "@/components/ui/dialog"
 
-import { Fragment, useEffect, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -101,6 +101,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       outsourcedUnit?: string
       sourceSoId?: string
       sourceSoItemId?: string
+      /** the person removed this line's sales-order link (the server then drops it too) */
+      soLinkCleared?: boolean
     }>
   >([])
   // PO source: build manually or import outsourced items from a sales order
@@ -522,6 +524,47 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     }
   }
 
+  // "For sales order" on each PO line (owner request, 2026-11-13): a line added by hand — also while editing a PO —
+  // can be tied to a customer's outsourced line, so receiving, delivery and the order overview count it.
+  const soLineOptions = (salesOrders || [])
+    .filter((so: any) => !["draft", "cancelled", "rejected", "delivered"].includes(String(so.status || "")))
+    .flatMap((so: any) =>
+      (so.items || [])
+        .filter((it: any) => (it.itemType || it.item_type) === "outsourced" && it.id)
+        .map((it: any) => ({
+          value: `${so.id}:${it.id}`,
+          soId: String(so.id),
+          soItemId: String(it.id),
+          name: String(it.outsourcedName || it.productName || ""),
+          unit: it.outsourcedUnit || "",
+          label: `${so.soNumber}${so.customerName ? ` · ${so.customerName}` : ""} — ${it.outsourcedName || it.productName} × ${it.quantity}`,
+        })),
+    )
+  const linkLineToSo = (index: number, value: string) => {
+    const newItems = [...orderItems]
+    const line = { ...newItems[index] }
+    const option = soLineOptions.find((o) => o.value === value)
+    if (option) {
+      line.itemType = "outsourced"
+      line.outsourcedName = option.name
+      if (!line.outsourcedUnit && option.unit) line.outsourcedUnit = option.unit
+      line.productId = ""
+      line.sourceSoId = option.soId
+      line.sourceSoItemId = option.soItemId
+      line.soLinkCleared = false
+    } else {
+      // unlinked: back to a plain typed line that keeps its name
+      line.productName = line.productName || line.outsourcedName || ""
+      line.itemType = "stock"
+      line.outsourcedName = ""
+      line.sourceSoId = ""
+      line.sourceSoItemId = ""
+      line.soLinkCleared = true
+    }
+    newItems[index] = line
+    setOrderItems(newItems)
+  }
+
   const handleAddItem = () => {
     setOrderItems([...orderItems, { productId: "", productName: "", quantity: "", unitPrice: "", itemType: "stock" }])
   }
@@ -749,6 +792,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
           outsourcedUnit: item.outsourcedUnit || null,
           sourceSoId: item.sourceSoId || null,
           sourceSoItemId: item.sourceSoItemId || null,
+          ...(item.soLinkCleared && { soLinkCleared: true }),
         }
       })
 
@@ -1193,12 +1237,24 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   }
 
   // a PO clicked in the order overview: show just that PO
+  const openPoOnLoad = useRef<string | null>(null)
   useEffect(() => {
     const asked = takeDocumentFor("purchase-orders")
     if (!asked) return
+    openPoOnLoad.current = asked
     setStatusFilter(null)
     setSearchQuery(asked)
   }, [])
+  // ...and open its details window once the list has it
+  useEffect(() => {
+    const asked = openPoOnLoad.current
+    if (!asked) return
+    const order = purchaseOrders.find((o) => o.poNumber === asked)
+    if (!order) return
+    openPoOnLoad.current = null
+    setViewDetailsOrder(order)
+    setShowDetailsModal(true)
+  }, [purchaseOrders])
 
   const filteredOrders = purchaseOrders.filter((order) => {
     if (!searchQuery) return true
@@ -1458,6 +1514,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               title: [o.so_number, o.customer_name].filter(Boolean).join(" · "),
               detail: o.items.join("، "),
               action: t("waiting.make-po"),
+              dismissKey: o.dismiss_key,
+              hidden: o.hidden,
               // New PO from this sales order: the person picks the supplier, the order is already searched for.
               onOpen: () => {
                 setPoSource("sales_order")
@@ -1476,6 +1534,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
               title: po.po_number,
               detail: [po.supplier_name, `${formatMoney(po.total, language)} ${po.currency}`].filter(Boolean).join(" · "),
               action: t("waiting.open"),
+              dismissKey: po.dismiss_key,
+              hidden: po.hidden,
               onOpen: () => {
                 const order = purchaseOrders.find((x) => String(x.id) === String(po.po_id))
                 if (order) {
@@ -1486,6 +1546,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
             })),
           },
         ]}
+        onChanged={waiting.reload}
       />
 
       <Card>
@@ -1998,7 +2059,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   </div>
                 )}
                 {orderItems.map((item, index) => (
-                  <div key={index} className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-center">
+                  <div key={index} className="space-y-1 rounded-md border p-2">
+                  <div className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-center">
                     {item.itemType === "outsourced" ? (
                       <div className="w-full border rounded px-3 py-2 bg-muted/50 min-w-0">
                         <div className="flex items-center gap-1.5 text-sm font-medium">
@@ -2049,6 +2111,24 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                     <Button size="sm" variant="destructive" onClick={() => handleRemoveItem(index)}>
                       {t("action.remove")}
                     </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <label htmlFor={`po-line-so-${index}`} className="text-muted-foreground">{t("po.line-for-so")}</label>
+                    <select
+                      id={`po-line-so-${index}`}
+                      className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+                      value={item.sourceSoItemId ? `${item.sourceSoId}:${item.sourceSoItemId}` : ""}
+                      onChange={(e) => linkLineToSo(index, e.target.value)}
+                    >
+                      <option value="">{t("po.line-for-so-none")}</option>
+                      {item.sourceSoItemId && !soLineOptions.some((o) => o.value === `${item.sourceSoId}:${item.sourceSoItemId}`) && (
+                        <option value={`${item.sourceSoId}:${item.sourceSoItemId}`}>{fill(t("po.line-for-so-current"), { name: item.outsourcedName || "" })}</option>
+                      )}
+                      {soLineOptions.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
                   </div>
                 ))}
               </div>

@@ -36,6 +36,7 @@
           "id=\"po-manual-number\"",
           "id=\"po-request-select\"",
           "id=\"poVatEnabled\"",
+          "id={`po-line-so-${index}`}",
           "name=\"poSource\"",
           "name=\"poSource\"",
           "name=\"poType\"",

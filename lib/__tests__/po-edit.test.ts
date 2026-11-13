@@ -125,6 +125,21 @@ test("E4. an outsourced line keeps its sales-order link when edited", async () =
   assert.deepEqual([l.item_type, l.source_so_item_id, l.outsourced_name], ["outsourced", 30, "Gearbox"])
 })
 
+test("E4b. a line added while editing can be tied to a sales-order line; the link can also be removed on purpose", async () => {
+  const db = mk({ sales_order_items: [{ so_item_id: 60, so_id: 4, quantity: 5 }] })
+  const added = { productName: "تزجه", outsourcedName: "تزجه", itemType: "outsourced", sourceSoId: "4", sourceSoItemId: "60", quantity: 5, unitPrice: 9000 }
+  const r = await edit(body({ items: [{ id: "7", productId: "5", productName: "Pump", quantity: 2, unitPrice: 50 }, added] }))
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const l = db.tables.purchase_order_items.find((x) => x.source_so_item_id === 60)!
+  assert.deepEqual([l.item_type, l.outsourced_name, l.source_so_id, l.product_id], ["outsourced", "تزجه", 4, null])
+  // set back to "Not for a sales order": the link is dropped (not restored from the saved line)
+  const r2 = await edit(body({ items: [{ id: "7", productId: "5", productName: "Pump", quantity: 2, unitPrice: 50 }, { id: String(l.po_item_id), productName: "تزجه", itemType: "stock", quantity: 5, unitPrice: 9000, soLinkCleared: true }] }))
+  assert.equal(r2.status, 200, JSON.stringify(r2.body))
+  const l2 = db.tables.purchase_order_items.find((x) => x.po_item_id === l.po_item_id)!
+  assert.deepEqual([l2.source_so_item_id, l2.source_so_id, l2.item_type], [null, null, "stock"])
+  assert.match(src("components/modules/purchase-order-module.tsx"), /t\("po\.line-for-so"\)/)
+})
+
 test("E5. locked: a closed PO (reopen first), rejected, cost finalized", async () => {
   const cases: [Record<string, Row[]>, string][] = [
     [{ accounts_payable: [bill()] }, "PO_CLOSED"],

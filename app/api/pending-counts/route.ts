@@ -7,6 +7,7 @@ import {
   loadSalesOrdersNeedingPo,
   loadUnappliedPrices,
 } from "@/lib/notifications/waiting"
+import { loadDismissed } from "@/lib/notifications/dismissed"
 
 export const dynamic = "force-dynamic"
 
@@ -44,13 +45,16 @@ export async function GET(request: Request) {
     // ===== PURCHASE ORDERS PENDING APPROVAL + SALES ORDERS THAT NEED A PO; PRICE REQUESTS WAITING =====
     // Visible to: po-rep, ceo. Same lists as the "Waiting for you" box on those screens.
     if (["po-rep", "ceo"].includes(role)) {
+      const dismissed = await loadDismissed(adminClient)
       const [pendingPos, ordersNeedingPo, priceRequests] = await Promise.all([
-        loadPendingPurchaseOrders(adminClient),
-        loadSalesOrdersNeedingPo(adminClient),
-        loadPendingPriceRequests(adminClient),
+        loadPendingPurchaseOrders(adminClient, dismissed),
+        loadSalesOrdersNeedingPo(adminClient, dismissed),
+        loadPendingPriceRequests(adminClient, dismissed),
       ])
-      counts["purchase-orders"] = pendingPos.length + ordersNeedingPo.length
-      counts["po-requests"] = priceRequests.length
+      // hidden suggestions are not counted
+      const shown = (rows: { hidden: boolean }[]) => rows.filter((r) => !r.hidden).length
+      counts["purchase-orders"] = shown(pendingPos) + shown(ordersNeedingPo)
+      counts["po-requests"] = shown(priceRequests)
     }
 
     // ===== DELIVERY PERMITS PENDING ALLOCATION (warehouse) =====

@@ -76,7 +76,8 @@ export async function POST(request: Request) {
       // A line that was already on the PO keeps its sales-order link and outsourced data when the form leaves them out.
       const before = findExistingPoItem(item, oldRows || [])
       const row = mapPoItem(item, poId, oldRows || [])
-      if (before) {
+      // ...unless the person removed the line's sales-order link on purpose ("For sales order" set to none)
+      if (before && item?.soLinkCleared !== true) {
         for (const key of ["source_so_id", "source_so_item_id", "outsourced_name", "outsourced_description", "outsourced_unit"] as const) {
           if (row[key] == null && before[key] != null) (row as any)[key] = before[key]
         }

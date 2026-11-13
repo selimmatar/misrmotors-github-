@@ -51,7 +51,12 @@ export function Sidebar({ activeModule, onModuleChange, userRole, roles, onLogou
   useEffect(() => {
     fetchPendingCounts()
     const interval = setInterval(fetchPendingCounts, 30000) // refresh every 30s
-    return () => clearInterval(interval)
+    // a suggestion hidden or shown again in "Waiting for you" updates the counter right away
+    window.addEventListener("pending-counts-refresh", fetchPendingCounts)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener("pending-counts-refresh", fetchPendingCounts)
+    }
   }, [fetchPendingCounts])
 
   const modules = hideIdleApprovals(navItemsForRoles(roleList), pendingCounts)

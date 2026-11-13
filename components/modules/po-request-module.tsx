@@ -350,6 +350,8 @@ export function PORequestModule({ userRole }: { userRole?: UserRole } = {}) {
               title: r.request_number,
               detail: [r.quotation_number, r.customer_name, r.supplier_name].filter(Boolean).join(" · "),
               action: t("waiting.enter-price"),
+              dismissKey: r.dismiss_key,
+              hidden: r.hidden,
               onOpen: () => {
                 const request = requests.find((x) => x.request_id === r.request_id)
                 if (request) setQuoteReceivedFor(request)
@@ -357,6 +359,7 @@ export function PORequestModule({ userRole }: { userRole?: UserRole } = {}) {
             })),
           },
         ]}
+        onChanged={waiting.reload}
       />
 
       {/* Search */}

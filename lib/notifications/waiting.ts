@@ -3,6 +3,7 @@
 import { loadMissingItems } from "@/lib/missing-items"
 import { HOLDING_QUOTATION_STATUSES } from "@/lib/stock-hold"
 import { isMaintenanceLive } from "@/lib/workflow-switch"
+import { poPendingKey, priceRequestKey, soNeedsPoKey } from "@/lib/notifications/dismissed"
 import { NEEDS_PO, SO_STATUSES_NEEDING_PO, filterUnappliedQuotedRequests, type QuotedRequest } from "@/lib/notifications/counts"
 
 type Db = any // supabase-js client (or a test double)
@@ -19,10 +20,14 @@ export interface SoNeedingPo {
   so_number: string
   customer_name: string
   items: string[]
+  /** the key to hide this suggestion with (lib/notifications/dismissed.ts) */
+  dismiss_key: string
+  /** hidden by someone ("Show again" brings it back) */
+  hidden: boolean
 }
 
 // Sales orders made from a quotation with lines that still need a purchase order.
-export async function loadSalesOrdersNeedingPo(db: Db): Promise<SoNeedingPo[]> {
+export async function loadSalesOrdersNeedingPo(db: Db, dismissed: Set<string> = new Set()): Promise<SoNeedingPo[]> {
   const { data: orders } = await db
     .from("sales_orders")
     .select("so_id")
@@ -34,7 +39,8 @@ export async function loadSalesOrdersNeedingPo(db: Db): Promise<SoNeedingPo[]> {
       const report = await loadMissingItems(db, order.so_id)
       const items = (report?.rows || []).filter((r) => NEEDS_PO.test(r.procurementStatus || "")).map((r) => r.name)
       if (report && items.length > 0) {
-        list.push({ so_id: report.so.so_id, so_number: report.so.so_number, customer_name: report.so.customerName || "", items })
+        const dismiss_key = soNeedsPoKey(report.so.so_id, items)
+        list.push({ so_id: report.so.so_id, so_number: report.so.so_number, customer_name: report.so.customerName || "", items, dismiss_key, hidden: dismissed.has(dismiss_key) })
       }
     } catch (error) {
       console.error("waiting: missing items of SO", order.so_id, error)
@@ -49,10 +55,12 @@ export interface PendingPo {
   supplier_name: string
   total: number
   currency: string
+  dismiss_key: string
+  hidden: boolean
 }
 
 // Purchase orders waiting for approval.
-export async function loadPendingPurchaseOrders(db: Db): Promise<PendingPo[]> {
+export async function loadPendingPurchaseOrders(db: Db, dismissed: Set<string> = new Set()): Promise<PendingPo[]> {
   const { data } = await db.from("purchase_orders").select("po_id, po_number, supplier_id, total, currency").eq("status", "pending")
   const suppliers = await namesById(db, "suppliers", "supplier_id", "supplier_name", (data || []).map((po: any) => po.supplier_id))
   return (data || []).map((po: any) => ({
@@ -61,6 +69,8 @@ export async function loadPendingPurchaseOrders(db: Db): Promise<PendingPo[]> {
     supplier_name: suppliers.get(po.supplier_id) || "",
     total: Number(po.total || 0),
     currency: po.currency || "EGP",
+    dismiss_key: poPendingKey(po.po_id),
+    hidden: dismissed.has(poPendingKey(po.po_id)),
   }))
 }
 
@@ -70,10 +80,12 @@ export interface WaitingPriceRequest {
   quotation_number: string
   customer_name: string
   supplier_name: string
+  dismiss_key: string
+  hidden: boolean
 }
 
 // Price requests waiting for the supplier's price.
-export async function loadPendingPriceRequests(db: Db): Promise<WaitingPriceRequest[]> {
+export async function loadPendingPriceRequests(db: Db, dismissed: Set<string> = new Set()): Promise<WaitingPriceRequest[]> {
   const { data } = await db.from("po_requests").select("request_id, request_number, supplier_id, sales_quotation_id").eq("status", "pending")
   const rows = data || []
   const suppliers = await namesById(db, "suppliers", "supplier_id", "supplier_name", rows.map((r: any) => r.supplier_id))
@@ -90,6 +102,8 @@ export async function loadPendingPriceRequests(db: Db): Promise<WaitingPriceRequ
       quotation_number: quotation?.quotation_number || "",
       customer_name: quotation?.customer_name || "",
       supplier_name: suppliers.get(r.supplier_id) || "",
+      dismiss_key: priceRequestKey(r.request_id),
+      hidden: dismissed.has(priceRequestKey(r.request_id)),
     }
   })
 }
