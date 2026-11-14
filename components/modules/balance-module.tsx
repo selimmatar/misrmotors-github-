@@ -26,16 +26,20 @@ export function BalanceModule() {
 
       if (response.ok) {
         const data = await response.json()
-        const entries = data.map((entry: any) => ({
-          id: entry.id,
-          type: entry.type,
-          referenceId: entry.reference_id,
-          referenceNumber: entry.reference_number,
-          amount: Number.parseFloat(entry.amount),
-          description: entry.description,
-          createdAt: entry.created_at,
-          createdBy: entry.created_by,
-        }))
+        // the table's columns are entry_id / entry_type (the screen read id / type, so every row said "Undefined");
+        // a voided entry no longer counts
+        const entries = data
+          .filter((entry: any) => !String(entry.status || "").toLowerCase().startsWith("void"))
+          .map((entry: any) => ({
+            id: entry.entry_id ?? entry.id,
+            type: entry.entry_type ?? entry.type,
+            referenceId: entry.reference_id,
+            referenceNumber: entry.reference_number,
+            amount: Number.parseFloat(entry.amount),
+            description: entry.description,
+            createdAt: entry.created_at,
+            createdBy: entry.created_by,
+          }))
         setBalanceEntries(entries)
       }
     } catch (error) {

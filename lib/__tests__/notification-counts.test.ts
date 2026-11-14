@@ -161,7 +161,8 @@ test("maintenance switched off: its reports leave the counter and the list; its 
   assert.match(src("components/modules/shipping-module.tsx"), /<TabsTrigger value="maintenance" disabled=\{!isMaintenanceLive\(\)\}>/)
   assert.match(src("components/modules/sales-quotation-module.tsx"), /<SelectItem value="MAINTENANCE" disabled=\{!isMaintenanceLive\(\)\}>/)
   assert.match(src("components/modules/sales-quotations-hub-module.tsx"), /isMaintenanceLive\(\) && \{\n\s*key: "reports"/)
-  assert.match(src("components/layout/nav-config.ts"), /id: "maintenance-invoices",[^}]*disabled: true/)
+  // the Maintenance Invoices screen was the accountant's only menu entry for it; removed from that menu on 2026-11-14
+  assert.doesNotMatch(src("components/layout/nav-config.ts"), /id: "maintenance-invoices"/)
   assert.match(src("components/so-type/so-type-selector.tsx"), /<SelectItem value="MAINTENANCE_PARTS" disabled=\{!isMaintenanceLive\(\)\}>/)
 })
 
@@ -231,4 +232,11 @@ test("hiding a suggestion (owner request, 2026-11-13): out of the counter, liste
   assert.equal((await call(dismiss.POST as any, "POST", { key: "anything", hide: true })).status, 400)
   assert.equal((await call(dismiss.POST as any, "POST", { key: so1.dismiss_key })).status, 400)
   assert.match(src("components/notifications/waiting-for-you.tsx"), /\/api\/pending-counts\/dismiss/)
+})
+
+test("Balance screen reads the ledger's own columns (entry_type, entry_id): no more 'Undefined' type; voided rows left out", () => {
+  const b = src("components/modules/balance-module.tsx")
+  assert.match(b, /type: entry\.entry_type \?\? entry\.type/)
+  assert.match(b, /id: entry\.entry_id \?\? entry\.id/)
+  assert.match(b, /\.filter\(\(entry: any\) => !String\(entry\.status \|\| ""\)\.toLowerCase\(\)\.startsWith\("void"\)\)/)
 })

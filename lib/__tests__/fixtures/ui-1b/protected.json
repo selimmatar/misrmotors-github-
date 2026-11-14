@@ -148,7 +148,7 @@
     "fetch": 2,
     "iso": 0,
     "t": 45,
-    "onClick": 11
+    "onClick": 10
   },
   "components/modules/customer-module.tsx": {
     "api": [

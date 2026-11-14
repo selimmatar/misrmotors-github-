@@ -18,8 +18,9 @@ const MAIN_IDS: Record<string, string[]> = { // verbatim from origin/main compon
   // ceo: operations-management added (owner request 2026-10-31); every working screen and User Management added
   // (owner, 2026-11-01: the CEO sees everything and may edit and approve everything).
   ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","goods-receipt","warehouse-transfers","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","approve-sales-orders","delivery-permits","warehouse-delivery","shipment","operations-management","accounts-receivable","balance","finance-reports","user-management","metrics-validation","system-health"],
-  // accountant: quotations swapped for the view-only order list (owner request).
-  accountant: ["dashboard","analytics","approve-sales-orders","sales-orders","payment-schedule","purchase-orders","pricing-review","costing-settings","accounts-payable","accounts-receivable","maintenance-invoices","customers","suppliers","delivery-permits","balance","finance-reports"],
+  // accountant: quotations swapped for the view-only order list (owner request); since 2026-11-14 no dashboard,
+  // analytics, payment schedule, pricing review, costing settings, maintenance invoices or balance (owner request).
+  accountant: ["approve-sales-orders","sales-orders","purchase-orders","accounts-payable","accounts-receivable","customers","suppliers","delivery-permits","finance-reports"],
   "sales-rep": ["dashboard","analytics","customers","sales-orders","delivery-permits","inventory","lost-sales","accounts-receivable","operations-management"],
   "warehouse-rep": ["dashboard","inventory","inventory-audit","warehouse-transfers","warehouse-delivery","delivery-permits","goods-receipt","goods-receipt-tracking"],
   "po-rep": ["dashboard","analytics","suppliers","products","po-requests","purchase-orders","goods-receipt-tracking","inventory","reorder-suggestions","lost-sales"],
@@ -38,13 +39,13 @@ test("every module id in every role list has a group", () => {
 
 test("every label is an i18n key", () => {
   for (const list of Object.values(ROLE_MODULES)) for (const i of list) assert.match(i.label, /^module\./, i.id)
-  assert.equal(ROLE_MODULES.accountant.find((i) => i.id === "maintenance-invoices")!.label, "module.maintenance-invoices")
+  assert.equal(ROLE_MODULES.accountant.find((i) => i.id === "finance-reports")!.label, "module.finance-reports")
 })
 
 test("groupItems: fixed order, role order inside, empty groups hidden", () => {
   const g = groupItems(ROLE_MODULES.accountant)
-  assert.deepEqual(g.map((x) => x.group), ["overview", "sales", "purchasing", "finance"])
-  assert.deepEqual(g[1].items.map((i) => i.id), ["approve-sales-orders", "sales-orders", "customers", "delivery-permits"])
+  assert.deepEqual(g.map((x) => x.group), ["sales", "purchasing", "finance"])
+  assert.deepEqual(g[0].items.map((i) => i.id), ["approve-sales-orders", "sales-orders", "customers", "delivery-permits"])
 })
 
 test("pageFor", () => {

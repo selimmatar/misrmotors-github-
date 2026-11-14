@@ -97,9 +97,15 @@ export function Dashboard({ user: account, onLogout }: DashboardProps) {
   // A person can hold several roles: the menu shows all their screens, and each screen opens with the role that owns it.
   const roles = account.roles?.length ? account.roles : [account.role]
   const mainRole = primaryRole(roles) ?? account.role
-  const [activeModule, setActiveModule] = useState<ModuleType>(
-    mainRole === "shipment" ? "shipment" : mainRole === "admin" ? "user-management" : "dashboard",
-  )
+  // A person without the Dashboard screen (the accountant, since 2026-11-14) opens on their first screen instead.
+  const [activeModule, setActiveModule] = useState<ModuleType>(() => {
+    if (mainRole === "shipment") return "shipment"
+    if (mainRole === "admin") return "user-management"
+    const items = navItemsForRoles(roles)
+    // approval screens hide themselves while nothing waits, so they are never the first screen
+    const first = items.find((i) => !i.id.startsWith("approve-")) || items[0]
+    return (items.some((i) => i.id === "dashboard") ? "dashboard" : first?.id || "dashboard") as ModuleType
+  })
   const user: User = { ...account, role: effectiveRoleFor(activeModule, roles) }
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const { refreshLists } = useAppContext()
