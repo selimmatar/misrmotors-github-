@@ -182,3 +182,55 @@ test("O10. clicking a DP or PO in the overview opens that screen once, on that d
   assert.match(src("components/modules/purchase-order-module.tsx"), /takeDocumentFor\("purchase-orders"\)[\s\S]*setSearchQuery\(asked\)/)
   delete (globalThis as any).window
 })
+
+test("O11. PO line status: not received / partly received / received (stock) / out for delivery / partly delivered / delivered", async () => {
+  const { poLineStatuses } = await import("../po-line-status")
+  const db = new FakeDb({
+    purchase_order_items: [
+      { po_item_id: 1, po_id: 1, quantity: 4, source_so_id: null, source_so_item_id: null }, // stock, nothing received
+      { po_item_id: 2, po_id: 1, quantity: 4, source_so_id: null, source_so_item_id: null }, // stock, 2 received
+      { po_item_id: 3, po_id: 1, quantity: 3, source_so_id: null, source_so_item_id: null }, // stock, all received
+      { po_item_id: 4, po_id: 1, quantity: 2, source_so_id: 1, source_so_item_id: 11 }, // A: received, out for delivery
+      { po_item_id: 5, po_id: 1, quantity: 5, source_so_id: 1, source_so_item_id: 12 }, // B: 5 received, 3 delivered (4 signed - 1 returned)
+      { po_item_id: 6, po_id: 1, quantity: 1, source_so_id: 1, source_so_item_id: 13 }, // C: delivered
+      { po_item_id: 7, po_id: 1, quantity: 0, source_so_id: null, source_so_item_id: null }, // exchanged away: left out
+    ],
+    goods_receipt_lines: [
+      { line_id: 1, po_item_id: 2, quantity_received: 2 },
+      { line_id: 2, po_item_id: 3, quantity_received: 3 },
+      { line_id: 3, po_item_id: 4, quantity_received: 2 },
+      { line_id: 4, po_item_id: 5, quantity_received: 5 },
+      { line_id: 5, po_item_id: 6, quantity_received: 1 },
+    ],
+    sales_order_items: [
+      { so_item_id: 11, so_id: 1, product_id: null, outsourced_name: "A" },
+      { so_item_id: 12, so_id: 1, product_id: null, outsourced_name: "B" },
+      { so_item_id: 13, so_id: 1, product_id: null, outsourced_name: "C" },
+    ],
+    sales_orders: [{ so_id: 1, so_number: "SO-1" }],
+    delivery_permits: [
+      { permit_id: 1, sales_order_id: 1, status: "OUT_FOR_DELIVERY" },
+      { permit_id: 2, sales_order_id: 1, status: "APPROVED" },
+      { permit_id: 3, sales_order_id: 1, status: "REJECTED" },
+    ],
+    delivery_permit_items: [
+      { item_id: 1, permit_id: 1, product_id: null, item_name_snapshot: "A", quantity: 2 },
+      { item_id: 2, permit_id: 2, product_id: null, item_name_snapshot: "B", quantity: 4 },
+      { item_id: 3, permit_id: 2, product_id: null, item_name_snapshot: "C", quantity: 1 },
+      { item_id: 4, permit_id: 3, product_id: null, item_name_snapshot: "A", quantity: 2 },
+    ],
+    product_returns: [{ return_id: 1, permit_id: "2", status: "approved", created_at: "2026-11-10T00:00:00+00:00" }],
+    return_items: [{ return_item_id: 1, return_id: 1, product_id: null, product_name: "B", returned_quantity: 1 }],
+  })
+  const s = await poLineStatuses(db, 1)
+  assert.deepEqual(s.map((l) => [l.poItemId, l.state]), [
+    [1, "not_received"],
+    [2, "partly_received"],
+    [3, "received"],
+    [4, "out_for_delivery"],
+    [5, "partly_delivered"],
+    [6, "delivered"],
+  ])
+  assert.deepEqual([s[4].delivered, s[4].received, s[4].soNumber, s[2].delivered], [3, 5, "SO-1", null])
+  assert.match(src("components/modules/purchase-order-module.tsx"), /<PoLineStatusBadge status=\{lineStatuses\?\.get\(String\(item\.id\)\)\} \/>/)
+})
