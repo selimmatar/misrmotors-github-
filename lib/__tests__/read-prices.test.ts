@@ -240,10 +240,10 @@ test("reader route: when the main model is busy, the backup model reads the phot
 })
 
 test("CEO assistant: tries the backup model when the main one is busy", () => {
+  // since 2026-11-14 through the shared askGemini (main model, then the backup when busy or slow)
   const chat = src("app/api/ai/ceo-chat/route.ts")
-  assert.match(chat, /const models = geminiModels\(\)/)
-  assert.match(chat, /models\/\$\{model\}:streamGenerateContent/)
-  assert.match(chat, /!geminiBusy\(response\.status\)\) break/)
+  assert.match(chat, /await askGemini\(/)
+  assert.match(src("lib/gemini-models.ts"), /if \(response\.ok \|\| last \|\| !geminiBusy\(response\.status\)\) break/)
 })
 
 // ------------------------------------------------------------------------------------------------- the print
