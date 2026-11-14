@@ -233,3 +233,10 @@ test("hiding a suggestion (owner request, 2026-11-13): out of the counter, liste
   assert.equal((await call(dismiss.POST as any, "POST", { key: so1.dismiss_key })).status, 400)
   assert.match(src("components/notifications/waiting-for-you.tsx"), /\/api\/pending-counts\/dismiss/)
 })
+
+test("Balance screen reads the ledger's own columns (entry_type, entry_id): no more 'Undefined' type; voided rows left out", () => {
+  const b = src("components/modules/balance-module.tsx")
+  assert.match(b, /type: entry\.entry_type \?\? entry\.type/)
+  assert.match(b, /id: entry\.entry_id \?\? entry\.id/)
+  assert.match(b, /\.filter\(\(entry: any\) => !String\(entry\.status \|\| ""\)\.toLowerCase\(\)\.startsWith\("void"\)\)/)
+})
