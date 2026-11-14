@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { Money } from "@/components/erp/money"
@@ -33,6 +34,8 @@ import {
   Copy,
   Download,
   FileText,
+  MoreHorizontal,
+  Search,
 } from "lucide-react"
 import type { SupplierInvoice } from "@/lib/types"
 import { apDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
@@ -133,6 +136,13 @@ export function AccountsPayableModule() {
 
   // Late / due-soon from the invoice's due dates (same calculation as the Reports page): late from the day after.
   const dueSummary = (invoice: SupplierInvoice) => summarizeDue(apDueSchedule(invoice as any, getPO(invoice.poId) as any), todayYmd())
+
+  const [listFilter, setListFilter] = useState<"unpaid" | "overdue" | "paid" | "all">("unpaid")
+  const [listSearch, setListSearch] = useState("")
+  const inFilter = (invoice: SupplierInvoice, f: "unpaid" | "overdue" | "paid" | "all") => {
+    const st = getInvoiceStatus(invoice)
+    return f === "all" || (f === "paid" ? st === "paid" : f === "overdue" ? st === "overdue" : st !== "paid")
+  }
 
   const getInvoiceStatus = (invoice: SupplierInvoice) => {
     const due = dueSummary(invoice)
@@ -705,26 +715,16 @@ export function AccountsPayableModule() {
   }
   }
 
+  // Row actions (owner request, 2026-11-14): Pay as the one button (kept in the same place on every row), the rest
+  // in a "More" menu, so the rows line up and fit.
   const renderRowActions = (invoice: SupplierInvoice) => {
     const status = getInvoiceStatus(invoice)
     return (
-      <>
-        <Button
-          aria-label={`${t("action.view-details")} ${invoice.invoiceNumber}`}
-          size="sm"
-          variant="outline"
-          onClick={() => handleViewPaymentDetails(invoice)}
-          title={t("ap.payment-details")}
-        >
-          <CreditCard className="w-4 h-4" />
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => handleViewSchedule(invoice)}>
-          <Calendar className="w-4 h-4 me-1" />
-          {t("ar.view-schedule")}
-        </Button>
-        {status !== "paid" && (
+      <div className="flex items-center justify-end gap-2">
+        {status !== "paid" ? (
           <Button
             size="sm"
+            className="min-w-20"
             onClick={() => {
               setSelectedInvoiceForPayment(invoice)
               openPaymentForm((invoice.amount || 0) - (invoice.paidAmount || 0))
@@ -734,17 +734,47 @@ export function AccountsPayableModule() {
             <DollarSign className="w-4 h-4 me-1" />
             {t("action.pay")}
           </Button>
+        ) : (
+          <span className="min-w-20" aria-hidden="true" />
         )}
-        <Button size="sm" variant="outline" onClick={() => handleDownloadInvoicePDF(invoice)}>
-          <FileText className="w-4 h-4 me-2" />
-          {t("action.print-invoice")}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setNumberDialogInvoice(invoice)}>
-          {t("docNumber.change")}
-        </Button>
-      </>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" aria-label={`${t("ap.more-actions")} ${invoice.invoiceNumber}`} title={t("ap.more-actions")}>
+              <MoreHorizontal className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => handleViewPaymentDetails(invoice)}>
+              <CreditCard className="w-4 h-4 me-2" /> {t("ap.payment-details")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => handleViewSchedule(invoice)}>
+              <Calendar className="w-4 h-4 me-2" /> {t("ar.view-schedule")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => handleDownloadInvoicePDF(invoice)}>
+              <FileText className="w-4 h-4 me-2" /> {t("action.print-invoice")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setNumberDialogInvoice(invoice)}>
+              <FileText className="w-4 h-4 me-2" /> {t("docNumber.change")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     )
   }
+
+  // Which invoices the list shows: unpaid first (overdue, then by due date); a search on supplier / PO / invoice no.
+  const filterCount = (f: typeof listFilter) => supplierInvoices.filter((inv) => inFilter(inv, f)).length
+  const shownInvoices = supplierInvoices
+    .filter((inv) => inFilter(inv, listFilter))
+    .filter((inv) => {
+      const q = listSearch.trim().toLowerCase()
+      if (!q) return true
+      return [inv.invoiceNumber, getSupplierName(inv.supplierId), getPONumber(inv.poId)].some((v) => String(v || "").toLowerCase().includes(q))
+    })
+    .sort((a, b) => {
+      const rank = (inv: SupplierInvoice) => ({ overdue: 0, "due-soon": 1, pending: 2, paid: 3 })[getInvoiceStatus(inv) as "overdue"] ?? 2
+      return rank(a) - rank(b) || String(a.dueDate || "").localeCompare(String(b.dueDate || ""))
+    })
 
   return (
     <div className="space-y-6">
@@ -795,20 +825,37 @@ export function AccountsPayableModule() {
         />
       </KpiGrid>
 
-      {/* Invoices Table */}
+      {/* Invoices Table (organised, owner request 2026-11-14) */}
       <section className="space-y-3">
-        <h2 className="text-base font-semibold">{t("ap.invoices")}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label={t("ap.invoices")}>
+            {(["unpaid", "overdue", "paid", "all"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                role="tab"
+                aria-selected={listFilter === f}
+                onClick={() => setListFilter(f)}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${listFilter === f ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {t(`ap.filter-${f}`)} <span className="ms-1 text-xs text-muted-foreground tabular-nums">{filterCount(f)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input aria-label={t("ap.search")} placeholder={t("ap.search")} value={listSearch} onChange={(e) => setListSearch(e.target.value)} className="ps-9" />
+          </div>
+        </div>
         <ResponsiveList
-          rows={supplierInvoices}
+          rows={shownInvoices}
           empty={<div className="py-8 text-center text-muted-foreground">{t("message.no-invoices")}</div>}
           table={
             <ErpTable>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("ap.invoice-number")}</TableHead>
                   <TableHead>{t("field.supplier")}</TableHead>
                   <TableHead>{t("field.po-number")}</TableHead>
-                  <TableHead>{t("field.payment-type")}</TableHead>
                   <TableHead>{t("field.due-date")}</TableHead>
                   <NumHead>{t("field.amount")} {t("common.egp")}</NumHead>
                   <NumHead>{t("field.paid")} {t("common.egp")}</NumHead>
@@ -818,25 +865,25 @@ export function AccountsPayableModule() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {supplierInvoices.map((invoice) => {
+                {shownInvoices.map((invoice) => {
                   const status = getInvoiceStatus(invoice)
                   const balance = (invoice.amount || 0) - (invoice.paidAmount || 0)
                   const paymentType = getPOPaymentType(invoice.poId)
 
                   return (
-                    <TableRow key={invoice.id}>
-                      <IdCell>{invoice.invoiceNumber}</IdCell>
-                      <TableCell>{getSupplierName(invoice.supplierId)}</TableCell>
-                      <TableCell>{getPONumber(invoice.poId)}</TableCell>
+                    <TableRow key={invoice.id} className={status === "paid" ? "text-muted-foreground" : undefined}>
                       <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {t(`payment.${paymentType}`)}
-                        </Badge>
+                        <span className="font-medium text-foreground">{getSupplierName(invoice.supplierId) || "—"}</span>
+                        <span className="block text-xs text-muted-foreground">{t(`payment.${paymentType}`)}</span>
                       </TableCell>
-                      <TableCell>{formatDate(invoice.dueDate, language)}</TableCell>
+                      <TableCell>
+                        <span className="font-medium whitespace-nowrap">{getPONumber(invoice.poId)}</span>
+                        <span className="block text-xs text-muted-foreground whitespace-nowrap">{invoice.invoiceNumber}</span>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{formatDate(invoice.dueDate, language)}</TableCell>
                       <NumCell>{formatMoney(invoice.amount || 0, language)}</NumCell>
                       <NumCell>{formatMoney(invoice.paidAmount || 0, language)}</NumCell>
-                      <NumCell className="font-medium">{formatMoney(balance, language)}</NumCell>
+                      <NumCell className={balance > 0.009 ? "font-semibold text-foreground" : ""}>{formatMoney(balance, language)}</NumCell>
                       <TableCell>
                         <StatusBadge status={status} label={t(`status.${status}`)} />
                       </TableCell>
@@ -851,8 +898,8 @@ export function AccountsPayableModule() {
             const status = getInvoiceStatus(invoice)
             return (
               <ListCard
-                id={invoice.invoiceNumber}
-                amount={formatMoney(invoice.amount || 0, language)}
+                id={getPONumber(invoice.poId) || invoice.invoiceNumber}
+                amount={formatMoney((invoice.amount || 0) - (invoice.paidAmount || 0), language)}
                 party={getSupplierName(invoice.supplierId)}
                 status={<StatusBadge status={status} label={t(`status.${status}`)} />}
                 actions={renderRowActions(invoice)}
