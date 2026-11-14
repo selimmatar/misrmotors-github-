@@ -8,6 +8,7 @@ import {
   loadUnappliedPrices,
 } from "@/lib/notifications/waiting"
 import { loadDismissed } from "@/lib/notifications/dismissed"
+import { ordersToInvoice } from "@/lib/ready-to-invoice"
 
 export const dynamic = "force-dynamic"
 
@@ -55,6 +56,16 @@ export async function GET(request: Request) {
       const shown = (rows: { hidden: boolean }[]) => rows.filter((r) => !r.hidden).length
       counts["purchase-orders"] = shown(pendingPos) + shown(ordersNeedingPo)
       counts["po-requests"] = shown(priceRequests)
+    }
+
+    // ===== SALES ORDERS READY TO INVOICE (everything delivered, every DP approved, not invoiced yet) =====
+    // Visible to: accountant, ceo (owner request, 2026-11-14)
+    if (["accountant", "ceo"].includes(role)) {
+      try {
+        counts["accounts-receivable"] = (await ordersToInvoice(adminClient)).filter((o) => o.ready).length
+      } catch (error) {
+        console.error("pending-counts: orders to invoice", error)
+      }
     }
 
     // ===== DELIVERY PERMITS PENDING ALLOCATION (warehouse) =====

@@ -36,6 +36,8 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/compon
 import { formatDate, formatMoney } from "@/lib/format"
 import { CustomerCreditDialog, UseCreditButton } from "@/components/payment/customer-credit-dialog"
 import { arDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
+import { OrdersToInvoice, useOrdersToInvoice } from "@/components/accounting/orders-to-invoice"
+import { OrderOverviewDialog } from "@/components/sales-order/order-overview-dialog"
 
 interface PaymentScheduleEntry {
   id: string
@@ -95,6 +97,17 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const [dpSelectDialogOpen, setDpSelectDialogOpen] = useState(false)
   const [availableDPs, setAvailableDPs] = useState<any[]>([])
   const [selectedDPs, setSelectedDPs] = useState<string[]>([])
+  // Orders to invoice (owner request, 2026-11-14)
+  const toInvoice = useOrdersToInvoice()
+  const [overviewSoId, setOverviewSoId] = useState<number | null>(null)
+  const readyOrders = (toInvoice.orders || []).filter((o) => o.ready)
+  const openOrders = (toInvoice.orders || []).filter((o) => !o.ready)
+  const invoiceOrderDps = (permitIds: number[]) => {
+    fetchAvailableDPs()
+    setInvoiceManualNumber("")
+    setSelectedDPs(permitIds.map(String))
+    setDpSelectDialogOpen(true)
+  }
   const [invoiceManualNumber, setInvoiceManualNumber] = useState("")
   const [isLoading, setIsLoading] = useState(false)
  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState("")
@@ -285,6 +298,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       setDpSelectDialogOpen(false)
       setSelectedDPs([])
       await loadData()
+      toInvoice.reload()
     } catch (error) {
       console.error("Error creating invoice from DPs:", error)
       alert(t("ar.create-invoice-failed"))
@@ -1263,7 +1277,23 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       />
 
       {/* Summary Cards */}
-      <KpiGrid>
+      <KpiGrid className="lg:grid-cols-3">
+        <KpiTile
+          label={t("rti.tile-ready")}
+          value={readyOrders.length}
+          sub={
+            <>
+              <Money value={readyOrders.reduce((sum, o) => sum + o.value, 0)} /> {t("common.egp-2")}
+            </>
+          }
+          onClick={() => document.getElementById("orders-to-invoice")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        />
+        <KpiTile
+          label={`${t("rti.tile-open")} ${t("common.egp")}`}
+          value={<Money value={openOrders.reduce((sum, o) => sum + o.value, 0)} />}
+          sub={fill(t("rti.tile-open-sub"), { n: openOrders.length })}
+          onClick={() => document.getElementById("orders-to-invoice")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        />
         <KpiTile
           label={`${t("ar.total-receivable")} ${t("common.egp")}`}
           value={<Money value={totalReceivable} />}
@@ -1289,6 +1319,13 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           onClick={() => handleWidgetClick("overdue")}
         />
       </KpiGrid>
+
+      {(userRole === "ceo" || userRole === "accountant" || userRole === "admin") && (
+        <OrdersToInvoice orders={toInvoice.orders} onInvoice={invoiceOrderDps} onOverview={setOverviewSoId} />
+      )}
+      {overviewSoId !== null && (
+        <OrderOverviewDialog soId={overviewSoId} userRole={userRole as any} onClose={() => setOverviewSoId(null)} />
+      )}
 
       {/* Filter Buttons */}
       <div className="flex gap-2 flex-wrap">
