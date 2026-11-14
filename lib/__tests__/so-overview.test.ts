@@ -234,3 +234,56 @@ test("O11. PO line status: not received / partly received / received (stock) / o
   assert.deepEqual([s[4].delivered, s[4].received, s[4].soNumber, s[2].delivered], [3, 5, "SO-1", null])
   assert.match(src("components/modules/purchase-order-module.tsx"), /<PoLineStatusBadge status=\{lineStatuses\?\.get\(String\(item\.id\)\)\} \/>/)
 })
+
+test("O12. orders to invoice: ready when everything is delivered and every DP approved; otherwise the reasons; invoiced ones drop off", async () => {
+  const { ordersToInvoice } = await import("../ready-to-invoice")
+  const db = new FakeDb({
+    sales_orders: [
+      { so_id: 1, so_number: "SO-READY", customer_id: 5, total: 300, subtotal: 300, discount_amount: 0 },
+      { so_id: 2, so_number: "SO-OPEN", customer_id: 5, total: 500, subtotal: 500, discount_amount: 0 },
+      { so_id: 3, so_number: "SO-DONE", customer_id: 5, total: 100, subtotal: 100, discount_amount: 0 },
+    ],
+    customers: [{ customer_id: 5, customer_name: "Al Nour" }],
+    products: [],
+    sales_order_items: [
+      { so_item_id: 1, so_id: 1, product_id: null, outsourced_name: "A", item_type: "outsourced", quantity: 3, unit_price: 100, total: 300 },
+      { so_item_id: 2, so_id: 2, product_id: null, outsourced_name: "B", item_type: "outsourced", quantity: 2, unit_price: 100, total: 200 },
+      { so_item_id: 3, so_id: 2, product_id: null, outsourced_name: "C", item_type: "outsourced", quantity: 3, unit_price: 100, total: 300 },
+      { so_item_id: 4, so_id: 3, product_id: null, outsourced_name: "D", item_type: "outsourced", quantity: 1, unit_price: 100, total: 100 },
+    ],
+    delivery_permits: [
+      { permit_id: 1, permit_no: "DP-1", sales_order_id: 1, status: "APPROVED" },
+      { permit_id: 2, permit_no: "DP-2", sales_order_id: 2, status: "APPROVED" },
+      { permit_id: 3, permit_no: "DP-3", sales_order_id: 2, status: "SUBMITTED_SIGNED" },
+      { permit_id: 4, permit_no: "DP-4", sales_order_id: 3, status: "APPROVED" },
+    ],
+    delivery_permit_items: [
+      { item_id: 1, permit_id: 1, product_id: null, item_name_snapshot: "A", quantity: 3, unit_price: 100, total: 300 },
+      { item_id: 2, permit_id: 2, product_id: null, item_name_snapshot: "B", quantity: 2, unit_price: 100, total: 200 },
+      { item_id: 3, permit_id: 3, product_id: null, item_name_snapshot: "C", quantity: 1, unit_price: 100, total: 100 },
+      { item_id: 4, permit_id: 4, product_id: null, item_name_snapshot: "D", quantity: 1, unit_price: 100, total: 100 },
+    ],
+    product_returns: [],
+    return_items: [],
+    purchase_order_items: [],
+    purchase_orders: [],
+    goods_receipt_lines: [],
+    accounts_receivable: [{ invoice_id: 9, invoice_number: "INV-9", so_id: 3, amount: 100, balance: 100, created_at: "2026-11-10" }],
+    invoice_delivery_permits: [{ invoice_id: 9, permit_id: 4 }],
+    customer_payments: [],
+    accounts_payable: [],
+    supplier_credits: [],
+    suppliers: [],
+    workflow_events: [],
+  })
+  const list = await ordersToInvoice(db)
+  assert.deepEqual(list.map((o) => [o.soNumber, o.ready, o.value, o.toInvoice.map((p) => p.number)]), [
+    ["SO-READY", true, 300, ["DP-1"]],
+    ["SO-OPEN", false, 200, ["DP-2"]],
+  ])
+  assert.deepEqual(list[1].reasons, [
+    { kind: "not_delivered", name: "C", quantity: 2, state: "no_po" },
+    { kind: "waiting_approval", dp: "DP-3" },
+  ])
+  assert.match(src("components/modules/accounts-receivable-module.tsx"), /<OrdersToInvoice orders=\{toInvoice\.orders\} onInvoice=\{invoiceOrderDps\}/)
+})
