@@ -60,8 +60,6 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
 
   const statusCounts = {
     all: permits.length,
-    draft: permits.filter((p) => p.status === "DRAFT").length,
-    printed: permits.filter((p) => p.status === "PRINTED").length,
     out_for_delivery: permits.filter((p) => p.status === "OUT_FOR_DELIVERY").length,
     submitted: permits.filter((p) => p.status === "SUBMITTED_SIGNED").length,
     approved: permits.filter((p) => p.status === "APPROVED").length,
@@ -80,8 +78,6 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
 
     const matchesTab =
       activeTab === "all" ||
-      (activeTab === "draft" && permit.status === "DRAFT") ||
-      (activeTab === "printed" && permit.status === "PRINTED") ||
       (activeTab === "out_for_delivery" && permit.status === "OUT_FOR_DELIVERY") ||
       (activeTab === "submitted" && permit.status === "SUBMITTED_SIGNED") ||
       (activeTab === "approved" && permit.status === "APPROVED") ||
@@ -196,8 +192,6 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
 
       {/* Stats Cards */}
       <KpiGrid className="md:grid-cols-3 lg:grid-cols-6">
-        <KpiTile label={t("permit.status.draft")} value={statusCounts.draft} onClick={() => setActiveTab("draft")} />
-        <KpiTile label={t("permit.status.printed")} value={statusCounts.printed} onClick={() => setActiveTab("printed")} />
         <KpiTile label={t("permit.status.out-for-delivery")} value={statusCounts.out_for_delivery} onClick={() => setActiveTab("out_for_delivery")} />
         <KpiTile label={t("permit.status.submitted-signed")} value={statusCounts.submitted} onClick={() => setActiveTab("submitted")} />
         <KpiTile label={t("permit.status.approved")} value={statusCounts.approved} onClick={() => setActiveTab("approved")} />
@@ -225,8 +219,6 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
               <TabsTrigger value="all">
                 {t("all")} ({statusCounts.all})
               </TabsTrigger>
-              <TabsTrigger value="draft">{t("permit.status.draft")}</TabsTrigger>
-              <TabsTrigger value="printed">{t("permit.status.printed")}</TabsTrigger>
               <TabsTrigger value="out_for_delivery">{t("permit.status.out-for-delivery")}</TabsTrigger>
               <TabsTrigger value="submitted">{t("permit.awaiting-approval")} ({statusCounts.submitted})</TabsTrigger>
               <TabsTrigger value="approved">{t("permit.status.approved")}</TabsTrigger>

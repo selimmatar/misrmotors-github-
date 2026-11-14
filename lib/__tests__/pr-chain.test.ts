@@ -174,7 +174,7 @@ test("no PR link on rollback: a failed item insert leaves the PR unlinked", asyn
 // ------------------------------------------------------------------------------------------- accountant menu
 test("accountant menu: no approve-sales-orders while nothing waits (new workflow)", () => {
   const items = hideIdleApprovals(ROLE_MODULES.accountant, {}, true)
-  assert.deepEqual(groupItems(items)[1].items.map((i) => i.id), ["sales-orders", "customers", "delivery-permits"])
+  assert.deepEqual(groupItems(items)[0].items.map((i) => i.id), ["sales-orders", "customers", "delivery-permits"])
 })
 
 test("accountant menu: approve-sales-orders shows while an older order waits", () => {
