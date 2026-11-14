@@ -7,6 +7,7 @@ import { PUBLIC_PATHS, allows, ruleFor } from "./permissions"
 export type AuthMode = "off" | "test" | "on"
 
 /** AUTH_MODE on Vercel: "off" (default, nothing enforced), "test" (only records refusals), "on" (enforced). */
+// Production: "on" since 2026-11-14 (owner request). Switching back to "test" in Vercel needs a new build to apply.
 export function authMode(env: Record<string, string | undefined> = process.env): AuthMode {
   const value = String(env.AUTH_MODE || "").trim().toLowerCase()
   return value === "on" || value === "test" ? value : "off"
