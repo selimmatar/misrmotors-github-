@@ -287,3 +287,12 @@ test("O12. orders to invoice: ready when everything is delivered and every DP ap
   ])
   assert.match(src("components/modules/accounts-receivable-module.tsx"), /<OrdersToInvoice orders=\{toInvoice\.orders\} onInvoice=\{invoiceOrderDps\}/)
 })
+
+test("O13. Create Invoice: choose the sales order first, then only its delivery permits (pre-ticked)", () => {
+  const ar = src("components/modules/accounts-receivable-module.tsx")
+  assert.match(ar, /setOrderPickerOpen\(true\)/)
+  assert.match(ar, /onClick=\{\(\) => invoiceOrderDps\(o\.toInvoice\.map\(\(p\) => p\.permitId\), o\)\}/)
+  assert.match(ar, /const dpsInWindow = dpOrder \? availableDPs\.filter\(\(dp\) => String\(dp\.salesOrderId \?\? dp\.sales_order_id \?\? ""\) === String\(dpOrder\.soId\)\) : availableDPs/)
+  assert.match(ar, /\{dpsInWindow\.map\(\(dp\) => \{/)
+  assert.doesNotMatch(ar, /onClick=\{\(\) => alert\(INVOICE_FROM_DP_ONLY_MESSAGE\)\}/)
+})

@@ -38,7 +38,7 @@ export function OrdersToInvoice({
 }: {
   orders: OrderToInvoice[] | null
   /** opens the normal invoice-from-DPs window with these permits ticked */
-  onInvoice: (permitIds: number[]) => void
+  onInvoice: (permitIds: number[], order: OrderToInvoice) => void
   onOverview?: (soId: number) => void
 }) {
   const { t } = useI18n()
@@ -131,7 +131,7 @@ export function OrdersToInvoice({
                   </div>
                   <div className="flex flex-wrap gap-2 md:justify-end">
                     {o.ready ? (
-                      <Button size="sm" onClick={() => onInvoice(o.toInvoice.map((p) => p.permitId))}>{t("rti.invoice-whole")}</Button>
+                      <Button size="sm" onClick={() => onInvoice(o.toInvoice.map((p) => p.permitId), o)}>{t("rti.invoice-whole")}</Button>
                     ) : (
                       <Button size="sm" variant="outline" onClick={() => setWarnFor(o)}>{t("rti.invoice-part")}</Button>
                     )}
@@ -166,9 +166,9 @@ export function OrdersToInvoice({
               <Button variant="outline" onClick={() => setWarnFor(null)}>{t("action.cancel")}</Button>
               <Button
                 onClick={() => {
-                  const ids = warnFor.toInvoice.map((p) => p.permitId)
+                  const order = warnFor
                   setWarnFor(null)
-                  onInvoice(ids)
+                  onInvoice(order.toInvoice.map((p) => p.permitId), order)
                 }}
               >
                 {t("rti.invoice-anyway")}

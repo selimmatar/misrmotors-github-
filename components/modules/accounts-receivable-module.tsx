@@ -22,8 +22,7 @@ import { fill } from "@/lib/i18n-format"
 import type { CustomerInvoice } from "@/lib/types"
 import { isSinglePayment } from "@/lib/payment-type"
 import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, ChevronDown, Upload, Search, Wallet } from "lucide-react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
@@ -37,6 +36,7 @@ import { formatDate, formatMoney } from "@/lib/format"
 import { CustomerCreditDialog, UseCreditButton } from "@/components/payment/customer-credit-dialog"
 import { arDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
 import { OrdersToInvoice, useOrdersToInvoice } from "@/components/accounting/orders-to-invoice"
+import type { OrderToInvoice } from "@/lib/ready-to-invoice"
 import { OrderOverviewDialog } from "@/components/sales-order/order-overview-dialog"
 
 interface PaymentScheduleEntry {
@@ -102,12 +102,19 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const [overviewSoId, setOverviewSoId] = useState<number | null>(null)
   const readyOrders = (toInvoice.orders || []).filter((o) => o.ready)
   const openOrders = (toInvoice.orders || []).filter((o) => !o.ready)
-  const invoiceOrderDps = (permitIds: number[]) => {
+  // Create Invoice (owner request, 2026-11-14): pick a sales order, then its delivery permits.
+  const [orderPickerOpen, setOrderPickerOpen] = useState(false)
+  const [dpOrder, setDpOrder] = useState<OrderToInvoice | null>(null)
+  const invoiceOrderDps = (permitIds: number[], order?: OrderToInvoice) => {
     fetchAvailableDPs()
     setInvoiceManualNumber("")
+    setDpOrder(order ?? null)
     setSelectedDPs(permitIds.map(String))
+    setOrderPickerOpen(false)
     setDpSelectDialogOpen(true)
   }
+  // the permits the window lists: only the chosen order's when one was picked
+  const dpsInWindow = dpOrder ? availableDPs.filter((dp) => String(dp.salesOrderId ?? dp.sales_order_id ?? "") === String(dpOrder.soId)) : availableDPs
   const [invoiceManualNumber, setInvoiceManualNumber] = useState("")
   const [isLoading, setIsLoading] = useState(false)
  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState("")
@@ -1241,36 +1248,17 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           /* Show +Add button only for CEO and Accountant */
           (userRole === "ceo" || userRole === "accountant") && (
             <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="lg"
-                    className="shadow-lg hover:shadow-xl transition-all"
-                  >
-                    <Plus className="w-5 h-5 me-2" />
-                    {t("ar.create-invoice")}
-                    <ChevronDown className="w-4 h-4 ms-2" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem
-                    onClick={() => alert(INVOICE_FROM_DP_ONLY_MESSAGE)}
-                  >
-                    <FileText className="w-4 h-4 me-2" />
-                    {t("ar.from-sales-order")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      fetchAvailableDPs()
-                      setInvoiceManualNumber("")
-                      setDpSelectDialogOpen(true)
-                    }}
-                  >
-                    <FileText className="w-4 h-4 me-2" />
-                    {t("ar.from-delivery-items")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                size="lg"
+                className="shadow-lg hover:shadow-xl transition-all"
+                onClick={() => {
+                  toInvoice.reload()
+                  setOrderPickerOpen(true)
+                }}
+              >
+                <Plus className="w-5 h-5 me-2" />
+                {t("ar.create-invoice")}
+              </Button>
             </>
           )
         }
@@ -2139,10 +2127,73 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       </Dialog>
 
       {/* DP Selection Dialog */}
-      <Dialog open={dpSelectDialogOpen} onOpenChange={setDpSelectDialogOpen}>
+      {/* Step 1: choose the sales order */}
+      <Dialog open={orderPickerOpen} onOpenChange={setOrderPickerOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{t("ar.select-delivery-permits")}</DialogTitle>
+            <DialogTitle>{t("ar.pick-order-title")}</DialogTitle>
+            <DialogDescription>{t("ar.pick-order-help")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {toInvoice.orders === null ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">{t("notes.loading")}</p>
+            ) : toInvoice.orders.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">{t("ar.no-dps-for-invoicing")}</p>
+            ) : (
+              toInvoice.orders.map((o) => (
+                <button
+                  key={o.soId}
+                  type="button"
+                  onClick={() => invoiceOrderDps(o.toInvoice.map((p) => p.permitId), o)}
+                  className="w-full rounded-lg border p-3 text-start transition-colors hover:border-primary hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  <span className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold">{o.soNumber}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${o.ready ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300" : "bg-amber-500/15 text-amber-800 dark:text-amber-300"}`}>
+                      {o.ready ? t("rti.ready") : t("rti.not-ready")}
+                    </span>
+                  </span>
+                  <span className="block text-sm text-muted-foreground">{o.customer}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {fill(t("ar.pick-order-dps"), { n: o.toInvoice.length })} · {t("rti.to-invoice-now")} <Money value={o.value} />
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Step 2: its delivery permits */}
+      <Dialog
+        open={dpSelectDialogOpen}
+        onOpenChange={(open) => {
+          setDpSelectDialogOpen(open)
+          if (!open) setDpOrder(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{dpOrder ? `${dpOrder.soNumber} · ${dpOrder.customer}` : t("ar.select-delivery-permits")}</DialogTitle>
+            {dpOrder && (
+              <button
+                type="button"
+                className="w-fit text-sm text-primary underline underline-offset-2"
+                onClick={() => {
+                  setDpSelectDialogOpen(false)
+                  setDpOrder(null)
+                  setOrderPickerOpen(true)
+                }}
+              >
+                ← {t("ar.pick-other-order")}
+              </button>
+            )}
+            {dpOrder && !dpOrder.ready && (
+              <div className="rounded-md bg-amber-500/15 p-2 text-sm">
+                <p className="font-semibold text-amber-800 dark:text-amber-300">{t("rti.part-warning")}</p>
+                <p className="text-xs text-muted-foreground">{t("rti.part-help")}</p>
+              </div>
+            )}
             <DialogDescription>
               {t("ar.select-dps-description")}
               <br />
@@ -2150,7 +2201,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 max-h-[400px] overflow-y-auto">
-            {availableDPs.map((dp) => {
+            {dpsInWindow.map((dp) => {
               const permitId = dp.permit_id || dp.id
               const permitNo = dp.permitNo || dp.permit_no || dp.permit_number || `DP-${permitId}`
               const customerId = dp.customerId || dp.customer_id
@@ -2210,7 +2261,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                 </div>
               )
             })}
-            {availableDPs.length === 0 && (
+            {dpsInWindow.length === 0 && (
               <p className="text-center text-muted-foreground py-8">{t("ar.no-dps-for-invoicing")}</p>
             )}
           </div>
