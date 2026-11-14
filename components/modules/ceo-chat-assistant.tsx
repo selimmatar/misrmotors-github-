@@ -22,11 +22,15 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useI18n, type TranslationKey } from "@/lib/i18n-context"
 import { PageHeader } from "@/components/erp/page-header"
+import { ProposalCard } from "@/components/ceo-chat/proposal-card"
+import type { Proposal } from "@/lib/ai/ceo-tools"
 
 interface Message {
   id: string
   role: "user" | "assistant"
   content: string
+  /** actions the assistant proposes; each is saved only when the person presses Confirm on its card */
+  proposals?: Proposal[]
 }
 
 export function CEOChatAssistant() {
@@ -151,16 +155,26 @@ export function CEOChatAssistant() {
 
       const decoder = new TextDecoder()
       let fullContent = ""
+      let pending = ""
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split("\n")
+        // keep a line cut between two pieces until the rest arrives (a card line can be long)
+        pending += decoder.decode(value, { stream: true })
+        const lines = pending.split("\n")
+        pending = lines.pop() || ""
 
         for (const line of lines) {
-          if (line.startsWith("0:")) {
+          if (line.startsWith("p:")) {
+            try {
+              const proposal = JSON.parse(line.slice(2)) as Proposal
+              setMessages((prev) => prev.map((m) => (m.id === assistantMessageId ? { ...m, proposals: [...(m.proposals || []), proposal] } : m)))
+            } catch {
+              // Skip invalid JSON
+            }
+          } else if (line.startsWith("0:")) {
             try {
               const content = JSON.parse(line.slice(2))
               if (typeof content === "string") {
@@ -325,7 +339,10 @@ export function CEOChatAssistant() {
                   }`}
                 >
                   {message.content ? (
-                    <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
+                    <>
+                      <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
+                      {message.proposals?.map((proposal, i) => <ProposalCard key={i} proposal={proposal} />)}
+                    </>
                   ) : (
                     message.role === "assistant" &&
                     isLoading && (

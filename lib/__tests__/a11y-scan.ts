@@ -53,6 +53,7 @@ export const OWNED: Record<Area, string[]> = {
     ...mods(["financial-dashboard", "analytics-dashboard", "ceo-chat-assistant"], ".tsx"),
     ...mods(["ai-assistant", "user-management", "hr-management", "metrics-validation", "system-health"]),
     "app/admin/", "app/auth/",
+    "components/ceo-chat/",
   ],
 }
 
