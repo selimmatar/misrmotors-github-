@@ -43,6 +43,7 @@ import {
 import type { PurchaseOrder, UserRole, PaymentDetails, PaymentType } from "@/lib/types"
 import { useAppContext } from "@/lib/app-context"
 import { takeDocumentFor } from "@/lib/open-document"
+import { PoLineStatusBadge, usePoLineStatuses } from "@/components/purchase-order/po-line-status"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { describeOverOrderLines, type OverOrderLine } from "@/lib/po-over-order"
@@ -119,6 +120,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   const [rejectionReason, setRejectionReason] = useState("")
   const [viewDetailsOrder, setViewDetailsOrder] = useState<any | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const lineStatuses = usePoLineStatuses(showDetailsModal ? viewDetailsOrder?.id : null)
   const [poManualNumber, setPoManualNumber] = useState("")
   const [formData, setFormData] = useState({
     supplierId: "",
@@ -2332,6 +2334,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         <th className="text-start p-3 font-semibold">{t("quantity")}</th>
                         <th className="text-start p-3 font-semibold">{t("po.cost-per-unit")} {t("common.egp")}</th>
                         <th className="text-start p-3 font-semibold">{t("common.total-egp")}</th>
+                        <th className="text-start p-3 font-semibold">{t("po.line-status")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2342,6 +2345,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                           <td className="p-3">{formatNumber(item.quantity)}</td>
                           <td className="p-3"><Money value={item.unitPrice || item.unit_price} /></td>
                           <td className="p-3 font-medium"><Money value={(item.quantity || 0) * (item.unitPrice || item.unit_price || 0)} /></td>
+                          <td className="p-3"><PoLineStatusBadge status={lineStatuses?.get(String(item.id))} /></td>
                         </tr>
                       ))}
                     </tbody>
