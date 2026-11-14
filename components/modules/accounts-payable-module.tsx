@@ -847,6 +847,8 @@ export function AccountsPayableModule() {
             <Input aria-label={t("ap.search")} placeholder={t("ap.search")} value={listSearch} onChange={(e) => setListSearch(e.target.value)} className="ps-9" />
           </div>
         </div>
+        {/* on a white card like the other lists: the pinned actions column is white too, so no white strip */}
+        <div className="rounded-xl border bg-card p-1 sm:p-2">
         <ResponsiveList
           rows={shownInvoices}
           empty={<div className="py-8 text-center text-muted-foreground">{t("message.no-invoices")}</div>}
@@ -907,6 +909,7 @@ export function AccountsPayableModule() {
             )
           }}
         />
+        </div>
       </section>
 
       {/* Payment Schedule Dialog */}
