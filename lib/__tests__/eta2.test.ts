@@ -232,3 +232,106 @@ test("F5. signed text equals sent text", () => {
   assert.ok(signed.includes('"TAXTOTALS""TAXTOTALS""TAXTYPE""T1""AMOUNT""6320.72""TOTALAMOUNT""51468.72"'))
   assert.ok(!/[\n\t]|": |, /.test(sent), "compact body")
 })
+
+// ---- F6-F10: portal client and plain-word errors ----
+import { createPortal, credentialsSet, resetPortalTokens, EtaBusyError, EtaError } from "../eta/portal"
+import { plainError } from "../eta/portal-errors"
+
+type Call = { url: string; init: any }
+function fakePortal(handler: (c: Call, n: number) => Response, clock = { t: 0 }) {
+  const calls: Call[] = []
+  const sleeps: number[] = []
+  const f = (async (url: any, init: any) => { const c = { url: String(url), init }; calls.push(c); return handler(c, calls.length) }) as typeof fetch
+  const portal = createPortal("test", { fetch: f, now: () => clock.t, sleep: async (ms) => { sleeps.push(ms) } })
+  return { portal, calls, sleeps, clock }
+}
+const jres = (status: number, body: any, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } })
+function withCreds<T>(fn: () => Promise<T>) {
+  const keep = { i: process.env.ETA_TEST_CLIENT_ID, s: process.env.ETA_TEST_CLIENT_SECRET }
+  process.env.ETA_TEST_CLIENT_ID = "my-id"; process.env.ETA_TEST_CLIENT_SECRET = "my-secret-xyz"
+  resetPortalTokens()
+  return fn().finally(() => {
+    if (keep.i === undefined) delete process.env.ETA_TEST_CLIENT_ID; else process.env.ETA_TEST_CLIENT_ID = keep.i
+    if (keep.s === undefined) delete process.env.ETA_TEST_CLIENT_SECRET; else process.env.ETA_TEST_CLIENT_SECRET = keep.s
+    resetPortalTokens()
+  })
+}
+const okHandler = (c: Call) =>
+  c.url.endsWith("/connect/token") ? jres(200, { access_token: "tok" + c.init.headers.Authorization.length, token_type: "Bearer", expires_in: 3600 }) : jres(200, { ok: true })
+
+test("F6. token cached until expiry; Basic header", () => withCreds(async () => {
+  const { portal, calls, clock } = fakePortal(okHandler)
+  await portal.getSubmission("u1"); await portal.getDetails("u1")
+  const tokens = calls.filter((c) => c.url.endsWith("/connect/token"))
+  assert.equal(tokens.length, 1)
+  assert.equal(tokens[0].url, "https://id.preprod.eta.gov.eg/connect/token")
+  assert.equal(tokens[0].init.headers.Authorization, "Basic " + Buffer.from("my-id:my-secret-xyz").toString("base64"))
+  assert.match(String(tokens[0].init.body), /grant_type=client_credentials/)
+  assert.equal(calls[1].url, "https://api.preprod.invoicing.eta.gov.eg/api/v1.0/documentsubmissions/u1?pageNo=1&pageSize=100")
+  assert.match(calls[1].init.headers.Authorization, /^Bearer tok/)
+  clock.t = 3600 * 1000 + 1
+  await portal.getDetails("u1")
+  assert.equal(calls.filter((c) => c.url.endsWith("/connect/token")).length, 2)
+}))
+
+test("F7. submit posts raw documents text and returns accepted / rejected", () => withCreds(async () => {
+  const { portal, calls } = fakePortal((c) => c.url.endsWith("/connect/token") ? okHandler(c) : jres(202, {
+    submissionUUID: "S1",
+    acceptedDocuments: [{ uuid: "U1", longId: "L1", internalId: "A" }],
+    rejectedDocuments: [{ internalId: "B", error: { code: "x", message: "bad", target: "t", details: [] } }],
+  }))
+  const docs = ['{"a": 1,"b":"\\u0627"}', '{"c":2}']
+  const r = await portal.submit(docs)
+  const post = calls[1]
+  assert.equal(post.url, "https://api.preprod.invoicing.eta.gov.eg/api/v1.0/documentsubmissions/")
+  assert.equal(post.init.method, "POST")
+  assert.equal(post.init.body, `{"documents":[${docs[0]},${docs[1]}]}`)
+  assert.equal(r.submissionUUID, "S1")
+  assert.equal(r.acceptedDocuments[0].uuid, "U1")
+  assert.equal(r.rejectedDocuments[0].internalId, "B")
+}))
+
+test("F8. 429 with Retry-After is retried; persistent 429 throws EtaBusyError", () => withCreds(async () => {
+  let hits = 0
+  const a = fakePortal((c) => c.url.endsWith("/connect/token") ? okHandler(c) : (++hits === 1 ? jres(429, {}, { "retry-after": "1" }) : jres(200, { overallStatus: "valid" })))
+  const r = await a.portal.getSubmission("u")
+  assert.equal(r.overallStatus, "valid")
+  assert.deepEqual(a.sleeps, [1000])
+  const b = fakePortal((c) => c.url.endsWith("/connect/token") ? okHandler(c) : jres(429, {}, { "retry-after": "1" }))
+  await assert.rejects(() => b.portal.getSubmission("u"), (e: any) => e instanceof EtaBusyError)
+  assert.equal(b.sleeps.length, 2)
+}))
+
+test("F9. missing credentials: readable error, no secret in it", async () => {
+  const keep = { i: process.env.ETA_TEST_CLIENT_ID, s: process.env.ETA_TEST_CLIENT_SECRET }
+  delete process.env.ETA_TEST_CLIENT_ID; delete process.env.ETA_TEST_CLIENT_SECRET
+  resetPortalTokens()
+  try {
+    assert.equal(credentialsSet("test"), false)
+    const { portal, calls } = fakePortal(okHandler)
+    await assert.rejects(() => portal.getDetails("u"), (e: any) => /ETA_TEST_CLIENT_ID/.test(e.message) && e instanceof EtaError)
+    assert.equal(calls.length, 0)
+  } finally {
+    if (keep.i !== undefined) process.env.ETA_TEST_CLIENT_ID = keep.i
+    if (keep.s !== undefined) process.env.ETA_TEST_CLIENT_SECRET = keep.s
+  }
+  // a rejected login never echoes the secret
+  await withCreds(async () => {
+    assert.equal(credentialsSet("test"), true)
+    const { portal } = fakePortal(() => jres(400, { error: "invalid_client" }))
+    await assert.rejects(() => portal.getDetails("u"), (e: any) => e.code === "invalid_client" && !e.message.includes("my-secret-xyz") && !e.message.includes("my-id"))
+  })
+})
+
+test("F10. plain-word errors in English and Arabic", () => {
+  const ar = plainError("OperationPeriodOver", "x", "ar")
+  assert.match(ar, /[؀-ۿ]/)
+  assert.ok(!/OperationPeriodOver/.test(ar))
+  assert.match(plainError("OperationPeriodOver", undefined, "en"), /credit note/i)
+  for (const c of ["BadStructure", "MaximumSizeExceeded", "DuplicateSubmission", "IncorrectSubmitter", "Forbidden", "IncorrectState", "ActiveReferencingDocuments", "NotReady", "TooManyRequests", "invalid_client"]) {
+    assert.ok(plainError(c, undefined, "en").length > 20); assert.match(plainError(c, undefined, "ar"), /[؀-ۿ]/)
+  }
+  const g = plainError("Weird42", "the portal said so", "en")
+  assert.ok(g.includes("the portal said so") && g.includes("Weird42"))
+})
