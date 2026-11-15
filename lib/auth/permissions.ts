@@ -103,6 +103,8 @@ export const RULES: Rule[] = [
   rule("/api/pending-counts", ALL, ONLY_TOP),
   rule("/api/pending-counts/dismiss", ["po-rep"], ["po-rep"]),
   rule("/api/chain", ALL, ONLY_TOP),
+  // E-invoice (ETA) settings, item codes and name memory
+  rule("/api/eta", ACCOUNTANT, ACCOUNTANT),
   // Own session (any logged-in person)
   rule("/api/auth", ALL, ALL),
 ]

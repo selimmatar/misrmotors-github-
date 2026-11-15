@@ -35,6 +35,8 @@ const PK: Record<string, string> = {
   po_request_items: "item_id",
   sales_quotations: "id",
   workflow_events: "event_id",
+  eta_item_codes: "code_id",
+  eta_code_memory: "memory_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
@@ -50,6 +52,8 @@ const UNIQUE: Record<string, string[][]> = {
   purchase_orders: [["po_number"]],
   sales_quotations: [["quotation_number"]],
   po_requests: [["request_number"]],
+  eta_item_codes: [["item_code"]],
+  eta_code_memory: [["normalized_name"]],
 }
 const STAMP_CREATED_AT = new Set(["product_returns", "accounts_receivable", "return_items"])
 
