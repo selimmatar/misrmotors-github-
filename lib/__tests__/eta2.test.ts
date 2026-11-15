@@ -19,7 +19,7 @@ test("F1. step-2 migration", () => {
   assert.ok(statements.length > 0)
   for (const s of statements) {
     assert.ok(!/^(drop|update|delete|truncate)\b/.test(s), `destructive statement: ${s.slice(0, 60)}`)
-    assert.ok(!/^alter table\b.*\b(drop|rename)\b/.test(s), `alter drop/rename: ${s.slice(0, 60)}`)
+    assert.ok(!/^alter table\b.*\b(drop|rename)\b/.test(s) || /^alter table public\.\w+ drop constraint if exists \w+$/.test(s), `alter drop/rename: ${s.slice(0, 60)}`)
     assert.ok(!/^insert\b/.test(s), `insert: ${s.slice(0, 60)}`)
   }
 
@@ -31,6 +31,14 @@ test("F1. step-2 migration", () => {
     if (targets.length === 0 && /drop constraint/.test(b)) assert.fail("drop constraint on an unnamed table")
   }
   assert.ok(dropped.length >= 2, "expected drops on eta_documents and accounts_receivable")
+
+  // rerunnable: every `add constraint <name>` is preceded by `drop constraint if exists <name>` on the same table
+  statements.forEach((s, i) => {
+    const m = s.match(/^alter table (public\.\w+) add constraint (\w+)\b/)
+    if (!m) return
+    const prev = statements.slice(0, i).map((x) => x)
+    assert.ok(prev.includes(`alter table ${m[1]} drop constraint if exists ${m[2]}`), `add constraint ${m[2]} has no preceding drop if exists`)
+  })
 
   const lower = flat(noComments)
   // every dropped constraint is re-added, by name, in the same file

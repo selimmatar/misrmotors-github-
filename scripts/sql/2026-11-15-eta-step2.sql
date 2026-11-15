@@ -40,9 +40,13 @@ begin
   end loop;
 end $$;
 
+alter table public.eta_documents drop constraint if exists eta_documents_invoice_doc_env_version_key;
 alter table public.eta_documents add constraint eta_documents_invoice_doc_env_version_key unique (invoice_id, document_type, environment, version);
+alter table public.eta_documents drop constraint if exists eta_documents_invoice_id_fkey;
 alter table public.eta_documents add constraint eta_documents_invoice_id_fkey foreign key (invoice_id) references public.accounts_receivable (invoice_id) on delete restrict;
+alter table public.eta_documents drop constraint if exists eta_documents_status_check;
 alter table public.eta_documents add constraint eta_documents_status_check check (status in ('manual','pending_signature','submitted','valid','invalid','cancelled','rejected','needs_review'));
+alter table public.eta_documents drop constraint if exists eta_documents_environment_check;
 alter table public.eta_documents add constraint eta_documents_environment_check check (environment in ('test','real'));
 
 do $$
@@ -60,6 +64,7 @@ begin
   end loop;
 end $$;
 
+alter table public.accounts_receivable drop constraint if exists accounts_receivable_status_check;
 alter table public.accounts_receivable add constraint accounts_receivable_status_check check (status in ('pending','partially_paid','paid','overdue','replaced'));
 
 -- Signing devices
