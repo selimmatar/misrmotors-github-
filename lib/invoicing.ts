@@ -295,7 +295,7 @@ export function computeWholeOrderAmount(
   }
   if (rawAll <= 0) return { ok: true, amount: total, excluded: new Map() }
   const amount = eta
-    ? etaLines(billed.map((b) => ({ name: b.line.outsourced_name || "", quantity: b.qty - b.take, unitPrice: etaUnitPrice(b.line) })), stateDiscountRate(state)).totals.total
+    ? etaLines(billed.map((b) => orderEtaLine(b).line), stateDiscountRate(state)).totals.total
     : round2(total * (1 - rawExcluded / rawAll))
   if (excluded.size === 0) return { ok: true, amount, excluded }
   if (amount <= 0.005) {
@@ -328,9 +328,24 @@ function billedOrderLines(state: SoInvoicingState, excludedLeft: Map<string, num
   })
 }
 
+/** An e-invoice line with the product it bills (null for a line without a product, e.g. outsourced). */
+export interface BilledEtaLine {
+  line: EtaLineIn
+  productId: number | null
+}
+
+// A billed order line (from billedOrderLines) as an e-invoice line: the quantity less what was returned.
+const orderEtaLine = (b: ReturnType<typeof billedOrderLines>[number]): BilledEtaLine => ({
+  line: { name: b.line.outsourced_name || "", quantity: b.qty - b.take, unitPrice: etaUnitPrice(b.line) },
+  productId: b.line.product_id ?? null,
+})
+
+// The lines a whole-order invoice bills given `state.returns` (the order lines less those returns).
+const wholeOrderBilledLines = (state: SoInvoicingState): BilledEtaLine[] => billedOrderLines(state, excludedByKey(state)).map(orderEtaLine)
+
 /** The lines a whole-order invoice created now would bill (the order lines less returns), as e-invoice lines. */
 export function wholeOrderEtaLines(state: SoInvoicingState): EtaLineIn[] {
-  return billedOrderLines(state, excludedByKey(state)).map((b) => ({ name: b.line.outsourced_name || "", quantity: b.qty - b.take, unitPrice: etaUnitPrice(b.line) }))
+  return wholeOrderBilledLines(state).map((b) => b.line)
 }
 
 const stateDiscountRate = (state: SoInvoicingState) => orderDiscountRate(state.soItems, state.so.subtotal, state.so.discount_amount)
@@ -363,8 +378,14 @@ function netPermitQuantities(state: SoInvoicingState, permit: SoInvoicingState["
 }
 
 // One e-invoice line per permit item, at the net quantity billed (`net`, from netPermitQuantities).
-const permitEtaLines = (permit: SoInvoicingState["permits"][number], net: number[]): EtaLineIn[] =>
-  permit.items.map((item, idx) => ({ name: item.item_name_snapshot || "", quantity: net[idx], unitPrice: etaUnitPrice(item) }))
+const permitEtaLines = (permit: SoInvoicingState["permits"][number], net: number[]): BilledEtaLine[] =>
+  permit.items.map((item, idx) => ({
+    line: { name: item.item_name_snapshot || "", quantity: net[idx], unitPrice: etaUnitPrice(item) },
+    productId: item.product_id ?? null,
+  }))
+
+const dpInvoiceBilledLines = (state: SoInvoicingState, permitIds: number[], asOfMs?: number): BilledEtaLine[] =>
+  state.permits.filter((p) => permitIds.includes(p.permit_id)).flatMap((p) => permitEtaLines(p, netPermitQuantities(state, p, asOfMs)))
 
 /**
  * The lines a delivery-permit invoice bills for this order's permits among `permitIds`: each permit item at its net
@@ -372,7 +393,21 @@ const permitEtaLines = (permit: SoInvoicingState["permits"][number], net: number
  * stays two lines.
  */
 export function dpInvoiceEtaLines(state: SoInvoicingState, permitIds: number[], asOfMs?: number): EtaLineIn[] {
-  return state.permits.filter((p) => permitIds.includes(p.permit_id)).flatMap((p) => permitEtaLines(p, netPermitQuantities(state, p, asOfMs)))
+  return dpInvoiceBilledLines(state, permitIds, asOfMs).map((b) => b.line)
+}
+
+// The return lines that already existed when `inv` was created (an invoice without a timestamp: none).
+const returnsKnownAt = (state: SoInvoicingState, inv: SoInvoicingState["invoices"][number]) =>
+  (state.returns || []).filter((r) => returnedByKey([r], { asOfMs: invoiceAsOf(inv) }).size > 0)
+
+/**
+ * The lines an existing invoice bills for this order, with their products: a delivery-permit invoice, this order's
+ * permit items at the net quantity billed (dpInvoiceEtaLines); a whole-order invoice, the order lines less the returns
+ * known when it was created. Lines may carry quantity 0 (returned in full); etaLines drops them.
+ */
+export function billedLinesForInvoice(state: SoInvoicingState, inv: SoInvoicingState["invoices"][number]): BilledEtaLine[] {
+  if (!isSoLevelInvoice(inv)) return dpInvoiceBilledLines(state, inv.permit_ids, invoiceAsOf(inv))
+  return wholeOrderBilledLines({ ...state, returns: returnsKnownAt(state, inv) })
 }
 
 const countedLines = (lines: EtaLineIn[]) => lines.filter((l) => l.quantity > QTY_EPSILON).length
@@ -532,7 +567,7 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
   const priorValue = state.invoices.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
   // The invoice is created now: after go-live it is priced line by line (spec §6), before it as always.
   const eta = isAfterGoLive(nowIso(), state.etaGoLiveAt)
-  const newLines = eta ? newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])) : []
+  const newLines = eta ? newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])).map((b) => b.line) : []
   const newValue = eta
     ? etaLines(newLines, stateDiscountRate(state)).totals.total
     : newPermits.reduce((sum, p) => {
@@ -588,7 +623,7 @@ export function evaluateAfterInsert(state: SoInvoicingState, myInvoiceId: number
     }
   }
   const value = considered.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
-  const returnsBefore = mine ? (state.returns || []).filter((r) => returnedByKey([r], { asOfMs: invoiceAsOf(mine) }).size > 0) : []
+  const returnsBefore = mine ? returnsKnownAt(state, mine) : []
   // The rule of the invoice being checked: its own created_at (now when the row carries none).
   const mineAt = mine?.created_at || nowIso()
   const eta = isAfterGoLive(mineAt, state.etaGoLiveAt)

@@ -18,6 +18,8 @@ import * as customersRoute from "../../app/api/customers/route"
 import * as suppliersRoute from "../../app/api/suppliers/route"
 import * as productsRoute from "../../app/api/products/route"
 import { loadMatchContext as loadEtaCtx } from "../eta/store"
+import { buildEtaPreview } from "../eta/preview"
+import * as etaPreviewRoute from "../../app/api/eta/preview/route"
 import { ruleFor, allows } from "../auth/permissions"
 import * as arPdf from "../../app/api/invoices/ar/[id]/pdf/route"
 import { moneyCell } from "../print-html"
@@ -704,4 +706,193 @@ test("E19. product PUT saves etaCodeId / etaUnitType", async () => {
   assert.equal(keep.body.etaCodeId, 42, "omitted fields untouched")
   const none = await productsRoute.PUT(ereq("PUT", { id: "1", etaCodeId: null })).then(out)
   assert.equal(none.body.etaCodeId, null)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// Task 6: invoice preview
+// ---------------------------------------------------------------------------------------------------------
+const COMPANY_OK: Row[] = [
+  { setting_key: "eta_rin", setting_value: "100234567" },
+  { setting_key: "eta_activity_code", setting_value: "4669" },
+  { setting_key: "eta_branch_governorate", setting_value: "Cairo" },
+  { setting_key: "eta_branch_region", setting_value: "Nasr City" },
+  { setting_key: "eta_branch_street", setting_value: "Abbas St" },
+  { setting_key: "eta_branch_building_number", setting_value: "12" },
+]
+interface PvLine { name: string; productId: number | null; qty: number; price: number }
+// One sales order (so_id 1, customer 5), one APPROVED permit delivering every line in full.
+function previewDb(lines: PvLine[], opts: { discount?: number; goLive?: string | null; customer?: Row; settings?: Row[]; products?: Row[]; codes?: Row[]; memory?: Row[] } = {}) {
+  const gross = lines.reduce((s, l) => s + l.qty * l.price, 0)
+  const discount = opts.discount || 0
+  const settings: Row[] = [...(opts.settings ?? COMPANY_OK)]
+  if (opts.goLive !== undefined) settings.push({ setting_key: "eta_go_live_at", setting_value: opts.goLive })
+  return new FakeDb({
+    users: [{ user_id: 7 }],
+    sales_orders: [{ so_id: 1, so_number: "SO-P-1", customer_id: 5, total: r2((gross - discount) * 1.14), subtotal: gross, discount_amount: discount, payment_type: "cash" }],
+    customers: [{ customer_id: 5, customer_name: "Acme", ...(opts.customer || {}) }],
+    sales_order_items: lines.map((l) => ({ so_id: 1, product_id: l.productId, outsourced_name: l.productId ? null : l.name, quantity: l.qty, unit_price: l.price, total: r2(l.qty * l.price) })),
+    delivery_permits: [{ permit_id: 1, permit_no: "DP-P-1", sales_order_id: 1, status: "APPROVED" }],
+    delivery_permit_items: lines.map((l) => ({ permit_id: 1, product_id: l.productId, item_name_snapshot: l.name, quantity: l.qty, unit_price: l.price, total: r2(l.qty * l.price) })),
+    invoice_delivery_permits: [],
+    accounts_receivable: [],
+    product_returns: [],
+    return_items: [],
+    products: opts.products || lines.filter((l) => l.productId).map((l) => ({ product_id: l.productId, product_name: l.name, eta_code_id: null, eta_unit_type: null })),
+    eta_item_codes: opts.codes || [],
+    eta_code_memory: opts.memory || [],
+    eta_documents: [],
+    company_settings: settings,
+  })
+}
+function addReturn(db: FakeDb, id: number, createdAt: string, items: [number | null, string, number][]) {
+  db.tables.product_returns.push({ return_id: id, permit_id: "1", status: "pending_warehouse", created_at: createdAt })
+  items.forEach(([productId, name, qty], k) => db.tables.return_items.push({ return_item_id: id * 100 + k, return_id: id, product_id: productId, product_name: name, returned_quantity: qty }))
+}
+const preq = (method: string, query = "", body?: unknown) => ereq(method, body, "accountant", `http://test.local/api/eta/preview${query}`)
+
+test("E20. preview lines: the invoice's billed lines (net of returns known at invoice time), the order discount, totals from etaLines", async () => {
+  const lines: PvLine[] = [
+    { name: "item 0", productId: 100, qty: 2, price: 100 },
+    { name: "item 1", productId: 101, qty: 3, price: 50 },
+    { name: "item 2", productId: 102, qty: 1, price: 20 },
+  ]
+  // 10 % discount: 37 of 370
+  const db = previewDb(lines, { discount: 37, goLive: GO_LIVE })
+  addReturn(db, 1, "2026-06-01T00:00:00Z", [[101, "item 1", 1], [102, "item 2", 1]]) // before invoicing
+  const res = await createDpInvoices(db, [1])
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  addReturn(db, 2, "2027-01-01T00:00:00Z", [[100, "item 0", 1]]) // after invoicing: never changes the invoice
+  const invoiceId = db.tables.accounts_receivable[0].invoice_id
+  const p = await buildEtaPreview(db, invoiceId)
+  assert.ok(p)
+  const expected = etaLines([L("item 0", 2, 100), L("item 1", 2, 50)], 0.1)
+  assert.deepEqual(p!.lines.map((l) => [l.name, l.quantity, l.unitPrice, l.discount, l.netTotal, l.vat, l.total]), expected.lines.map((l) => [l.name, l.quantity, l.unitPrice, l.discount, l.netTotal, l.vat, l.total]))
+  assert.deepEqual(p!.totals, expected.totals)
+  assert.equal(p!.totals.total, 307.8)
+  assert.equal(p!.totals.total, db.tables.accounts_receivable[0].amount, "the same total the invoice stored")
+  assert.equal(p!.invoiceNumber, db.tables.accounts_receivable[0].invoice_number)
+  assert.equal(p!.handledManually, false)
+
+  // whole-order invoice: the order lines less returns known at invoice time; a stock line's name is its product name
+  const so = previewDb(lines, { discount: 37, goLive: GO_LIVE })
+  addReturn(so, 1, "2026-06-01T00:00:00Z", [[101, "item 1", 1], [102, "item 2", 1]])
+  const sres = await createSoInvoice(so, 1)
+  assert.equal(sres.status, 200, JSON.stringify(sres.body))
+  addReturn(so, 2, "2027-01-01T00:00:00Z", [[100, "item 0", 1]])
+  const sp = await buildEtaPreview(so, so.tables.accounts_receivable[0].invoice_id)
+  assert.deepEqual(sp!.lines.map((l) => [l.name, l.quantity]), [["item 0", 2], ["item 1", 2]])
+  assert.deepEqual(sp!.totals, expected.totals)
+  assert.equal(sp!.totals.total, so.tables.accounts_receivable[0].amount)
+
+  assert.equal(await buildEtaPreview(db, 999), null, "unknown invoice")
+})
+
+test("E21. preview: code state per line and the missing-data checklist", async () => {
+  const codes: Row[] = [
+    { code_id: 1, item_code: "EG-HAND", name: "Hand tools", keywords: ["لقمه"], default_unit: "EA", active: true },
+    { code_id: 2, item_code: "EG-GARAGE", name: "Garage", keywords: [], default_unit: "SET", active: true },
+  ]
+  const memory: Row[] = [{ memory_id: 1, normalized_name: normalizeName("ترولي عدة"), core_name: normalizeName("ترولي عدة"), code_id: 2, unit_type: "SET", confirmed_at: "2026-01-01T00:00:00Z" }]
+  const lines: PvLine[] = [
+    { name: "مفتاح عزم", productId: 100, qty: 1, price: 10 }, // product card code, unit "" = not set
+    { name: "ترولي عدة", productId: null, qty: 1, price: 10 }, // remembered
+    { name: "لقمة 17", productId: null, qty: 1, price: 10 }, // keyword
+    { name: "شيء غريب", productId: null, qty: 1, price: 10 }, // unknown
+  ]
+  const products = [{ product_id: 100, product_name: "مفتاح عزم", eta_code_id: 2, eta_unit_type: "" }]
+  const db = previewDb(lines, { goLive: GO_LIVE, codes, memory, products, customer: { eta_receiver_type: "B", tax_registration_number: null } })
+  assert.equal((await createDpInvoices(db, [1])).status, 200)
+  const id = db.tables.accounts_receivable[0].invoice_id
+  const p = await buildEtaPreview(db, id)
+  assert.deepEqual(p!.lines.map((l) => [l.state, l.codeId, l.itemCode, l.unit]), [
+    ["green", 2, "EG-GARAGE", "SET"],
+    ["green", 2, "EG-GARAGE", "SET"],
+    ["orange", 1, "EG-HAND", "EA"],
+    ["red", null, null, "EA"],
+  ])
+  assert.deepEqual(p!.customer, { name: "Acme", receiverType: "B", taxRegistrationNumber: null })
+  assert.deepEqual([...p!.missing].sort(), ["customer_address", "customer_tax_number", "line_codes"])
+
+  // the unknown name is confirmed: no line is red any more (orange is a suggestion, not missing)
+  db.tables.eta_code_memory.push({ memory_id: 2, normalized_name: normalizeName("شيء غريب"), core_name: normalizeName("شيء غريب"), code_id: 1, unit_type: "EA", confirmed_at: "2026-02-01T00:00:00Z" })
+  // a company with a tax number and full address
+  Object.assign(db.tables.customers[0], { tax_registration_number: "100234567", address_governorate: "Giza", address_region: "Dokki", address_street: "Tahrir", address_building_number: "4" })
+  const p2 = await buildEtaPreview(db, id)
+  assert.deepEqual(p2!.missing, [])
+  assert.equal(p2!.lines[3].state, "green")
+  // a tax number that is not 9 digits; an empty receiver type counts as a company
+  Object.assign(db.tables.customers[0], { eta_receiver_type: null, tax_registration_number: "12345", address_street: "" })
+  assert.deepEqual([...(await buildEtaPreview(db, id))!.missing].sort(), ["customer_address", "customer_tax_number"])
+  // a person: the national ID (14 digits) is what counts, no address needed
+  Object.assign(db.tables.customers[0], { eta_receiver_type: "P", tax_registration_number: null, national_id: "29001011234567" })
+  assert.deepEqual((await buildEtaPreview(db, id))!.missing, [])
+  db.tables.customers[0].national_id = "123"
+  assert.deepEqual((await buildEtaPreview(db, id))!.missing, ["customer_tax_number"])
+  db.tables.customers[0].national_id = "29001011234567"
+
+  // company settings
+  db.tables.company_settings = [{ setting_key: "eta_go_live_at", setting_value: GO_LIVE }, { setting_key: "eta_rin", setting_value: "12345" }, { setting_key: "eta_activity_code", setting_value: "46" }, ...COMPANY_OK.slice(2, 5)]
+  assert.deepEqual([...(await buildEtaPreview(db, id))!.missing].sort(), ["company_activity", "company_address", "company_rin"])
+})
+
+test("E22. handled manually: go-live, invoice date, and the 'already on the portal' mark", async () => {
+  const lines: PvLine[] = [{ name: "item 0", productId: 100, qty: 1, price: 10 }]
+  // go-live empty -> every invoice is handled manually
+  for (const goLive of ["", null, "not a date"]) {
+    const off = previewDb(lines, { goLive })
+    assert.equal((await createDpInvoices(off, [1])).status, 200)
+    assert.equal((await buildEtaPreview(off, off.tables.accounts_receivable[0].invoice_id))!.handledManually, true, `goLive=${goLive}`)
+  }
+  const db = previewDb(lines, { goLive: GO_LIVE })
+  assert.equal((await createDpInvoices(db, [1])).status, 200)
+  const id = db.tables.accounts_receivable[0].invoice_id
+  useDb(db)
+  const get = () => etaPreviewRoute.GET(preq("GET", `?invoiceId=${id}`)).then(out)
+  const g = await get()
+  assert.equal(g.status, 200)
+  assert.equal(g.body.handledManually, false)
+  assert.equal(g.body.manualEtaUuid, null)
+  assert.equal((await etaPreviewRoute.GET(preq("GET", "?invoiceId=abc")).then(out)).status, 400)
+  assert.equal((await etaPreviewRoute.GET(preq("GET", "")).then(out)).status, 400)
+  assert.equal((await etaPreviewRoute.GET(preq("GET", "?invoiceId=999")).then(out)).status, 404)
+
+  // mark "already on the portal"
+  const post = await etaPreviewRoute.POST(preq("POST", "", { invoiceId: id, etaUuid: "ABC" })).then(out)
+  assert.equal(post.status, 200, JSON.stringify(post.body))
+  assert.equal(db.tables.eta_documents.length, 1)
+  assert.deepEqual(
+    (({ invoice_id, document_type, status, eta_uuid, created_by }) => ({ invoice_id, document_type, status, eta_uuid, created_by }))(db.tables.eta_documents[0] as any),
+    { invoice_id: id, document_type: "I", status: "manual", eta_uuid: "ABC", created_by: 7 },
+  )
+  const marked = await get()
+  assert.equal(marked.body.handledManually, true)
+  assert.equal(marked.body.manualEtaUuid, "ABC")
+  // marking again without an ID keeps the one given; still a single row
+  assert.equal((await etaPreviewRoute.POST(preq("POST", "", { invoiceId: id })).then(out)).status, 200)
+  assert.equal(db.tables.eta_documents.length, 1)
+  assert.equal((await get()).body.manualEtaUuid, "ABC")
+  assert.equal((await etaPreviewRoute.POST(preq("POST", "", { invoiceId: 999 })).then(out)).status, 404)
+  assert.equal((await etaPreviewRoute.POST(preq("POST", "", { invoiceId: "x" })).then(out)).status, 400)
+
+  // DELETE clears the mark
+  assert.equal((await etaPreviewRoute.DELETE(preq("DELETE", `?invoiceId=${id}`)).then(out)).status, 200)
+  assert.equal(db.tables.eta_documents.length, 0)
+  assert.equal((await get()).body.handledManually, false)
+  assert.equal((await etaPreviewRoute.DELETE(preq("DELETE", `?invoiceId=${id}`)).then(out)).status, 404)
+
+  // a document already sent (any other status) is never overwritten or removed
+  db.tables.eta_documents.push({ doc_id: 50, invoice_id: id, document_type: "I", status: "submitted", eta_uuid: "SENT" })
+  assert.equal((await etaPreviewRoute.POST(preq("POST", "", { invoiceId: id, etaUuid: "ABC" })).then(out)).status, 409)
+  assert.equal((await etaPreviewRoute.DELETE(preq("DELETE", `?invoiceId=${id}`)).then(out)).status, 404)
+  assert.deepEqual(db.tables.eta_documents.map((r) => [r.status, r.eta_uuid]), [["submitted", "SENT"]])
+  assert.equal((await get()).body.handledManually, false)
+
+  // an invoice created before go-live is handled manually
+  db.tables.accounts_receivable[0].created_at = "2025-12-31T23:59:59Z"
+  assert.equal((await get()).body.handledManually, true)
+
+  // the route is under the e-invoice permission rule
+  const rule = ruleFor("/api/eta/preview")!
+  assert.equal(allows(rule, "POST", ["accountant"]), true)
+  assert.equal(allows(rule, "GET", ["sales-rep"]), false)
 })
