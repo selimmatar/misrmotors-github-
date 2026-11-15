@@ -4,7 +4,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { normalizeName, coreName, similarity, DEFAULT_BRANDS } from "../eta/normalize"
-import { matchCode, type EtaCode, type MemoryRow } from "../eta/codes"
+import { matchCode, prepareRowsToPost, type EtaCode, type MemoryRow } from "../eta/codes"
 import { etaLines, etaTolerance, isAfterGoLive, type EtaLineIn } from "../eta/totals"
 import { FakeDb, type Row } from "./fake-db"
 import { cannedDb, nreq } from "./hardening-fixtures"
@@ -1004,4 +1004,27 @@ test("E25. every e-invoice screen text is in English and Arabic", () => {
     assert.ok(at(en), `EN ${k}`)
     assert.ok(/[؀-ۿ]/.test(at(arb) || ""), `AR ${k}`)
   }
+})
+
+test("E26. prepare list: a changed code takes that code's default unit, an unchanged one keeps its matched unit", () => {
+  const codes = [
+    { code_id: 1, default_unit: "EA" },
+    { code_id: 2, default_unit: "SET" },
+    { code_id: 3, default_unit: null },
+  ]
+  const rows = [
+    { name: "kept", codeId: 1, unit: "BOX", pick: "1", skip: false },
+    { name: "changed", codeId: 1, unit: "BOX", pick: "2", skip: false },
+    { name: "picked for a red row", codeId: null, unit: "EA", pick: "2", skip: false },
+    { name: "code without a default", codeId: null, unit: "EA", pick: "3", skip: false },
+    { name: "skipped", codeId: 1, unit: "EA", pick: "1", skip: true },
+    { name: "no code", codeId: null, unit: "EA", pick: "none", skip: false },
+  ]
+  assert.deepEqual(prepareRowsToPost(rows, codes), [
+    { name: "kept", codeId: 1, unitType: "BOX" },
+    { name: "changed", codeId: 2, unitType: "SET" },
+    { name: "picked for a red row", codeId: 2, unitType: "SET" },
+    { name: "code without a default", codeId: 3, unitType: "" },
+  ])
+  assert.match(src(SETTINGS_SCREEN), /prepareRowsToPost\(prepare \|\| \[\], codes\)/)
 })

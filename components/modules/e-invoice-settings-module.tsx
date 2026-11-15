@@ -19,7 +19,7 @@ import { fill } from "@/lib/i18n-format"
 import { ETA_UNITS, GOVERNORATES, toLatinDigits } from "@/lib/eta/egypt"
 import { canSetGoLive, goLiveDate } from "@/lib/eta/go-live"
 import { DEFAULT_BRANDS } from "@/lib/eta/normalize"
-import type { CodeState } from "@/lib/eta/codes"
+import { prepareRowsToPost, type CodeState } from "@/lib/eta/codes"
 
 const NONE = "none"
 const PAGE = 100
@@ -284,7 +284,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
   const setPrepareRow = (normalizedName: string, patch: Partial<PrepareRow>) =>
     setPrepare((rows) => (rows || []).map((r) => (r.normalizedName === normalizedName ? { ...r, ...patch } : r)))
 
-  const toConfirm = (prepare || []).filter((r) => !r.skip && r.pick !== NONE)
+  const toConfirm = prepareRowsToPost(prepare || [], codes)
 
   const confirmAll = async () => {
     if (toConfirm.length === 0) return
@@ -293,7 +293,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
       const res = await fetch("/api/eta/memory/prepare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: toConfirm.map((r) => ({ name: r.name, codeId: Number(r.pick), unitType: r.unit || "" })) }),
+        body: JSON.stringify({ items: toConfirm }),
       })
       if (!res.ok) throw new Error(await readError(res, t("message.error")))
       const out = await res.json()

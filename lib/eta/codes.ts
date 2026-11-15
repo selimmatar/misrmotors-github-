@@ -113,3 +113,32 @@ export function matchCode(input: MatchInput, ctx: MatchContext): MatchResult {
   // 6. unknown
   return { codeId: null, unit: "EA", state: "red", by: "none" }
 }
+
+export interface PrepareRowIn {
+  name: string
+  /** the code the match suggested */
+  codeId: number | null
+  /** the unit the match gave for that code */
+  unit: string
+  /** the code picked on screen ("none" or a code id) */
+  pick: string
+  skip: boolean
+}
+
+/**
+ * "Prepare from past items": the rows to remember. A row whose code was changed on screen takes the picked code's
+ * default unit ("" lets the server use it), never the unit matched for the code it replaced.
+ */
+export function prepareRowsToPost(
+  rows: readonly PrepareRowIn[],
+  codes: readonly { code_id: number; default_unit?: string | null }[],
+): { name: string; codeId: number; unitType: string }[] {
+  const unitOf = new Map(codes.map((c) => [c.code_id, c.default_unit || ""]))
+  return rows
+    .filter((r) => !r.skip && r.pick !== "none" && r.pick !== "")
+    .map((r) => {
+      const codeId = Number(r.pick)
+      const kept = r.codeId != null && codeId === r.codeId
+      return { name: r.name, codeId, unitType: kept ? r.unit || "" : unitOf.get(codeId) ?? "" }
+    })
+}
