@@ -4,22 +4,9 @@ import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { normalizeName } from "@/lib/eta/normalize"
 import { matchCode } from "@/lib/eta/codes"
-import { loadMatchContext, rememberCode } from "@/lib/eta/store"
+import { allRows, loadMatchContext, rememberCode } from "@/lib/eta/store"
 
 export const dynamic = "force-dynamic"
-
-const PAGE = 1000
-
-async function allRows(db: any, table: string, select: string, order: string): Promise<any[]> {
-  const rows: any[] = []
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.from(table).select(select).order(order, { ascending: true }).range(from, from + PAGE - 1)
-    if (error) throw error
-    const page = (data || []) as any[]
-    rows.push(...page)
-    if (page.length < PAGE) return rows
-  }
-}
 
 export async function GET(_request: Request) {
   try {

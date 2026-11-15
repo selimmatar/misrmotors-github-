@@ -4,6 +4,20 @@ import type { EtaCode, MemoryRow } from "./codes"
 
 type Db = any
 
+const PAGE = 1000
+
+/** Reads every row of a table in pages (PostgREST caps one read), in a stable order. */
+export async function allRows(db: Db, table: string, select: string, order: string, ascending = true): Promise<any[]> {
+  const rows: any[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db.from(table).select(select).order(order, { ascending }).range(from, from + PAGE - 1)
+    if (error) throw error
+    const page = (data || []) as any[]
+    rows.push(...page)
+    if (page.length < PAGE) return rows
+  }
+}
+
 export const ETA_SETTING_KEYS = [
   "eta_rin",
   "eta_registered_name",
@@ -39,14 +53,12 @@ export function parseBrands(raw: string | undefined | null): string[] {
 }
 
 export async function loadMatchContext(db: Db): Promise<{ codes: EtaCode[]; memory: MemoryRow[]; brands: string[] }> {
-  const [codesRes, memRes, settings] = await Promise.all([
-    db.from("eta_item_codes").select("code_id, item_code, name, keywords, default_unit, active"),
-    db.from("eta_code_memory").select("normalized_name, core_name, code_id, unit_type, confirmed_at").order("confirmed_at", { ascending: true }),
+  const [codeRows, memRows, settings] = await Promise.all([
+    allRows(db, "eta_item_codes", "code_id, item_code, name, keywords, default_unit, active", "code_id"),
+    allRows(db, "eta_code_memory", "normalized_name, core_name, code_id, unit_type, confirmed_at", "confirmed_at"),
     readEtaSettings(db),
   ])
-  if (codesRes.error) throw new Error(codesRes.error.message || "Could not read the item codes")
-  if (memRes.error) throw new Error(memRes.error.message || "Could not read the code memory")
-  const codes: EtaCode[] = ((codesRes.data || []) as any[]).map((c) => ({
+  const codes: EtaCode[] = codeRows.map((c) => ({
     codeId: c.code_id,
     itemCode: c.item_code,
     name: c.name || "",
@@ -54,7 +66,7 @@ export async function loadMatchContext(db: Db): Promise<{ codes: EtaCode[]; memo
     defaultUnit: c.default_unit || "EA",
     active: c.active !== false,
   }))
-  const memory: MemoryRow[] = ((memRes.data || []) as any[]).map((m) => ({
+  const memory: MemoryRow[] = memRows.map((m) => ({
     normalizedName: m.normalized_name,
     coreName: m.core_name || "",
     codeId: m.code_id,

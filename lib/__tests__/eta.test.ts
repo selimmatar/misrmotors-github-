@@ -13,6 +13,7 @@ import * as etaSettingsRoute from "../../app/api/eta/settings/route"
 import * as etaCodesRoute from "../../app/api/eta/codes/route"
 import * as etaMemoryRoute from "../../app/api/eta/memory/route"
 import * as etaPrepareRoute from "../../app/api/eta/memory/prepare/route"
+import { loadMatchContext as loadEtaCtx } from "../eta/store"
 import { ruleFor, allows } from "../auth/permissions"
 import * as arPdf from "../../app/api/invoices/ar/[id]/pdf/route"
 import { moneyCell } from "../print-html"
@@ -581,4 +582,33 @@ test("E13. permissions", () => {
     assert.equal(allows(rule, "POST", ["sales-rep"]), false)
     assert.equal(allows(rule, "POST", ["ceo"]), true)
   }
+})
+
+test("E14. memory and codes are read in pages (more than 1000 rows)", async () => {
+  const memory: Row[] = []
+  for (let i = 1; i <= 1100; i++) {
+    memory.push({ memory_id: i, normalized_name: `قطعه ${i}`, core_name: `قطعه ${i}`, code_id: 1, unit_type: "EA", confirmed_at: new Date(Date.UTC(2026, 0, 1) + i * 1000).toISOString() })
+  }
+  // the newest confirmation: same name as an old row's neighbour, but a different code
+  memory.push({ memory_id: 1101, normalized_name: "ترولي عده", core_name: "ترولي عده", code_id: 2, unit_type: "SET", confirmed_at: "2027-01-01T00:00:00.000Z" })
+  const codes: Row[] = [{ code_id: 1, item_code: "A", keywords: [], default_unit: "EA", active: true }, { code_id: 2, item_code: "B", keywords: [], default_unit: "EA", active: true }]
+  for (let i = 3; i <= 1050; i++) codes.push({ code_id: i, item_code: `C${i}`, keywords: [], default_unit: "EA", active: true })
+  const db = new FakeDb({
+    eta_item_codes: codes,
+    eta_code_memory: memory,
+    products: [],
+    sales_order_items: [
+      { so_item_id: 1, so_id: 1, product_id: null, outsourced_name: "ترولي عدة" },
+      { so_item_id: 2, so_id: 1, product_id: null, outsourced_name: "لقمة 17" },
+    ],
+  })
+  db.jitter = false
+  useDb(db)
+  const ctx = await loadEtaCtx(db)
+  assert.equal(ctx.memory.length, 1101)
+  assert.equal(ctx.codes.length, 1050)
+  assert.equal(ctx.memory[ctx.memory.length - 1].normalizedName, "ترولي عده", "the newest row is read")
+  assert.equal(matchCode({ name: "ترولي عدة" }, ctx).codeId, 2)
+  const res = await etaPrepareRoute.GET(ereq("GET")).then(out)
+  assert.deepEqual(res.body.items.map((i: any) => i.name), ["لقمة 17"], "a name remembered past the first page is skipped")
 })
