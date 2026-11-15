@@ -38,6 +38,7 @@ const PK: Record<string, string> = {
   eta_item_codes: "code_id",
   eta_code_memory: "memory_id",
   eta_documents: "doc_id",
+  eta_signers: "signer_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
@@ -55,7 +56,12 @@ const UNIQUE: Record<string, string[][]> = {
   po_requests: [["request_number"]],
   eta_item_codes: [["item_code"]],
   eta_code_memory: [["normalized_name"]],
-  eta_documents: [["invoice_id"]],
+  eta_documents: [["invoice_id", "document_type", "environment", "version"]],
+  eta_signers: [["key_hash"]],
+}
+// Column defaults applied on insert (as the database does).
+const DEFAULTS: Record<string, Row> = {
+  eta_documents: { environment: "real", version: 1 },
 }
 const STAMP_CREATED_AT = new Set(["product_returns", "accounts_receivable", "return_items"])
 
@@ -247,6 +253,7 @@ class Query {
           if (item[pk] === undefined) item[pk] = ++this.db.seq[this.table]
           else this.db.seq[this.table] = Math.max(this.db.seq[this.table], Number(item[pk]))
         }
+        for (const [k, v] of Object.entries(DEFAULTS[this.table] || {})) if (item[k] === undefined) item[k] = v
         if (STAMP_CREATED_AT.has(this.table) && !item.created_at) item.created_at = this.db.stamp()
         const unique = this.violates(rows, item)
         if (unique) return { data: null, error: { code: "23505", message: `duplicate key (${unique})` } }

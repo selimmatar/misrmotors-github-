@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { resolveInstallmentCount } from "@/lib/payment-type"
+import { ETA_LIVE_MESSAGE, clearRemovableDocuments, liveRealDocument } from "@/lib/eta/live"
 import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
@@ -200,6 +201,13 @@ export async function DELETE(request: Request) {
         { status: 409 },
       )
     }
+
+    // A real e-invoice document waiting, sent, valid, cancelled or credited keeps the invoice (spec §6.1). Test sends,
+    // a manual mark, a document needing review or a real invalid one never block: they are removed with the invoice.
+    if (invoice && (await liveRealDocument(supabase, numericId))) {
+      return NextResponse.json({ error: ETA_LIVE_MESSAGE, code: "ETA_LIVE" }, { status: 409 })
+    }
+    if (invoice) await clearRemovableDocuments(supabase, numericId)
 
     const { error } = await supabase.from("accounts_receivable").delete().eq("invoice_id", numericId)
     if (error) throw error

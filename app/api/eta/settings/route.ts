@@ -64,9 +64,14 @@ export async function PUT(request: Request) {
     }
 
     const current = await readEtaSettings(db)
+    const roles = (request.headers.get("x-mm-roles") || "").split(",").map((r) => r.trim())
+    const top = roles.includes("ceo") || roles.includes("admin")
+    // the portal (test / real) is chosen by the CEO or an admin only; unset counts as test, as the screen shows it
+    if ("eta_environment" in updates && updates.eta_environment !== (current.eta_environment || "test") && !top) {
+      return NextResponse.json({ error: "Only the CEO or an admin can choose the test or real portal" }, { status: 403 })
+    }
     if ("eta_go_live_at" in updates && updates.eta_go_live_at !== (current.eta_go_live_at ?? "")) {
-      const roles = (request.headers.get("x-mm-roles") || "").split(",").map((r) => r.trim())
-      if (!roles.includes("ceo") && !roles.includes("admin")) {
+      if (!top) {
         return NextResponse.json({ error: "Only the CEO or an admin can change the go-live date" }, { status: 403 })
       }
       // once it has passed, invoices already exist on each side of it: moving or clearing it would re-classify them

@@ -38,8 +38,11 @@ export async function POST(request: Request) {
     if (invErr) throw invErr
     if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
 
-    const { data: existing, error: docErr } = await db.from("eta_documents").select("doc_id, status").eq("invoice_id", invoiceId).maybeSingle()
+    // the invoice's real-portal invoice documents (test sends and credit notes don't count; several rows may exist)
+    const { data: docs, error: docErr } = await db.from("eta_documents").select("doc_id, status, document_type, environment").eq("invoice_id", invoiceId)
     if (docErr) throw docErr
+    const real = ((docs || []) as any[]).filter((d) => (d.environment || "real") === "real" && (d.document_type || "I") === "I")
+    const existing = real.find((d) => d.status !== "manual") || real[0] || null
     const notManual = () => NextResponse.json({ error: "This invoice already has an e-invoice document; it cannot be marked as handled manually." }, { status: 409 })
     if (existing && existing.status !== "manual") return notManual()
 
