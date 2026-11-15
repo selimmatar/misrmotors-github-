@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Send customer invoices and whole-invoice credit notes to the ETA portal (signed on the accountant's PC), cancel, print, replace an invoice after reversal, and pull supplier e-invoices into the ERP.
+**Goal:** Send customer invoices and whole-invoice credit notes to the ETA portal (signed on the accountant's PC), cancel, print, correct and reissue an invoice after reversal (sales order / delivery permit corrections with automatic stock), and pull supplier e-invoices into the ERP.
 
-**Architecture:** Pure logic in `lib/eta/` (canonical text, document builder, portal client, state machine, receive), thin routes under `app/api/eta/` (logged-in users) plus two device / cron entry points outside `/api/eta` (`/api/eta-signer/*`, `/api/eta-sync`) that check their own secret. A Windows signer (`signer/`, .NET 8) pulls waiting documents and posts CAdES-BES signatures. Replace-invoice is one Postgres function so it is all-or-nothing.
+**Architecture:** Pure logic in `lib/eta/` (canonical text, document builder, portal client, state machine, receive), thin routes under `app/api/eta/` (logged-in users) plus two device / cron entry points outside `/api/eta` (`/api/eta-signer/*`, `/api/eta-sync`) that check their own secret. A Windows signer (`signer/`, .NET 8) pulls waiting documents and posts CAdES-BES signatures. Linking a reissued invoice (links, payment moves) is one Postgres function so it is all-or-nothing.
 
 **Tech Stack:** Next.js app router, TypeScript, Supabase (Postgres + RPC), node:test with FakeDb + route-harness, `pkijs` + `asn1js` (CMS parsing on the server), .NET 8 (signer), GitHub Actions (Windows build of the signer).
 
@@ -28,13 +28,13 @@
 - Tests: new file `lib/__tests__/eta2.test.ts` (suite `eta2`, tests numbered F1, F2 …), registered in `lib/__tests__/run-tests.sh`. Full suite: `S=<scratchpad>; TEST_OUT=$S/full bash lib/__tests__/run-tests.sh` → every group `fail 0`. `npx tsc --noEmit -p .` stays at the 525-line baseline. Afterwards `git checkout -- tsconfig.tsbuildinfo next-env.d.ts`. Snapshot guards (`fixtures/ui-1b/protected.json`, `fixtures/ui-1c/t1.json`, `t2.json`) edited only for entries a task changes; new component files added to `a11y-scan.ts` OWNED.
 - No live portal calls in tests (inject `fetch`). No writes to the production database except the controller's migration.
 
-**Ruling R1 (plan):** spec §6.5a lets the accountant edit item names, quantities and prices of a replacement invoice, but today an invoice's lines are derived from its sales order / delivery permits. A replacement therefore stores its own lines: `accounts_receivable.custom_lines jsonb` (additive, nullable). When set, the preview, the print and the amount use these lines instead of the derived ones. Cost if wrong: one extra column.
+**Owner revision (2026-11-15):** an invoice is never edited alone. "Correct and reissue" reopens the sales order and delivery permits of a reversed invoice; the new invoice is made the normal way from them (spec §6.5a). No per-invoice custom lines.
 
 ## Review Focus
 
 1. The invoice (lines, customer, amount) changes after Send but before signing — it must go back to "needs review", never be signed or submitted with stale content.
 2. Submit returns 202 and the follow-up call fails / times out, or a retry hits 422 `DuplicateSubmission` — the document stays "submitted", is never sent twice, and the next follow-up resolves it.
-3. Replace an invoice that has part payments (same customer) — payments, schedules and collected amount move to the new invoice; the old one stops counting everywhere; the customer's balance is unchanged. Different customer with payments → refused with no change.
+3. Reissue of an invoice that has part payments (same customer) — on creating the new invoice, payments, schedules and collected amount move to it; the old one stops counting everywhere; the customer's balance is unchanged. Different customer with payments → creating the new invoice is refused with no change. A return during the open correction creates no customer credit.
 4. A test-environment send of a real invoice — its real badge stays "Not sent", delete / edit stay allowed, and a later real send works.
 5. A received supplier document seen again with a new status (supplier cancelled it) — the row is updated, not duplicated; an issuer tax number on no supplier card is flagged "unknown supplier".
 
@@ -53,9 +53,10 @@ Each line is pinned by a test in the owning task (Tasks 4, 5, 7, 4, 8).
   - `eta_documents` add: `environment text not null default 'real' check in ('test','real')`, `version int not null default 1`, `canonical text`, `document jsonb`, `signature text`, `references text[]`, `submitted_at`, `checked_at`, `validated_at timestamptz`, `needs_review boolean default false`; status check widened to add `needs_review`. Drop the step-1 unique on `invoice_id`; add unique (`invoice_id`, `document_type`, `environment`, `version`). FK on `invoice_id` changed from `on delete cascade` to `on delete restrict`.
   - `eta_signers` (`signer_id serial pk`, `key_hash text unique not null`, `name text`, `created_by int references users`, `created_at`, `last_seen_at`, `unlocked boolean default false`, `revoked_at timestamptz`).
   - `eta_received_documents` (`received_id serial pk`, `uuid text not null`, `environment`, `document_type`, `issuer_id`, `issuer_name`, `supplier_id int references suppliers on delete set null`, `internal_id`, `date_issued timestamptz`, `net`, `vat`, `total numeric`, `status text`, `lines jsonb`, `raw jsonb`, `first_seen_at`, `updated_at`; unique (`uuid`, `environment`)).
-  - `accounts_receivable` add `replaces_invoice_id`, `replaced_by_invoice_id int references accounts_receivable on delete restrict`, `custom_lines jsonb` (R1); status check recreated with the four current values plus `replaced`.
-  - Function `eta_replace_invoice(p_old int, p_new jsonb, p_user int) returns int` (security definer, one transaction) — body in Task 7, created here as the final SQL statement of this file.
-  - RLS on for the two new tables, no policies.
+  - `accounts_receivable` add `replaces_invoice_id`, `replaced_by_invoice_id int references accounts_receivable on delete restrict`; status check recreated with the four current values plus `replaced`.
+  - `dp_corrections` (`correction_id serial pk`, `permit_id int references delivery_permits`, `invoice_id int references accounts_receivable`, `lines jsonb` (product, before, after), `stock_moves jsonb`, `created_by int references users`, `created_at`).
+  - Function `eta_link_reissue(p_old int, p_new int, p_user int) returns void` (security definer, one transaction) — body in Task 7, created here as the final SQL statement of this file.
+  - RLS on for the three new tables, no policies.
 - The test may allow `drop constraint` only for the two named constraints (step-1 `eta_documents_invoice_id_key` and the AR status check, plus the `invoice_id` FK it recreates); every other statement additive.
 
 - [ ] **Step 1: Write the failing test** `F1. step-2 migration`: the file exists; no statement starts with `drop table|truncate|delete|update|alter table … drop column|rename`; every `drop constraint` names one of the allowed constraints and is followed by its re-`add`; it contains each table / column / function name above.
@@ -157,22 +158,24 @@ Each line is pinned by a test in the owning task (Tasks 4, 5, 7, 4, 8).
 - [ ] **Step 2–4: Run → fail; implement; run → pass** (full suite: no behaviour change while no invoice is `replaced`).
 - [ ] **Step 5: Commit** `AR: replaced invoices stop counting`.
 
-### Task 7: Replace an invoice
+### Task 7: Correct and reissue
 
 **Files:**
-- Modify: `scripts/sql/2026-11-15-eta-step2.sql` (function body), `lib/eta/preview.ts` and `app/api/invoices/ar/[id]/pdf/route.ts` (use `custom_lines` when set), `lib/invoicing.ts` amount helper for custom lines
-- Create: `lib/eta/replace.ts`, `app/api/eta/replace/route.ts`
+- Modify: `scripts/sql/2026-11-15-eta-step2.sql` (function body), `lib/invoicing.ts` (`createDpInvoices` / `createSoInvoice`: detect a reissue and call the link step), `app/api/sales-orders/route.ts` PUT (allowed while the order has an open correction even where today's rules would lock it; nothing loosened otherwise), the return-credit step used by `lib/returns.ts` (no customer credit while the permit's invoice is an open correction)
+- Create: `lib/eta/reissue.ts`, `app/api/eta/reissue/route.ts` (POST start), `app/api/delivery-permits/correct/route.ts`
 - Test: `lib/__tests__/eta2.test.ts`
 
 **Interfaces:**
-- Consumes: Task 6 `excludeReplaced`.
+- Consumes: Task 6 `excludeReplaced`; `lib/dp-stock.ts` (`takeFromRow`, `undoMoves`, `StockMove`).
 - Produces:
-  - `planReplace(db, oldId, input: { customerId; invoiceNumber; date; lines: { description; quantity; unitPrice; discountRate? }[] }): { ok: true; newRow; paymentsToMove } | { ok: false; code; message }` (pure checks: old invoice's real document is `cancelled` or has a `valid` credit note; different customer with payments → `PAYMENTS_OTHER_CUSTOMER`; invoice number unique; amount from lines by the step-1 per-line VAT rule).
-  - `eta_replace_invoice(p_old, p_new, p_user)` in one transaction: insert the new invoice (`custom_lines`, `replaces_invoice_id`), set old `status 'replaced'`, `replaced_by_invoice_id`, move `customer_payments.invoice_id`, `payment_schedules.invoice_id`, `invoice_delivery_permits.invoice_id`, `customer_credits.used_in_invoice_id` and the collected amount to the new invoice, recompute the new status; returns the new `invoice_id`.
-  - `POST /api/eta/replace` (accountant / CEO / admin) → `{ invoiceId, invoiceNumber, overpaid? }`; an overpayment needs `confirmOverpaid: true`.
-- [ ] **Step 1: Failing tests** `F22` replace refused while the real document is still valid without credit note; `F23` (Review Focus 3) same customer with a part payment: new invoice carries the payment and status `partially_paid`, old is `replaced` and linked both ways, customer balance unchanged; `F24` different customer with payments → refused, nothing changed; `F25` overpayment needs confirmation; `F26` preview / print of the new invoice use `custom_lines`.
-- [ ] **Step 2: Run** → fail. **Step 3:** implement (FakeDb gets an `rpc("eta_replace_invoice")` stand-in that mirrors the SQL, kept next to the SQL and tested against it by `F23`). **Step 4:** run → pass.
-- [ ] **Step 5: Commit** `E-invoice: replace an invoice`. The controller re-applies the migration file (function body) with `apply_migration` `eta_step2_replace`.
+  - `startReissue(db, invoiceId, userId): { ok: true } | { ok: false; code; message }` — only when the invoice's real document is `cancelled` or has a `valid` credit note and the invoice is not already `replaced`; sets `status 'replaced'`.
+  - `openCorrection(db, { soId? ; permitId? }): Promise<{ oldInvoiceId: number } | null>` — a `replaced` invoice with `replaced_by_invoice_id is null` linked to that order / permit.
+  - `correctPermit(db, permitId, lines: { permitItemId; quantity }[], userId)` — only with an open correction; new quantity ≥ already-returned quantity; stock difference applied with the dp-stock helpers (shortage → refused, nothing changed; failure → undone); writes `dp_corrections`.
+  - `eta_link_reissue(p_old, p_new, p_user)` — in one transaction: sets both links, moves `customer_payments.invoice_id`, `payment_schedules.invoice_id`, `customer_credits.used_in_invoice_id` and `collected_amount` to the new invoice, recomputes its status; refuses (raises) when customers differ and the old invoice has payments.
+  - Invoice creation: when the permits / order belong to an open correction, after insert it calls `eta_link_reissue`; a refusal deletes the just-created invoice and returns `PAYMENTS_OTHER_CUSTOMER` with the spec text; an overpayment needs `confirmOverpaid: true`.
+- [ ] **Step 1: Failing tests** `F22` start refused while the real document is valid without credit note; `F23` (Review Focus 3) same customer with a part payment: start → old `replaced`, its permits not invoiced; create the new invoice from them → payments moved, new status `partially_paid`, links both ways, customer balance unchanged; `F24` different customer with payments → creation refused, nothing changed; `F25` correct permit: 5 → 3 returns 2 to stock, 3 → 4 takes 1 (shortage refused with no change), below returned quantity refused, outside an open correction refused (approved permits stay locked); `F26` a return during an open correction creates no customer credit; after the new invoice exists, returns behave as today; `F27` sales-order edit allowed with an open correction and refused as today without one.
+- [ ] **Step 2: Run** → fail. **Step 3:** implement (FakeDb gets an `rpc("eta_link_reissue")` stand-in mirroring the SQL; `F23` exercises it). **Step 4:** run → pass.
+- [ ] **Step 5: Commit** `E-invoice: correct and reissue`. The controller re-applies the function with `apply_migration` `eta_step2_reissue`.
 
 ### Task 8: Receive supplier e-invoices
 
@@ -183,18 +186,18 @@ Each line is pinned by a test in the owning task (Tasks 4, 5, 7, 4, 8).
 
 **Interfaces:**
 - Produces: `receiveSupplierDocuments(db, env, deps, { since? }): Promise<{ added; updated; unknownSuppliers }>` — search `direction=Received` in 30-day windows from `since` (default: last received date, first run 90 days back), pages by `continuationToken`, details for new uuids only (≤ 2/s), upserts on (`uuid`, `environment`), matches `supplier_id` by `suppliers.tax_registration_number = issuerId`.
-- [ ] **Step 1: Failing tests** `F27` two pages with continuation token → all stored once; `F28` (Review Focus 5) same uuid with status `cancelled` → updated, not duplicated; issuer not on any card → `supplier_id null` and counted in `unknownSuppliers`; `F29` `/api/eta-sync` without / wrong bearer → 401, right bearer → runs.
+- [ ] **Step 1: Failing tests** `F28` two pages with continuation token → all stored once; `F29` (Review Focus 5) same uuid with status `cancelled` → updated, not duplicated; issuer not on any card → `supplier_id null` and counted in `unknownSuppliers`; `F30` `/api/eta-sync` without / wrong bearer → 401, right bearer → runs.
 - [ ] **Step 2–4: Run → fail; implement; run → pass.**
 - [ ] **Step 5: Commit** `E-invoice: receive supplier e-invoices`.
 
 ### Task 9: Screens
 
 **Files:**
-- Modify: `components/accounting/eta-preview-dialog.tsx` (Send / Send again / Credit note / Cancel / Portal PDF / Replace by state, test label, "Portal has not answered — check again" after 24 h submitted, "older than 7 days" warning before Send, plain portal errors on invalid), `components/modules/accounts-receivable-module.tsx` (badge per row, "Send all ready", Replaced / Replaces links), `components/modules/e-invoice-settings-module.tsx` (environment CEO/admin, credentials set / not set, signer connect / last seen / unlocked / disconnect with the key shown once, Waiting to be signed, Sent today), `components/modules/accounts-payable-module.tsx` (tab "Supplier e-invoices"), `lib/i18n-context.tsx`, `lib/__tests__/a11y-scan.ts`
-- Create: `components/accounting/eta-replace-dialog.tsx`, `components/accounting/supplier-einvoices.tsx`
+- Modify: `components/accounting/eta-preview-dialog.tsx` (Send / Send again / Credit note / Cancel / Portal PDF / Correct and reissue by state, test label, "Portal has not answered — check again" after 24 h submitted, "older than 7 days" warning before Send, plain portal errors on invalid), `components/modules/accounts-receivable-module.tsx` (badge per row, "Send all ready", Replaced / Replaces links, "payments waiting for the new invoice"), `components/modules/e-invoice-settings-module.tsx` (environment CEO/admin, credentials set / not set, signer connect / last seen / unlocked / disconnect with the key shown once, Waiting to be signed, Sent today), `components/modules/accounts-payable-module.tsx` (tab "Supplier e-invoices"), `lib/i18n-context.tsx`, `lib/__tests__/a11y-scan.ts`
+- Create: `components/accounting/eta-reissue-dialog.tsx` (explains the steps, starts the correction, links to the order / permits), `components/accounting/supplier-einvoices.tsx`, `components/delivery/correct-permit-dialog.tsx` (shown on a permit only with an open correction; delivery-permits module modified to render it)
 - Test: `lib/__tests__/eta2.test.ts` (source assertions), existing snapshot / a11y suites
 
-- [ ] **Step 1: Failing test** `F30. screens wired`: dialog renders actions by state from the preview's `documents`; AR renders the badge and `<EtaReplaceDialog`; AP renders `<SupplierEInvoices`; the signer key text appears only in the response handler of the pair call; every new key has EN and AR.
+- [ ] **Step 1: Failing test** `F31. screens wired`: dialog renders actions by state from the preview's `documents`; AR renders the badge and `<EtaReissueDialog`; the delivery-permits module renders `<CorrectPermitDialog` only when the permit has an open correction; AP renders `<SupplierEInvoices`; the signer key text appears only in the response handler of the pair call; every new key has EN and AR.
 - [ ] **Step 2–4: Run → fail; implement; run full suite → pass, tsc at baseline.**
 - [ ] **Step 5: Commit** `E-invoice: send, credit note, replace and supplier e-invoice screens`.
 

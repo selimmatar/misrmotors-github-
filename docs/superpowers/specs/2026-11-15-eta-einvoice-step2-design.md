@@ -32,8 +32,9 @@ portal to issue an invoice or a credit note, and does not type supplier invoices
    note that repeats the invoice's sent lines exactly, references the invoice's portal uuid, and keeps the same
    internal number (as the accountant does today, e.g. credit note for 10363). It is signed and sent the same way.
 5. **Cancel on the portal** while the portal still allows it (the window comes from the portal itself, see §6.5).
-5a. **Replace an invoice** after its credit note or cancel: clone, edit, re-issue with a new number; both invoices
-   labelled and linked; the old one stops counting; payments move (§6.5a).
+5a. **Correct and reissue** after a credit note or cancel: the old invoice stops counting, its sales order and
+   delivery permits open for correction (sales order edit, returns, delivery-permit correction with automatic stock),
+   the new invoice is made the normal way, both are labelled and linked, payments move (§6.5a).
 6. **Portal printout.** Valid documents get "Portal PDF" (the portal's own printout with its QR code).
 7. **Receive supplier invoices.** The ERP pulls every document where the company is the receiver (invoices, credit
    notes, debit notes) into a **Supplier e-invoices** list under Accounts Payable: supplier (recognised by tax
@@ -50,7 +51,7 @@ portal to issue an invoice or a credit note, and does not type supplier invoices
   portal (step 3).
 - Partial credit notes (the owner reverses whole invoices only), debit notes we issue, receipts (e-receipt / POS).
 - Changing balances by a credit note alone: a credit note on the portal does not by itself change Accounts Receivable.
-  Balances change only through "Replace invoice" (§6.5a) or the return / customer credit recorded as today (§6.4).
+  Balances change only through "Correct and reissue" (§6.5a) or the return / customer credit recorded as today (§6.4).
 - Foreign currency invoices (all invoices are EGP).
 - Sending invoices created before go-live (they stay "handled manually"; step 1 rule).
 
@@ -163,25 +164,37 @@ ERP verifies the signature is a valid CMS over exactly that text
   the portal's answer (OperationPeriodOver) is shown in plain words.
 - An invoice with an active credit note cannot be cancelled (the portal refuses it too).
 
-### 6.5a Replace an invoice (owner request, confirmed 2026-11-15)
+### 6.5a Correct and reissue an invoice (owner request, confirmed 2026-11-15; revised the same day)
+
+The sales order and delivery permits are corrected — never the invoice alone — so the ERP's records always agree.
 
 - **When:** only on an invoice whose real portal document is fully reversed — a **valid credit note** or **cancelled**.
-  Never while the invoice is still live on the portal (no two live invoices for one sale).
-- **"Replace invoice"** (accountant, CEO, admin) opens a new customer invoice pre-filled as a copy of the old one: same
-  customer, sales order and delivery-permit links, same lines, discount and VAT rule. Before saving, the accountant can
-  edit the customer, item names, quantities, unit prices, discount and date, and types the new invoice number (as today).
-- **Labelled and linked:** the old invoice shows "Replaced by {new number}", the new one "Replaces {old number}"; each
-  label opens the other invoice. Both directions are stored (`replaces_invoice_id` / `replaced_by_invoice_id`).
-- **The old invoice in the ERP:** kept for history with status **Replaced** (and its credit note / cancel). From that
-  moment it no longer counts in the customer's balance, ageing, statements, reports or the "already invoiced" /
-  over-invoicing checks, so the new invoice can bill the same delivery permits.
-- **Payments:** payments already applied to the old invoice move to the new one automatically, in the same action. If
-  the new invoice is for a **different customer**, the replace is refused while the old invoice has payments, with the
-  message "This invoice has payments from {customer}. Move or refund them first" — money is never moved between
-  customers automatically. If the moved payments exceed the new amount, the difference is shown and the replace needs
-  a confirm (the overpayment stays as the customer's credit, as today).
-- The new invoice is an ordinary invoice: it goes through the step-1 preview and "Send to portal" like any other.
-- Replace happens in one database transaction (new invoice, links, old status, payment moves) — all or nothing.
+- **"Correct and reissue"** (accountant, CEO, admin) on the old invoice:
+  - the old invoice becomes **Replaced** (kept for history with its credit note / cancel). From that moment it no
+    longer counts in the customer's balance, ageing, statements, reports or the "already invoiced" / over-invoicing
+    checks, so its delivery permits count as **not invoiced** again;
+  - its sales order and delivery permits are **open for correction** until the new invoice exists.
+- **What can be corrected while open:**
+  1. **Prices, item names, discount, customer → the sales order** on its usual screen (no stock effect).
+  2. **Items physically returned → the existing Returns flow** against the delivery permit (warehouse receives, stock
+     back as today). While the permit's invoice is Replaced and not yet reissued, the return creates **no customer
+     credit** (the new invoice simply bills less), so nothing is counted twice.
+  3. **Delivery permit typed wrong (nothing physically moved) → "Correct delivery permit"**: change quantities or
+     items; stock moves by the difference automatically (less → back to stock, more → out of stock, checked like an
+     approval), recorded as "Correction for invoice {old number}" with who, when, before and after. A quantity can't go
+     below what was already returned.
+  4. **Extra items actually delivered → a new delivery permit** the normal way.
+- **The new invoice** is created the normal way from the corrected delivery permits (the accountant types the number as
+  today). The ERP recognises it as the reissue (its permits belong to the open Replaced invoice) and, in one database
+  transaction: links both ways ("Replaced by {new}" / "Replaces {old}", each opening the other), moves the payments,
+  schedules and collected amount from the old invoice, and closes the correction (sales order and permits lock again).
+- **Payments:** until the new invoice exists, the old invoice's payments stay on it and show "waiting for the new
+  invoice". If the new invoice's customer differs and the old one has payments, creating it is refused: "This invoice
+  has payments from {customer}. Move or refund them first" — money is never moved between customers automatically. If
+  the moved payments exceed the new amount, the difference stays as the customer's credit, as today, after a confirm.
+- **Safety:** "Correct delivery permit" exists only for permits of an open correction; approved delivery permits stay
+  uneditable everywhere else, as today. The new invoice goes through the step-1 preview and "Send to portal" like any
+  other.
 
 ### 6.6 Receiving supplier invoices
 
@@ -221,7 +234,9 @@ Additive except one constraint change on a table created in step 1 (empty in pro
   `first_seen_at`, `updated_at`.
 - RLS on, no policies (server only), as in step 1.
 - `accounts_receivable` (existing financial table — additive only): `replaces_invoice_id`, `replaced_by_invoice_id`
-  (nullable references), and the status value **replaced**. Every place that sums or checks customer invoices (balance,
+  (nullable references), and the status value **replaced**. `dp_corrections` (new): `correction_id`, `permit_id`,
+  `invoice_id` (the Replaced invoice), `lines` jsonb (product, before, after), `stock_moves` jsonb, `created_by`,
+  `created_at`. Every place that sums or checks customer invoices (balance,
   ageing, statements, reports, over-invoicing, Orders to invoice) must exclude `replaced` — the builder lists them all
   and tests each. No existing row changes until someone uses Replace.
 
