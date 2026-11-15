@@ -110,7 +110,7 @@ class Query {
   filters: ((r: Row) => boolean)[] = []
   wantRows = false
   one: "none" | "single" | "maybe" = "none"
-  sortBy: { col: string; asc: boolean } | null = null
+  sortBy: { col: string; asc: boolean }[] = []
   max: number | null = null
   conflict: string[] = []
   constructor(private db: FakeDb, private table: string) {}
@@ -157,7 +157,7 @@ class Query {
     this.filters.push((r) => re.test(String(r[c] ?? "")))
     return this
   }
-  order(col: string, opts: { ascending?: boolean } = {}) { this.sortBy = { col, asc: opts.ascending !== false }; return this }
+  order(col: string, opts: { ascending?: boolean } = {}) { this.sortBy.push({ col, asc: opts.ascending !== false }); return this }
   limit(n: number) { this.max = n; return this }
   /** PostgREST `.range(from, to)` (inclusive): slices the ordered result */
   window: { from: number; to: number } | null = null
@@ -192,9 +192,14 @@ class Query {
         return copy
       })
     }
-    if (this.sortBy) {
-      const { col, asc } = this.sortBy
-      out = [...out].sort((a, b) => (a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0) * (asc ? 1 : -1))
+    if (this.sortBy.length) {
+      out = [...out].sort((a, b) => {
+        for (const { col, asc } of this.sortBy) {
+          const d = a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0
+          if (d) return d * (asc ? 1 : -1)
+        }
+        return 0
+      })
     }
     const count = out.length
     if (this.max !== null) out = out.slice(0, this.max)

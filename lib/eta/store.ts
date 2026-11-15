@@ -6,12 +6,22 @@ type Db = any
 
 const PAGE = 1000
 
-/** Reads every row of a table in pages (PostgREST caps one read), in a stable order. */
-export async function allRows(db: Db, table: string, select: string, order: string, ascending = true): Promise<any[]> {
+export interface OrderBy {
+  column: string
+  ascending?: boolean
+}
+
+/**
+ * Reads every row of a table in pages (PostgREST caps one read). `order` must end in a unique column (the primary key)
+ * so that rows tied on the earlier columns come back in the same order on every page.
+ */
+export async function allRows(db: Db, table: string, select: string, order: OrderBy[]): Promise<any[]> {
   const rows: any[] = []
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.from(table).select(select).order(order, { ascending }).range(from, from + PAGE - 1)
-    if (error) throw error
+    let query = db.from(table).select(select)
+    for (const o of order) query = query.order(o.column, { ascending: o.ascending !== false })
+    const { data, error } = await query.range(from, from + PAGE - 1)
+    if (error) throw new Error(`Could not read ${table}: ${error.message || JSON.stringify(error)}`)
     const page = (data || []) as any[]
     rows.push(...page)
     if (page.length < PAGE) return rows
@@ -54,8 +64,8 @@ export function parseBrands(raw: string | undefined | null): string[] {
 
 export async function loadMatchContext(db: Db): Promise<{ codes: EtaCode[]; memory: MemoryRow[]; brands: string[] }> {
   const [codeRows, memRows, settings] = await Promise.all([
-    allRows(db, "eta_item_codes", "code_id, item_code, name, keywords, default_unit, active", "code_id"),
-    allRows(db, "eta_code_memory", "normalized_name, core_name, code_id, unit_type, confirmed_at", "confirmed_at"),
+    allRows(db, "eta_item_codes", "code_id, item_code, name, keywords, default_unit, active", [{ column: "code_id" }]),
+    allRows(db, "eta_code_memory", "normalized_name, core_name, code_id, unit_type, confirmed_at, memory_id", [{ column: "confirmed_at" }, { column: "memory_id" }]),
     readEtaSettings(db),
   ])
   const codes: EtaCode[] = codeRows.map((c) => ({

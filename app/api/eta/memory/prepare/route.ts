@@ -12,8 +12,8 @@ export async function GET(_request: Request) {
   try {
     const db = createAdminClient()
     const [lines, products, ctx] = await Promise.all([
-      allRows(db, "sales_order_items", "so_item_id, product_id, outsourced_name", "so_item_id"),
-      allRows(db, "products", "product_id, product_name, eta_code_id, eta_unit_type", "product_id"),
+      allRows(db, "sales_order_items", "so_item_id, product_id, outsourced_name", [{ column: "so_item_id" }]),
+      allRows(db, "products", "product_id, product_name, eta_code_id, eta_unit_type", [{ column: "product_id" }]),
       loadMatchContext(db),
     ])
     const productById = new Map<number, any>(products.map((p) => [p.product_id, p]))

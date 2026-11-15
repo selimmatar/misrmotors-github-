@@ -612,3 +612,25 @@ test("E14. memory and codes are read in pages (more than 1000 rows)", async () =
   const res = await etaPrepareRoute.GET(ereq("GET")).then(out)
   assert.deepEqual(res.body.items.map((i: any) => i.name), ["لقمة 17"], "a name remembered past the first page is skipped")
 })
+
+test("E15. memory paging is stable across rows with the same confirmed_at", async () => {
+  // 1100 rows share one confirmed_at (a bulk import); memory_ids run opposite to insertion order, so only the
+  // secondary order on memory_id decides which row is last (the most recent) and keeps every page boundary exact.
+  const same = "2026-06-01T00:00:00.000Z"
+  const memory: Row[] = []
+  for (let i = 1100; i >= 1; i--) {
+    memory.push({ memory_id: i, normalized_name: `صنف ${i}`, core_name: `صنف ${i}`, code_id: i === 1100 ? 2 : 1, unit_type: "EA", confirmed_at: same })
+  }
+  const db = new FakeDb({
+    eta_item_codes: [{ code_id: 1, item_code: "A", keywords: [], default_unit: "EA", active: true }, { code_id: 2, item_code: "B", keywords: [], default_unit: "EA", active: true }],
+    eta_code_memory: memory,
+  })
+  db.jitter = false
+  const ctx = await loadEtaCtx(db)
+  assert.equal(ctx.memory.length, 1100)
+  assert.equal(new Set(ctx.memory.map((m) => m.normalizedName)).size, 1100, "no row dropped or duplicated")
+  assert.equal(ctx.memory[ctx.memory.length - 1].normalizedName, "صنف 1100", "ties resolve by memory_id")
+  assert.equal(ctx.memory[999].normalizedName, "صنف 1000", "page boundary is exact")
+  db.failOn["eta_item_codes:select"] = "boom"
+  await assert.rejects(() => loadEtaCtx(db), /Could not read eta_item_codes: boom/)
+})
