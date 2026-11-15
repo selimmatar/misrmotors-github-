@@ -22,7 +22,7 @@ import { fill } from "@/lib/i18n-format"
 import type { CustomerInvoice } from "@/lib/types"
 import { isSinglePayment } from "@/lib/payment-type"
 import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet } from "lucide-react"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
@@ -38,6 +38,7 @@ import { arDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
 import { OrdersToInvoice, useOrdersToInvoice } from "@/components/accounting/orders-to-invoice"
 import type { OrderToInvoice } from "@/lib/ready-to-invoice"
 import { OrderOverviewDialog } from "@/components/sales-order/order-overview-dialog"
+import { EtaPreviewDialog } from "@/components/accounting/eta-preview-dialog"
 
 interface PaymentScheduleEntry {
   id: string
@@ -57,6 +58,9 @@ interface PaymentScheduleEntry {
 interface AccountsReceivableModuleProps {
   userRole?: string
 }
+
+// Who sees the e-invoice preview (the /api/eta routes allow the accountant, CEO and admin).
+const ETA_ROLES = ["accountant", "ceo", "admin"]
 
 export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleProps) {
   const { t, formatNumber, language } = useI18n()
@@ -100,6 +104,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   // Orders to invoice (owner request, 2026-11-14)
   const toInvoice = useOrdersToInvoice()
   const [overviewSoId, setOverviewSoId] = useState<number | null>(null)
+  const [etaInvoice, setEtaInvoice] = useState<CustomerInvoice | null>(null)
   const readyOrders = (toInvoice.orders || []).filter((o) => o.ready)
   const openOrders = (toInvoice.orders || []).filter((o) => !o.ready)
   // Create Invoice (owner request, 2026-11-14): pick a sales order, then its delivery permits.
@@ -1196,6 +1201,20 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           <FileText className="w-4 h-4 me-2" />
           {t("action.print-invoice")}
         </Button>
+        {ETA_ROLES.includes(userRole || "") && (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`${t("eta.row-action")} ${invoice.invoiceNumber}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              setEtaInvoice(invoice)
+            }}
+          >
+            <Receipt className="w-4 h-4 me-1" />
+            {t("eta.row-action")}
+          </Button>
+        )}
         {invoice.vatInvoiceUrl ? (
           <Button
             size="sm"
@@ -1314,6 +1333,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       {overviewSoId !== null && (
         <OrderOverviewDialog soId={overviewSoId} userRole={userRole as any} onClose={() => setOverviewSoId(null)} />
       )}
+      {etaInvoice && <EtaPreviewDialog invoiceId={etaInvoice.id} invoiceNumber={etaInvoice.invoiceNumber} onClose={() => setEtaInvoice(null)} />}
 
       {/* Filter Buttons */}
       <div className="flex gap-2 flex-wrap">

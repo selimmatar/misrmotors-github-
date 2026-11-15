@@ -14,8 +14,8 @@ import { Money } from "@/components/erp/money"
 import { formatDateTime } from "@/lib/format"
 import { Plus, Trash2, Filter, Eye, ImageIcon, X, Search } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ETA_UNITS } from "@/lib/eta/egypt"
 
-const ETA_UNITS = ["EA", "SET", "KGM", "MTR", "LTR", "BOX"] as const
 
 interface ProductImage {
   image_id: number
@@ -31,11 +31,12 @@ interface ProductImage {
 export function ProductModule() {
   const { t, language } = useI18n()
   const { products, addProduct, updateProduct, deleteProduct } = useAppContext()
-  const [etaCodes, setEtaCodes] = useState<{ code_id: number; item_code: string; description_en?: string; description_ar?: string; active?: boolean }[]>([])
+  // every code, switched-off ones too: a product keeps showing its own code even after that code is switched off
+  const [etaCodes, setEtaCodes] = useState<{ code_id: number; item_code: string; name?: string | null; active?: boolean }[]>([])
   useEffect(() => {
     fetch("/api/eta/codes")
       .then((r) => (r.ok ? r.json() : []))
-      .then((rows) => setEtaCodes(Array.isArray(rows) ? rows.filter((c: any) => c.active !== false) : []))
+      .then((rows) => setEtaCodes(Array.isArray(rows) ? rows : []))
       .catch(() => setEtaCodes([]))
   }, [])
   const saveEta = async (product: Product, patch: Partial<Product>) => {
@@ -368,14 +369,15 @@ export function ProductModule() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">{t("eta.none")}</SelectItem>
-                        {etaCodes.map((c) => (
-                          <SelectItem key={c.code_id} value={String(c.code_id)}>
-                            {c.item_code}
-                            {(language === "ar" ? c.description_ar || c.description_en : c.description_en || c.description_ar)
-                              ? ` - ${language === "ar" ? c.description_ar || c.description_en : c.description_en || c.description_ar}`
-                              : ""}
-                          </SelectItem>
-                        ))}
+                        {etaCodes
+                          .filter((c) => c.active !== false || c.code_id === product.etaCodeId)
+                          .map((c) => (
+                            <SelectItem key={c.code_id} value={String(c.code_id)}>
+                              {c.item_code}
+                              {c.name ? ` - ${c.name}` : ""}
+                              {c.active === false ? ` (${t("eta.code-inactive")})` : ""}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>

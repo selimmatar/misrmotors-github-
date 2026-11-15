@@ -21,6 +21,9 @@ import { loadMatchContext as loadEtaCtx } from "../eta/store"
 import { buildEtaPreview } from "../eta/preview"
 import * as etaPreviewRoute from "../../app/api/eta/preview/route"
 import { ruleFor, allows } from "../auth/permissions"
+import { ROLE_MODULES } from "../../components/layout/nav-config"
+import { MODULE_GROUP } from "../nav-groups"
+import { canSetGoLive } from "../eta/go-live"
 import * as arPdf from "../../app/api/invoices/ar/[id]/pdf/route"
 import { moneyCell } from "../print-html"
 import {
@@ -910,4 +913,95 @@ test("E22. handled manually: go-live, invoice date, and the 'already on the port
   const rule = ruleFor("/api/eta/preview")!
   assert.equal(allows(rule, "POST", ["accountant"]), true)
   assert.equal(allows(rule, "GET", ["sales-rep"]), false)
+})
+
+// ---- Task 7: screens ----
+const src = (f: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), f), "utf8")
+const SETTINGS_SCREEN = "components/modules/e-invoice-settings-module.tsx"
+const PREVIEW_DIALOG = "components/accounting/eta-preview-dialog.tsx"
+
+test("E23. screens wired", () => {
+  for (const role of ["accountant", "ceo", "admin"] as const) {
+    assert.ok(ROLE_MODULES[role].some((i) => i.id === "e-invoice-settings" && i.label === "module.e-invoice-settings"), role)
+  }
+  for (const role of ["sales-rep", "warehouse-rep", "po-rep", "shipment"] as const) {
+    assert.ok(!ROLE_MODULES[role].some((i) => i.id === "e-invoice-settings"), role)
+  }
+  assert.equal(MODULE_GROUP["e-invoice-settings"], "finance")
+  const dash = src("components/dashboard/dashboard.tsx")
+  assert.match(dash, /case "e-invoice-settings":\s*return <EInvoiceSettingsModule roles=\{roles\} \/>/)
+  // the admin branch renders it too (admins otherwise only get their own screens)
+  assert.match(dash, /activeModule === "e-invoice-settings"\) \{\s*return <EInvoiceSettingsModule roles=\{roles\} \/>/)
+
+  const ar = src("components/modules/accounts-receivable-module.tsx")
+  assert.match(ar, /<EtaPreviewDialog/)
+  assert.match(ar, /ETA_ROLES\.includes\(userRole/)
+
+  // go-live: only the CEO or an admin
+  assert.equal(canSetGoLive(["ceo"]), true)
+  assert.equal(canSetGoLive(["admin"]), true)
+  assert.equal(canSetGoLive(["accountant", "sales-rep"]), false)
+  assert.equal(canSetGoLive([]), false)
+  const settings = src(SETTINGS_SCREEN)
+  assert.match(settings, /const mayGoLive = canSetGoLive\(roles\)/)
+  assert.match(settings, /id="eta-go-live"[\s\S]{0,200}disabled=\{!mayGoLive/)
+  for (const api of ['"/api/eta/settings"', '"/api/eta/codes"', '"/api/eta/memory/prepare"', "`/api/eta/memory"]) assert.ok(settings.includes(api), api)
+})
+
+test("E24. preview dialog: readable errors, handled-manually totals, amount mismatch, empty unit, line confirm", () => {
+  const dlg = src(PREVIEW_DIALOG)
+  // a failed load shows a translated message (never the raw object)
+  assert.match(dlg, /setError\(/)
+  assert.match(dlg, /t\("eta\.preview-error"\)/)
+  // handled manually: the note, the stored ETA ID and totals labelled "for reference"
+  assert.match(dlg, /preview\.handledManually \? t\("eta\.totals-reference"\)/)
+  assert.match(dlg, /preview\.manualEtaUuid/)
+  // the amount mismatch has its own plain message with both amounts
+  assert.match(dlg, /amount_mismatch[\s\S]{0,200}eta\.missing-amount_mismatch/)
+  assert.match(dlg, /storedAmount/)
+  // an empty unit is no unit
+  assert.match(dlg, /const hasUnit = \(u: string \| null \| undefined\) => !!u && u\.trim\(\) !== ""/)
+  // confirming a line remembers it and reloads the preview
+  assert.match(dlg, /fetch\("\/api\/eta\/memory", \{\s*method: "POST"[\s\S]{0,400}await onSaved\(\)/)
+  assert.match(dlg, /onSaved=\{load\}/)
+  // already on the portal: mark and undo
+  assert.match(dlg, /method: "POST"[\s\S]{0,200}etaUuid/)
+  assert.match(dlg, /method: "DELETE"/)
+
+  // product code picker keeps the product's own code even when that code was switched off
+  const product = src("components/modules/product-module.tsx")
+  assert.match(product, /c\.active !== false \|\| c\.code_id === product\.etaCodeId/)
+})
+
+test("E25. every e-invoice screen text is in English and Arabic", () => {
+  const i18n = src("lib/i18n-context.tsx")
+  const arAt = i18n.indexOf("\n  ar: {")
+  const en = i18n.slice(0, arAt)
+  const arb = i18n.slice(arAt)
+  const keys = new Set<string>(["module.e-invoice-settings"])
+  for (const f of [SETTINGS_SCREEN, PREVIEW_DIALOG, "components/modules/accounts-receivable-module.tsx"]) {
+    for (const m of src(f).matchAll(/"(eta\.[\w.-]+)"/g)) keys.add(m[1])
+    for (const m of src(f).matchAll(/`(eta\.[\w-]+-)\$\{/g)) keys.add(m[1] + "*")
+  }
+  const dyn: Record<string, string[]> = {
+    "eta.state-": ["green", "orange", "red"],
+    "eta.missing-": ["company_rin", "company_activity", "company_address", "customer_tax_number", "customer_address", "line_codes", "amount_mismatch"],
+    "eta.unit-": ["EA", "SET", "KGM", "MTR", "LTR", "BOX"],
+    "eta.env-": ["test", "real"],
+  }
+  const all: string[] = []
+  for (const k of keys) {
+    if (!k.endsWith("*")) all.push(k)
+    else {
+      const base = k.slice(0, -1)
+      assert.ok(dyn[base], `dynamic key ${base} listed in the test`)
+      for (const v of dyn[base]) all.push(base + v)
+    }
+  }
+  assert.ok(all.length > 40, String(all.length))
+  for (const k of all) {
+    const at = (block: string) => block.match(new RegExp(`^\\s+"${k.replace(/[.]/g, "\\.")}":\\s*"((?:[^"\\\\]|\\\\.)*)"`, "m"))?.[1]
+    assert.ok(at(en), `EN ${k}`)
+    assert.ok(/[؀-ۿ]/.test(at(arb) || ""), `AR ${k}`)
+  }
 })

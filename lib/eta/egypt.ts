@@ -11,6 +11,9 @@ export const GOVERNORATES: { ar: string; en: string }[] = [
   { en: "Matrouh", ar: "مطروح" }, { en: "North Sinai", ar: "شمال سيناء" }, { en: "South Sinai", ar: "جنوب سيناء" },
 ]
 
+/** The short starting list of e-invoice units (spec §12). */
+export const ETA_UNITS = ["EA", "SET", "KGM", "MTR", "LTR", "BOX"] as const
+
 export const toLatinDigits = (s: string) =>
   s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
 

@@ -15,3 +15,9 @@ export function cairoMidnightIso(date: string): string | null {
   const offset = `${om[1]}${om[2].padStart(2, "0")}:${om[3] || "00"}`
   return `${m[1]}-${m[2]}-${m[3]}T00:00:00${offset}`
 }
+
+/** Only the CEO or an admin may set or change the go-live date (spec §9; the settings route checks it too). */
+export const canSetGoLive = (roles: readonly string[]): boolean => roles.includes("ceo") || roles.includes("admin")
+
+/** The stored go-live moment back as the local date "YYYY-MM-DD" it was set from ("" when not set). */
+export const goLiveDate = (stored: string | null | undefined): string => /^\d{4}-\d{2}-\d{2}/.exec(String(stored ?? ""))?.[0] ?? ""

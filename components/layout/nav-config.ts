@@ -27,6 +27,7 @@ import {
   ArrowLeftRight,
   Wrench,
   FileSpreadsheet,
+  Receipt,
   type LucideIcon,
 } from "lucide-react"
 import type { UserRole } from "@/lib/types"
@@ -45,6 +46,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "hr-management", label: "module.hr-management", icon: UserCog },
     { id: "metrics-validation", label: "module.metrics-validation", icon: CheckSquare },
     { id: "system-health", label: "module.system-health", icon: Activity },
+    { id: "e-invoice-settings", label: "module.e-invoice-settings", icon: Receipt },
   ],
   // The CEO sees every screen and may edit and approve everything (owner, 2026-11-01).
   ceo: [
@@ -76,6 +78,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
     { id: "balance", label: "module.balance", icon: Wallet },
     { id: "finance-reports", label: "module.finance-reports", icon: FileSpreadsheet },
+    { id: "e-invoice-settings", label: "module.e-invoice-settings", icon: Receipt },
     { id: "user-management", label: "module.user-management", icon: UsersIcon },
     { id: "metrics-validation", label: "module.metrics-validation", icon: CheckSquare },
     { id: "system-health", label: "module.system-health", icon: Activity },
@@ -92,6 +95,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "suppliers", label: "module.suppliers", icon: Building2 },
     { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
     { id: "finance-reports", label: "module.finance-reports", icon: FileSpreadsheet },
+    { id: "e-invoice-settings", label: "module.e-invoice-settings", icon: Receipt },
   ],
   "sales-rep": [
     { id: "dashboard", label: "module.dashboard", icon: LayoutDashboard },
