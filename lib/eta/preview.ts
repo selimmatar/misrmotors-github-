@@ -8,7 +8,7 @@ import { billedLinesForInvoice, loadSoInvoicingState, orderDiscountRate, round2 
 
 type Db = any
 
-export type EtaMissing = "company_rin" | "company_activity" | "company_address" | "customer_tax_number" | "customer_address" | "line_codes"
+export type EtaMissing = "company_rin" | "company_activity" | "company_address" | "customer_tax_number" | "customer_address" | "line_codes" | "amount_mismatch"
 
 export interface EtaPreviewLine extends EtaLineOut {
   codeId: number | null
@@ -24,6 +24,8 @@ export interface EtaPreview {
   handledManually: boolean
   /** the portal ID given when the invoice was marked "already on the portal" */
   manualEtaUuid: string | null
+  /** accounts_receivable.amount - what the invoice bills; "amount_mismatch" when the preview total differs from it */
+  storedAmount: number
   customer: { name: string; receiverType: string; taxRegistrationNumber: string | null }
   lines: EtaPreviewLine[]
   totals: EtaTotals
@@ -39,7 +41,7 @@ const text = (value: unknown) => (value == null ? "" : String(value).trim())
 /** The e-invoice preview of a customer invoice (accounts_receivable.invoice_id); null when there is no such invoice. */
 export async function buildEtaPreview(db: Db, invoiceId: number): Promise<EtaPreview | null> {
   const invoice = must(
-    await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, customer_id, created_at").eq("invoice_id", invoiceId).maybeSingle(),
+    await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, customer_id, created_at").eq("invoice_id", invoiceId).maybeSingle(),
     "load invoice",
   )
   if (!invoice) return null
@@ -126,12 +128,18 @@ export async function buildEtaPreview(db: Db, invoiceId: number): Promise<EtaPre
     if (!/^\d{14}$/.test(text(customer?.national_id))) missing.push("customer_tax_number")
   }
   if (lines.some((l) => l.state === "red" || l.codeId == null)) missing.push("line_codes")
+  // The preview is recomputed from today's data; a return rejected or an order edited after invoicing moves it away
+  // from what the invoice stored. Such an invoice must not be sent as is.
+  const storedAmount = round2(Number(invoice.amount) || 0)
+  const handledManually = !isAfterGoLive(invoice.created_at, settings.eta_go_live_at) || manual !== null
+  if (!handledManually && Math.abs(totals.total - storedAmount) > 0.005) missing.push("amount_mismatch")
 
   return {
     invoiceId,
     invoiceNumber: text(invoice.invoice_number),
-    handledManually: !isAfterGoLive(invoice.created_at, settings.eta_go_live_at) || manual !== null,
+    handledManually,
     manualEtaUuid: manual ? text(manual.eta_uuid) || null : null,
+    storedAmount,
     customer: { name: text(customer?.customer_name), receiverType, taxRegistrationNumber: taxNumber || null },
     lines,
     totals,

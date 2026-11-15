@@ -772,6 +772,20 @@ test("E20. preview lines: the invoice's billed lines (net of returns known at in
   assert.equal(p!.totals.total, db.tables.accounts_receivable[0].amount, "the same total the invoice stored")
   assert.equal(p!.invoiceNumber, db.tables.accounts_receivable[0].invoice_number)
   assert.equal(p!.handledManually, false)
+  assert.equal(p!.storedAmount, 307.8)
+  assert.ok(!p!.missing.includes("amount_mismatch"), "matches the stored amount")
+
+  // the warehouse rejects the return the invoice was priced net of: the preview now bills more than the invoice
+  db.tables.product_returns.find((r) => r.return_id === 1)!.status = "rejected"
+  const drifted = await buildEtaPreview(db, invoiceId)
+  assert.ok(drifted!.totals.total > 307.8)
+  assert.equal(drifted!.storedAmount, 307.8)
+  assert.ok(drifted!.missing.includes("amount_mismatch"))
+  // a pre-go-live (handled manually) invoice is never flagged
+  db.tables.accounts_receivable[0].created_at = "2025-06-01T00:00:00Z"
+  const old = await buildEtaPreview(db, invoiceId)
+  assert.equal(old!.handledManually, true)
+  assert.ok(!old!.missing.includes("amount_mismatch"))
 
   // whole-order invoice: the order lines less returns known at invoice time; a stock line's name is its product name
   const so = previewDb(lines, { discount: 37, goLive: GO_LIVE })
@@ -783,6 +797,7 @@ test("E20. preview lines: the invoice's billed lines (net of returns known at in
   assert.deepEqual(sp!.lines.map((l) => [l.name, l.quantity]), [["item 0", 2], ["item 1", 2]])
   assert.deepEqual(sp!.totals, expected.totals)
   assert.equal(sp!.totals.total, so.tables.accounts_receivable[0].amount)
+  assert.ok(!sp!.missing.includes("amount_mismatch"))
 
   assert.equal(await buildEtaPreview(db, 999), null, "unknown invoice")
 })
