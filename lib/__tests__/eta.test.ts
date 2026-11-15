@@ -47,6 +47,7 @@ test("E3. core name", () => {
   assert.equal(coreName(normalizeName("طقم لقم 3/8"), DEFAULT_BRANDS), "طقم لقم")
   assert.equal(coreName(normalizeName("Stanley"), DEFAULT_BRANDS), "")
   assert.equal(coreName(normalizeName("King Tony مفك"), DEFAULT_BRANDS), "مفك")
+  assert.equal(coreName(normalizeName("مفك صليبة كبير دق"), DEFAULT_BRANDS), "مفك صليبه دق")
   assert.equal(similarity("abc", "abc"), 1)
   assert.equal(similarity("a", "b"), 0)
 })
@@ -85,7 +86,7 @@ test("E4. match order", () => {
   // core conflict
   const conflict = { ...ctx, memory: [row("طقم لقم", HAND), row("طقم لقم 3/8", POWER)] }
   const c = m("طقم لقم كبير", {}, conflict)
-  assert.notEqual(c.state, "green")
+  assert.deepEqual([c.codeId, c.state, c.by], [POWER, "orange", "core"])
   const c2 = m("طقم لقم 1/2", {}, conflict) // core "طقم لقم", two codes
   assert.deepEqual([c2.codeId, c2.state, c2.by], [POWER, "orange", "core"])
 })

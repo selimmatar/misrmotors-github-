@@ -1,7 +1,7 @@
 // Item-code matching engine (spec section 8.3 to 8.5). Pure, no I/O.
 import { normalizeName, coreName, similarity } from "./normalize"
 
-export { normalizeName, coreName, similarity, DEFAULT_BRANDS, SIZE_WORDS } from "./normalize"
+export { normalizeName, coreName, similarity, DEFAULT_BRANDS, SIZE_WORDS, FILLER_WORDS } from "./normalize"
 
 export const AUTO_SIMILARITY = 0.92
 export const SUGGEST_SIMILARITY = 0.8

@@ -9,6 +9,10 @@ export const SIZE_WORDS: string[] = [
   "بوصه", "انش", "مم", "سم", "متر", "م", "inch", "mm", "cm", "n.m", "نيوتن", "درج", "قطعه", "pcs", "pc",
 ]
 
+export const FILLER_WORDS: string[] = [
+  "كبير", "صغير", "وسط", "متوسط", "جديد", "اصلي", "اصليه", "original", "new", "large", "small", "big", "mini",
+]
+
 export function normalizeName(s: string): string {
   let out = String(s ?? "")
   out = out
@@ -25,8 +29,8 @@ export function normalizeName(s: string): string {
   return out.replace(/\s+/g, " ").trim()
 }
 
-function isSizeToken(t: string, sizeWords: Set<string>): boolean {
-  return /\d/.test(t) || /^\d+\/\d+$/.test(t) || sizeWords.has(t)
+function isSizeToken(t: string, dropWords: Set<string>): boolean {
+  return /\d/.test(t) || /^\d+\/\d+$/.test(t) || dropWords.has(t)
 }
 
 export function coreName(normalized: string, brands: string[]): string {
@@ -36,7 +40,7 @@ export function coreName(normalized: string, brands: string[]): string {
     .filter((p) => p.length > 0)
     .sort((a, b) => b.length - a.length)
   const kept: string[] = []
-  const sizeWords = new Set(SIZE_WORDS.map(normalizeName))
+  const sizeWords = new Set([...SIZE_WORDS, ...FILLER_WORDS].map(normalizeName))
   let i = 0
   while (i < tokens.length) {
     const phrase = brandPhrases.find((p) => p.every((w, k) => tokens[i + k] === w))
