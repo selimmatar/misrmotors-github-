@@ -13,8 +13,10 @@ import * as arPdf from "../../app/api/invoices/ar/[id]/pdf/route"
 import { moneyCell } from "../print-html"
 import {
   computeInvoiceAmount, computeWholeOrderAmount, createDpInvoices, createSoInvoice, dpInvoicePrintTotals, evaluateDpInvoice,
-  invoicedTotalForOrder, loadSoInvoicingState, netInvoiceValue, round2, soDiscountBase,
+  etaCheckTolerance, etaGoLiveWarning, invoicedTotalForOrder, loadEtaGoLiveAt, loadSoInvoicingState, netInvoiceValue, orderTotalAfterReturns, round2,
+  soDiscountBase,
 } from "../invoicing"
+import { syncSalesOrderNetTotal } from "../so-edit"
 
 test("E1. the step-1 migration only adds", () => {
   const sql = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "scripts/sql/2026-11-15-eta-step1.sql"), "utf8")
@@ -210,20 +212,95 @@ test("E6. go-live off changes nothing", async () => {
   delete bare.tables.company_settings
   const s1 = await loadSoInvoicingState(bare, 1)
   assert.ok(!s1!.etaGoLiveAt)
-  const failing = etaDb(UP_LINES, [1], { goLive: "2026-01-01T00:00:00Z" })
-  failing.failOn["company_settings:select"] = "relation does not exist"
-  const s2 = await loadSoInvoicingState(failing, 1)
-  assert.ok(s2, "a failing settings read never blocks invoicing")
-  assert.ok(!s2!.etaGoLiveAt)
-  const res = await createDpInvoices(failing, [1])
-  assert.equal(res.status, 200)
-  assert.equal(failing.tables.accounts_receivable[0].amount, today)
+  // a missing table by its codes (Postgres 42P01 / PostgREST PGRST205) -> not live
+  for (const code of ["42P01", "PGRST205"]) {
+    const missing = settingsFailing(etaDb(UP_LINES, [1]), code)
+    assert.equal(await loadEtaGoLiveAt(missing), null, code)
+    const st = await loadSoInvoicingState(missing, 1)
+    assert.ok(st && !st.etaGoLiveAt && !st.etaGoLiveError, code)
+  }
   // the go-live value is read when set
   const live = await loadSoInvoicingState(etaDb(UP_LINES, [1], { goLive: "2026-01-01T00:00:00Z" }), 1)
   assert.equal(live!.etaGoLiveAt, "2026-01-01T00:00:00Z")
 })
 
 const GO_LIVE = "2026-01-01T00:00:00Z" // before the FakeDb clock (2026-10) and before today
+
+// A db whose company_settings read fails with `code` (everything else is the FakeDb).
+function settingsFailing(db: FakeDb, code: string): any {
+  return {
+    tables: db.tables,
+    from: (table: string) =>
+      table === "company_settings"
+        ? { select: () => ({ eq: async () => ({ data: null, error: { code, message: `settings ${code}` } }) }) }
+        : db.from(table),
+  }
+}
+
+test("E8. go-live fixes: an unreadable setting refuses, the rule stays scoped, the tolerance counts invoice lines", async () => {
+  // 1. go-live set + any other read error: invoice creation is refused, nothing is created
+  const dpFail = etaDb(UP_LINES, [1], { goLive: GO_LIVE })
+  dpFail.failOn["company_settings:select"] = "connection reset"
+  await assert.rejects(loadEtaGoLiveAt(dpFail), /connection reset/)
+  const st = await loadSoInvoicingState(dpFail, 1)
+  assert.ok(st && st.etaGoLiveError, "recorded on the state; the overview / edits keep loading")
+  const r1 = await createDpInvoices(dpFail, [1])
+  assert.notEqual(r1.status, 200)
+  assert.equal(r1.status, 503, JSON.stringify(r1.body))
+  assert.equal(dpFail.tables.accounts_receivable.length, 0)
+  assert.equal(dpFail.tables.invoice_delivery_permits.length, 0)
+  const soFail = settingsFailing(etaDb(UP_LINES, [], { goLive: GO_LIVE }), "XX000")
+  const rSo = await createSoInvoice(soFail, 1)
+  assert.equal(rSo.status, 503, JSON.stringify(rSo.body))
+  assert.equal(soFail.tables.accounts_receivable.length, 0)
+  // a set but unparsable value: not live (today's rule), warned once
+  const warnings: string[] = []
+  const realWarn = console.warn
+  console.warn = (...a: any[]) => void warnings.push(a.join(" "))
+  etaGoLiveWarning.shown = false
+  try {
+    for (let i = 0; i < 2; i++) assert.equal((await loadSoInvoicingState(etaDb(UP_LINES, [1], { goLive: "15/12/2026" }), 1))!.etaGoLiveError, undefined)
+  } finally {
+    console.warn = realWarn
+  }
+  assert.equal(warnings.filter((w) => w.includes("eta_go_live_at")).length, 1)
+
+  // 2. after go-live, net_total (order edits) and return credits stay on today's rule; with no returns net = total
+  const so = etaDb(UP_LINES, [1], { goLive: GO_LIVE })
+  assert.equal(await syncSalesOrderNetTotal(so, 1), 34.61)
+  assert.equal(so.tables.sales_orders[0].net_total, so.tables.sales_orders[0].total)
+  const sst = await loadSoInvoicingState(so, 1)
+  assert.equal(orderTotalAfterReturns(sst!, []), 34.61)
+  const whole = computeWholeOrderAmount(sst!)
+  assert.ok(whole.ok && whole.amount === 34.61, "default rule = today's")
+  const wholeEta = computeWholeOrderAmount(sst!, { eta: true })
+  assert.ok(wholeEta.ok && wholeEta.amount === 34.62, "explicit per-line rule")
+
+  // 3. 10 % discount, 10 lines of 3 x 1.23, each delivered 1 + 1 + 1 on three permits: 30 e-invoice lines, each
+  // 0.01 above the order's per-line total -> 0.30 in all, more than 0.01 x 10 order lines; accepted in full
+  const lines: [number, number][] = Array.from({ length: 10 }, () => [3, 1.23] as [number, number])
+  const partial = etaDb(lines, [1, 1, 1], { goLive: GO_LIVE, discount: 3.69 })
+  for (const permit of [1, 2, 3]) {
+    const r = await createDpInvoices(partial, [permit])
+    assert.equal(r.status, 200, `permit ${permit}: ${JSON.stringify(r.body)}`)
+  }
+  const pst = await loadSoInvoicingState(partial, 1)
+  const billed = r2(partial.tables.accounts_receivable.reduce((s: number, r: Row) => s + r.amount, 0))
+  const orderEta = computeWholeOrderAmount(pst!, { eta: true })
+  assert.ok(orderEta.ok)
+  assert.equal(r2(billed - (orderEta as any).amount), 0.3)
+  assert.ok(billed - (orderEta as any).amount > etaTolerance(10))
+  // a genuine over-billing beyond the tolerance is still refused (one permit line priced 1.23 -> 1.73)
+  const over = etaDb(lines, [1, 1, 1], { goLive: GO_LIVE, discount: 3.69 })
+  const item = over.tables.delivery_permit_items.find((r: Row) => r.permit_id === 3)!
+  item.unit_price = 1.73
+  item.total = 1.73
+  assert.equal((await createDpInvoices(over, [1])).status, 200)
+  assert.equal((await createDpInvoices(over, [2])).status, 200)
+  const refused = await createDpInvoices(over, [3])
+  assert.equal(refused.status, 409, JSON.stringify(refused.body))
+  assert.equal(etaCheckTolerance(10, 30), 0.33)
+})
 
 test("E7. go-live on: per-line amounts, the wider tolerance, the print", async () => {
   // DP invoice created after go-live: amount = etaLines total (VAT per line), not today's total-level figure

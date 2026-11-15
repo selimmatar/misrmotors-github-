@@ -213,7 +213,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let vatAmount: number
     // E-invoice go-live (spec §6): an invoice created at or after company_settings.eta_go_live_at was priced line by
     // line, so it prints the per-line totals of its printed lines. Earlier invoices print exactly as before.
-    const etaGoLiveAt = await loadEtaGoLiveAt(supabase)
+    // Soft fallback for the print only: an unreadable setting prints as before (creating invoices refuses instead).
+    const etaGoLiveAt = await loadEtaGoLiveAt(supabase).catch((error: any) => {
+      console.warn("AR Invoice PDF - e-invoice go-live setting unreadable:", error?.message || error)
+      return null
+    })
     if (isAfterGoLive(invoice.created_at, etaGoLiveAt)) {
       const lines = items.map((item: any) => ({
         name: item.item_type === "outsourced" ? item.outsourced_name || "" : item.products?.product_name || "",

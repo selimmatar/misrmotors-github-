@@ -80,7 +80,7 @@ export function dpInvoicePrintTotals(rawItemsTotal: number, discountBase: number
 // ---------------------------------------------------------------------------------------------------------
 // E-invoice (ETA) go-live switch - spec §6. An invoice created at or after company_settings.eta_go_live_at is priced
 // line by line (lib/eta/totals.ts: VAT rounded per line, totals = sums of the rounded lines) and the over-invoicing
-// checks use etaTolerance(number of order lines). Invoices created before go-live, and everything while the setting
+// checks use etaCheckTolerance (the e-invoice lines involved). Invoices created before go-live, and everything while the setting
 // is empty, keep today's rule (netInvoiceValue / computeInvoiceAmount / MONEY_TOLERANCE) unchanged.
 // ---------------------------------------------------------------------------------------------------------
 export const ETA_GO_LIVE_KEY = "eta_go_live_at"
@@ -117,26 +117,50 @@ export function etaInvoicePrintTotals(lines: EtaLineIn[], discountRate: number, 
   return { totalWithVat: totals.total, subtotalBeforeVat: totals.net, vatAmount: totals.vat }
 }
 
+// Postgres "relation does not exist" / PostgREST "table not in the schema cache": no settings table = not live.
+const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"])
+/** Whether the "set but not a date" warning was logged in this process (once is enough). */
+export const etaGoLiveWarning = { shown: false }
+
 /**
- * The go-live moment (company_settings.eta_go_live_at), or null. A missing row, an empty value, a missing table or a
- * failed read all mean "not live" (today's rule), so invoicing never stops because of this setting.
+ * The go-live moment (company_settings.eta_go_live_at), or null when it is not set: no row, an empty value, or no
+ * company_settings table. Any other read error THROWS - after go-live a guess would store an amount under the wrong
+ * rule. A value that is set but cannot be read as a date also means "not live" (warned once).
  */
 export async function loadEtaGoLiveAt(db: any): Promise<string | null> {
-  try {
-    const res = await db.from("company_settings").select("setting_key, setting_value").eq("setting_key", ETA_GO_LIVE_KEY)
-    if (!res || res.error) {
-      if (res?.error) console.warn(`[invoicing] could not read ${ETA_GO_LIVE_KEY}; using the pre-go-live rule: ${res.error.message || res.error}`)
-      return null
-    }
-    const rows: any[] = Array.isArray(res.data) ? res.data : res.data ? [res.data] : []
-    const value = rows.find((r) => r?.setting_key === ETA_GO_LIVE_KEY)?.setting_value
-    const text = value == null ? "" : String(value).trim()
-    return text || null
-  } catch (error: any) {
-    console.warn(`[invoicing] could not read ${ETA_GO_LIVE_KEY}; using the pre-go-live rule: ${error?.message || error}`)
-    return null
+  const res = await db.from("company_settings").select("setting_key, setting_value").eq("setting_key", ETA_GO_LIVE_KEY)
+  if (res?.error) {
+    if (MISSING_TABLE_CODES.has(String(res.error.code || ""))) return null
+    throw new Error(`load ${ETA_GO_LIVE_KEY}: ${res.error.message || res.error}`)
   }
+  const rows: any[] = Array.isArray(res?.data) ? res.data : res?.data ? [res.data] : []
+  const value = rows.find((r) => r?.setting_key === ETA_GO_LIVE_KEY)?.setting_value
+  const text = value == null ? "" : String(value).trim()
+  if (!text) return null
+  if (Number.isNaN(toMs(text)) && !etaGoLiveWarning.shown) {
+    etaGoLiveWarning.shown = true
+    console.warn(`[invoicing] ${ETA_GO_LIVE_KEY} is set but is not a date (${JSON.stringify(text)}); the pre-go-live rule stays in force.`)
+  }
+  return text
 }
+
+// Invoices may not be priced while the go-live setting cannot be read.
+const goLiveUnreadable = (state: SoInvoicingState): Verdict | null =>
+  state.etaGoLiveError
+    ? { ok: false, status: 503, error: `The e-invoice go-live setting could not be read (${state.etaGoLiveError}). Nothing was created; please try again.` }
+    : null
+
+/**
+ * Over-invoicing slack after go-live: per-line rounding happens on every e-invoice line, and with a discount one line
+ * can move by about 0.0107 (discount and VAT both rounded), so the count is the larger of the order's lines and the
+ * e-invoice lines of the post-go-live invoices being compared (`etaLineTotal`), at 0.011 a line (never below 0.05).
+ */
+export function etaCheckTolerance(orderLines: number, etaLineTotal: number) {
+  const count = Math.max(orderLines, etaLineTotal)
+  return Math.max(etaTolerance(count), Math.round(11 * count) / 1000)
+}
+// Float slack on the post-go-live comparison, so a sum landing exactly on the limit is not refused.
+const ETA_COMPARE_EPSILON = 1e-6
 
 // Same line matching as isSOFullyDelivered in the delivery-permits route: by product, else by name.
 // (Defined in return-lines.ts so returns and invoicing can never disagree on what "the same line" means.)
@@ -182,6 +206,8 @@ export interface SoInvoicingState {
   returns: ReturnLine[]
   /** company_settings.eta_go_live_at (ISO date-time); empty / missing = not live, today's rule everywhere */
   etaGoLiveAt?: string | null
+  /** set when the go-live setting could not be read: no invoice may be created (evaluate* refuse with 503) */
+  etaGoLiveError?: string
 }
 
 export type Verdict = { ok: true; newValue?: number } | { ok: false; status: number; error: string }
@@ -248,11 +274,15 @@ function poolByKey(state: SoInvoicingState, returned: Map<string, number>) {
  * of line value that is still billable (so discount and VAT are applied exactly as on the order). Unchanged when
  * nothing was returned.
  */
-export function computeWholeOrderAmount(state: SoInvoicingState): { ok: true; amount: number; excluded: Map<string, number> } | { ok: false; status: number; error: string } {
+export function computeWholeOrderAmount(
+  state: SoInvoicingState,
+  rule: { eta?: boolean } = {},
+): { ok: true; amount: number; excluded: Map<string, number> } | { ok: false; status: number; error: string } {
   const total = Number(state.so.total) || 0
   const excludedLeft = excludedByKey(state)
-  // After go-live (an invoice created now): the order lines less returns, priced line by line.
-  const eta = isAfterGoLive(nowIso(), state.etaGoLiveAt)
+  // rule.eta (only for an invoice created after go-live): the order lines less returns, priced line by line.
+  // Default: today's rule - also for net_total and return credits (per-line credit notes are step 2).
+  const eta = rule.eta === true
   if (excludedLeft.size === 0 && !eta) return { ok: true, amount: total, excluded: new Map() }
 
   const excluded = new Map(excludedLeft)
@@ -306,8 +336,8 @@ export function wholeOrderEtaLines(state: SoInvoicingState): EtaLineIn[] {
 const stateDiscountRate = (state: SoInvoicingState) => orderDiscountRate(state.soItems, state.so.subtotal, state.so.discount_amount)
 
 // The order total once returned quantity is left out (the whole-order invoice amount); 0 when nothing is left to bill.
-function effectiveOrderTotal(state: SoInvoicingState, returns: ReturnLine[]) {
-  const priced = computeWholeOrderAmount({ ...state, returns })
+function effectiveOrderTotal(state: SoInvoicingState, returns: ReturnLine[], rule: { eta?: boolean } = {}) {
+  const priced = computeWholeOrderAmount({ ...state, returns }, rule)
   return priced.ok ? priced.amount : 0
 }
 
@@ -343,6 +373,19 @@ const permitEtaLines = (permit: SoInvoicingState["permits"][number], net: number
  */
 export function dpInvoiceEtaLines(state: SoInvoicingState, permitIds: number[], asOfMs?: number): EtaLineIn[] {
   return state.permits.filter((p) => permitIds.includes(p.permit_id)).flatMap((p) => permitEtaLines(p, netPermitQuantities(state, p, asOfMs)))
+}
+
+const countedLines = (lines: EtaLineIn[]) => lines.filter((l) => l.quantity > QTY_EPSILON).length
+
+// E-invoice lines of the post-go-live invoices among `invoices` (a whole-order invoice: the order's lines).
+function postGoLiveEtaLineCount(
+  state: SoInvoicingState,
+  invoices: SoInvoicingState["invoices"],
+  createdAt: (inv: SoInvoicingState["invoices"][number]) => string | null | undefined = (inv) => inv.created_at,
+) {
+  return invoices
+    .filter((inv) => isAfterGoLive(createdAt(inv), state.etaGoLiveAt))
+    .reduce((n, inv) => n + (isSoLevelInvoice(inv) ? state.soItems.length : countedLines(dpInvoiceEtaLines(state, inv.permit_ids, invoiceAsOf(inv)))), 0)
 }
 
 // Value of an item for `netQty` units (pro-rata of its stored line total).
@@ -410,6 +453,8 @@ const invoiceLabels = (invs: SoInvoicingState["invoices"]) => invs.map((i) => i.
 
 // Workflow A guard: a whole-order invoice is only allowed while NOTHING has been invoiced against the order.
 export function evaluateSoInvoice(state: SoInvoicingState): Verdict {
+  const unreadable = goLiveUnreadable(state)
+  if (unreadable) return unreadable
   if (state.invoices.length === 0) return { ok: true }
   const viaDps = state.invoices.filter((i) => !isSoLevelInvoice(i))
   if (viaDps.length > 0) {
@@ -428,6 +473,8 @@ export function evaluateSoInvoice(state: SoInvoicingState): Verdict {
 
 // Workflow B guard for the permits `newPermitIds` (all belonging to this sales order).
 export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[]): Verdict {
+  const unreadable = goLiveUnreadable(state)
+  if (unreadable) return unreadable
   const full = state.invoices.filter(isSoLevelInvoice)
   if (full.length > 0) {
     return {
@@ -485,8 +532,9 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
   const priorValue = state.invoices.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
   // The invoice is created now: after go-live it is priced line by line (spec §6), before it as always.
   const eta = isAfterGoLive(nowIso(), state.etaGoLiveAt)
+  const newLines = eta ? newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])) : []
   const newValue = eta
-    ? etaLines(newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])), stateDiscountRate(state)).totals.total
+    ? etaLines(newLines, stateDiscountRate(state)).totals.total
     : newPermits.reduce((sum, p) => {
         const net = netByPermit.get(p.permit_id) || []
         const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)
@@ -494,8 +542,10 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
       }, 0)
   // The order total less the value of what was returned (nothing was credited on existing invoices, so returned
   // goods that were already billed are not billed again).
-  const billableTotal = effectiveOrderTotal(state, state.returns || [])
-  const tolerance = eta ? etaTolerance(state.soItems.length) : MONEY_TOLERANCE
+  const billableTotal = effectiveOrderTotal(state, state.returns || [], { eta })
+  const tolerance = eta
+    ? etaCheckTolerance(state.soItems.length, postGoLiveEtaLineCount(state, state.invoices) + countedLines(newLines)) + ETA_COMPARE_EPSILON
+    : MONEY_TOLERANCE
   if (priorValue + newValue > billableTotal + tolerance) {
     return {
       ok: false,
@@ -509,6 +559,8 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
 // Post-insert safety net. `myInvoiceId` is the invoice this request just created. Only invoices with an id
 // LOWER than mine can displace me, so of any set of racing requests the lowest id always survives.
 export function evaluateAfterInsert(state: SoInvoicingState, myInvoiceId: number): Verdict {
+  const unreadable = goLiveUnreadable(state)
+  if (unreadable) return unreadable
   const mine = state.invoices.find((i) => i.invoice_id === myInvoiceId)
   const earlier = state.invoices.filter((i) => i.invoice_id < myInvoiceId)
   const considered = state.invoices.filter((i) => i.invoice_id <= myInvoiceId)
@@ -537,8 +589,13 @@ export function evaluateAfterInsert(state: SoInvoicingState, myInvoiceId: number
   }
   const value = considered.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
   const returnsBefore = mine ? (state.returns || []).filter((r) => returnedByKey([r], { asOfMs: invoiceAsOf(mine) }).size > 0) : []
-  const tolerance = isAfterGoLive(mine?.created_at || nowIso(), state.etaGoLiveAt) ? etaTolerance(state.soItems.length) : MONEY_TOLERANCE
-  if (value > effectiveOrderTotal(state, returnsBefore) + tolerance) {
+  // The rule of the invoice being checked: its own created_at (now when the row carries none).
+  const mineAt = mine?.created_at || nowIso()
+  const eta = isAfterGoLive(mineAt, state.etaGoLiveAt)
+  const tolerance = eta
+    ? etaCheckTolerance(state.soItems.length, postGoLiveEtaLineCount(state, considered, (inv) => (inv === mine ? mineAt : inv.created_at))) + ETA_COMPARE_EPSILON
+    : MONEY_TOLERANCE
+  if (value > effectiveOrderTotal(state, returnsBefore, { eta }) + tolerance) {
     return { ok: false, status: 409, error: `Concurrent invoicing would exceed the total of sales order ${soLabel(state)}.` }
   }
   return { ok: true }
@@ -635,7 +692,18 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
       created_at: r.created_at ?? null,
     })),
     returns,
-    etaGoLiveAt: await loadEtaGoLiveAt(db),
+    ...(await goLiveFields(db)),
+  }
+}
+
+// The go-live setting for a loaded state. A read failure is recorded, not thrown: only creating an invoice needs it
+// (evaluate* refuse), while the overview, order edits and return credits keep working.
+async function goLiveFields(db: Db): Promise<Pick<SoInvoicingState, "etaGoLiveAt" | "etaGoLiveError">> {
+  try {
+    return { etaGoLiveAt: await loadEtaGoLiveAt(db) }
+  } catch (error: any) {
+    console.error(`[invoicing] ${error?.message || error}`)
+    return { etaGoLiveAt: null, etaGoLiveError: String(error?.message || error) }
   }
 }
 
@@ -708,7 +776,8 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
 
     // Return-aware: quantity returned against the order's delivery permits is not billed (existing invoices are
     // never touched - there can be none here, evaluateSoInvoice just checked).
-    const priced = computeWholeOrderAmount(state)
+    // A whole-order invoice created now after go-live is priced line by line.
+    const priced = computeWholeOrderAmount(state, { eta: isAfterGoLive(nowIso(), state.etaGoLiveAt) })
     if (!priced.ok) return failure(priced.status, priced.error)
 
     const paymentType = state.so.payment_type || state.so.payment_terms || "cash"
