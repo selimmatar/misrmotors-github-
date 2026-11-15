@@ -40,7 +40,6 @@ import {
 import type { SupplierInvoice } from "@/lib/types"
 import { apDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
 import { SupplierCreditDialog, UseCreditButton } from "@/components/payment/customer-credit-dialog"
-import { ChangeInvoiceNumberDialog } from "@/components/payment/change-invoice-number-dialog"
 
 interface PaymentScheduleEntry {
   id: string
@@ -63,7 +62,6 @@ export function AccountsPayableModule() {
   const { supplierInvoices, suppliers, purchaseOrders, user, loadData } = useApp()
   const { t, language } = useI18n()
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
-  const [numberDialogInvoice, setNumberDialogInvoice] = useState<SupplierInvoice | null>(null)
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<SupplierInvoice | null>(null)
   const [creditDialogInvoice, setCreditDialogInvoice] = useState<SupplierInvoice | null>(null)
   const [paymentReceiptFile, setPaymentReceiptFile] = useState<File | null>(null)
@@ -715,7 +713,8 @@ export function AccountsPayableModule() {
   }
   }
 
-  // Row actions (owner request, 2026-11-14): Pay as the one button (kept in the same place on every row), the rest
+  // Row actions (owner request, 2026-11-14): Pay as the one button. No "Change number" (removed 2026-11-15, owner:
+  // a supplier bill keeps the number it was made with). (kept in the same place on every row), the rest
   // in a "More" menu, so the rows line up and fit.
   const renderRowActions = (invoice: SupplierInvoice) => {
     const status = getInvoiceStatus(invoice)
@@ -752,9 +751,6 @@ export function AccountsPayableModule() {
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => handleDownloadInvoicePDF(invoice)}>
               <FileText className="w-4 h-4 me-2" /> {t("action.print-invoice")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setNumberDialogInvoice(invoice)}>
-              <FileText className="w-4 h-4 me-2" /> {t("docNumber.change")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1656,12 +1652,6 @@ export function AccountsPayableModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <ChangeInvoiceNumberDialog
-        invoice={numberDialogInvoice}
-        onOpenChange={(open) => !open && setNumberDialogInvoice(null)}
-        onSaved={loadData}
-      />
     </div>
   )
 }
