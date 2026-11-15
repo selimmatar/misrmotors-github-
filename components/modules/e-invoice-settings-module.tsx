@@ -17,9 +17,9 @@ import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { ETA_UNITS, GOVERNORATES, toLatinDigits } from "@/lib/eta/egypt"
-import { canSetGoLive, goLiveDate } from "@/lib/eta/go-live"
+import { cairoTomorrow, canSetGoLive, goLiveDate, goLiveStarted } from "@/lib/eta/go-live"
 import { DEFAULT_BRANDS } from "@/lib/eta/normalize"
-import { prepareRowsToPost, type CodeState } from "@/lib/eta/codes"
+import { chunk, prepareRowsToPost, PREPARE_BATCH, type CodeState } from "@/lib/eta/codes"
 
 const NONE = "none"
 const PAGE = 100
@@ -83,6 +83,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
   const [prepare, setPrepare] = useState<PrepareRow[] | null>(null)
   const [prepareShown, setPrepareShown] = useState(PAGE)
   const [preparing, setPreparing] = useState(false)
+  const [prepareProgress, setPrepareProgress] = useState<{ done: number; total: number } | null>(null)
 
   const failed = useCallback(
     (e: unknown) =>
@@ -177,7 +178,8 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
   }
 
   const saveGoLive = () => {
-    if (!mayGoLive) return
+    if (!mayGoLive || goLiveStarted(settings?.eta_go_live_at)) return
+    if (goLive && goLive < cairoTomorrow()) return failed(new Error(t("eta.go-live-too-early")))
     if (!window.confirm(goLive ? fill(t("eta.go-live-confirm"), { date: goLive }) : t("eta.go-live-clear-confirm"))) return
     put("go-live", { eta_go_live_at: goLive })
   }
@@ -286,26 +288,48 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
 
   const toConfirm = prepareRowsToPost(prepare || [], codes)
 
+  // sent in chunks of PREPARE_BATCH, one request after the other; a chunk that fails stops the run and is reported
   const confirmAll = async () => {
     if (toConfirm.length === 0) return
     setSaving("prepare")
+    const total = toConfirm.length
+    let done = 0
+    let saved = 0
+    let skipped = 0
+    let failedRows = 0
+    let stopped: unknown = null
+    setPrepareProgress({ done, total })
     try {
-      const res = await fetch("/api/eta/memory/prepare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: toConfirm }),
-      })
-      if (!res.ok) throw new Error(await readError(res, t("message.error")))
-      const out = await res.json()
+      for (const part of chunk(toConfirm, PREPARE_BATCH)) {
+        try {
+          const res = await fetch("/api/eta/memory/prepare", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items: part }),
+          })
+          if (!res.ok) throw new Error(await readError(res, t("message.error")))
+          const out = await res.json()
+          saved += out.saved ?? 0
+          skipped += out.skipped ?? 0
+          failedRows += Array.isArray(out.failed) ? out.failed.length : 0
+        } catch (e) {
+          stopped = e
+          break
+        }
+        done += part.length
+        setPrepareProgress({ done, total })
+      }
       toast({
-        title: fill(t("eta.prepare-done"), { saved: out.saved ?? 0, skipped: out.skipped ?? 0, failed: Array.isArray(out.failed) ? out.failed.length : 0 }),
-        variant: Array.isArray(out.failed) && out.failed.length > 0 ? "destructive" : undefined,
+        title: fill(t("eta.prepare-done"), { saved, skipped, failed: failedRows + (total - done) }),
+        variant: failedRows > 0 || stopped ? "destructive" : undefined,
       })
+      if (stopped) failed(stopped)
       await loadMemory(memoryQuery)
       await startPrepare()
     } catch (e) {
       failed(e)
     } finally {
+      setPrepareProgress(null)
       setSaving(null)
     }
   }
@@ -333,6 +357,10 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
       </p>
     )
   }
+
+  // go-live (final review I1): a new date is tomorrow or later; once the stored date has passed it is read-only
+  const goLiveMin = cairoTomorrow()
+  const started = goLiveStarted(settings.eta_go_live_at)
 
   return (
     <div className="space-y-6">
@@ -415,15 +443,23 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
                 value={goLive}
                 onChange={(e) => setGoLive(e.target.value)}
                 disabled={!mayGoLive || saving !== null}
+                min={goLiveMin}
+                readOnly={started}
                 className="sm:w-48"
               />
             </div>
-            <Button onClick={saveGoLive} disabled={!mayGoLive || saving !== null || goLive === goLiveDate(settings.eta_go_live_at)}>
+            <Button onClick={saveGoLive} disabled={!mayGoLive || started || saving !== null || goLive === goLiveDate(settings.eta_go_live_at)}>
               {saving === "go-live" && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
               {t("eta.save")}
             </Button>
           </div>
-          <p className="text-sm">{settings.eta_go_live_at ? fill(t("eta.go-live-is"), { date: goLiveDate(settings.eta_go_live_at) }) : t("eta.go-live-not-set")}</p>
+          <p className="text-sm">
+            {started
+              ? fill(t("eta.go-live-started"), { date: goLiveDate(settings.eta_go_live_at) })
+              : settings.eta_go_live_at
+                ? fill(t("eta.go-live-is"), { date: goLiveDate(settings.eta_go_live_at) })
+                : t("eta.go-live-not-set")}
+          </p>
           {!mayGoLive && <p className="text-sm text-muted-foreground">{t("eta.go-live-only-top")}</p>}
         </CardContent>
       </Card>
@@ -544,6 +580,11 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
               </Button>
             )}
           </div>
+          {prepareProgress && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {fill(t("eta.prepare-progress"), { done: prepareProgress.done, total: prepareProgress.total })}
+            </p>
+          )}
           {prepare && prepare.length === 0 && <p className="text-sm text-muted-foreground">{t("eta.prepare-empty")}</p>}
           {prepare && prepare.length > 0 && (
             <ul className="divide-y rounded-lg border">

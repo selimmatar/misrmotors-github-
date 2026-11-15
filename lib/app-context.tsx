@@ -64,7 +64,7 @@ interface AppContextType {
   products: Product[]
   setProducts: (products: Product[]) => void
   addProduct: (product: Product) => Promise<void>
-  updateProduct: (product: Product) => Promise<void>
+  updateProduct: (product: Pick<Product, "id"> & Partial<Product>) => Promise<void>
   deleteProduct: (id: string) => Promise<void>
   couriers: Courier[]
   setCouriers: (couriers: Courier[]) => void
@@ -1003,7 +1003,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const updateProduct = async (product: Product) => {
+  const updateProduct = async (product: Pick<Product, "id"> & Partial<Product>) => {
     try {
       const response = await fetch("/api/products", {
         method: "PUT",

@@ -93,7 +93,11 @@ export interface RememberInput {
   source: "confirmed" | "imported"
 }
 
-/** Learn name -> code. One row per normalised name (latest wins), plus one keyed by the core name when it differs. */
+/**
+ * Learn name -> code. One row per normalised name (latest wins), plus one keyed by the core name when it differs.
+ * The core row is only added when no row exists under that name: it never overwrites one (in particular a name the
+ * accountant confirmed exactly). Conflicts on a core still show through the core_name of the full rows.
+ */
 export async function rememberCode(db: Db, input: RememberInput): Promise<void> {
   const name = String(input.name ?? "").trim()
   const normalized = normalizeName(name)
@@ -111,9 +115,10 @@ export async function rememberCode(db: Db, input: RememberInput): Promise<void> 
   const core = coreName(normalized, brands)
   const now = new Date().toISOString()
 
-  const save = async (key: string, coreOfRow: string, sample: string) => {
+  const save = async (key: string, coreOfRow: string, sample: string, onlyIfNew = false) => {
     const { data: existing, error } = await db.from("eta_code_memory").select("memory_id").eq("normalized_name", key).maybeSingle()
     if (error) throw new Error(error.message || "Could not read the code memory")
+    if (existing && onlyIfNew) return
     const row: Record<string, any> = {
       normalized_name: key,
       core_name: coreOfRow,
@@ -124,10 +129,11 @@ export async function rememberCode(db: Db, input: RememberInput): Promise<void> 
       confirmed_at: now,
     }
     if (!existing) row.sample_name = sample
-    const res = await db.from("eta_code_memory").upsert(row, { onConflict: "normalized_name" })
+    // insert-only for the core row: a row written meanwhile by someone else is kept (ON CONFLICT DO NOTHING)
+    const res = await db.from("eta_code_memory").upsert(row, { onConflict: "normalized_name", ...(onlyIfNew ? { ignoreDuplicates: true } : {}) })
     if (res.error) throw new Error(res.error.message || "Could not save the code memory")
   }
 
   await save(normalized, core, name)
-  if (core && core !== normalized) await save(core, core, core)
+  if (core && core !== normalized) await save(core, core, core, true)
 }

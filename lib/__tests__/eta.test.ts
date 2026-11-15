@@ -4,12 +4,13 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { normalizeName, coreName, similarity, DEFAULT_BRANDS } from "../eta/normalize"
-import { matchCode, prepareRowsToPost, type EtaCode, type MemoryRow } from "../eta/codes"
+import { matchCode, prepareRowsToPost, chunk, PREPARE_BATCH, type EtaCode, type MemoryRow } from "../eta/codes"
 import { etaLines, etaTolerance, isAfterGoLive, type EtaLineIn } from "../eta/totals"
 import { FakeDb, type Row } from "./fake-db"
 import { cannedDb, nreq } from "./hardening-fixtures"
 import { useDb } from "./route-harness"
 import * as etaSettingsRoute from "../../app/api/eta/settings/route"
+import * as genericSettingsRoute from "../../app/api/settings/route"
 import * as etaCodesRoute from "../../app/api/eta/codes/route"
 import * as etaMemoryRoute from "../../app/api/eta/memory/route"
 import * as etaPrepareRoute from "../../app/api/eta/memory/prepare/route"
@@ -23,7 +24,7 @@ import * as etaPreviewRoute from "../../app/api/eta/preview/route"
 import { ruleFor, allows } from "../auth/permissions"
 import { ROLE_MODULES } from "../../components/layout/nav-config"
 import { MODULE_GROUP } from "../nav-groups"
-import { canSetGoLive } from "../eta/go-live"
+import { canSetGoLive, goLiveDate as goLiveOf } from "../eta/go-live"
 import * as arPdf from "../../app/api/invoices/ar/[id]/pdf/route"
 import { moneyCell } from "../print-html"
 import {
@@ -457,21 +458,21 @@ test("E9. settings", async () => {
   assert.equal((await put({ eta_registered_name: "  Misr Motors ", bogus: "x" })).status, 200)
   assert.equal(setting(db, "eta_registered_name"), "Misr Motors")
   assert.equal(setting(db, "bogus"), undefined, "unknown keys ignored")
-  // go-live: accountant 403, ceo / admin 200
-  assert.equal((await put({ eta_go_live_at: "2026-12-01" }, "accountant")).status, 403)
+  // go-live: accountant 403, ceo / admin 200 (dates far ahead: a go-live must be after today, see E27)
+  assert.equal((await put({ eta_go_live_at: "2030-12-01" }, "accountant")).status, 403)
   assert.equal(setting(db, "eta_go_live_at"), undefined)
-  assert.equal((await put({ eta_go_live_at: "2026-12-01" }, "ceo")).status, 200)
-  assert.equal(setting(db, "eta_go_live_at"), "2026-12-01T00:00:00+02:00", "winter date, +02:00")
-  assert.equal((await put({ eta_go_live_at: "2027-07-01" }, "sales-rep,admin")).status, 200)
-  assert.equal(setting(db, "eta_go_live_at"), "2027-07-01T00:00:00+03:00", "summer time, +03:00")
+  assert.equal((await put({ eta_go_live_at: "2030-12-01" }, "ceo")).status, 200)
+  assert.equal(setting(db, "eta_go_live_at"), "2030-12-01T00:00:00+02:00", "winter date, +02:00")
+  assert.equal((await put({ eta_go_live_at: "2030-07-01" }, "sales-rep,admin")).status, 200)
+  assert.equal(setting(db, "eta_go_live_at"), "2030-07-01T00:00:00+03:00", "summer time, +03:00")
   assert.equal((await put({ eta_go_live_at: "01/12/2026" }, "ceo")).status, 400)
   assert.equal((await put({ eta_go_live_at: "2026-02-30" }, "ceo")).status, 400)
   assert.equal((await put({ eta_go_live_at: "2026-12-01T00:00:00Z" }, "ceo")).status, 400)
-  assert.equal(setting(db, "eta_go_live_at"), "2027-07-01T00:00:00+03:00")
+  assert.equal(setting(db, "eta_go_live_at"), "2030-07-01T00:00:00+03:00")
   // an unchanged value saved by the accountant is not a change
-  assert.equal((await put({ eta_go_live_at: "2027-07-01", eta_branch_id: "0" })).status, 200)
+  assert.equal((await put({ eta_go_live_at: "2030-07-01", eta_branch_id: "0" })).status, 200)
   const got = await etaSettingsRoute.GET(ereq("GET")).then(out)
-  assert.equal(got.body.eta_go_live_at, "2027-07-01T00:00:00+03:00")
+  assert.equal(got.body.eta_go_live_at, "2030-07-01T00:00:00+03:00")
   assert.equal(got.body.eta_rin, "100234567")
   assert.equal((await put({ eta_go_live_at: "" }, "ceo")).status, 200)
   assert.equal(setting(db, "eta_go_live_at"), "")
@@ -524,8 +525,8 @@ test("E11. memory upsert", async () => {
   assert.equal((await post({ name: "ترولي عدة Stanley", codeId: 1, unitType: "SET" })).status, 200)
   assert.deepEqual(db.tables.eta_code_memory.map((r) => r.normalized_name).sort(), ["ترولي عده", "ترولي عده stanley"].sort())
   assert.equal(db.tables.eta_code_memory.length, 2)
-  // the core row is now owned by the latest confirmation
-  assert.equal(db.tables.eta_code_memory.find((r) => r.normalized_name === "ترولي عده")!.code_id, 1)
+  // the core row is the exact name confirmed earlier: learning the core never overwrites it
+  assert.equal(db.tables.eta_code_memory.find((r) => r.normalized_name === "ترولي عده")!.code_id, 2)
   // unknown and inactive codes refused
   assert.equal((await post({ name: "x", codeId: 99, unitType: "EA" })).status, 400)
   assert.equal((await post({ name: "x", codeId: 3, unitType: "EA" })).status, 400)
@@ -1027,4 +1028,149 @@ test("E26. prepare list: a changed code takes that code's default unit, an uncha
     { name: "code without a default", codeId: 3, unitType: "" },
   ])
   assert.match(src(SETTINGS_SCREEN), /prepareRowsToPost\(prepare \|\| \[\], codes\)/)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// Final review fixes
+// ---------------------------------------------------------------------------------------------------------
+const cairoDay = (offsetDays = 0) => {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())
+  const [y, m, d] = today.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10)
+}
+
+test("E27. go-live: only a future Cairo date; a go-live that has started cannot be changed or cleared", async () => {
+  const db = new FakeDb({ users: [{ user_id: 7 }], company_settings: [] })
+  useDb(db)
+  const put = (body: unknown, roles = "ceo") => etaSettingsRoute.PUT(ereq("PUT", body, roles)).then(out)
+  // today and earlier are refused, tomorrow is fine
+  for (const day of [cairoDay(0), cairoDay(-1), "2020-01-01"]) {
+    const r = await put({ eta_go_live_at: day })
+    assert.equal(r.status, 400, day)
+    assert.match(r.body.error, /after today/i, day)
+    assert.equal(setting(db, "eta_go_live_at"), undefined, day)
+  }
+  assert.equal((await put({ eta_go_live_at: cairoDay(1) })).status, 200)
+  assert.equal(goLiveOf(setting(db, "eta_go_live_at")), cairoDay(1))
+  // a future go-live can still be moved or cleared
+  assert.equal((await put({ eta_go_live_at: cairoDay(30) })).status, 200)
+  assert.equal(goLiveOf(setting(db, "eta_go_live_at")), cairoDay(30))
+  assert.equal((await put({ eta_go_live_at: "" })).status, 200)
+  assert.equal(setting(db, "eta_go_live_at"), "")
+  // a go-live that has passed is locked
+  db.tables.company_settings.find((r) => r.setting_key === "eta_go_live_at")!.setting_value = "2026-01-01T00:00:00+02:00"
+  for (const value of [cairoDay(10), ""]) {
+    const r = await put({ eta_go_live_at: value })
+    assert.equal(r.status, 409, `locked: ${value}`)
+    assert.match(r.body.error, /started/i)
+  }
+  assert.equal(setting(db, "eta_go_live_at"), "2026-01-01T00:00:00+02:00")
+  // saving the same date with other fields still works
+  assert.equal((await put({ eta_go_live_at: "2026-01-01", eta_branch_id: "1" }, "accountant")).status, 200)
+  assert.equal(setting(db, "eta_branch_id"), "1")
+  assert.equal(setting(db, "eta_go_live_at"), "2026-01-01T00:00:00+02:00")
+
+  // the generic settings route cannot write the go-live key
+  const generic = (body: unknown) => genericSettingsRoute.PUT(ereq("PUT", body, "ceo", "http://test.local/api/settings")).then(out)
+  const g = await generic({ key: "eta_go_live_at", value: "2020-01-01" })
+  assert.equal(g.status, 400)
+  assert.equal(setting(db, "eta_go_live_at"), "2026-01-01T00:00:00+02:00")
+  assert.equal((await generic({ key: " ETA_GO_LIVE_AT ", value: "2020-01-01" })).status, 400)
+  assert.equal((await generic({ key: "company_name", value: "MM" })).status, 200)
+
+  // the screen: the date input starts tomorrow; once started it is read-only with a note
+  const screen = src(SETTINGS_SCREEN)
+  assert.match(screen, /min=\{goLiveMin\}/)
+  assert.match(screen, /goLiveStarted\(settings\.eta_go_live_at\)/)
+  assert.match(screen, /readOnly=\{started\}/)
+  assert.match(screen, /"eta\.go-live-started"/)
+  const i18n = src("lib/i18n-context.tsx")
+  const arAt = i18n.indexOf("\n  ar: {")
+  const enKey = i18n.slice(0, arAt).match(/"eta\.go-live-started": "([^"]*)",\n\s+"so\.print-plain"/)
+  const arKey = i18n.slice(arAt).match(/"eta\.go-live-started": "([^"]*)",\n\s+"so\.print-plain"/)
+  assert.ok(enKey && enKey[1].includes("{date}"), "EN key before so.print-plain")
+  assert.ok(arKey && arKey[1].includes("{date}") && /[؀-ۿ]/.test(arKey[1]), "AR key before so.print-plain")
+})
+
+test("E28. memory: learning a core name never overwrites an existing row under that name", async () => {
+  const db = new FakeDb({
+    users: [{ user_id: 7 }],
+    eta_item_codes: [
+      { code_id: 1, item_code: "A", keywords: [], default_unit: "EA", active: true },
+      { code_id: 2, item_code: "B", keywords: [], default_unit: "EA", active: true },
+    ],
+  })
+  useDb(db)
+  const post = (body: unknown) => etaMemoryRoute.POST(ereq("POST", body)).then(out)
+  const row = (n: string) => db.tables.eta_code_memory.find((r) => r.normalized_name === n)
+  assert.equal((await post({ name: "ترولي عدة", codeId: 2, unitType: "EA" })).status, 200)
+  assert.equal((await post({ name: "ترولي عدة Stanley", codeId: 1, unitType: "SET" })).status, 200)
+  assert.equal(row("ترولي عده")!.code_id, 2, "the exact name the accountant confirmed keeps code 2")
+  assert.equal(row("ترولي عده")!.unit_type, "EA")
+  assert.equal(row("ترولي عده stanley")!.code_id, 1)
+  assert.equal(row("ترولي عده stanley")!.core_name, "ترولي عده")
+  // so the core-conflict rule still fires for a new brand variant
+  const ctx = await loadEtaCtx(db as any)
+  const m = matchCode({ name: "ترولي عدة Bosch" }, ctx)
+  assert.equal(m.state, "orange")
+  // a core row is still created when none exists, and an exact confirmation of that name still wins
+  assert.equal((await post({ name: "مفك Bosch", codeId: 1, unitType: "EA" })).status, 200)
+  assert.equal(row("مفك")!.code_id, 1)
+  assert.equal((await post({ name: "مفك", codeId: 2, unitType: "EA" })).status, 200)
+  assert.equal(row("مفك")!.code_id, 2)
+  assert.equal((await post({ name: "مفك Stanley", codeId: 1, unitType: "EA" })).status, 200)
+  assert.equal(row("مفك")!.code_id, 2)
+})
+
+test("E29. product card picker sends only the id and the changed e-invoice field; a partial PUT keeps the rest", async () => {
+  const db = new FakeDb({ products: [{ product_id: 1, product_name: "P", sku: "S", unit_price: 9.5, moq: 3, desired_excess: 2, unit: "pcs", eta_code_id: null, eta_unit_type: null, created_at: "2026-01-01" }] })
+  useDb(db)
+  const r = await productsRoute.PUT(ereq("PUT", { id: "1", etaCodeId: 4 })).then(out)
+  assert.equal(r.status, 200)
+  const p = db.tables.products[0]
+  assert.deepEqual([p.product_name, p.sku, p.unit_price, p.moq, p.desired_excess, p.unit, p.eta_code_id], ["P", "S", 9.5, 3, 2, "pcs", 4])
+  assert.equal((await productsRoute.PUT(ereq("PUT", { id: "1", etaUnitType: "SET" })).then(out)).status, 200)
+  assert.deepEqual([p.unit_price, p.eta_code_id, p.eta_unit_type], [9.5, 4, "SET"])
+  const product = src("components/modules/product-module.tsx")
+  assert.doesNotMatch(product, /updateProduct\(\{\s*\.\.\.product/)
+  assert.match(product, /updateProduct\(\{ id: product\.id, \.\.\.patch \}\)/)
+})
+
+test("E30. prepare: the server takes at most 50 items; the screen sends them in chunks of 50", async () => {
+  const db = new FakeDb({ users: [{ user_id: 7 }], eta_item_codes: [{ code_id: 1, item_code: "H", keywords: [], default_unit: "EA", active: true }], company_settings: [] })
+  useDb(db)
+  const many = (n: number) => Array.from({ length: n }, (_, i) => ({ name: `قطعة ${i}`, codeId: 1, unitType: "EA" }))
+  const tooMany = await etaPrepareRoute.POST(ereq("POST", { items: many(51) })).then(out)
+  assert.equal(tooMany.status, 400)
+  assert.match(tooMany.body.error, /50/)
+  assert.equal((db.tables.eta_code_memory || []).length, 0, "nothing saved")
+  const ok = await etaPrepareRoute.POST(ereq("POST", { items: many(50) })).then(out)
+  assert.equal(ok.status, 200)
+  assert.equal(ok.body.saved, 50)
+
+  assert.equal(PREPARE_BATCH, 50)
+  const items = Array.from({ length: 120 }, (_, i) => i)
+  const parts = chunk(items, PREPARE_BATCH)
+  assert.deepEqual(parts.map((p) => p.length), [50, 50, 20])
+  assert.deepEqual(parts.flat(), items)
+  assert.deepEqual(chunk([], 50), [])
+  assert.deepEqual(chunk([1, 2], 50), [[1, 2]])
+
+  const screen = src(SETTINGS_SCREEN)
+  assert.match(screen, /chunk\(toConfirm, PREPARE_BATCH\)/)
+  assert.match(screen, /"eta\.prepare-progress"/)
+})
+
+test("E31. a brand-only or size-only name against real memory rows (Review Focus 1)", () => {
+  const codes: EtaCode[] = [
+    { codeId: 1, itemCode: "H", name: "Hand", keywords: ["3/8"], defaultUnit: "EA", active: true },
+    { codeId: 2, itemCode: "P", name: "Power", keywords: [], defaultUnit: "EA", active: true },
+  ]
+  const n = normalizeName("Bosch")
+  const memory: MemoryRow[] = [{ normalizedName: n, coreName: coreName(n, DEFAULT_BRANDS), codeId: 2, unitType: "EA" }]
+  assert.equal(memory[0].coreName, "")
+  const ctx = { codes, memory, brands: DEFAULT_BRANDS }
+  assert.deepEqual(matchCode({ name: "Stanley" }, ctx), { codeId: null, unit: "EA", state: "red", by: "none" })
+  assert.deepEqual(matchCode({ name: "Bosch" }, ctx), { codeId: 2, unit: "EA", state: "green", by: "memory" })
+  assert.deepEqual(matchCode({ name: "3/8" }, ctx), { codeId: 1, unit: "EA", state: "orange", by: "keyword" })
 })

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { ETA_SETTING_KEYS, readEtaSettings } from "@/lib/eta/store"
-import { cairoMidnightIso } from "@/lib/eta/go-live"
+import { cairoMidnightIso, cairoToday, goLiveStarted } from "@/lib/eta/go-live"
 import { toLatinDigits } from "@/lib/eta/egypt"
 
 export const dynamic = "force-dynamic"
@@ -68,6 +68,14 @@ export async function PUT(request: Request) {
       const roles = (request.headers.get("x-mm-roles") || "").split(",").map((r) => r.trim())
       if (!roles.includes("ceo") && !roles.includes("admin")) {
         return NextResponse.json({ error: "Only the CEO or an admin can change the go-live date" }, { status: 403 })
+      }
+      // once it has passed, invoices already exist on each side of it: moving or clearing it would re-classify them
+      if (goLiveStarted(current.eta_go_live_at)) {
+        return NextResponse.json({ error: "E-invoicing has already started on this date; it can't be changed" }, { status: 409 })
+      }
+      // a new go-live is a Cairo date after today, so no invoice that already exists falls after it
+      if (updates.eta_go_live_at !== "" && updates.eta_go_live_at.slice(0, 10) <= cairoToday()) {
+        return NextResponse.json({ error: "The go-live date must be after today (tomorrow or later)" }, { status: 400 })
       }
     }
 

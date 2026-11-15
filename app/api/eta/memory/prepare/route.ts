@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { normalizeName } from "@/lib/eta/normalize"
-import { matchCode } from "@/lib/eta/codes"
+import { matchCode, PREPARE_BATCH } from "@/lib/eta/codes"
 import { allRows, loadMatchContext, rememberCode } from "@/lib/eta/store"
 
 export const dynamic = "force-dynamic"
@@ -55,6 +55,10 @@ export async function POST(request: Request) {
     const db = createAdminClient()
     const body = await request.json().catch(() => null)
     if (!body || !Array.isArray(body.items)) return NextResponse.json({ error: "items is required" }, { status: 400 })
+    // each row is several round trips: a bigger request could run past the time limit, so the screen sends chunks
+    if (body.items.length > PREPARE_BATCH) {
+      return NextResponse.json({ error: `Send at most ${PREPARE_BATCH} items per request` }, { status: 400 })
+    }
     const userId = await knownUserId(db, actorUserId(request))
     let saved = 0
     let skipped = 0

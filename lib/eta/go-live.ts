@@ -21,3 +21,20 @@ export const canSetGoLive = (roles: readonly string[]): boolean => roles.include
 
 /** The stored go-live moment back as the local date "YYYY-MM-DD" it was set from ("" when not set). */
 export const goLiveDate = (stored: string | null | undefined): string => /^\d{4}-\d{2}-\d{2}/.exec(String(stored ?? ""))?.[0] ?? ""
+
+/** Today's local date in Cairo, "YYYY-MM-DD". */
+export function cairoToday(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(now)
+}
+
+/** Tomorrow's local date in Cairo, "YYYY-MM-DD": the earliest go-live that may be set. */
+export function cairoTomorrow(now: Date = new Date()): string {
+  const [y, m, d] = cairoToday(now).split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+}
+
+/** True once the stored go-live moment has passed: from then on it can no longer be changed or cleared. */
+export function goLiveStarted(stored: string | null | undefined, now: Date = new Date()): boolean {
+  const at = Date.parse(String(stored ?? "").trim())
+  return Number.isFinite(at) && at <= now.getTime()
+}

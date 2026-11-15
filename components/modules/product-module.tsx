@@ -39,9 +39,10 @@ export function ProductModule() {
       .then((rows) => setEtaCodes(Array.isArray(rows) ? rows : []))
       .catch(() => setEtaCodes([]))
   }, [])
-  const saveEta = async (product: Product, patch: Partial<Product>) => {
+  // only the id and the changed e-invoice field: never the cached product, whose price may be out of date
+  const saveEta = async (product: Product, patch: Pick<Product, "etaCodeId"> | Pick<Product, "etaUnitType">) => {
     try {
-      await updateProduct({ ...product, ...patch })
+      await updateProduct({ id: product.id, ...patch })
     } catch (error) {
       alert(fill(t("message.not-saved"), { error: error instanceof Error ? error.message : String(error) }))
     }

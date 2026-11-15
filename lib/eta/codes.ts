@@ -142,3 +142,14 @@ export function prepareRowsToPost(
       return { name: r.name, codeId, unitType: kept ? r.unit || "" : unitOf.get(codeId) ?? "" }
     })
 }
+
+/** "Prepare from past items": the most rows one save request takes; the screen sends them in chunks of this size. */
+export const PREPARE_BATCH = 50
+
+/** Splits `items` into consecutive chunks of at most `size`, in order. */
+export function chunk<T>(items: readonly T[], size: number): T[][] {
+  const n = Math.max(1, Math.floor(size))
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += n) out.push(items.slice(i, i + n))
+  return out
+}
