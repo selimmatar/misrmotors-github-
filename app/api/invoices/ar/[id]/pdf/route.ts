@@ -4,7 +4,19 @@ import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { moneyCell } from "@/lib/print-html"
 import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
-import { VAT_RATE, computeWholeOrderAmount, dpInvoicePrintTotals, loadSoInvoicingState, round2, soDiscountBase } from "@/lib/invoicing"
+import {
+  VAT_RATE,
+  computeWholeOrderAmount,
+  dpInvoicePrintTotals,
+  etaInvoicePrintTotals,
+  etaUnitPrice,
+  loadEtaGoLiveAt,
+  loadSoInvoicingState,
+  orderDiscountRate,
+  round2,
+  soDiscountBase,
+} from "@/lib/invoicing"
+import { isAfterGoLive } from "@/lib/eta/totals"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 
 export const dynamic = "force-dynamic"
@@ -199,7 +211,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let totalWithVat: number
     let subtotalBeforeVat: number
     let vatAmount: number
-    if (isDpBasedInvoice) {
+    // E-invoice go-live (spec §6): an invoice created at or after company_settings.eta_go_live_at was priced line by
+    // line, so it prints the per-line totals of its printed lines. Earlier invoices print exactly as before.
+    const etaGoLiveAt = await loadEtaGoLiveAt(supabase)
+    if (isAfterGoLive(invoice.created_at, etaGoLiveAt)) {
+      const lines = items.map((item: any) => ({
+        name: item.item_type === "outsourced" ? item.outsourced_name || "" : item.products?.product_name || "",
+        quantity: Number(item.quantity) || 0,
+        unitPrice: etaUnitPrice(item),
+      }))
+      const printed = etaInvoicePrintTotals(lines, orderDiscountRate(so.sales_order_items || [], soSubtotal, soDiscount), invoice.amount)
+      ;({ totalWithVat, subtotalBeforeVat, vatAmount } = printed)
+    } else if (isDpBasedInvoice) {
       const printed = dpInvoicePrintTotals(rawItemsTotal, soDiscountBase(so.sales_order_items || [], soSubtotal), soDiscount, invoice.amount)
       ;({ totalWithVat, subtotalBeforeVat, vatAmount } = printed)
     } else {

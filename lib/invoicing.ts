@@ -23,6 +23,7 @@ import {
   toMs,
   type ReturnLine,
 } from "./return-lines"
+import { etaLines, etaTolerance, isAfterGoLive, type EtaLineIn } from "./eta/totals"
 
 // Batch 2: quantity returned against a delivery permit (valid = non-rejected) reduces what can still be invoiced:
 //   ordered - already invoiced - returned = remaining invoiceable (never below zero)
@@ -76,6 +77,67 @@ export function dpInvoicePrintTotals(rawItemsTotal: number, discountBase: number
   return { totalWithVat: computed, subtotalBeforeVat, vatAmount: round2(computed - subtotalBeforeVat) }
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// E-invoice (ETA) go-live switch - spec §6. An invoice created at or after company_settings.eta_go_live_at is priced
+// line by line (lib/eta/totals.ts: VAT rounded per line, totals = sums of the rounded lines) and the over-invoicing
+// checks use etaTolerance(number of order lines). Invoices created before go-live, and everything while the setting
+// is empty, keep today's rule (netInvoiceValue / computeInvoiceAmount / MONEY_TOLERANCE) unchanged.
+// ---------------------------------------------------------------------------------------------------------
+export const ETA_GO_LIVE_KEY = "eta_go_live_at"
+const nowIso = () => new Date().toISOString()
+
+/** The order discount rate today's rule applies: discount_amount over the pre-discount line total (0 when that is 0). */
+export function orderDiscountRate(soItems: { total?: any; quantity?: any; unit_price?: any }[], soSubtotal: number, soDiscountAmount: number) {
+  const base = soDiscountBase(soItems, soSubtotal)
+  return base > 0 ? (Number(soDiscountAmount) || 0) / base : 0
+}
+
+/** Unit price of a billed line: its unit_price; when that is missing (or 0 on a line that has a value), total / quantity. */
+export function etaUnitPrice(item: { total?: any; quantity?: any; unit_price?: any }) {
+  const unit = item.unit_price == null || item.unit_price === "" ? Number.NaN : Number(item.unit_price)
+  const qty = Number(item.quantity) || 0
+  const fromTotal = qty > 0 ? itemRawTotal(item) / qty : 0
+  if (!Number.isFinite(unit) || (unit === 0 && fromTotal > 0)) return fromTotal
+  return unit
+}
+
+/**
+ * Totals printed on an invoice created after go-live: the per-line totals of the printed lines. The printed total must
+ * equal the stored amount, so when they differ (e.g. the order was edited after invoicing) the stored amount is printed
+ * and split into pre-VAT and VAT, as dpInvoicePrintTotals does.
+ */
+export function etaInvoicePrintTotals(lines: EtaLineIn[], discountRate: number, storedAmount: number | null | undefined) {
+  const { totals } = etaLines(lines, discountRate)
+  const stored = storedAmount == null ? NaN : Number(storedAmount)
+  if (Number.isFinite(stored) && Math.abs(stored - totals.total) > 0.005) {
+    const totalWithVat = round2(stored)
+    const subtotalBeforeVat = round2(totalWithVat / (1 + VAT_RATE))
+    return { totalWithVat, subtotalBeforeVat, vatAmount: round2(totalWithVat - subtotalBeforeVat) }
+  }
+  return { totalWithVat: totals.total, subtotalBeforeVat: totals.net, vatAmount: totals.vat }
+}
+
+/**
+ * The go-live moment (company_settings.eta_go_live_at), or null. A missing row, an empty value, a missing table or a
+ * failed read all mean "not live" (today's rule), so invoicing never stops because of this setting.
+ */
+export async function loadEtaGoLiveAt(db: any): Promise<string | null> {
+  try {
+    const res = await db.from("company_settings").select("setting_key, setting_value").eq("setting_key", ETA_GO_LIVE_KEY)
+    if (!res || res.error) {
+      if (res?.error) console.warn(`[invoicing] could not read ${ETA_GO_LIVE_KEY}; using the pre-go-live rule: ${res.error.message || res.error}`)
+      return null
+    }
+    const rows: any[] = Array.isArray(res.data) ? res.data : res.data ? [res.data] : []
+    const value = rows.find((r) => r?.setting_key === ETA_GO_LIVE_KEY)?.setting_value
+    const text = value == null ? "" : String(value).trim()
+    return text || null
+  } catch (error: any) {
+    console.warn(`[invoicing] could not read ${ETA_GO_LIVE_KEY}; using the pre-go-live rule: ${error?.message || error}`)
+    return null
+  }
+}
+
 // Same line matching as isSOFullyDelivered in the delivery-permits route: by product, else by name.
 // (Defined in return-lines.ts so returns and invoicing can never disagree on what "the same line" means.)
 export { lineKey }
@@ -118,6 +180,8 @@ export interface SoInvoicingState {
   }[]
   /** valid (non-rejected) return lines against this sales order's delivery permits */
   returns: ReturnLine[]
+  /** company_settings.eta_go_live_at (ISO date-time); empty / missing = not live, today's rule everywhere */
+  etaGoLiveAt?: string | null
 }
 
 export type Verdict = { ok: true; newValue?: number } | { ok: false; status: number; error: string }
@@ -127,9 +191,14 @@ const ownPermitIds = (state: SoInvoicingState) => new Set(state.permits.map((p) 
 
 // How much of an invoice counts against THIS sales order. A normal invoice counts in full; an invoice that
 // also covers other sales orders' permits counts only for this order's permits.
+// An invoice created after go-live counts its per-line value for this order's permits (net of the returns known
+// when it was created, as it was priced); one created before go-live counts as it always did.
 function invoiceShare(state: SoInvoicingState, inv: SoInvoicingState["invoices"][number]) {
   const own = ownPermitIds(state)
   if (inv.permit_ids.length > 0 && inv.permit_ids.some((id) => !own.has(id))) {
+    if (isAfterGoLive(inv.created_at, state.etaGoLiveAt)) {
+      return etaLines(dpInvoiceEtaLines(state, inv.permit_ids, invoiceAsOf(inv)), stateDiscountRate(state)).totals.total
+    }
     const raw = state.permits
       .filter((p) => inv.permit_ids.includes(p.permit_id))
       .reduce((sum, p) => sum + p.items.reduce((s, it) => s + itemRawTotal(it), 0), 0)
@@ -181,35 +250,60 @@ function poolByKey(state: SoInvoicingState, returned: Map<string, number>) {
  */
 export function computeWholeOrderAmount(state: SoInvoicingState): { ok: true; amount: number; excluded: Map<string, number> } | { ok: false; status: number; error: string } {
   const total = Number(state.so.total) || 0
+  const excludedLeft = excludedByKey(state)
+  // After go-live (an invoice created now): the order lines less returns, priced line by line.
+  const eta = isAfterGoLive(nowIso(), state.etaGoLiveAt)
+  if (excludedLeft.size === 0 && !eta) return { ok: true, amount: total, excluded: new Map() }
+
+  const excluded = new Map(excludedLeft)
+  const billed = billedOrderLines(state, excludedLeft)
+  let rawAll = 0
+  let rawExcluded = 0
+  for (const { qty, take, lineRaw } of billed) {
+    rawAll += lineRaw
+    if (take > 0) rawExcluded += qty > 0 ? (lineRaw * take) / qty : 0
+  }
+  if (rawAll <= 0) return { ok: true, amount: total, excluded: new Map() }
+  const amount = eta
+    ? etaLines(billed.map((b) => ({ name: b.line.outsourced_name || "", quantity: b.qty - b.take, unitPrice: etaUnitPrice(b.line) })), stateDiscountRate(state)).totals.total
+    : round2(total * (1 - rawExcluded / rawAll))
+  if (excluded.size === 0) return { ok: true, amount, excluded }
+  if (amount <= 0.005) {
+    return { ok: false, status: 409, error: `Nothing to invoice: every item on sales order ${soLabel(state)} has been returned.` }
+  }
+  return { ok: true, amount, excluded }
+}
+
+// Per line key: the ordered quantity a whole-order invoice leaves out because it was returned.
+function excludedByKey(state: SoInvoicingState) {
   const pools = poolByKey(state, returnedByKey(state.returns || []))
   const excludedLeft = new Map<string, number>()
   for (const [key, info] of pools) {
     const excluded = Math.max(0, info.ordered - info.pool)
     if (excluded > QTY_EPSILON) excludedLeft.set(key, excluded)
   }
-  if (excludedLeft.size === 0) return { ok: true, amount: total, excluded: new Map() }
+  return excludedLeft
+}
 
-  const excluded = new Map(excludedLeft)
-  let rawAll = 0
-  let rawExcluded = 0
-  for (const line of state.soItems) {
+// The order lines a whole-order invoice bills: each line with the returned quantity (`take`) taken off it, first lines
+// of a key first. Consumes `excludedLeft`.
+function billedOrderLines(state: SoInvoicingState, excludedLeft: Map<string, number>) {
+  return state.soItems.map((line) => {
     const qty = Number(line.quantity) || 0
     const lineRaw = itemRawTotal({ total: line.total, quantity: line.quantity, unit_price: line.unit_price })
-    rawAll += lineRaw
     const key = lineKey(line.product_id, line.outsourced_name)
     const take = Math.min(excludedLeft.get(key) || 0, qty)
-    if (take > 0) {
-      excludedLeft.set(key, (excludedLeft.get(key) || 0) - take)
-      rawExcluded += qty > 0 ? (lineRaw * take) / qty : 0
-    }
-  }
-  if (rawAll <= 0) return { ok: true, amount: total, excluded: new Map() }
-  const amount = round2(total * (1 - rawExcluded / rawAll))
-  if (amount <= 0.005) {
-    return { ok: false, status: 409, error: `Nothing to invoice: every item on sales order ${soLabel(state)} has been returned.` }
-  }
-  return { ok: true, amount, excluded }
+    if (take > 0) excludedLeft.set(key, (excludedLeft.get(key) || 0) - take)
+    return { line, qty, take, lineRaw }
+  })
 }
+
+/** The lines a whole-order invoice created now would bill (the order lines less returns), as e-invoice lines. */
+export function wholeOrderEtaLines(state: SoInvoicingState): EtaLineIn[] {
+  return billedOrderLines(state, excludedByKey(state)).map((b) => ({ name: b.line.outsourced_name || "", quantity: b.qty - b.take, unitPrice: etaUnitPrice(b.line) }))
+}
+
+const stateDiscountRate = (state: SoInvoicingState) => orderDiscountRate(state.soItems, state.so.subtotal, state.so.discount_amount)
 
 // The order total once returned quantity is left out (the whole-order invoice amount); 0 when nothing is left to bill.
 function effectiveOrderTotal(state: SoInvoicingState, returns: ReturnLine[]) {
@@ -236,6 +330,19 @@ function netPermitQuantities(state: SoInvoicingState, permit: SoInvoicingState["
     permit.items.map((it) => ({ key: lineKey(it.product_id, it.item_name_snapshot), quantity: Number(it.quantity) || 0 })),
     returnedByKey(state.returns || [], { permitId: permit.permit_id, asOfMs }),
   )
+}
+
+// One e-invoice line per permit item, at the net quantity billed (`net`, from netPermitQuantities).
+const permitEtaLines = (permit: SoInvoicingState["permits"][number], net: number[]): EtaLineIn[] =>
+  permit.items.map((item, idx) => ({ name: item.item_name_snapshot || "", quantity: net[idx], unitPrice: etaUnitPrice(item) }))
+
+/**
+ * The lines a delivery-permit invoice bills for this order's permits among `permitIds`: each permit item at its net
+ * quantity (delivered less the returns known at `asOfMs`; all returns when omitted). The same item on two permits
+ * stays two lines.
+ */
+export function dpInvoiceEtaLines(state: SoInvoicingState, permitIds: number[], asOfMs?: number): EtaLineIn[] {
+  return state.permits.filter((p) => permitIds.includes(p.permit_id)).flatMap((p) => permitEtaLines(p, netPermitQuantities(state, p, asOfMs)))
 }
 
 // Value of an item for `netQty` units (pro-rata of its stored line total).
@@ -376,15 +483,20 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
   }
 
   const priorValue = state.invoices.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
-  const newValue = newPermits.reduce((sum, p) => {
-    const net = netByPermit.get(p.permit_id) || []
-    const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)
-    return sum + netInvoiceValue(raw, soDiscountBase(state.soItems, state.so.subtotal), state.so.discount_amount)
-  }, 0)
+  // The invoice is created now: after go-live it is priced line by line (spec §6), before it as always.
+  const eta = isAfterGoLive(nowIso(), state.etaGoLiveAt)
+  const newValue = eta
+    ? etaLines(newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])), stateDiscountRate(state)).totals.total
+    : newPermits.reduce((sum, p) => {
+        const net = netByPermit.get(p.permit_id) || []
+        const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)
+        return sum + netInvoiceValue(raw, soDiscountBase(state.soItems, state.so.subtotal), state.so.discount_amount)
+      }, 0)
   // The order total less the value of what was returned (nothing was credited on existing invoices, so returned
   // goods that were already billed are not billed again).
   const billableTotal = effectiveOrderTotal(state, state.returns || [])
-  if (priorValue + newValue > billableTotal + MONEY_TOLERANCE) {
+  const tolerance = eta ? etaTolerance(state.soItems.length) : MONEY_TOLERANCE
+  if (priorValue + newValue > billableTotal + tolerance) {
     return {
       ok: false,
       status: 409,
@@ -425,7 +537,8 @@ export function evaluateAfterInsert(state: SoInvoicingState, myInvoiceId: number
   }
   const value = considered.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
   const returnsBefore = mine ? (state.returns || []).filter((r) => returnedByKey([r], { asOfMs: invoiceAsOf(mine) }).size > 0) : []
-  if (value > effectiveOrderTotal(state, returnsBefore) + MONEY_TOLERANCE) {
+  const tolerance = isAfterGoLive(mine?.created_at || nowIso(), state.etaGoLiveAt) ? etaTolerance(state.soItems.length) : MONEY_TOLERANCE
+  if (value > effectiveOrderTotal(state, returnsBefore) + tolerance) {
     return { ok: false, status: 409, error: `Concurrent invoicing would exceed the total of sales order ${soLabel(state)}.` }
   }
   return { ok: true }
@@ -522,6 +635,7 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
       created_at: r.created_at ?? null,
     })),
     returns,
+    etaGoLiveAt: await loadEtaGoLiveAt(db),
   }
 }
 
