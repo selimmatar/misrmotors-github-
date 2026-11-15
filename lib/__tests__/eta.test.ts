@@ -773,6 +773,7 @@ test("E20. preview lines: the invoice's billed lines (net of returns known at in
   assert.deepEqual(p!.lines.map((l) => [l.name, l.quantity, l.unitPrice, l.discount, l.netTotal, l.vat, l.total]), expected.lines.map((l) => [l.name, l.quantity, l.unitPrice, l.discount, l.netTotal, l.vat, l.total]))
   assert.deepEqual(p!.totals, expected.totals)
   assert.equal(p!.totals.total, 307.8)
+  assert.deepEqual(p!.lines.map((l) => l.discountRate), [0.1, 0.1])
   assert.equal(p!.totals.total, db.tables.accounts_receivable[0].amount, "the same total the invoice stored")
   assert.equal(p!.invoiceNumber, db.tables.accounts_receivable[0].invoice_number)
   assert.equal(p!.handledManually, false)
@@ -809,7 +810,7 @@ test("E20. preview lines: the invoice's billed lines (net of returns known at in
 test("E21. preview: code state per line and the missing-data checklist", async () => {
   const codes: Row[] = [
     { code_id: 1, item_code: "EG-HAND", name: "Hand tools", keywords: ["لقمه"], default_unit: "EA", active: true },
-    { code_id: 2, item_code: "EG-GARAGE", name: "Garage", keywords: [], default_unit: "SET", active: true },
+    { code_id: 2, item_code: "EG-GARAGE", code_type: "GS1", name: "Garage", keywords: [], default_unit: "SET", active: true },
   ]
   const memory: Row[] = [{ memory_id: 1, normalized_name: normalizeName("ترولي عدة"), core_name: normalizeName("ترولي عدة"), code_id: 2, unit_type: "SET", confirmed_at: "2026-01-01T00:00:00Z" }]
   const lines: PvLine[] = [
@@ -829,7 +830,11 @@ test("E21. preview: code state per line and the missing-data checklist", async (
     ["orange", 1, "EG-HAND", "EA"],
     ["red", null, null, "EA"],
   ])
-  assert.deepEqual(p!.customer, { name: "Acme", receiverType: "B", taxRegistrationNumber: null })
+  assert.deepEqual(p!.customer, {
+    name: "Acme", receiverType: "B", taxRegistrationNumber: null, nationalId: null,
+    address: { governorate: "", regionCity: "", street: "", buildingNumber: "" },
+  })
+  assert.deepEqual(p!.lines.map((l) => [l.itemType, l.discountRate]), [["GS1", 0], ["GS1", 0], ["EGS", 0], ["EGS", 0]])
   assert.deepEqual([...p!.missing].sort(), ["customer_address", "customer_tax_number", "line_codes"])
 
   // the unknown name is confirmed: no line is red any more (orange is a suggestion, not missing)
@@ -838,13 +843,16 @@ test("E21. preview: code state per line and the missing-data checklist", async (
   Object.assign(db.tables.customers[0], { tax_registration_number: "100234567", address_governorate: "Giza", address_region: "Dokki", address_street: "Tahrir", address_building_number: "4" })
   const p2 = await buildEtaPreview(db, id)
   assert.deepEqual(p2!.missing, [])
+  assert.deepEqual(p2!.customer.address, { governorate: "Giza", regionCity: "Dokki", street: "Tahrir", buildingNumber: "4" })
   assert.equal(p2!.lines[3].state, "green")
   // a tax number that is not 9 digits; an empty receiver type counts as a company
   Object.assign(db.tables.customers[0], { eta_receiver_type: null, tax_registration_number: "12345", address_street: "" })
   assert.deepEqual([...(await buildEtaPreview(db, id))!.missing].sort(), ["customer_address", "customer_tax_number"])
   // a person: the national ID (14 digits) is what counts, no address needed
   Object.assign(db.tables.customers[0], { eta_receiver_type: "P", tax_registration_number: null, national_id: "29001011234567" })
-  assert.deepEqual((await buildEtaPreview(db, id))!.missing, [])
+  const person = (await buildEtaPreview(db, id))!
+  assert.deepEqual(person.missing, [])
+  assert.equal(person.customer.nationalId, "29001011234567")
   db.tables.customers[0].national_id = "123"
   assert.deepEqual((await buildEtaPreview(db, id))!.missing, ["customer_tax_number"])
   db.tables.customers[0].national_id = "29001011234567"

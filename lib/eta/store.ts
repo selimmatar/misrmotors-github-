@@ -64,7 +64,7 @@ export function parseBrands(raw: string | undefined | null): string[] {
 
 export async function loadMatchContext(db: Db): Promise<{ codes: EtaCode[]; memory: MemoryRow[]; brands: string[] }> {
   const [codeRows, memRows, settings] = await Promise.all([
-    allRows(db, "eta_item_codes", "code_id, item_code, name, keywords, default_unit, active", [{ column: "code_id" }]),
+    allRows(db, "eta_item_codes", "code_id, item_code, code_type, name, keywords, default_unit, active", [{ column: "code_id" }]),
     allRows(db, "eta_code_memory", "normalized_name, core_name, code_id, unit_type, confirmed_at, memory_id", [{ column: "confirmed_at" }, { column: "memory_id" }]),
     readEtaSettings(db),
   ])
@@ -75,6 +75,7 @@ export async function loadMatchContext(db: Db): Promise<{ codes: EtaCode[]; memo
     keywords: Array.isArray(c.keywords) ? c.keywords : [],
     defaultUnit: c.default_unit || "EA",
     active: c.active !== false,
+    ...(c.code_type === "EGS" || c.code_type === "GS1" ? { codeType: c.code_type } : {}),
   }))
   const memory: MemoryRow[] = memRows.map((m) => ({
     normalizedName: m.normalized_name,

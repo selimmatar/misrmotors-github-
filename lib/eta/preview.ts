@@ -10,9 +10,24 @@ type Db = any
 
 export type EtaMissing = "company_rin" | "company_activity" | "company_address" | "customer_tax_number" | "customer_address" | "line_codes" | "amount_mismatch"
 
+export type EtaItemType = "EGS" | "GS1"
+
+/**
+ * The portal code scheme of an item code: the type stored on the code when set, else by its shape - the company's own
+ * codes are EGS ("EG-{RIN}-..."), any other code GS1.
+ */
+export const etaItemType = (itemCode: string | null | undefined, stored?: string | null): EtaItemType => {
+  if (stored === "EGS" || stored === "GS1") return stored
+  const code = String(itemCode ?? "").trim()
+  return !code || /^EG-/i.test(code) ? "EGS" : "GS1"
+}
+
 export interface EtaPreviewLine extends EtaLineOut {
   codeId: number | null
   itemCode: string | null
+  itemType: EtaItemType
+  /** the order discount rate the line was priced with (a fraction, 0.1 = 10 %) */
+  discountRate: number
   unit: string
   state: CodeState
 }
@@ -26,7 +41,13 @@ export interface EtaPreview {
   manualEtaUuid: string | null
   /** accounts_receivable.amount - what the invoice bills; "amount_mismatch" when the preview total differs from it */
   storedAmount: number
-  customer: { name: string; receiverType: string; taxRegistrationNumber: string | null }
+  customer: {
+    name: string
+    receiverType: string
+    taxRegistrationNumber: string | null
+    nationalId: string | null
+    address: { governorate: string; regionCity: string; street: string; buildingNumber: string }
+  }
   lines: EtaPreviewLine[]
   totals: EtaTotals
   missing: EtaMissing[]
@@ -90,7 +111,7 @@ export async function buildEtaPreview(db: Db, invoiceId: number): Promise<EtaPre
       : Promise.resolve(null),
     db.from("eta_documents").select("status, eta_uuid").eq("invoice_id", invoiceId).then((r: any) => must(r, "load e-invoice documents") as any[]),
   ])
-  const itemCodeById = new Map(ctx.codes.map((c) => [c.codeId, c.itemCode]))
+  const codeById = new Map(ctx.codes.map((c) => [c.codeId, c]))
 
   const lines: EtaPreviewLine[] = []
   const sums = { sales: 0, discount: 0, net: 0, vat: 0, total: 0 }
@@ -101,10 +122,14 @@ export async function buildEtaPreview(db: Db, invoiceId: number): Promise<EtaPre
       name: b.line.name || text(b.productId != null ? productById.get(b.productId)?.product_name : ""),
     }))
     const priced = etaLines(input, group.rate)
+    // the rate etaLines priced with (it treats a bad or negative rate as none)
+    const rate = Number.isFinite(group.rate) && group.rate > 0 ? group.rate : 0
     priced.lines.forEach((line, idx) => {
       const product = group.lines[idx].productId != null ? productById.get(group.lines[idx].productId!) : null
       const match = matchCode({ name: line.name, productCodeId: product?.eta_code_id ?? null, productUnit: text(product?.eta_unit_type) || null }, ctx)
-      lines.push({ ...line, codeId: match.codeId, itemCode: match.codeId != null ? itemCodeById.get(match.codeId) ?? null : null, unit: match.unit, state: match.state })
+      const code = match.codeId != null ? codeById.get(match.codeId) : undefined
+      const itemCode = code?.itemCode ?? null
+      lines.push({ ...line, codeId: match.codeId, itemCode, itemType: etaItemType(itemCode, code?.codeType), discountRate: rate, unit: match.unit, state: match.state })
     })
     for (const key of Object.keys(sums) as (keyof EtaTotals)[]) sums[key] += priced.totals[key]
   }
@@ -140,7 +165,18 @@ export async function buildEtaPreview(db: Db, invoiceId: number): Promise<EtaPre
     handledManually,
     manualEtaUuid: manual ? text(manual.eta_uuid) || null : null,
     storedAmount,
-    customer: { name: text(customer?.customer_name), receiverType, taxRegistrationNumber: taxNumber || null },
+    customer: {
+      name: text(customer?.customer_name),
+      receiverType,
+      taxRegistrationNumber: taxNumber || null,
+      nationalId: text(customer?.national_id) || null,
+      address: {
+        governorate: text(customer?.address_governorate),
+        regionCity: text(customer?.address_region),
+        street: text(customer?.address_street),
+        buildingNumber: text(customer?.address_building_number),
+      },
+    },
     lines,
     totals,
     missing,

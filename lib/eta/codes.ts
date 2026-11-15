@@ -16,6 +16,8 @@ export interface EtaCode {
   keywords: string[]
   defaultUnit: string
   active: boolean
+  /** the portal scheme stored on the code (eta_item_codes.code_type); absent when not set */
+  codeType?: "EGS" | "GS1"
 }
 
 export interface MemoryRow {
