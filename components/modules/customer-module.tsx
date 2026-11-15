@@ -215,11 +215,19 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
             country: selectedCustomer.country || "",
             city: selectedCustomer.city || "",
             address: selectedCustomer.address,
+            receiverType: selectedCustomer.receiverType || "B",
+            taxRegistrationNumber: selectedCustomer.taxRegistrationNumber || "",
+            nationalId: selectedCustomer.nationalId || "",
+            governorate: selectedCustomer.governorate || "",
+            region: selectedCustomer.region || "",
+            street: selectedCustomer.street || "",
+            buildingNumber: selectedCustomer.buildingNumber || "",
           }}
           onSave={async (details) => {
             const updated = { ...selectedCustomer, ...details }
-            await updateCustomer(updated)
+            const warnings = await updateCustomer(updated)
             setSelectedCustomer(updated)
+            return warnings
           }}
         />
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,8 @@ import { formatDateTime } from "@/lib/format"
 import { Plus, Trash2, Filter, Eye, ImageIcon, X, Search } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+const ETA_UNITS = ["EA", "SET", "KGM", "MTR", "LTR", "BOX"] as const
+
 interface ProductImage {
   image_id: number
   product_id: number
@@ -28,7 +30,21 @@ interface ProductImage {
 
 export function ProductModule() {
   const { t, language } = useI18n()
-  const { products, addProduct, deleteProduct } = useAppContext()
+  const { products, addProduct, updateProduct, deleteProduct } = useAppContext()
+  const [etaCodes, setEtaCodes] = useState<{ code_id: number; item_code: string; description_en?: string; description_ar?: string; active?: boolean }[]>([])
+  useEffect(() => {
+    fetch("/api/eta/codes")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setEtaCodes(Array.isArray(rows) ? rows.filter((c: any) => c.active !== false) : []))
+      .catch(() => setEtaCodes([]))
+  }, [])
+  const saveEta = async (product: Product, patch: Partial<Product>) => {
+    try {
+      await updateProduct({ ...product, ...patch })
+    } catch (error) {
+      alert(fill(t("message.not-saved"), { error: error instanceof Error ? error.message : String(error) }))
+    }
+  }
   const [showForm, setShowForm] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
@@ -338,6 +354,49 @@ export function ProductModule() {
                       <Trash2 className="w-4 h-4" />
                       {t("action.delete")}
                     </Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 border-t pt-4">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">{t("eta.item-code")}</p>
+                    <Select
+                      value={product.etaCodeId ? String(product.etaCodeId) : "none"}
+                      onValueChange={(v) => saveEta(product, { etaCodeId: v === "none" ? null : Number(v) })}
+                    >
+                      <SelectTrigger aria-label={t("eta.item-code")}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t("eta.none")}</SelectItem>
+                        {etaCodes.map((c) => (
+                          <SelectItem key={c.code_id} value={String(c.code_id)}>
+                            {c.item_code}
+                            {(language === "ar" ? c.description_ar || c.description_en : c.description_en || c.description_ar)
+                              ? ` - ${language === "ar" ? c.description_ar || c.description_en : c.description_en || c.description_ar}`
+                              : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">{t("eta.unit")}</p>
+                    <Select
+                      value={product.etaUnitType || "none"}
+                      onValueChange={(v) => saveEta(product, { etaUnitType: v === "none" ? "" : v })}
+                    >
+                      <SelectTrigger aria-label={t("eta.unit")}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t("eta.none")}</SelectItem>
+                        {ETA_UNITS.map((u) => (
+                          <SelectItem key={u} value={u}>
+                            {u} - {t(`eta.unit-${u}`)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </CardContent>

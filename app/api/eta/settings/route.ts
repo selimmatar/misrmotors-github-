@@ -4,11 +4,10 @@ import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { ETA_SETTING_KEYS, readEtaSettings } from "@/lib/eta/store"
 import { cairoMidnightIso } from "@/lib/eta/go-live"
+import { toLatinDigits } from "@/lib/eta/egypt"
 
 export const dynamic = "force-dynamic"
 
-const toLatinDigits = (s: string) =>
-  s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
 
 function clean(key: string, raw: unknown): { value: string } | { error: string } {
   const text = raw == null ? "" : String(raw).trim()

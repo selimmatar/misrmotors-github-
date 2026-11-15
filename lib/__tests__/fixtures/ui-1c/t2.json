@@ -35,6 +35,7 @@
       "migrated": true,
       "surface": {
         "api": [
+          "\"/api/eta/codes",
           "`/api/product-images?imageId=${imageId}",
           "`/api/product-images?productId=${productId}"
         ],
@@ -44,7 +45,7 @@
           "handleDeleteProduct"
         ],
         "ids": [],
-        "fetch": 2,
+        "fetch": 3,
         "iso": 1,
         "t": 41,
         "onClick": 9

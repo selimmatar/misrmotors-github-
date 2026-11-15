@@ -13,6 +13,10 @@ import * as etaSettingsRoute from "../../app/api/eta/settings/route"
 import * as etaCodesRoute from "../../app/api/eta/codes/route"
 import * as etaMemoryRoute from "../../app/api/eta/memory/route"
 import * as etaPrepareRoute from "../../app/api/eta/memory/prepare/route"
+import { GOVERNORATES, cleanTaxNumber, cleanNationalId } from "../eta/egypt"
+import * as customersRoute from "../../app/api/customers/route"
+import * as suppliersRoute from "../../app/api/suppliers/route"
+import * as productsRoute from "../../app/api/products/route"
 import { loadMatchContext as loadEtaCtx } from "../eta/store"
 import { ruleFor, allows } from "../auth/permissions"
 import * as arPdf from "../../app/api/invoices/ar/[id]/pdf/route"
@@ -633,4 +637,71 @@ test("E15. memory paging is stable across rows with the same confirmed_at", asyn
   assert.equal(ctx.memory[999].normalizedName, "صنف 1000", "page boundary is exact")
   db.failOn["eta_item_codes:select"] = "boom"
   await assert.rejects(() => loadEtaCtx(db), /Could not read eta_item_codes: boom/)
+})
+
+// Task 5: tax fields on customers, suppliers and products
+// ---------------------------------------------------------------------------------------------------------
+test("E16. cleanTaxNumber / cleanNationalId / governorates", () => {
+  assert.equal(cleanTaxNumber("١٠٠-٢٣٤-٥٦٧"), "100234567")
+  assert.equal(cleanTaxNumber("12345"), null)
+  assert.equal(cleanNationalId("2 9 0 0 1 0 1 1 2 3 4 5 6 7"), "29001011234567")
+  assert.equal(cleanNationalId("123"), null)
+  assert.equal(GOVERNORATES.length, 27)
+  assert.ok(GOVERNORATES.every((g) => g.ar && g.en))
+})
+
+test("E17. customer PUT saves and returns the 7 fields; a bad number is saved with a warning; omitted fields untouched", async () => {
+  const db = new FakeDb({ customers: [{ customer_id: 1, customer_name: "Acme", eta_receiver_type: "B", created_at: "2026-01-01" }] })
+  useDb(db)
+  const put = (body: unknown) => customersRoute.PUT(ereq("PUT", body)).then(out)
+  const r1 = await put({
+    id: "1", receiverType: "P", taxRegistrationNumber: "١٠٠-٢٣٤-٥٦٧", nationalId: "2 9 0 0 1 0 1 1 2 3 4 5 6 7",
+    governorate: "Cairo", region: "Nasr City", street: "Abbas St", buildingNumber: "12",
+  })
+  assert.equal(r1.status, 200)
+  assert.equal(r1.body.taxWarnings, undefined)
+  assert.deepEqual(
+    [r1.body.receiverType, r1.body.taxRegistrationNumber, r1.body.nationalId, r1.body.governorate, r1.body.region, r1.body.street, r1.body.buildingNumber],
+    ["P", "100234567", "29001011234567", "Cairo", "Nasr City", "Abbas St", "12"],
+  )
+  const r2 = await put({ id: "1", taxRegistrationNumber: "12345" })
+  assert.equal(r2.status, 200, "never refused")
+  assert.equal(r2.body.taxRegistrationNumber, "12345", "saved as typed")
+  assert.deepEqual(r2.body.taxWarnings, ["tax_registration_number: must be 9 digits"])
+  const row = db.tables.customers[0]
+  assert.equal(row.tax_registration_number, "12345")
+  assert.equal(row.national_id, "29001011234567", "omitted field untouched")
+  assert.equal(row.address_governorate, "Cairo")
+  assert.equal(row.eta_receiver_type, "P")
+  const g = await customersRoute.GET().then(out)
+  assert.equal(g.body[0].governorate, "Cairo")
+  const r3 = await put({ id: "1", nationalId: "99" })
+  assert.deepEqual(r3.body.taxWarnings, ["national_id: must be 14 digits"])
+})
+
+test("E18. supplier PUT saves taxRegistrationNumber", async () => {
+  const db = new FakeDb({ suppliers: [{ supplier_id: 1, supplier_name: "S", created_at: "2026-01-01" }] })
+  useDb(db)
+  const r = await suppliersRoute.PUT(ereq("PUT", { id: "1", taxRegistrationNumber: "١٢٣-٤٥٦-٧٨٩" })).then(out)
+  assert.equal(r.body.taxRegistrationNumber, "123456789")
+  assert.equal(db.tables.suppliers[0].tax_registration_number, "123456789")
+  const bad = await suppliersRoute.PUT(ereq("PUT", { id: "1", taxRegistrationNumber: "abc" })).then(out)
+  assert.equal(bad.status, 200)
+  assert.equal(db.tables.suppliers[0].tax_registration_number, "abc")
+  assert.deepEqual(bad.body.taxWarnings, ["tax_registration_number: must be 9 digits"])
+  const other = await suppliersRoute.PUT(ereq("PUT", { id: "1", city: "Giza" })).then(out)
+  assert.equal(other.body.taxRegistrationNumber, "abc", "omitted field untouched")
+})
+
+test("E19. product PUT saves etaCodeId / etaUnitType", async () => {
+  const db = new FakeDb({ products: [{ product_id: 1, product_name: "P", sku: "S", unit_price: 5, created_at: "2026-01-01" }] })
+  useDb(db)
+  const r = await productsRoute.PUT(ereq("PUT", { id: "1", etaCodeId: 42, etaUnitType: "KGM" })).then(out)
+  assert.equal(r.body.etaCodeId, 42)
+  assert.equal(r.body.etaUnitType, "KGM")
+  assert.equal(db.tables.products[0].eta_code_id, 42)
+  const keep = await productsRoute.PUT(ereq("PUT", { id: "1", unitPrice: 7 })).then(out)
+  assert.equal(keep.body.etaCodeId, 42, "omitted fields untouched")
+  const none = await productsRoute.PUT(ereq("PUT", { id: "1", etaCodeId: null })).then(out)
+  assert.equal(none.body.etaCodeId, null)
 })

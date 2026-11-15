@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
+import { GOVERNORATES } from "@/lib/eta/egypt"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export interface PartyDetails {
   name: string
@@ -17,6 +19,14 @@ export interface PartyDetails {
   city?: string
   address: string
   leadTimeDays?: number
+  // ETA e-invoice (customers: all; suppliers: taxRegistrationNumber only)
+  receiverType?: "B" | "P" | "F"
+  taxRegistrationNumber?: string
+  nationalId?: string
+  governorate?: string
+  region?: string
+  street?: string
+  buildingNumber?: string
 }
 
 interface EditPartyDialogProps {
@@ -24,11 +34,11 @@ interface EditPartyDialogProps {
   onOpenChange: (open: boolean) => void
   kind: "customer" | "supplier"
   initial: PartyDetails
-  onSave: (details: PartyDetails) => Promise<void>
+  onSave: (details: PartyDetails) => Promise<string[] | void>
 }
 
 export function EditPartyDialog({ open, onOpenChange, kind, initial, onSave }: EditPartyDialogProps) {
-  const { t } = useI18n()
+  const { t, language } = useI18n()
   const [form, setForm] = useState<PartyDetails>(initial)
   const [saving, setSaving] = useState(false)
 
@@ -46,8 +56,16 @@ export function EditPartyDialog({ open, onOpenChange, kind, initial, onSave }: E
     }
     setSaving(true)
     try {
-      await onSave({ ...form, name: form.name.trim() })
+      const warnings = await onSave({ ...form, name: form.name.trim() })
       onOpenChange(false)
+      // a tax number that is not 9 / 14 digits is saved as typed; tell the user without blocking
+      if (Array.isArray(warnings) && warnings.length > 0) {
+        const fields = warnings.map((w) => {
+          const key = w.split(":")[0]
+          return key === "national_id" ? t("eta.national-id-warning") : t("eta.tax-number-warning")
+        })
+        alert(Array.from(new Set(fields)).join("\n"))
+      }
     } catch (error) {
       alert(fill(t("message.not-saved"), { error: error instanceof Error ? error.message : String(error) }))
     } finally {
@@ -93,6 +111,49 @@ export function EditPartyDialog({ open, onOpenChange, kind, initial, onSave }: E
             </div>
           )}
           <div className="sm:col-span-2">{field("address", t("customer.address"))}</div>
+          <div className="sm:col-span-2 border-t pt-3">
+            <p className="text-sm font-semibold">{t("eta.tax-section")}</p>
+          </div>
+          {kind === "customer" && (
+            <div className="space-y-1">
+              <Label htmlFor="party-receiverType">{t("eta.receiver-type")}</Label>
+              <Select value={form.receiverType || "B"} onValueChange={(v) => set("receiverType", v)}>
+                <SelectTrigger id="party-receiverType" aria-label={t("eta.receiver-type")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="B">{t("eta.receiver-business")}</SelectItem>
+                  <SelectItem value="P">{t("eta.receiver-person")}</SelectItem>
+                  <SelectItem value="F">{t("eta.receiver-foreign")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {field("taxRegistrationNumber", t("eta.tax-number"))}
+          {kind === "customer" && form.receiverType === "P" && field("nationalId", t("eta.national-id"))}
+          {kind === "customer" && (
+            <>
+              <div className="space-y-1">
+                <Label htmlFor="party-governorate">{t("eta.governorate")}</Label>
+                <Select value={form.governorate || "none"} onValueChange={(v) => set("governorate", v === "none" ? "" : v)}>
+                  <SelectTrigger id="party-governorate" aria-label={t("eta.governorate")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("eta.none")}</SelectItem>
+                    {GOVERNORATES.map((g) => (
+                      <SelectItem key={g.en} value={g.en}>
+                        {language === "ar" ? g.ar : g.en}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {field("region", t("eta.region"))}
+              {field("street", t("eta.street"))}
+              {field("buildingNumber", t("eta.building-number"))}
+            </>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>

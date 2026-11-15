@@ -54,12 +54,12 @@ interface AppContextType {
   suppliers: Supplier[]
   setSuppliers: (suppliers: Supplier[]) => void
   addSupplier: (supplier: Supplier) => Promise<void>
-  updateSupplier: (supplier: Supplier) => Promise<void>
+  updateSupplier: (supplier: Supplier) => Promise<string[]>
   deleteSupplier: (id: string) => Promise<void>
   customers: Customer[]
   setCustomers: (customers: Customer[]) => void
   addCustomer: (customer: Customer) => Promise<void>
-  updateCustomer: (customer: Customer) => Promise<void>
+  updateCustomer: (customer: Customer) => Promise<string[]>
   deleteCustomer: (id: string) => Promise<void>
   products: Product[]
   setProducts: (products: Product[]) => void
@@ -914,7 +914,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(supplier),
       })
       await ensureOk(response, "Failed to update supplier")
+      const saved = await response.json().catch(() => null)
       mutateSuppliers()
+      return Array.isArray(saved?.taxWarnings) ? (saved.taxWarnings as string[]) : []
     } catch (error) {
       console.error("Error updating supplier:", error)
       throw error
@@ -961,7 +963,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(customer),
       })
       await ensureOk(response, "Failed to update customer")
+      const saved = await response.json().catch(() => null)
       mutateCustomers()
+      return Array.isArray(saved?.taxWarnings) ? (saved.taxWarnings as string[]) : []
     } catch (error) {
       console.error("Error updating customer:", error)
       throw error
