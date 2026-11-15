@@ -32,6 +32,8 @@ portal to issue an invoice or a credit note, and does not type supplier invoices
    note that repeats the invoice's sent lines exactly, references the invoice's portal uuid, and keeps the same
    internal number (as the accountant does today, e.g. credit note for 10363). It is signed and sent the same way.
 5. **Cancel on the portal** while the portal still allows it (the window comes from the portal itself, see §6.5).
+5a. **Replace an invoice** after its credit note or cancel: clone, edit, re-issue with a new number; both invoices
+   labelled and linked; the old one stops counting; payments move (§6.5a).
 6. **Portal printout.** Valid documents get "Portal PDF" (the portal's own printout with its QR code).
 7. **Receive supplier invoices.** The ERP pulls every document where the company is the receiver (invoices, credit
    notes, debit notes) into a **Supplier e-invoices** list under Accounts Payable: supplier (recognised by tax
@@ -47,8 +49,8 @@ portal to issue an invoice or a credit note, and does not type supplier invoices
 - Matching supplier invoices to purchase orders, creating payables from them, or rejecting a supplier invoice on the
   portal (step 3).
 - Partial credit notes (the owner reverses whole invoices only), debit notes we issue, receipts (e-receipt / POS).
-- Changing balances: a credit note on the portal does not by itself change Accounts Receivable. The return / customer
-  credit is recorded in the ERP as today (see §6.4).
+- Changing balances by a credit note alone: a credit note on the portal does not by itself change Accounts Receivable.
+  Balances change only through "Replace invoice" (§6.5a) or the return / customer credit recorded as today (§6.4).
 - Foreign currency invoices (all invoices are EGP).
 - Sending invoices created before go-live (they stay "handled manually"; step 1 rule).
 
@@ -161,6 +163,26 @@ ERP verifies the signature is a valid CMS over exactly that text
   the portal's answer (OperationPeriodOver) is shown in plain words.
 - An invoice with an active credit note cannot be cancelled (the portal refuses it too).
 
+### 6.5a Replace an invoice (owner request, confirmed 2026-11-15)
+
+- **When:** only on an invoice whose real portal document is fully reversed — a **valid credit note** or **cancelled**.
+  Never while the invoice is still live on the portal (no two live invoices for one sale).
+- **"Replace invoice"** (accountant, CEO, admin) opens a new customer invoice pre-filled as a copy of the old one: same
+  customer, sales order and delivery-permit links, same lines, discount and VAT rule. Before saving, the accountant can
+  edit the customer, item names, quantities, unit prices, discount and date, and types the new invoice number (as today).
+- **Labelled and linked:** the old invoice shows "Replaced by {new number}", the new one "Replaces {old number}"; each
+  label opens the other invoice. Both directions are stored (`replaces_invoice_id` / `replaced_by_invoice_id`).
+- **The old invoice in the ERP:** kept for history with status **Replaced** (and its credit note / cancel). From that
+  moment it no longer counts in the customer's balance, ageing, statements, reports or the "already invoiced" /
+  over-invoicing checks, so the new invoice can bill the same delivery permits.
+- **Payments:** payments already applied to the old invoice move to the new one automatically, in the same action. If
+  the new invoice is for a **different customer**, the replace is refused while the old invoice has payments, with the
+  message "This invoice has payments from {customer}. Move or refund them first" — money is never moved between
+  customers automatically. If the moved payments exceed the new amount, the difference is shown and the replace needs
+  a confirm (the overpayment stays as the customer's credit, as today).
+- The new invoice is an ordinary invoice: it goes through the step-1 preview and "Send to portal" like any other.
+- Replace happens in one database transaction (new invoice, links, old status, payment moves) — all or nothing.
+
 ### 6.6 Receiving supplier invoices
 
 - `GET /api/v1.0/documents/search?direction=Received` with paging (`continuationToken`) over 30-day windows, then
@@ -198,6 +220,10 @@ Additive except one constraint change on a table created in step 1 (empty in pro
   `supplier_id` (nullable), `internal_id`, `date_issued`, `net`, `vat`, `total`, `status`, `lines` jsonb, `raw` jsonb,
   `first_seen_at`, `updated_at`.
 - RLS on, no policies (server only), as in step 1.
+- `accounts_receivable` (existing financial table — additive only): `replaces_invoice_id`, `replaced_by_invoice_id`
+  (nullable references), and the status value **replaced**. Every place that sums or checks customer invoices (balance,
+  ageing, statements, reports, over-invoicing, Orders to invoice) must exclude `replaced` — the builder lists them all
+  and tests each. No existing row changes until someone uses Replace.
 
 ## 8. Permissions and access (owner approval required — touches auth)
 
