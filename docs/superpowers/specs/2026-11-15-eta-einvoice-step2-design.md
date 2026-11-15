@@ -1,6 +1,6 @@
 # E-invoice (Egyptian Tax Authority) — Step 2: the connection
 
-Status: draft for the owner's approval · 2026-11-15
+Status: for the owner's approval · 2026-11-15
 Builds on step 1 (`docs/superpowers/specs/2026-11-15-eta-einvoice-step1-design.md`, branch `claude/eta-design`).
 Step 2 connects the ERP to the ETA portal: **sending** customer invoices and credit notes (signed with the company's
 USB token) and **receiving** the supplier invoices addressed to the company. Matching received invoices to purchase
@@ -135,7 +135,8 @@ ERP verifies the signature is a valid CMS over exactly that text
 - Signing: finds the company's certificate on the token through Windows (the token's own driver exposes it), signs the
   canonical text as CAdES-BES (SHA-256, signing time, signing-certificate-v2), and Windows / the token driver asks for
   the PIN. The certificate must be the company's ETA e-seal (issued to RIN 100060455) — the signer refuses others.
-- **PIN:** [OWNER DECISION PENDING — see §12]. The signer has two states the ERP shows: *unlocked* (signs by itself)
+- **PIN (owner chose 2026-11-15):** the accountant types the PIN once when the signer starts (each morning); it is
+  never saved on disk. The token stays unlocked while the signer runs and locks when the computer is turned off. The signer has two states the ERP shows: *unlocked* (signs by itself)
   and *PIN needed* (documents wait; the tray shows "N invoices waiting — enter PIN to sign"). If the token driver asks
   for the PIN on every signature, the signer works in "sign now" mode: one prompt signs everything waiting.
 - **Test portal certificate:** the signer accepts the certificate issued to the RIN configured for the selected
@@ -243,12 +244,15 @@ Additive except one constraint change on a table created in step 1 (empty in pro
 10. A document is rebuilt before signing; if the invoice changed since Send it goes back to "needs review".
 11. The signer's certificate rule follows the selected environment's RIN.
 
+Owner decision: PIN typed once per day when the signer starts, never saved (option A, 2026-11-15).
+
 ## 12. Waiting on the owner / accountant
 
 - Test-portal registration of the ERP (test Client ID / Secret) and later the real one — added in Vercel by the owner.
 - Branch code; the item-code list; company details in E-invoice settings.
 - The accountant's Windows version and token brand (to confirm the token's driver exposes the certificate to Windows).
 - Approval of §7 (database) and §8 (access paths).
+- Token brand: confirms whether the driver keeps the token unlocked after one PIN (else "sign now" mode).
 
 ## 13. Left to the builder
 
