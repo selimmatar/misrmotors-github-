@@ -1,4 +1,6 @@
------BEGIN CERTIFICATE-----
+// Portal preprod root CA (https://sdk.invoicing.eta.gov.eg/files/preprod-root-ca.crt), embedded so it ships with the bundle.
+// Public certificate, not a secret. Trusted only for the preprod hosts, never for anything else.
+export const PREPROD_ROOT_CA = `-----BEGIN CERTIFICATE-----
 MIIFYTCCA0mgAwIBAgIQJ/rO9mMubI5OCGIUz2yb5jANBgkqhkiG9w0BAQsFADA4
 MQswCQYDVQQGEwJFRzEMMAoGA1UEChMDRVRBMRswGQYDVQQDExJFRUktUm9vdENB
 LVBSRVBST0QwHhcNMjAwNzE5MTIyMTA3WhcNMzIwNzE5MTIzMTA0WjA4MQswCQYD
@@ -29,3 +31,4 @@ M8F5JHgZAivELLZqP9psElq8LWB/++AgxYZ2hS1HxqcvC6v/Drt/RVYEXnYBwo+o
 tckzUTYuraWN2IgbWF6GZRtGVE9tYopTzpoDXCiH/U+koW5dC7cy32Bc34SPtPB2
 2x2P7UGNbWv3C8RAloQGNCeYWScLBELOdwymmqDWkhNpVTC1+w==
 -----END CERTIFICATE-----
+`

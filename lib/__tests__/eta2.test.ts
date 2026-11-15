@@ -335,3 +335,59 @@ test("F10. plain-word errors in English and Arabic", () => {
   const g = plainError("Weird42", "the portal said so", "en")
   assert.ok(g.includes("the portal said so") && g.includes("Weird42"))
 })
+
+// ---- fix round 1: embedded CA, retry cap, timeouts ----
+import { caFetch, defaultFetchFor, parseRetryAfter, MAX_RETRY_WAIT_SECONDS } from "../eta/portal"
+import { PREPROD_ROOT_CA } from "../eta/preprod-root-ca"
+import { X509Certificate } from "node:crypto"
+import { EventEmitter } from "node:events"
+
+test("F11. test env uses CA-aware fetch with the embedded CA; real env does not", async () => {
+  const cert = new X509Certificate(PREPROD_ROOT_CA)
+  assert.match(cert.subject, /EEI-RootCA-PREPROD/)
+  assert.equal(defaultFetchFor("test").ca, PREPROD_ROOT_CA)
+  assert.equal(defaultFetchFor("real").ca, undefined)
+  assert.equal(defaultFetchFor("real").fn, fetch)
+  assert.notEqual(defaultFetchFor("test").fn, fetch)
+  // the CA-aware fetch passes the CA (plus default roots) to https and keeps verification on
+  let seen: any
+  const fakeRequest = ((url: any, opts: any, cb: any) => {
+    seen = { url: String(url), opts }
+    const req: any = new EventEmitter()
+    req.write = () => {}; req.destroy = () => {}
+    req.end = () => {
+      const res: any = new EventEmitter(); res.statusCode = 200; res.headers = { "content-type": "application/json" }
+      cb(res); res.emit("data", Buffer.from('{"a":1}')); res.emit("end")
+    }
+    return req
+  }) as any
+  const r = await caFetch(PREPROD_ROOT_CA, fakeRequest)("https://id.preprod.eta.gov.eg/connect/token", { method: "POST", headers: { a: "b" }, body: "x" })
+  assert.deepEqual(await r.json(), { a: 1 })
+  assert.ok(seen.opts.ca.includes(PREPROD_ROOT_CA) && seen.opts.ca.length > 1)
+  assert.notEqual(seen.opts.rejectUnauthorized, false)
+})
+
+test("F12. timeout gives a readable error (injected and CA-aware fetch)", () => withCreds(async () => {
+  const hang = ((_u: any, init: any) => new Promise((_r, rej) => init.signal.addEventListener("abort", () => rej(Object.assign(new Error("x"), { name: "AbortError" }))))) as any
+  const p = createPortal("test", { fetch: hang, timeoutMs: 20 })
+  await assert.rejects(() => p.getDetails("u"), (e: any) => e instanceof EtaError && e.code === "Timeout" && /did not answer in time/.test(e.message))
+  const neverReq = (() => { const req: any = new EventEmitter(); req.write = () => {}; req.end = () => {}; req.destroy = () => { req.destroyed = true }; return req }) as any
+  const p2 = createPortal("test", { fetch: caFetch(PREPROD_ROOT_CA, neverReq), timeoutMs: 20 })
+  await assert.rejects(() => p2.getDetails("u"), (e: any) => e.code === "Timeout")
+}))
+
+test("F13. Retry-After: seconds, HTTP date, cap", () => withCreds(async () => {
+  assert.equal(parseRetryAfter("3", 0), 3)
+  assert.equal(parseRetryAfter(new Date(5000).toUTCString(), 2000), 3)
+  assert.equal(parseRetryAfter("garbage", 0), undefined)
+  // HTTP date within the cap is honoured
+  let n = 0
+  const a = fakePortal((c) => c.url.endsWith("/connect/token") ? okHandler(c) : (++n === 1 ? jres(429, {}, { "retry-after": new Date(4000).toUTCString() }) : jres(200, { ok: 1 })), { t: 1000 })
+  await a.portal.getDetails("u")
+  assert.deepEqual(a.sleeps, [3000])
+  // over the cap: no sleep, busy error carries the wait
+  const b = fakePortal((c) => c.url.endsWith("/connect/token") ? okHandler(c) : jres(429, {}, { "retry-after": "3600" }))
+  await assert.rejects(() => b.portal.getDetails("u"), (e: any) => e instanceof EtaBusyError && e.retryAfter === 3600)
+  assert.equal(b.sleeps.length, 0)
+  assert.ok(MAX_RETRY_WAIT_SECONDS <= 10)
+}))

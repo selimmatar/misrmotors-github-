@@ -1,8 +1,8 @@
 // The only module that talks to the ETA portal. Secrets come from env vars and never appear in errors or logs.
-import { existsSync, readFileSync } from "node:fs"
 import { request as httpsRequest } from "node:https"
-import { join } from "node:path"
+import { rootCertificates } from "node:tls"
 import { plainError } from "./portal-errors"
+import { PREPROD_ROOT_CA } from "./preprod-root-ca"
 
 export type EtaEnv = "test" | "real"
 export type FetchFn = typeof fetch
@@ -54,26 +54,22 @@ export class EtaCredentialsError extends EtaError {
   }
 }
 
-// ---- preprod root CA (optional file; the test hosts need it, nothing else uses it) ----
-export function loadPreprodCa(): string | null {
-  for (const p of [join(process.cwd(), "lib/eta/preprod-root-ca.pem"), join(__dirname, "preprod-root-ca.pem")]) {
-    try { if (existsSync(p)) return readFileSync(p, "utf8") } catch { /* try next */ }
-  }
-  return null
-}
+// ---- fetch that trusts the preprod root CA (plus the default roots). Verification stays on. ----
+export type HttpsRequest = typeof httpsRequest
 
-// fetch-compatible function that trusts the preprod root CA (plus the default roots). Verification stays on.
-function caFetch(ca: string): FetchFn {
+export function caFetch(ca: string, request: HttpsRequest = httpsRequest): FetchFn {
   return (async (input: any, init: any = {}) => {
     const url = new URL(typeof input === "string" ? input : input.url)
     const headers: Record<string, string> = {}
     new Headers(init.headers || {}).forEach((v, k) => { headers[k] = v })
     const body = init.body == null ? undefined : typeof init.body === "string" ? init.body : String(init.body)
+    const signal: AbortSignal | undefined = init.signal
     return await new Promise<Response>((resolve, reject) => {
-      const { rootCertificates } = require("node:tls") as typeof import("node:tls")
-      const req = httpsRequest(url, { method: init.method || "GET", headers, ca: [...rootCertificates, ca] }, (res) => {
+      if (signal?.aborted) return reject(Object.assign(new Error("aborted"), { name: "AbortError" }))
+      const req = request(url, { method: init.method || "GET", headers, ca: [...rootCertificates, ca] }, (res) => {
         const chunks: Buffer[] = []
         res.on("data", (c) => chunks.push(c))
+        res.on("error", reject)
         res.on("end", () => {
           const h = new Headers()
           for (const [k, v] of Object.entries(res.headers)) if (v != null) h.set(k, Array.isArray(v) ? v.join(", ") : String(v))
@@ -82,6 +78,7 @@ function caFetch(ca: string): FetchFn {
           resolve(new Response(noBody ? null : Buffer.concat(chunks), { status, headers: h }))
         })
       })
+      signal?.addEventListener("abort", () => { req.destroy(); reject(Object.assign(new Error("aborted"), { name: "AbortError" })) }, { once: true })
       req.on("error", reject)
       if (body !== undefined) req.write(body)
       req.end()
@@ -89,7 +86,24 @@ function caFetch(ca: string): FetchFn {
   }) as FetchFn
 }
 
-export interface PortalDeps { fetch?: FetchFn; now?: () => number; sleep?: (ms: number) => Promise<void> }
+// Test env: CA-aware fetch with the embedded preprod CA. Real env: plain fetch (default trust only).
+export function defaultFetchFor(env: EtaEnv): { fn: FetchFn; ca?: string } {
+  return env === "test" ? { fn: caFetch(PREPROD_ROOT_CA), ca: PREPROD_ROOT_CA } : { fn: fetch }
+}
+
+export const MAX_RETRY_WAIT_SECONDS = 10
+export const REQUEST_TIMEOUT_MS = 30_000
+
+// Retry-After is either whole seconds or an HTTP date.
+export function parseRetryAfter(v: string | null, nowMs: number): number | undefined {
+  if (!v) return undefined
+  const s = v.trim()
+  if (/^\d+(\.\d+)?$/.test(s)) return Math.max(Number(s), 0)
+  const t = Date.parse(s)
+  return Number.isNaN(t) ? undefined : Math.max(Math.ceil((t - nowMs) / 1000), 0)
+}
+
+export interface PortalDeps { fetch?: FetchFn; now?: () => number; sleep?: (ms: number) => Promise<void>; timeoutMs?: number }
 
 export interface EtaPortal {
   submit(docsJson: string[]): Promise<{ submissionUUID: string; acceptedDocuments: any[]; rejectedDocuments: any[] }>
@@ -109,30 +123,28 @@ const MAX_RETRIES = 2
 export function createPortal(env: EtaEnv, deps: PortalDeps = {}): EtaPortal {
   const now = deps.now || (() => Date.now())
   const sleep = deps.sleep || ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
-  let doFetch: FetchFn | undefined = deps.fetch
-  const getFetch = (): FetchFn => {
-    if (doFetch) return doFetch
-    const ca = env === "test" ? loadPreprodCa() : null
-    doFetch = ca ? caFetch(ca) : fetch
-    return doFetch
-  }
+  const timeoutMs = deps.timeoutMs ?? REQUEST_TIMEOUT_MS
+  const doFetch: FetchFn = deps.fetch || defaultFetchFor(env).fn
 
   // one request with the 429 policy: wait Retry-After, retry twice, then give up
   async function send(url: string, init: RequestInit): Promise<Response> {
     for (let attempt = 0; ; attempt++) {
+      const ctl = new AbortController()
+      const timer = setTimeout(() => ctl.abort(), timeoutMs)
       let res: Response
       try {
-        res = await getFetch()(url, init)
+        res = await doFetch(url, { ...init, signal: ctl.signal })
       } catch (e: any) {
+        if (ctl.signal.aborted || e?.name === "AbortError")
+          throw new EtaError(0, "Timeout", "The ETA portal did not answer in time. Try again in a minute.")
         const code = e?.cause?.code || e?.code || ""
-        if (env === "test" && !loadPreprodCa() && /CERT|SELF_SIGNED|ISSUER/.test(String(code)))
-          throw new EtaError(0, "TlsTrust", "The test portal certificate is not trusted because lib/eta/preprod-root-ca.pem is missing. Add the portal's preprod root CA file there.")
         throw new EtaError(0, "Network", `Could not reach the ETA portal${code ? ` (${code})` : ""}.`)
+      } finally {
+        clearTimeout(timer)
       }
       if (res.status !== 429) return res
-      const ra = Number(res.headers.get("retry-after"))
-      const secs = Number.isFinite(ra) && ra > 0 ? ra : 1
-      if (attempt >= MAX_RETRIES) throw new EtaBusyError(secs)
+      const secs = parseRetryAfter(res.headers.get("retry-after"), now()) ?? 1
+      if (attempt >= MAX_RETRIES || secs > MAX_RETRY_WAIT_SECONDS) throw new EtaBusyError(secs)
       await sleep(secs * 1000)
     }
   }
