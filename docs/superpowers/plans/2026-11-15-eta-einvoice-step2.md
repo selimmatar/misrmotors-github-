@@ -21,7 +21,7 @@
 - Portal rate limits respected: details 2/s, printout 1 per 5 s, search 1 per 2 s; on 429 obey `Retry-After`.
 - Batches of at most 20 documents per submission; status checks for one submission at most every 30 s.
 - Document: `documentType` `"i"` / `"c"`, `documentTypeVersion` `"1.0"`, taxes `T1` / `V009` / rate `14`, `internalId` = ERP invoice number, `dateTimeIssued` = invoice `created_at` in UTC (`YYYY-MM-DDTHH:mm:ssZ`), amounts with at most 5 decimals.
-- DB changes only as spec §7 plus Ruling R1 below; migration SQL kept in `scripts/sql/2026-11-15-eta-step2.sql`, applied by the controller with `apply_migration` (name `eta_step2`) after Task 1's review.
+- DB changes only as spec §7; migration SQL kept in `scripts/sql/2026-11-15-eta-step2.sql`, applied by the controller with `apply_migration` (name `eta_step2`) after Task 1's review.
 - Route files export only HTTP handlers and `dynamic`; inside `lib/` use relative imports.
 - Every new string EN + AR in `lib/i18n-context.tsx`, inserted before `"so.print-plain"`; screens work at phone width and RTL.
 - Permissions: `/api/eta/*` rule stays accountant (CEO / admin always pass); environment and signer pairing CEO / admin only (checked in the route from `x-mm-roles`). `PUBLIC_PATHS` gains exactly `/api/eta-signer/next`, `/api/eta-signer/signed`, `/api/eta-signer/ping`, `/api/eta-sync`.
