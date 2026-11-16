@@ -13,7 +13,8 @@ export const maxDuration = 60
 
 // POST { from, to } (YYYY-MM-DD, at most 31 days): reads the sent invoices of that window from the portal (read-only)
 // and fills the code memory as 'imported'. Accountant, CEO, admin (the /api/eta rule).
-// -> { invoices, lines, learned, alreadyKnown, conflicts, unknownCodes }
+// Optional cursor: a call stops after ~40 s and returns { cursor }; the screen calls again with it until cursor is null.
+// -> { invoices, lines, learned, alreadyKnown, conflicts, unknownCodes, cursor }
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null)
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     const env = etaEnvironment(await readEtaSettings(db))
     if (!credentialsSet(env)) return NextResponse.json({ error: new EtaCredentialsError(env).message }, { status: 400 })
     const userId = await knownUserId(db, actorUserId(request))
-    return NextResponse.json({ environment: env, ...(await learnFromPortalWindow(db, env, { from: body.from, to: body.to }, { userId })) })
+    return NextResponse.json({ environment: env, ...(await learnFromPortalWindow(db, env, { from: body.from, to: body.to, cursor: body.cursor ?? null }, { userId })) })
   } catch (error: any) {
     if (error instanceof EtaBusyError) return NextResponse.json({ error: plainError("TooManyRequests", undefined, "en"), code: error.code }, { status: 429 })
     if (error instanceof EtaError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.code === "Timeout" ? 504 : 502 })

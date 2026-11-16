@@ -250,15 +250,21 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
       for (let k = 0; k < total; k++) {
         setLearnProgress({ done: k, total })
         const to = today - k * 30 * day
-        const res = await fetch("/api/eta/memory/learn-from-portal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from: iso(to - 29 * day), to: iso(to) }),
-        })
-        if (!res.ok) throw new Error(await readError(res, t("message.error")))
-        const r = await res.json()
-        sum.invoices += r.invoices; sum.lines += r.lines; sum.learned += r.learned; sum.alreadyKnown += r.alreadyKnown; sum.conflicts += r.conflicts
-        for (const c of r.unknownCodes || []) if (!sum.unknownCodes.includes(c)) sum.unknownCodes.push(c)
+        // a busy month takes several calls: each stops after ~40 s and hands back a cursor to continue from
+        let cursor: unknown = null
+        for (let part = 0; part < 50; part++) {
+          const res = await fetch("/api/eta/memory/learn-from-portal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ from: iso(to - 29 * day), to: iso(to), cursor }),
+          })
+          if (!res.ok) throw new Error(await readError(res, t("message.error")))
+          const r = await res.json()
+          sum.invoices += r.invoices; sum.lines += r.lines; sum.learned += r.learned; sum.alreadyKnown += r.alreadyKnown; sum.conflicts += r.conflicts
+          for (const c of r.unknownCodes || []) if (!sum.unknownCodes.includes(c)) sum.unknownCodes.push(c)
+          cursor = r.cursor ?? null
+          if (!cursor) break
+        }
       }
       setLearnProgress({ done: total, total })
     } catch (e) {

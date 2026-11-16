@@ -13,8 +13,11 @@ export const DETAILS_GAP_MS = 500 // portal limit: about 2 detail reads per seco
 const MAX_PAGES = 200 // safety stop
 const MAX_UNKNOWN = 50
 
-export interface LearnResult { invoices: number; lines: number; learned: number; alreadyKnown: number; conflicts: number; unknownCodes: string[] }
-export interface LearnDeps { portal?: EtaPortal; sleep?: (ms: number) => Promise<void>; userId?: number | null }
+export interface LearnCursor { uuids: string[]; next: number }
+export interface LearnResult { invoices: number; lines: number; learned: number; alreadyKnown: number; conflicts: number; unknownCodes: string[]; cursor: LearnCursor | null }
+/** One request stops starting new portal reads after this long (the server cuts requests at 60 s); the screen calls again with the cursor. */
+export const LEARN_BUDGET_MS = 40_000
+export interface LearnDeps { portal?: EtaPortal; sleep?: (ms: number) => Promise<void>; userId?: number | null; now?: () => number; budgetMs?: number }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 const dayMs = (d: string) => (DAY.test(d) ? Date.parse(`${d}T00:00:00Z`) : NaN)
@@ -40,16 +43,22 @@ export function linesOf(body: any): any[] {
 const isValid = (d: any) => String(d?.status ?? "Valid").toLowerCase() === "valid"
 const isDebitNote = (d: any) => /^d(ebit.*)?$/i.test(String(d?.typeName ?? d?.documentTypeName ?? d?.documentType ?? "").trim())
 
-export async function learnFromPortalWindow(db: Db, env: EtaEnv, win: { from: string; to: string }, deps: LearnDeps = {}): Promise<LearnResult> {
+export async function learnFromPortalWindow(db: Db, env: EtaEnv, win: { from: string; to: string; cursor?: LearnCursor | null }, deps: LearnDeps = {}): Promise<LearnResult> {
   const bad = windowError(win.from, win.to)
   if (bad) throw new Error(bad)
   const portal = deps.portal || createPortal(env)
   const sleep = deps.sleep || ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
 
-  // 1. the valid invoices / credit notes of the window
-  const uuids: string[] = []
+  const now = deps.now || (() => Date.now())
+  const started = now()
+  const budget = deps.budgetMs ?? LEARN_BUDGET_MS
+
+  // 1. the valid invoices / credit notes of the window (searched once; later calls continue from the cursor)
+  const resumed = win.cursor && Array.isArray(win.cursor.uuids) ? win.cursor : null
+  const uuids: string[] = resumed ? resumed.uuids.map(String) : []
+  const first = resumed ? Math.max(0, Math.floor(Number(resumed.next) || 0)) : 0
   let token: string | undefined
-  for (let page = 0; page < MAX_PAGES; page++) {
+  for (let page = 0; !resumed && page < MAX_PAGES; page++) {
     if (page > 0) await sleep(SEARCH_GAP_MS)
     const body: any = await portal.searchSentWindow({ from: `${win.from}T00:00:00Z`, to: `${win.to}T23:59:59Z`, continuationToken: token })
     for (const d of Array.isArray(body?.result) ? body.result : []) {
@@ -69,8 +78,10 @@ export async function learnFromPortalWindow(db: Db, env: EtaEnv, win: { from: st
   const agg = new Map<string, { name: string; codes: Map<number, number>; units: Map<number, string> }>()
   const unknown = new Set<string>()
   let lines = 0
-  for (let i = 0; i < uuids.length; i++) {
-    if (i > 0) await sleep(DETAILS_GAP_MS)
+  let i = first
+  for (; i < uuids.length; i++) {
+    if (i > first && now() - started > budget) break
+    if (i > first) await sleep(DETAILS_GAP_MS)
     for (const l of linesOf(await portal.getDetails(uuids[i]))) {
       lines++
       const name = String(l?.description ?? "").trim()
@@ -99,5 +110,6 @@ export async function learnFromPortalWindow(db: Db, env: EtaEnv, win: { from: st
     await rememberCode(db, { name: a.name, codeId, unitType: a.units.get(codeId) || "", userId: deps.userId ?? null, source: "imported", keepConfirmed: true })
     learned++
   }
-  return { invoices: uuids.length, lines, learned, alreadyKnown, conflicts, unknownCodes: [...unknown].slice(0, MAX_UNKNOWN) }
+  const cursor = i < uuids.length ? { uuids, next: i } : null
+  return { invoices: i - first, lines, learned, alreadyKnown, conflicts, unknownCodes: [...unknown].slice(0, MAX_UNKNOWN), cursor }
 }
