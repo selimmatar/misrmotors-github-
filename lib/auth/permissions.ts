@@ -60,6 +60,8 @@ export const RULES: Rule[] = [
   // Delivery
   rule("/api/delivery-permits", ALL, ["sales-rep", "accountant", "warehouse-rep", "shipment"]),
   rule("/api/delivery-permits/upload", ALL, ALL),
+  // "Correct delivery permit" during correct-and-reissue (spec §6.5a): accountant, CEO, admin only
+  rule("/api/delivery-permits/correct", ACCOUNTANT, ACCOUNTANT),
   rule("/api/couriers", ALL, ONLY_TOP),
   rule("/api/operations", ALL, ONLY_TOP),
   rule("/api/returns", RETURNS, RETURNS),

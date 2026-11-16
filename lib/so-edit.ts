@@ -12,6 +12,9 @@
 //     (delivered / permitted items are locked; extra quantity goes on a new line, see lib/so-edit-eligibility.ts),
 //   * change the customer once delivery permits exist.
 // Nothing here writes; the PUT route calls validateSoEdit BEFORE it changes anything.
+// While the order has an invoice open for correction (spec §6.5a, `openCorrection`), the sales-order screen may also
+// change the customer and the quantity and price of permitted lines (as for a line with a return: never below what
+// the customer keeps); removing a kept line or turning it into another item stays refused.
 import { isSOFullyDelivered } from "./delivery-status"
 import { computeWholeOrderAmount, loadSoInvoicingState } from "./invoicing"
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "./return-lines"
@@ -32,7 +35,8 @@ function incomingKey(item: any): string {
   return lineKey(Number.isNaN(productId as number) ? null : productId, name)
 }
 
-export async function validateSoEdit(db: Db, soId: number, input: { customerId?: any; items?: any[] }): Promise<SoEditVerdict> {
+export async function validateSoEdit(db: Db, soId: number, input: { customerId?: any; items?: any[]; openCorrection?: boolean }): Promise<SoEditVerdict> {
+  const correcting = input.openCorrection === true
   const so = must(await db.from("sales_orders").select("so_id, so_number, customer_id").eq("so_id", soId).maybeSingle(), "load sales order")
   if (!so) return { ok: true } // the route reports "not found" itself
 
@@ -42,7 +46,7 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
   if (permits.length === 0) return { ok: true } // nothing delivered yet: ordinary editing rules
 
   const soLabel = so.so_number || `#${so.so_id}`
-  if (input.customerId !== undefined && input.customerId !== null && input.customerId !== "" && Number(input.customerId) !== so.customer_id) {
+  if (!correcting && input.customerId !== undefined && input.customerId !== null && input.customerId !== "" && Number(input.customerId) !== so.customer_id) {
     return { ok: false, status: 409, error: `The customer of ${soLabel} cannot be changed once delivery permits exist.` }
   }
   if (!input.items) return { ok: true }
@@ -85,7 +89,7 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
     const key = lineKey(row.product_id, row.outsourced_name)
     if (!onPermit.has(key)) continue
     const incoming = incomingById.get(row.so_item_id)
-    if ((returns.get(key) || 0) <= EPS) {
+    if (!correcting && (returns.get(key) || 0) <= EPS) {
       // On a permit with no return: the line is locked.
       const lockedError = `"${label(key)}" is on a delivery permit of ${soLabel}; its quantity and price cannot be changed and it cannot be removed. Add any extra quantity or a different item as a new line.`
       if (!incoming || incomingKey(incoming) !== key) return { ok: false, status: 409, error: lockedError }

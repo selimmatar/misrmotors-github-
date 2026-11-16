@@ -91,7 +91,14 @@ export class FakeDb {
     const key = `rpc:${name}`
     this.calls[key] = (this.calls[key] || 0) + 1
     if (this.failOn[key]) return { data: null, error: { message: this.failOn[key], code: "XX000" } }
-    if (this.rpcHandlers[name]) return { data: this.rpcHandlers[name](args), error: null }
+    // A handler that throws { code, message, hint } answers like a raised Postgres exception (PostgREST error).
+    if (this.rpcHandlers[name]) {
+      try {
+        return { data: this.rpcHandlers[name](args), error: null }
+      } catch (e: any) {
+        return { data: null, error: e && typeof e === "object" && "code" in e ? e : { message: String(e?.message || e), code: "XX000" } }
+      }
+    }
     if (name === "get_next_grn_number") return { data: ++this.grnSeq, error: null }
     if (name === "generate_product_sku") return { data: `SKU-${100000 + ++this.skuSeq}`, error: null }
     return { data: null, error: { message: `unknown rpc ${name}`, code: "42883" } }

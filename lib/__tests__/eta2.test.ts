@@ -11,7 +11,13 @@ test("F1. step-2 migration", () => {
 
   // do $$ ... $$ blocks are allowed only to look up and drop the named constraints; they are checked separately
   const blocks: string[] = []
-  const rest = noComments.replace(/do\s+\$\$([\s\S]*?)\$\$\s*;/gi, (_m, body: string) => { blocks.push(flat(body)); return ";" })
+  // functions (task 7, ruling P1) are checked on their own below: security definer, fixed search_path, execute revoked
+  const functions: { name: string; head: string; body: string }[] = []
+  const withoutFunctions = noComments.replace(/create or replace function public\.(\w+)\(([\s\S]*?)\$fn\$([\s\S]*?)\$fn\$\s*;/gi, (_m, name: string, head: string, body: string) => {
+    functions.push({ name, head: flat(head), body: flat(body) })
+    return ";"
+  })
+  const rest = withoutFunctions.replace(/do\s+\$\$([\s\S]*?)\$\$\s*;/gi, (_m, body: string) => { blocks.push(flat(body)); return ";" })
   assert.ok(blocks.length > 0, "expected constraint blocks")
   assert.ok(!rest.includes("$$"), "no other dollar-quoted code")
 
@@ -52,7 +58,19 @@ test("F1. step-2 migration", () => {
   assert.match(lower, /'replaced'/)
   for (const v of ["pending", "partially_paid", "paid", "overdue"]) assert.ok(lower.includes(`'${v}'`), `AR status ${v}`)
   assert.ok(!/needs_review boolean/.test(lower), "no needs_review column")
-  assert.ok(!/eta_link_reissue/.test(lower), "eta_link_reissue belongs to a later task")
+  assert.deepEqual(functions.map((f) => f.name).sort(), ["eta_reissue_invoice", "eta_undo_reissue"])
+  for (const f of functions) {
+    assert.match(f.head, /language plpgsql security definer set search_path = public as$/, `${f.name}: security definer with a fixed search_path`)
+    assert.ok(!/\b(drop|truncate|alter)\b/.test(f.body), `${f.name}: no DDL`)
+    assert.match(lower, new RegExp(`revoke execute on function public\\.${f.name}\\([^)]*\\) from public, anon, authenticated`), `${f.name}: execute revoked`)
+  }
+  const reissue = functions.find((f) => f.name === "eta_reissue_invoice")!.body
+  for (const part of [
+    "for update", "hint = 'payments_other_customer'", "hint = 'reissue_overpaid'", "update public.customer_payments set invoice_id = v_new_id",
+    "update public.payment_schedules set invoice_id = v_new_id", "update public.customer_credits set used_in_invoice_id = v_new_id",
+    "update public.invoice_delivery_permits set invoice_id = v_new_id", "update public.delivery_permits set invoice_id = v_new_id",
+    "replaced_by_invoice_id = v_new_id, collected_amount = 0", "'overpayment', 'eta_reissue'", "replaces_invoice_id",
+  ]) assert.ok(reissue.includes(part), `eta_reissue_invoice: ${part}`)
 
   for (const c of [
     "environment", "version", "canonical", "document", "signature", "references", "submitted_at", "checked_at", "validated_at",
@@ -1660,4 +1678,335 @@ test("F30. no payment, credit or schedule payment can be recorded on a replaced 
   db = mk()
   db.tables.accounts_receivable[0].status = "pending"
   assert.equal((await callRoute(arPayRoute6.POST, "POST", { invoiceId: 5, amount: 100, idempotencyKey: "f30-pay-2" })).status, 200)
+})
+
+// ---- F31-F36: correct and reissue (task 7, spec 6.5a) ----
+import { etaReissueInvoice, etaUndoReissue, installReissueRpcs } from "../../scripts/sql/2026-11-15-eta-step2.fake"
+import { correctPermit, startReissue } from "../eta/reissue"
+import { openCorrection } from "../eta/correction"
+import { createSoInvoice } from "../invoicing"
+import { creditInvoicedReturn } from "../return-credit"
+import { arSummary as arSummary7 } from "../reports/views"
+import * as reissueRoute7 from "../../app/api/eta/reissue/route"
+import * as correctRoute7 from "../../app/api/delivery-permits/correct/route"
+import * as dpRoute7 from "../../app/api/delivery-permits/route"
+import * as soRoute7 from "../../app/api/sales-orders/route"
+
+const realDoc = (extra: Row = {}): Row => ({ doc_id: 1, invoice_id: 10, document_type: "I", environment: "real", version: 1, status: "valid", eta_uuid: "U1", errors: null, ...extra })
+const creditNote = (extra: Row = {}): Row => realDoc({ doc_id: 2, document_type: "C", eta_uuid: "C1", ...extra })
+
+// SO 1: 5 x Pump at 100 (570 with VAT) on DP-1 (approved, stock taken from inventory 1), invoiced as INV-2026-0010 with
+// 200 paid (payment 1, receivable schedule 1). Schedule 2 is a supplier (payable) schedule that happens to carry invoice id 10.
+function reissueDb(o: { docs?: Row[]; paid?: boolean; wholeOrder?: boolean; stock?: number } = {}) {
+  const paid = o.paid !== false
+  const db = new FakeDb({
+    users: [{ user_id: 7 }],
+    customers: [{ customer_id: 5, customer_name: "Acme Trading" }, { customer_id: 6, customer_name: "Beta Co" }],
+    sales_orders: [{ so_id: 1, so_number: "SO-7", customer_id: 5, status: "delivered", total: 570, subtotal: 500, discount_amount: 0, payment_type: "cash" }],
+    sales_order_items: [{ so_item_id: 1, so_id: 1, product_id: 100, outsourced_name: null, quantity: 5, unit_price: 100, total: 500, item_type: "stock" }],
+    delivery_permits: [{ permit_id: 1, permit_no: "DP-7-1", sales_order_id: 1, customer_id: 5, status: "APPROVED", invoice_id: o.wholeOrder ? null : 10 }],
+    delivery_permit_items: [{ item_id: 11, permit_id: 1, product_id: 100, item_name_snapshot: "Pump", quantity: 5, unit_price: 100, total: 500, warehouse_id: 1 }],
+    inventory: [{ inventory_id: 1, product_id: 100, warehouse_id: 1, quantity: o.stock ?? 2, is_returned: false }],
+    inventory_transactions: [], workflow_events: [],
+    idempotency_log: [{ id: 1, operation_type: "dp_stock_deduct", idempotency_key: "dp_stock_deduct_1", status: "completed" }],
+    accounts_receivable: [{
+      invoice_id: 10, invoice_number: "INV-2026-0010", customer_id: 5, so_id: 1, source_delivery_permit_id: o.wholeOrder ? null : 1, amount: 570,
+      collected_amount: paid ? 200 : 0, balance: paid ? 370 : 570, months_paid: paid ? 1 : 0, installment_months: 1, payment_terms: "cash",
+      status: paid ? "partially_paid" : "pending", invoice_date: "2026-11-01", due_date: "2027-06-01", created_at: "2026-11-01T10:00:00Z",
+      replaces_invoice_id: null, replaced_by_invoice_id: null,
+    }],
+    invoice_delivery_permits: o.wholeOrder ? [] : [{ invoice_id: 10, permit_id: 1 }],
+    customer_payments: paid ? [{ payment_id: 1, invoice_id: 10, customer_id: 5, amount: 200, payment_method: "cash" }] : [],
+    payment_schedules: [
+      { schedule_id: 1, invoice_id: 10, so_id: 1, po_id: null, amount: 570, paid_amount: paid ? 200 : 0, status: paid ? "partial" : "pending", schedule_type: "receivable" },
+      { schedule_id: 2, invoice_id: 10, so_id: null, po_id: 3, amount: 900, paid_amount: 0, status: "pending", schedule_type: "payable" },
+    ],
+    customer_credits: [], balance_entries: [], product_returns: [], return_items: [], dp_corrections: [], company_settings: [],
+    eta_documents: o.docs ?? [realDoc(), creditNote()],
+  })
+  db.jitter = false
+  installReissueRpcs(db)
+  useDb(db)
+  return db
+}
+const ar7 = (db: FakeDb, id: number) => db.tables.accounts_receivable.find((r) => r.invoice_id === id)!
+// what the customer owes: open invoices (replaced ones left out) less open credits
+async function owes(db: FakeDb) {
+  const credits = db.tables.customer_credits.filter((c) => c.status === "active").reduce((s, c) => s + Number(c.amount), 0)
+  return Math.round(((await arSummary7(db as any)).total_outstanding - credits) * 100) / 100
+}
+const mirror = (db: FakeDb) => JSON.stringify(Object.fromEntries(Object.entries(db.tables).filter(([k]) => k !== "workflow_events")))
+
+test("F31. correct and reissue starts only after the real document is reversed on the portal", async () => {
+  const refused = async (docs: Row[], code: string, extra: Partial<SendDeps> = {}) => {
+    const db = reissueDb({ docs })
+    const r = await startReissue(db, 10, 7, { ...portalFake().deps, ...extra })
+    assert.equal(r.ok, false, code)
+    assert.equal((r as any).code, code)
+    assert.match((r as any).messageAr, /[؀-ۿ]/)
+    assert.equal(ar7(db, 10).status, "partially_paid", "nothing changed")
+    return r
+  }
+  // valid on the portal without a credit note
+  const v = await refused([realDoc()], "not_reversed")
+  assert.match((v as any).message, /still valid on the tax portal/)
+  await refused([], "not_reversed")
+  await refused([realDoc(), creditNote({ environment: "test" })], "not_reversed", {})
+  await refused([realDoc(), creditNote({ status: "pending_signature" })], "credit_note_pending")
+  await refused([realDoc(), creditNote({ status: "invalid" })], "not_reversed")
+  // a cancellation the portal has not confirmed (the customer can still decline it)
+  const waiting = portalFake({ getDetails: () => ({ status: "Valid", cancelRequestDate: "2026-11-15T10:00:00Z" }) })
+  await refused([realDoc({ status: "cancelled", errors: [{ code: "CancelRequested" }] })], "cancel_not_confirmed", waiting.deps)
+  assert.deepEqual(waiting.calls.getDetails, ["U1"])
+
+  // a valid credit note: replaced, permits stay linked until the new invoice exists
+  const db = reissueDb()
+  assert.deepEqual(await startReissue(db, 10, 7), { ok: true })
+  assert.equal(ar7(db, 10).status, "replaced")
+  assert.equal(ar7(db, 10).collected_amount, 200, "payments wait on it for the new invoice")
+  assert.deepEqual(db.tables.invoice_delivery_permits, [{ invoice_id: 10, permit_id: 1 }])
+  assert.deepEqual(await openCorrection(db, { soId: 1 }), { oldInvoiceId: 10 })
+  assert.deepEqual(await openCorrection(db, { permitId: 1 }), { oldInvoiceId: 10 })
+  assert.equal(db.tables.workflow_events[0].event_type, "ETA_CORRECTION_STARTED")
+  assert.equal((await startReissue(db, 10, 7) as any).code, "already_replaced")
+  // a cancellation the portal confirms now
+  const c = reissueDb({ docs: [realDoc({ status: "cancelled", errors: [{ code: "CancelRequested" }] })] })
+  assert.deepEqual(await startReissue(c, 10, null, portalFake({ getDetails: () => ({ status: "Cancelled" }) }).deps), { ok: true })
+  assert.equal(ar7(c, 10).status, "replaced")
+  // not a sales invoice (maintenance: no order, no permits)
+  const m = reissueDb()
+  Object.assign(ar7(m, 10), { so_id: null })
+  m.tables.invoice_delivery_permits = []
+  assert.equal((await startReissue(m, 10, null) as any).code, "not_sales_invoice")
+  assert.equal((await startReissue(m, 99, null) as any).code, "not_found")
+
+  // the route: /api/eta (accountant; CEO / admin pass), plain errors with a code
+  reissueDb({ docs: [realDoc()] })
+  const no = await callRoute(reissueRoute7.POST, "POST", { invoiceId: 10 })
+  assert.equal(no.status, 409)
+  assert.equal(no.body.code, "not_reversed")
+  assert.ok(no.body.errorAr)
+  const yesDb = reissueDb()
+  const ok = await callRoute(reissueRoute7.POST, "POST", { invoiceId: 10 })
+  assert.equal(ok.status, 200)
+  assert.equal(ar7(yesDb, 10).status, "replaced")
+  const r = ruleFor("/api/eta/reissue")!
+  assert.ok(allows(r, "POST", ["accountant"]) && allows(r, "POST", ["ceo"]) && allows(r, "POST", ["admin"]))
+  assert.ok(!allows(r, "POST", ["sales-rep"]) && !allows(r, "POST", ["warehouse-rep"]))
+})
+
+test("F32. reissue, same customer with a part payment: payments, schedules and collected move in one step; links both ways; balance unchanged", async () => {
+  const db = reissueDb()
+  const before = await owes(db)
+  assert.equal(before, 370)
+  assert.deepEqual(await startReissue(db, 10, 7), { ok: true })
+  // the old invoice no longer counts: its permit is not invoiced any more
+  const state = await loadSoInvoicingState(db, 1)
+  assert.deepEqual(state!.invoices, [])
+
+  const res = await createDpInvoices(db, [1])
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(res.body.replacesInvoiceId, 10)
+  assert.equal(db.calls["rpc:eta_reissue_invoice"], 1)
+  const newId = res.body.invoices[0].invoice_id
+  const fresh = ar7(db, newId)
+  const old = ar7(db, 10)
+  assert.equal(fresh.amount, 570)
+  assert.equal(fresh.collected_amount, 200)
+  assert.equal(fresh.status, "partially_paid")
+  assert.equal(fresh.months_paid, 1)
+  assert.equal(fresh.replaces_invoice_id, 10)
+  assert.equal(old.replaced_by_invoice_id, newId)
+  assert.equal(old.status, "replaced")
+  assert.equal(old.collected_amount, 0)
+  assert.deepEqual(db.tables.customer_payments.map((p) => p.invoice_id), [newId])
+  assert.deepEqual(db.tables.payment_schedules.map((s) => s.invoice_id), [newId, 10], "the payable schedule is not touched")
+  assert.deepEqual(db.tables.invoice_delivery_permits, [{ invoice_id: newId, permit_id: 1 }])
+  assert.equal(db.tables.delivery_permits[0].invoice_id, newId)
+  assert.equal(await owes(db), before, "customer balance unchanged")
+  assert.equal(await openCorrection(db, { soId: 1 }), null, "the correction is closed")
+  // the permit is invoiced again: no second invoice
+  assert.equal((await createDpInvoices(db, [1])).status, 400)
+
+  // the stand-in mirrors the SQL undo: everything back as it was before the reissue
+  const u = reissueDb()
+  await startReissue(u, 10, 7)
+  const snap = mirror(u)
+  const made = await createDpInvoices(u, [1])
+  etaUndoReissue(u, { p_new: made.body.invoices[0].invoice_id, p_moved_permit_ids: [1] })
+  assert.equal(mirror(u), snap)
+  assert.throws(() => etaUndoReissue(u, { p_new: 10, p_moved_permit_ids: [] }), (e: any) => e.hint === "REISSUE_UNDO_REFUSED")
+  // a refusal inside the function leaves every table as it was (one transaction)
+  assert.throws(() => etaReissueInvoice(u, { p_old: 10, p_new_row: { invoice_number: "INV-X", amount: 1, customer_id: 5 }, p_permit_ids: [1] }), (e: any) => e.hint === "REISSUE_OVERPAID")
+  assert.equal(mirror(u), snap)
+  assert.throws(() => etaReissueInvoice(u, { p_old: 10, p_new_row: { invoice_number: "INV-2026-0010", amount: 570, customer_id: 5 }, p_permit_ids: [1] }), (e: any) => e.code === "23505")
+  assert.equal(mirror(u), snap, "a taken number changes nothing")
+
+  // more paid than the new amount: refused without a confirm (nothing changed); confirmed, the excess is customer credit
+  const o = reissueDb()
+  await startReissue(o, 10, 7)
+  o.tables.delivery_permit_items[0].quantity = 1
+  o.tables.delivery_permit_items[0].total = 100
+  const untouched = mirror(o)
+  const over = await createDpInvoices(o, [1])
+  assert.equal(over.status, 409)
+  assert.equal(over.body.code, "REISSUE_OVERPAID")
+  assert.equal(over.body.excess, 86)
+  assert.equal(mirror(o), untouched)
+  const confirmed = await createDpInvoices(o, [1], null, { confirmOverpaid: true })
+  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body))
+  const paidInvoice = ar7(o, confirmed.body.invoices[0].invoice_id)
+  assert.equal(paidInvoice.amount, 114)
+  assert.equal(paidInvoice.collected_amount, 114)
+  assert.equal(paidInvoice.status, "paid")
+  const credit = o.tables.customer_credits[0]
+  assert.equal(credit.amount, 86)
+  assert.equal(credit.customer_id, 5)
+  assert.equal(credit.credit_type, "overpayment")
+  assert.equal(credit.status, "active")
+
+  // a whole-order invoice is reissued as a whole-order invoice
+  const w = reissueDb({ wholeOrder: true })
+  await startReissue(w, 10, 7)
+  const whole = await createSoInvoice(w, 1)
+  assert.equal(whole.status, 200, JSON.stringify(whole.body))
+  assert.equal(whole.body.replacesInvoiceId, 10)
+  assert.equal(ar7(w, whole.body.invoice_id).collected_amount, 200)
+  assert.equal(ar7(w, 10).replaced_by_invoice_id, whole.body.invoice_id)
+  assert.deepEqual(w.tables.customer_payments.map((p) => p.invoice_id), [whole.body.invoice_id])
+})
+
+test("F33. reissue to a different customer: refused while the old invoice has payments (nothing changed); allowed without", async () => {
+  const db = reissueDb()
+  await startReissue(db, 10, 7)
+  db.tables.sales_orders[0].customer_id = 6 // corrected on the sales order
+  const snap = mirror(db)
+  const res = await createDpInvoices(db, [1])
+  assert.equal(res.status, 409)
+  assert.equal(res.body.code, "PAYMENTS_OTHER_CUSTOMER")
+  assert.equal(res.body.error, "This invoice has payments from Acme Trading. Move or refund them first")
+  assert.match(res.body.errorAr, /Acme Trading/)
+  assert.equal(mirror(db), snap, "nothing changed")
+  assert.deepEqual(await openCorrection(db, { permitId: 1 }), { oldInvoiceId: 10 }, "still open")
+
+  const free = reissueDb({ paid: false })
+  await startReissue(free, 10, 7)
+  free.tables.sales_orders[0].customer_id = 6
+  const ok = await createDpInvoices(free, [1])
+  assert.equal(ok.status, 200, JSON.stringify(ok.body))
+  assert.equal(ar7(free, ok.body.invoices[0].invoice_id).customer_id, 6)
+  assert.equal(ar7(free, ok.body.invoices[0].invoice_id).status, "pending")
+})
+
+test("F34. correct delivery permit: stock moves by the difference; shortage, below-returned and outside a correction refused with no change", async () => {
+  const db = reissueDb()
+  // outside an open correction: refused, and the approved permit stays locked as before
+  const closed = await correctPermit(db, 1, [{ permitItemId: 11, quantity: 3 }], 7)
+  assert.equal((closed as any).code, "NOT_OPEN_CORRECTION")
+  await startReissue(db, 10, 7)
+  const reject = await callRoute(dpRoute7.PUT, "PUT", { permitId: "1", action: "REJECT", rejectionReason: "x" })
+  assert.equal(reject.body.code, "DP_ALREADY_APPROVED", "approved permits stay locked everywhere else")
+
+  // 5 -> 3: 2 back to stock
+  const down = await correctPermit(db, 1, [{ permitItemId: 11, quantity: 3 }], 7)
+  assert.equal(down.ok, true, JSON.stringify(down))
+  assert.equal(db.tables.inventory[0].quantity, 4)
+  assert.equal(db.tables.delivery_permit_items[0].quantity, 3)
+  assert.equal(db.tables.delivery_permit_items[0].total, 300)
+  const rec = db.tables.dp_corrections[0]
+  assert.equal(rec.permit_id, 1)
+  assert.equal(rec.invoice_id, 10)
+  assert.equal(rec.created_by, 7)
+  assert.deepEqual(rec.lines.map((l: any) => [l.before, l.after]), [[5, 3]])
+  assert.deepEqual(rec.stock_moves.map((m: any) => [m.direction, m.quantity, m.before, m.after]), [["back", 2, 2, 4]])
+  assert.match(db.tables.inventory_transactions[0].notes, /Correction for invoice INV-2026-0010/)
+  // 3 -> 4: 1 out of stock
+  assert.equal((await correctPermit(db, 1, [{ permitItemId: 11, quantity: 4 }], 7)).ok, true)
+  assert.equal(db.tables.inventory[0].quantity, 3)
+  // shortage: refused, nothing changed
+  db.tables.inventory[0].quantity = 0
+  let snap = mirror(db)
+  const short = await correctPermit(db, 1, [{ permitItemId: 11, quantity: 6 }], 7)
+  assert.equal((short as any).code, "INSUFFICIENT_STOCK")
+  assert.equal(mirror(db), snap)
+  db.tables.inventory[0].quantity = 3
+  // a failure after the stock moved is undone
+  db.failOn["dp_corrections:insert"] = "boom"
+  snap = mirror(db)
+  const failed = await correctPermit(db, 1, [{ permitItemId: 11, quantity: 2 }], 7)
+  assert.equal(failed.ok, false)
+  delete db.failOn["dp_corrections:insert"]
+  assert.equal(mirror(db).replace(/"last_updated":"[^"]*",?/g, ""), snap.replace(/"last_updated":"[^"]*",?/g, ""))
+  assert.equal(db.tables.delivery_permit_items[0].quantity, 4)
+
+  // the route: accountant / CEO / admin only; refusals in plain words with a code
+  const viaRoute = await callRoute(correctRoute7.POST, "POST", { permitId: 1, lines: [{ permitItemId: 11, quantity: 4 }] })
+  assert.equal(viaRoute.body.code, "no_change")
+  assert.ok(viaRoute.body.errorAr)
+  const rule = ruleFor("/api/delivery-permits/correct")!
+  assert.ok(allows(rule, "POST", ["accountant"]) && allows(rule, "POST", ["ceo"]) && allows(rule, "POST", ["admin"]))
+  for (const role of ["sales-rep", "warehouse-rep", "shipment"] as const) assert.ok(!allows(rule, "POST", [role as any]), role)
+  assert.ok(allows(ruleFor("/api/delivery-permits")!, "PUT", ["warehouse-rep"]), "the permits rule itself is unchanged")
+
+  // the new invoice bills the corrected quantity; after it exists the permit is locked again
+  const made = await createDpInvoices(db, [1])
+  assert.equal(made.status, 200, JSON.stringify(made.body))
+  assert.equal(made.body.invoices[0].amount, 456)
+  assert.equal((await correctPermit(db, 1, [{ permitItemId: 11, quantity: 3 }], 7) as any).code, "NOT_OPEN_CORRECTION")
+
+  // never below what was already returned
+  const r = reissueDb()
+  await startReissue(r, 10, 7)
+  r.tables.product_returns.push({ return_id: 1, permit_id: "1", so_id: 1, status: "received", created_at: "2026-10-01T10:00:00Z" })
+  r.tables.return_items.push({ return_item_id: 1, return_id: 1, product_id: 100, product_name: "Pump", returned_quantity: 2 })
+  const below = await correctPermit(r, 1, [{ permitItemId: 11, quantity: 1 }], 7)
+  assert.equal((below as any).code, "BELOW_RETURNED")
+  assert.equal(r.tables.delivery_permit_items[0].quantity, 5)
+  assert.equal(r.tables.inventory[0].quantity, 2)
+  assert.equal((await correctPermit(r, 1, [{ permitItemId: 11, quantity: 2 }], 7)).ok, true)
+  assert.equal(r.tables.inventory[0].quantity, 5)
+})
+
+test("F35. a return during an open correction creates no customer credit; after the new invoice, returns credit as today", async () => {
+  const db = reissueDb()
+  await startReissue(db, 10, 7)
+  db.tables.product_returns.push({ return_id: 1, permit_id: "1", so_id: 1, so_number: "SO-7", status: "received", created_at: "2026-10-01T10:00:00Z" })
+  db.tables.return_items.push({ return_item_id: 1, return_id: 1, product_id: 100, product_name: "Pump", returned_quantity: 1 })
+  assert.equal(await creditInvoicedReturn(db, { return_id: 1, so_id: 1, permit_id: "1" }), null)
+  assert.equal(db.tables.customer_credits.length, 0)
+  // the new invoice simply bills less
+  const res = await createDpInvoices(db, [1])
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(res.body.invoices[0].amount, 456)
+  // a later return: credited as today
+  db.tables.product_returns.push({ return_id: 2, permit_id: "1", so_id: 1, so_number: "SO-7", status: "received", created_at: db.stamp() })
+  db.tables.return_items.push({ return_item_id: 2, return_id: 2, product_id: 100, product_name: "Pump", returned_quantity: 1 })
+  assert.deepEqual(await creditInvoicedReturn(db, { return_id: 2, so_id: 1, permit_id: "1" }), { amount: 114 })
+  assert.equal(db.tables.customer_credits.length, 1)
+})
+
+test("F36. sales-order edit: allowed with an open correction, refused as today without one", async () => {
+  const line = (extra: Row = {}) => ({ id: "1", productId: "100", productName: "Pump", quantity: 5, unitPrice: 100, total: 500, ...extra })
+  // without a correction: the permitted line and the customer are locked
+  const db = reissueDb()
+  let r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", items: [line({ unitPrice: 90, total: 450 })] })
+  assert.equal(r.status, 409)
+  assert.match(r.body.error, /is on a delivery permit/)
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", customerId: 6 })
+  assert.equal(r.status, 409)
+  assert.equal(db.tables.sales_orders[0].customer_id, 5)
+  assert.equal(db.tables.sales_order_items[0].unit_price, 100)
+
+  // with an open correction: price and customer can be corrected; the permits follow the customer
+  await startReissue(db, 10, 7)
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", customerId: 6, items: [line({ unitPrice: 90, total: 450 })] })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(db.tables.sales_order_items[0].unit_price, 90)
+  assert.equal(db.tables.sales_orders[0].customer_id, 6)
+  assert.equal(db.tables.delivery_permits[0].customer_id, 6)
+  // still never below what the customer keeps, and a kept line can't be removed
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", items: [line({ quantity: 4, total: 400 })] })
+  assert.equal(r.status, 409)
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", items: [] })
+  assert.equal(r.status, 409)
 })

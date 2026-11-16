@@ -5,7 +5,8 @@ import { badNumberResponse, cleanManualNumber } from "@/lib/doc-number"
 
 // Workflow B: invoice only the items on the selected APPROVED delivery permit(s). All rules (approved only,
 // same DP never twice, cumulative quantity/value per sales order, no invoice once the whole order has been
-// invoiced, concurrency re-check) live in lib/invoicing.ts.
+// invoiced, concurrency re-check) live in lib/invoicing.ts. Permits of an invoice open for correction make the new
+// invoice its reissue (payments move to it; lib/eta/correction.ts).
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -22,7 +23,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid delivery permit ID" }, { status: 400 })
     }
 
-    const result = await createDpInvoices(createAdminClient(), [...new Set(permitIds)], manual.value)
+    // confirmOverpaid: the reissue of a corrected invoice whose payments exceed the new amount keeps the excess as the
+    // customer's credit (spec §6.5a); without it such a reissue is refused with REISSUE_OVERPAID.
+    const result = await createDpInvoices(createAdminClient(), [...new Set(permitIds)], manual.value, { confirmOverpaid: body.confirmOverpaid === true })
     return NextResponse.json(result.body, { status: result.status })
   } catch (error: any) {
     console.error("Error creating invoice from DPs:", error)

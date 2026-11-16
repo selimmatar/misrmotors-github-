@@ -25,6 +25,10 @@ import {
   type ReturnLine,
 } from "./return-lines"
 import { etaLines, etaTolerance, isAfterGoLive, type EtaLineIn } from "./eta/totals"
+import {
+  correctionOfPermits, openCorrectionsForOrder, reissueInvoice, ReissueNumberTaken, ReissueRefused, REISSUE_OVERPAID, undoReissue,
+  type OpenCorrection,
+} from "./eta/correction"
 
 // Batch 2: quantity returned against a delivery permit (valid = non-rejected) reduces what can still be invoiced:
 //   ordered - already invoiced - returned = remaining invoiceable (never below zero)
@@ -784,6 +788,50 @@ async function insertInvoice(db: Db, row: Record<string, any>, manualNumber: str
   throw new Error(`create invoice: ${lastError?.message || lastError}`)
 }
 
+// Correct and reissue (spec §6.5a): the new invoice of an open correction is created by one database function that
+// also moves the old invoice's permit links, payments, schedules and collected amount (lib/eta/correction.ts). The
+// number is chosen exactly as insertInvoice does.
+async function insertReissue(db: Db, correction: OpenCorrection, row: Record<string, any>, permitIds: number[], manualNumber: string | null, confirmOverpaid: boolean) {
+  if (manualNumber) {
+    try {
+      return await reissueInvoice(db, correction.invoiceId, { ...row, invoice_number: manualNumber }, permitIds, confirmOverpaid)
+    } catch (error) {
+      if (error instanceof ReissueNumberTaken) throw new InvoiceNumberTaken(manualNumber)
+      throw error
+    }
+  }
+  let last: unknown = null
+  for (let attempt = 0; attempt < MAX_NUMBER_ATTEMPTS; attempt++) {
+    const invoiceNumber = await nextInvoiceNumber(db, attempt)
+    try {
+      return await reissueInvoice(db, correction.invoiceId, { ...row, invoice_number: invoiceNumber }, permitIds, confirmOverpaid)
+    } catch (error) {
+      if (!(error instanceof ReissueNumberTaken)) throw error
+      last = error
+    }
+  }
+  throw new Error(`create invoice: ${(last as any)?.message || "no free invoice number"}`)
+}
+
+// Payments of the old invoice above the new amount stay as the customer's credit only after a confirm.
+function overpaidRefusal(correction: OpenCorrection, amount: number): WorkflowResult | null {
+  const excess = round2(correction.collected - amount)
+  if (!(excess > 0.005)) return null
+  return failure(
+    409,
+    `The payments of ${correction.invoiceNumber || `#${correction.invoiceId}`} (${round2(correction.collected).toFixed(2)}) exceed the new invoice (${amount.toFixed(2)}). Confirm to keep ${excess.toFixed(2)} as the customer's credit.`,
+    { code: REISSUE_OVERPAID, collected: round2(correction.collected), amount, excess, replacesInvoiceId: correction.invoiceId },
+  )
+}
+
+const reissueRefusal = (error: unknown): WorkflowResult | null =>
+  error instanceof ReissueRefused ? failure(409, error.message, { code: error.code, ...(error.messageAr ? { errorAr: error.messageAr } : {}) }) : null
+
+export interface CreateInvoiceOptions {
+  /** a reissue whose moved payments exceed the new amount: keep the excess as customer credit (spec §6.5a) */
+  confirmOverpaid?: boolean
+}
+
 async function rollbackInvoice(db: Db, invoiceId: number) {
   const steps: [string, any][] = [
     ["unlink delivery permits", await db.from("invoice_delivery_permits").delete().eq("invoice_id", invoiceId)],
@@ -802,7 +850,7 @@ export interface WorkflowResult {
 const failure = (status: number, error: string, extra: Record<string, any> = {}): WorkflowResult => ({ status, body: { error, ...extra } })
 
 // ---- Workflow A: sales order -> invoice -------------------------------------------------------------------
-export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowResult> {
+export async function createSoInvoice(db: Db, soId: number, options: CreateInvoiceOptions = {}): Promise<WorkflowResult> {
   try {
     const state = await loadSoInvoicingState(db, soId)
     if (!state) return failure(404, "Sales order not found")
@@ -817,7 +865,7 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
     if (!priced.ok) return failure(priced.status, priced.error)
 
     const paymentType = state.so.payment_type || state.so.payment_terms || "cash"
-    const invoice = await insertInvoice(db, {
+    const row = {
       customer_id: state.so.customer_id,
       so_id: state.so.so_id,
       invoice_date: new Date().toISOString().split("T")[0],
@@ -828,13 +876,32 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
       installment_months: resolveInstallmentCount(paymentType, state.so.installments) || 1,
       months_paid: 0,
       status: "pending",
-    })
+    }
+
+    // An order with an open correction (spec §6.5a): this invoice is its reissue.
+    const corrections = await openCorrectionsForOrder(db, soId)
+    if (corrections.length > 1) return failure(409, `Sales order ${soLabel(state)} has more than one invoice being corrected. Create each new invoice from its own delivery permits.`, { code: "REISSUE_AMBIGUOUS" })
+    const correction = corrections[0] || null
+    if (correction) {
+      const overpaid = options.confirmOverpaid === true ? null : overpaidRefusal(correction, priced.amount)
+      if (overpaid) return overpaid
+    }
+    let invoice: any
+    try {
+      invoice = correction ? await insertReissue(db, correction, row, [], null, options.confirmOverpaid === true) : await insertInvoice(db, row)
+    } catch (error) {
+      const refused = reissueRefusal(error)
+      if (refused) return refused
+      throw error
+    }
 
     // Safety net against a concurrent request: the lowest invoice_id wins.
     const after = await loadSoInvoicingState(db, soId)
     const check = after ? evaluateAfterInsert(after, invoice.invoice_id) : ({ ok: true } as Verdict)
     if (!check.ok) {
-      await rollbackInvoice(db, invoice.invoice_id)
+      if (correction) {
+        if (!(await undoReissue(db, invoice.invoice_id, []))) return failure(500, `${check.error} The new invoice could not be taken back; contact an administrator.`, { partialFailure: true })
+      } else await rollbackInvoice(db, invoice.invoice_id)
       return failure(check.status, check.error)
     }
 
@@ -851,6 +918,7 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
         soId: invoice.so_id,
         soNumber: state.so.so_number,
         deliveryPermits: state.permits.map((p) => ({ permit_id: p.permit_id, permit_no: p.permit_no, status: p.status })),
+        ...(correction ? { replacesInvoiceId: correction.invoiceId, replacesInvoiceNumber: correction.invoiceNumber } : {}),
       },
     }
   } catch (error: any) {
@@ -860,7 +928,7 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
 }
 
 // ---- Workflow B: delivery permit(s) -> invoice ------------------------------------------------------------
-export async function createDpInvoices(db: Db, permitIds: number[], manualNumber: string | null = null): Promise<WorkflowResult> {
+export async function createDpInvoices(db: Db, permitIds: number[], manualNumber: string | null = null, options: CreateInvoiceOptions = {}): Promise<WorkflowResult> {
   try {
     const permits = must(
       await db.from("delivery_permits").select("permit_id, permit_no, sales_order_id, status").in("permit_id", permitIds),
@@ -893,13 +961,20 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
     const customerIds = new Set(orders.map((o) => o.customer_id))
     if (customerIds.size > 1) return failure(400, "Selected delivery permits belong to different customers. Cannot consolidate.")
 
-    const existingLinks = must(
-      await db.from("invoice_delivery_permits").select("permit_id").in("permit_id", permitIds),
-      "check existing invoices",
-    ) as any[]
-    if (existingLinks.length > 0) {
-      return failure(400, `Delivery permits already invoiced: ${existingLinks.map((l) => l.permit_id).join(", ")}`)
+    // A permit linked only to an invoice that is open for correction (spec §6.5a) is available: the new invoice is the
+    // reissue of that invoice. Any other link means the permit is invoiced.
+    const linked = await correctionOfPermits(db, permitIds, soIds)
+    if (linked.taken.length > 0) {
+      return failure(400, `Delivery permits already invoiced: ${linked.taken.join(", ")}`)
     }
+    if (linked.corrections.length > 1) {
+      return failure(
+        409,
+        `These delivery permits belong to more than one invoice being corrected (${linked.corrections.map((c) => c.invoiceNumber || `#${c.invoiceId}`).join(", ")}). Create each new invoice from its own delivery permits.`,
+        { code: "REISSUE_AMBIGUOUS" },
+      )
+    }
+    const correction = linked.corrections[0] || null
 
     const byPaymentType: Record<string, any[]> = {}
     for (const permit of permits) {
@@ -927,6 +1002,20 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
     const group = byPaymentType[paymentType]
     const groupSoIds = [...new Set(group.map((p) => p.sales_order_id))] as number[]
 
+    // The reissue takes over every delivery permit of the old invoice (its links move to the new invoice).
+    if (correction) {
+      const missingIds = correction.permitIds.filter((id) => !group.some((p) => p.permit_id === id))
+      if (missingIds.length > 0) {
+        const rows = must(await db.from("delivery_permits").select("permit_id, permit_no").in("permit_id", missingIds), "load delivery permits") as any[]
+        const names = missingIds.map((id) => rows.find((r) => r.permit_id === id)?.permit_no || `#${id}`)
+        return failure(
+          409,
+          `The corrected invoice must include every delivery permit of ${correction.invoiceNumber || `invoice #${correction.invoiceId}`}. Add: ${names.join(", ")}.`,
+          { code: "REISSUE_MISSING_PERMITS", missing: missingIds },
+        )
+      }
+    }
+
     // Pre-check every affected sales order, and price the invoice from the items on the selected permits.
     let amount = 0
     const states = new Map<number, SoInvoicingState>()
@@ -942,7 +1031,7 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
     amount = round2(amount)
 
     const firstState = states.get(group[0].sales_order_id)!
-    const invoice = await insertInvoice(db, {
+    const row = {
       customer_id: Array.from(customerIds)[0],
       so_id: group[0].sales_order_id,
       // Provenance: a single-DP invoice points at its delivery permit; multi-DP invoices use invoice_delivery_permits.
@@ -955,7 +1044,43 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
       installment_months: resolveInstallmentCount(paymentType, firstState.so.installments) || 1,
       months_paid: 0,
       status: "pending",
-    }, manualNumber)
+    }
+
+    if (correction) {
+      const overpaid = options.confirmOverpaid === true ? null : overpaidRefusal(correction, amount)
+      if (overpaid) return overpaid
+      let invoice: any
+      try {
+        // one transaction: the invoice, its permit links (moved from the old invoice, or new), payments and links both ways
+        invoice = await insertReissue(db, correction, row, group.map((p) => p.permit_id), manualNumber, options.confirmOverpaid === true)
+      } catch (error) {
+        const refused = reissueRefusal(error)
+        if (refused) return refused
+        throw error
+      }
+      for (const soId of groupSoIds) {
+        const after = await loadSoInvoicingState(db, soId)
+        const check = after ? evaluateAfterInsert(after, invoice.invoice_id) : ({ ok: true } as Verdict)
+        if (!check.ok) {
+          if (!(await undoReissue(db, invoice.invoice_id, correction.permitIds))) {
+            return failure(500, `${check.error} The new invoice could not be taken back; contact an administrator.`, { partialFailure: true })
+          }
+          return failure(check.status, check.error)
+        }
+      }
+      return {
+        status: 200,
+        body: {
+          success: true,
+          invoices: [{ ...invoice, invoiceNumber: invoice.invoice_number, deliveryPermits: group.map((p) => p.permit_no), paymentType }],
+          replacesInvoiceId: correction.invoiceId,
+          replacesInvoiceNumber: correction.invoiceNumber,
+          message: "Invoice created successfully",
+        },
+      }
+    }
+
+    const invoice = await insertInvoice(db, row, manualNumber)
 
     const { error: linksError } = await db
       .from("invoice_delivery_permits")

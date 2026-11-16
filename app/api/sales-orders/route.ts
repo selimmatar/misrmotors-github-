@@ -9,6 +9,7 @@ import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status
 import { markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
 import { refreshSoFulfilment } from "@/lib/goods-receiving"
 import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
+import { openCorrection } from "@/lib/eta/correction"
 
 export const dynamic = "force-dynamic"
 
@@ -702,7 +703,10 @@ export async function PUT(request: Request) {
       dbUpdates.status = current?.[0]?.entity_type === "quotation" ? "rejected_quotation" : "cancelled"
     }
 
-    const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items })
+    // An order whose invoice was reversed on the portal and is being corrected (spec §6.5a) may change its customer and
+    // the price / quantity of delivered lines until the new invoice exists; otherwise the usual locks apply.
+    const correcting = (await openCorrection(supabase, { soId: numericId })) !== null
+    const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items, openCorrection: correcting })
     if (!editVerdict.ok) {
       return NextResponse.json({ error: editVerdict.error }, { status: editVerdict.status })
     }
@@ -731,6 +735,15 @@ export async function PUT(request: Request) {
     if (!order || !order.so_id) {
       console.error("Sales Orders PUT: No order data returned for ID:", numericId)
       return NextResponse.json({ error: `Sales order ${numericId} not found or update blocked by RLS policy` }, { status: 404 })
+    }
+
+    // A customer corrected during an open correction: the order's delivery permits follow it, so the records agree.
+    if (correcting && dbUpdates.customer_id !== undefined) {
+      const { error: permitCustomerError } = await supabase
+        .from("delivery_permits")
+        .update({ customer_id: Number(dbUpdates.customer_id) })
+        .eq("sales_order_id", numericId)
+      if (permitCustomerError) console.error("Sales Orders PUT: could not move the delivery permits to the corrected customer:", permitCustomerError.message)
     }
 
 
