@@ -39,6 +39,7 @@ const PK: Record<string, string> = {
   eta_code_memory: "memory_id",
   eta_documents: "doc_id",
   eta_signers: "signer_id",
+  eta_received_documents: "received_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
@@ -58,6 +59,7 @@ const UNIQUE: Record<string, string[][]> = {
   eta_code_memory: [["normalized_name"]],
   eta_documents: [["invoice_id", "document_type", "environment", "version"]],
   eta_signers: [["key_hash"]],
+  eta_received_documents: [["uuid", "environment"]],
 }
 // Column defaults applied on insert (as the database does).
 const DEFAULTS: Record<string, Row> = {

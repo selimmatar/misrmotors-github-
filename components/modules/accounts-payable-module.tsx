@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { PageHeader } from "@/components/erp/page-header"
+import { SupplierEInvoices } from "@/components/accounting/supplier-einvoices"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { Money } from "@/components/erp/money"
 import { StatusBadge } from "@/components/erp/status-badge"
@@ -1652,6 +1653,9 @@ export function AccountsPayableModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Supplier e-invoices from the tax portal, compared with these invoices (read-only) */}
+      <SupplierEInvoices />
     </div>
   )
 }
