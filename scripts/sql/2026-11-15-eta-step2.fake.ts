@@ -5,6 +5,8 @@
 import type { FakeDb, Row } from "../../lib/__tests__/fake-db"
 import { computeArStatus } from "../../lib/ar-status"
 
+/** reference_type of a return credit settled by a reissue (P14); a structured marker, not the note text */
+export const SETTLED = "product_return_settled"
 const raise = (hint: string, message: string) => {
   throw { code: "P0001", message, hint, details: null }
 }
@@ -62,7 +64,9 @@ export function etaReissueInvoice(db: FakeDb, args: { p_old: number; p_new_row: 
 
     const collected = round2(Number(old!.collected_amount) || 0)
     const hasPayments =
-      collected > 0.005 || t("customer_payments").some((p) => p.invoice_id === args.p_old) || t("customer_credits").some((c) => c.used_in_invoice_id === args.p_old)
+      collected > 0.005 ||
+      t("customer_payments").some((p) => p.invoice_id === args.p_old) ||
+      t("customer_credits").some((c) => c.used_in_invoice_id === args.p_old && c.reference_type !== SETTLED)
     if (hasPayments && customer !== (old!.customer_id ?? null)) {
       const name = t("customers").find((c) => c.customer_id === old!.customer_id)?.customer_name
       raise("PAYMENTS_OTHER_CUSTOMER", `This invoice has payments from ${name ?? "another customer"}. Move or refund them first`)
@@ -109,10 +113,10 @@ export function etaReissueInvoice(db: FakeDb, args: { p_old: number; p_new_row: 
 
     for (const p of t("customer_payments")) if (p.invoice_id === args.p_old) p.invoice_id = newId
     for (const s of t("payment_schedules")) if (s.invoice_id === args.p_old && isReceivableSchedule(s)) s.invoice_id = newId
-    for (const c of t("customer_credits")) if (c.used_in_invoice_id === args.p_old) c.used_in_invoice_id = newId
+    for (const c of t("customer_credits")) if (c.used_in_invoice_id === args.p_old && c.reference_type !== SETTLED) c.used_in_invoice_id = newId
     for (const c of returnCredits) {
       Object.assign(c, {
-        status: "used", used_at: new Date(db.clock).toISOString(), used_in_invoice_id: newId,
+        status: "used", used_at: new Date(db.clock).toISOString(), used_in_invoice_id: newId, reference_type: SETTLED,
         notes: [c.notes || null, `Settled by corrected invoice ${number}: it bills the returned goods less`].filter(Boolean).join(" | "),
       })
     }
@@ -145,11 +149,11 @@ export function etaUndoReissue(db: FakeDb, args: { p_new: number; p_moved_permit
     for (const p of t("customer_payments")) if (p.invoice_id === args.p_new) p.invoice_id = oldId
     for (const s of t("payment_schedules")) if (s.invoice_id === args.p_new && isReceivableSchedule(s)) s.invoice_id = oldId
     for (const c of t("customer_credits")) {
-      if (c.used_in_invoice_id === args.p_new && c.credit_type === "sales_return" && String(c.notes || "").includes("Settled by corrected invoice ")) {
-        Object.assign(c, { status: "active", used_at: null, used_in_invoice_id: null, notes: String(c.notes).replace(/( \| )?Settled by corrected invoice .*$/, "") || null })
+      if (c.used_in_invoice_id === args.p_new && c.reference_type === SETTLED) {
+        Object.assign(c, { status: "active", used_at: null, used_in_invoice_id: null, reference_type: "product_return", notes: String(c.notes).replace(/( \| )?Settled by corrected invoice .*$/, "") || null })
       }
     }
-    for (const c of t("customer_credits")) if (c.used_in_invoice_id === args.p_new) c.used_in_invoice_id = oldId
+    for (const c of t("customer_credits")) if (c.used_in_invoice_id === args.p_new && c.reference_type !== SETTLED) c.used_in_invoice_id = oldId
     const collected = round2((Number(fresh!.collected_amount) || 0) + credit)
     Object.assign(old!, { collected_amount: collected, months_paid: fresh!.months_paid || 0, replaced_by_invoice_id: null, balance: round2((Number(old!.amount) || 0) - collected) })
     db.tables.invoice_delivery_permits = t("invoice_delivery_permits").filter((l) => l.invoice_id !== args.p_new)

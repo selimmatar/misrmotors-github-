@@ -779,14 +779,28 @@ export async function PUT(request: Request) {
       .select()
       .maybeSingle()
 
+    // the order was not saved: a permit that could not move back leaves the edit only partly undone - say so
+    const partlyUndone = (failed: number[]) =>
+      NextResponse.json(
+        {
+          error: `The order could not be saved, and ${failed.length} delivery permit(s) could not be moved back to the old customer: the edit was only partly undone. Contact an administrator.`,
+          errorAr: `تعذّر حفظ أمر البيع، وتعذّر إرجاع ${failed.length} من أذون التسليم إلى العميل السابق: تم التراجع عن التعديل جزئياً فقط. تواصل مع المسؤول.`,
+          code: "PARTIALLY_UNDONE",
+          partialFailure: true,
+          permitIds: failed,
+        },
+        { status: 500 },
+      )
     if (orderError) {
-      await putPermitsBack()
+      const notBack = await putPermitsBack()
+      if (notBack.length) return partlyUndone(notBack)
       console.error("Sales Orders PUT: Error updating order", JSON.stringify(orderError), "ID:", numericId, "Updates:", JSON.stringify(dbUpdates))
       return NextResponse.json({ error: `Database error: ${orderError.message || orderError.code || "Unknown"}` }, { status: 500 })
     }
 
     if (!order || !order.so_id) {
-      await putPermitsBack()
+      const notBack = await putPermitsBack()
+      if (notBack.length) return partlyUndone(notBack)
       console.error("Sales Orders PUT: No order data returned for ID:", numericId)
       return NextResponse.json({ error: `Sales order ${numericId} not found or update blocked by RLS policy` }, { status: 404 })
     }

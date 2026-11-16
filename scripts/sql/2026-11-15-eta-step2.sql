@@ -174,13 +174,19 @@ begin
 
   -- P14: returns on the old invoice's permits (all the order's permits for a whole-order invoice) that already gave
   -- the customer a credit are billed less by the new invoice, so those credits are settled by it; one already used
-  -- (in part) refuses the reissue.
+  -- (in part) refuses the reissue. A settled credit is marked structurally: reference_type 'product_return_settled'
+  -- (status used, used_in_invoice_id = the invoice that settled it). It is never a candidate again, never counts as a
+  -- payment, never moves with the payments, and lib/return-credit.ts no longer counts it as "already credited".
   select coalesce(array_agg(l.permit_id::text), '{}'::text[]) into v_ret_permits
     from public.invoice_delivery_permits l where l.invoice_id = p_old;
   if cardinality(v_ret_permits) = 0 then
     select coalesce(array_agg(d.permit_id::text), '{}'::text[]) into v_ret_permits
       from public.delivery_permits d where d.sales_order_id = v_old.so_id;
   end if;
+  perform 1 from public.customer_credits c
+    where c.credit_type = 'sales_return' and c.reference_type = 'product_return'
+      and c.reference_id in (select r.return_id from public.product_returns r where r.permit_id::text = any(v_ret_permits))
+    for update;
   if exists (
     select 1 from public.customer_credits c
     where c.credit_type = 'sales_return' and c.reference_type = 'product_return' and c.status is distinct from 'active'
@@ -193,7 +199,7 @@ begin
   v_collected := round(coalesce(v_old.collected_amount, 0), 2);
   v_has_payments := v_collected > 0.005
     or exists (select 1 from public.customer_payments p where p.invoice_id = p_old)
-    or exists (select 1 from public.customer_credits c where c.used_in_invoice_id = p_old);
+    or exists (select 1 from public.customer_credits c where c.used_in_invoice_id = p_old and c.reference_type is distinct from 'product_return_settled');
   if v_has_payments and v_customer is distinct from v_old.customer_id then
     select customer_name into v_name from public.customers where customer_id = v_old.customer_id;
     raise exception 'This invoice has payments from %. Move or refund them first', coalesce(v_name, 'another customer')
@@ -240,9 +246,10 @@ begin
   update public.customer_payments set invoice_id = v_new_id where invoice_id = p_old;
   update public.payment_schedules set invoice_id = v_new_id
     where invoice_id = p_old and coalesce(schedule_type, '') <> 'payable' and not (po_id is not null and so_id is null);
-  update public.customer_credits set used_in_invoice_id = v_new_id where used_in_invoice_id = p_old;
+  update public.customer_credits set used_in_invoice_id = v_new_id
+    where used_in_invoice_id = p_old and reference_type is distinct from 'product_return_settled';
   update public.customer_credits c
-    set status = 'used', used_at = now(), used_in_invoice_id = v_new_id,
+    set status = 'used', used_at = now(), used_in_invoice_id = v_new_id, reference_type = 'product_return_settled',
         notes = concat_ws(' | ', nullif(c.notes, ''), 'Settled by corrected invoice ' || (p_new_row->>'invoice_number') || ': it bills the returned goods less')
     where c.credit_type = 'sales_return' and c.reference_type = 'product_return' and c.status = 'active'
       and c.reference_id in (select r.return_id from public.product_returns r where r.permit_id::text = any(v_ret_permits));
@@ -289,10 +296,11 @@ begin
   update public.payment_schedules set invoice_id = v_old.invoice_id
     where invoice_id = p_new and coalesce(schedule_type, '') <> 'payable' and not (po_id is not null and so_id is null);
   update public.customer_credits c
-    set status = 'active', used_at = null, used_in_invoice_id = null,
+    set status = 'active', used_at = null, used_in_invoice_id = null, reference_type = 'product_return',
         notes = nullif(regexp_replace(coalesce(c.notes, ''), '( \| )?Settled by corrected invoice .*$', ''), '')
-    where c.used_in_invoice_id = p_new and c.credit_type = 'sales_return' and c.notes like '%Settled by corrected invoice %';
-  update public.customer_credits set used_in_invoice_id = v_old.invoice_id where used_in_invoice_id = p_new;
+    where c.used_in_invoice_id = p_new and c.reference_type = 'product_return_settled';
+  update public.customer_credits set used_in_invoice_id = v_old.invoice_id
+    where used_in_invoice_id = p_new and reference_type is distinct from 'product_return_settled';
   update public.accounts_receivable
     set collected_amount = round(coalesce(v_new.collected_amount, 0) + v_credit, 2), months_paid = coalesce(v_new.months_paid, 0), replaced_by_invoice_id = null
     where invoice_id = v_old.invoice_id;

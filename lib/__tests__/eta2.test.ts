@@ -2253,3 +2253,58 @@ test("F42. whole-order and permit invoices are reissued the same way; a correcti
   assert.ok(!/Nothing was changed/.test((res as any).message), (res as any).message)
   assert.match((res as any).message, /permit quantities/)
 })
+
+test("F43. an invoice can be corrected more than once: settled return credits don't block it or count as payments", async () => {
+  const reverse = (db: FakeDb, id: number) => {
+    db.tables.eta_documents.push(realDoc({ doc_id: 100 + id, invoice_id: id, eta_uuid: `U${id}` }), creditNote({ doc_id: 200 + id, invoice_id: id, eta_uuid: `C${id}` }))
+  }
+  // paid: 570, 200 paid, 2 returned (228 credit) -> B bills 342 -> corrected again -> C bills 342; owes 142 throughout
+  const db = reissueDb()
+  db.clock = Date.parse("2026-11-16T10:00:00Z")
+  returned7(db, 1, 2, "2026-11-05T10:00:00Z")
+  await creditInvoicedReturn(db, { return_id: 1, so_id: 1, permit_id: "1" })
+  await startReissue(db, 10, 7)
+  const b = (await createDpInvoices(db, [1])).body.invoices[0].invoice_id
+  assert.equal(db.tables.customer_credits[0].reference_type, "product_return_settled")
+  reverse(db, b)
+  assert.deepEqual(await startReissue(db, b, 7), { ok: true })
+  const second = await createDpInvoices(db, [1])
+  assert.equal(second.status, 200, JSON.stringify(second.body))
+  const c = second.body.invoices[0].invoice_id
+  assert.equal(ar7(db, c).amount, 342)
+  assert.equal(ar7(db, c).collected_amount, 200)
+  assert.equal(ar7(db, b).replaced_by_invoice_id, c)
+  assert.equal(await owes(db), 142)
+  assert.equal(db.tables.customer_credits[0].used_in_invoice_id, b, "settled by B; it does not move with the payments")
+  // a later return is credited as today (the settled credit no longer counts as "already credited")
+  returned7(db, 2, 1, db.stamp())
+  assert.deepEqual(await creditInvoicedReturn(db, { return_id: 2, so_id: 1, permit_id: "1" }), { amount: 114 })
+  assert.equal(await owes(db), 28)
+
+  // nobody paid: the second correction may change the customer
+  const free = reissueDb({ paid: false })
+  free.clock = Date.parse("2026-11-16T10:00:00Z")
+  returned7(free, 1, 2, "2026-11-05T10:00:00Z")
+  await creditInvoicedReturn(free, { return_id: 1, so_id: 1, permit_id: "1" })
+  await startReissue(free, 10, 7)
+  const fb = (await createDpInvoices(free, [1])).body.invoices[0].invoice_id
+  reverse(free, fb)
+  await startReissue(free, fb, 7)
+  const r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", customerId: 6 })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const fc = await createDpInvoices(free, [1])
+  assert.equal(fc.status, 200, JSON.stringify(fc.body))
+  assert.equal(ar7(free, fc.body.invoices[0].invoice_id).customer_id, 6)
+
+  // the order can't be saved and a permit can't be moved back: the answer says the edit was only partly undone
+  const p = reissueDb()
+  await startReissue(p, 10, 7)
+  p.failOn["sales_orders:update"] = "boom"
+  p.failOn["delivery_permits:update"] = "boom"
+  p.failAfter["delivery_permits:update"] = 1
+  const partly = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", customerId: 6 })
+  assert.equal(partly.status, 500)
+  assert.equal(partly.body.code, "PARTIALLY_UNDONE")
+  assert.equal(partly.body.partialFailure, true)
+  assert.match(partly.body.error, /only partly undone/)
+})
