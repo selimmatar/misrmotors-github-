@@ -2359,8 +2359,8 @@ test("F44. screens wired: actions by document state, AR badge and reissue, permi
   assert.match(settings, /<EtaSignerCard mayManage=\{mayGoLive\}/)
   assert.match(card, /mayManage \? \(/)
 
-  // the supplier e-invoice tab is not part of this step
-  assert.ok(!/SupplierEInvoices/.test(read("components/modules/accounts-payable-module.tsx")))
+  // the supplier e-invoice section came later (F54g)
+  assert.ok(/<SupplierEInvoices \/>/.test(read("components/modules/accounts-payable-module.tsx")))
 
   // every text the new screens ask for has English and Arabic
   const used = new Set<string>()
@@ -2707,4 +2707,248 @@ test("F52e. learn route: window over 31 days refused; bad dates refused; permiss
   const rule = ruleFor("/api/eta/memory/learn-from-portal")!
   for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, "POST", [role] as any), true, role)
   for (const role of ["sales-rep", "warehouse-rep"]) assert.equal(allows(rule, "POST", [role] as any), false, role)
+})
+
+// ---- F54: supplier e-invoices from the portal compared with Accounts Payable ----
+import { receiveSupplierDocuments, receiveWindows, rangeError, receivedRow } from "../eta/receive"
+import { matchReceived, numberKey, AMOUNT_TOLERANCE, DATE_WINDOW_DAYS } from "../eta/ap-match"
+import { cronAuthorized, runDailySync } from "../eta/daily-sync"
+import * as receivedRoute from "../../app/api/eta/received/route"
+import * as receivedSyncRoute from "../../app/api/eta/received/sync/route"
+import * as receivedPdfRoute from "../../app/api/eta/received/[id]/pdf/route"
+import * as etaSyncRoute from "../../app/api/eta-sync/route"
+
+interface SupDoc { uuid: string; issuerId: string; issuerName?: string; internalId: string; total: number; net?: number; status?: string; typeName?: string; dateTimeIssued?: string }
+function receivePortal(pages: SupDoc[][]) {
+  const calls = { search: [] as string[], details: [] as string[] }
+  const portal: any = {
+    async searchReceived(p: { from: string; to: string; continuationToken?: string }) {
+      calls.search.push(`${p.from}|${p.to}|${p.continuationToken ?? ""}`)
+      const n = Number(p.continuationToken || "0")
+      const page = (pages[n] || []).map((d) => ({ typeName: "i", status: "Valid", dateTimeIssued: "2026-11-10T08:00:00Z", net: undefined, netAmount: d.net ?? round54(d.total / 1.14), ...d }))
+      return { result: page, metadata: { continuationToken: n + 1 < pages.length ? String(n + 1) : "EndofResultSet" } }
+    },
+    async getDetails(uuid: string) {
+      calls.details.push(uuid)
+      return { uuid, document: JSON.stringify({ taxTotals: [{ taxType: "T1", amount: 14 }], invoiceLines: [{ description: "Oil", itemCode: "EG-1", quantity: 1, total: 114 }] }) }
+    },
+  }
+  return { portal, calls }
+}
+const round54 = (n: number) => Math.round(n * 100) / 100
+const recvDb = (extra: Record<string, Row[]> = {}) => {
+  const db = new FakeDb({
+    suppliers: [
+      { supplier_id: 1, supplier_name: "Oil Co", tax_registration_number: "111222333" },
+      { supplier_id: 2, supplier_name: "Parts Co", tax_registration_number: "444-555-666" },
+      { supplier_id: 3, supplier_name: "Cash only", tax_registration_number: null },
+    ],
+    eta_received_documents: [],
+    accounts_payable: [],
+    eta_documents: [],
+    company_settings: [{ setting_key: "eta_environment", setting_value: "test" }],
+    ...extra,
+  })
+  db.jitter = false
+  return db
+}
+
+test("F54a. receive: two pages by continuation token stored once; details only for new uuids; a re-run is unchanged", async () => {
+  const db = recvDb()
+  const { portal, calls } = receivePortal([
+    [{ uuid: "R1", issuerId: "111222333", internalId: "INV-0012", total: 114 }, { uuid: "R2", issuerId: "444555666", internalId: "77", total: 228 }],
+    [{ uuid: "R3", issuerId: "111222333", internalId: "13", total: 57 }],
+  ])
+  const r = await receiveSupplierDocuments(db, "test", { from: "2026-11-01", to: "2026-11-15" }, { portal, sleep: async () => {} })
+  assert.deepEqual([r.added, r.updated, r.unchanged, r.unknownSuppliers, r.windows, r.cursor], [3, 0, 0, 0, 1, null])
+  assert.deepEqual(calls.search, ["2026-11-01T00:00:00Z|2026-11-15T23:59:59Z|", "2026-11-01T00:00:00Z|2026-11-15T23:59:59Z|1"])
+  assert.deepEqual(calls.details, ["R1", "R2", "R3"])
+  const rows = db.tables.eta_received_documents
+  assert.equal(rows.length, 3)
+  const r1 = rows.find((x) => x.uuid === "R1")!
+  assert.deepEqual([r1.environment, r1.document_type, r1.supplier_id, r1.internal_id, r1.total, r1.vat, r1.status, r1.lines.length], ["test", "I", 1, "INV-0012", 114, 14, "Valid", 1])
+  assert.equal(rows.find((x) => x.uuid === "R2")!.supplier_id, 2, "tax number compared as digits")
+  const again = await receiveSupplierDocuments(db, "test", { from: "2026-11-01", to: "2026-11-15" }, { portal, sleep: async () => {} })
+  assert.deepEqual([again.added, again.updated, again.unchanged], [0, 0, 3])
+  assert.equal(calls.details.length, 3, "no details for a known uuid")
+  assert.equal(db.tables.eta_received_documents.length, 3, "not duplicated")
+  assert.equal(db.tables.accounts_payable.length, 0, "Accounts Payable untouched")
+  // the same uuid on the other environment is its own row
+  await receiveSupplierDocuments(db, "real", { from: "2026-11-01", to: "2026-11-15" }, { portal, sleep: async () => {} })
+  assert.equal(db.tables.eta_received_documents.length, 6)
+})
+
+test("F54b. receive: a status change overwrites the status only; an unknown issuer is counted; a supplier card added later fills it in", async () => {
+  const db = recvDb()
+  const first = receivePortal([[{ uuid: "R1", issuerId: "111222333", internalId: "12", total: 114 }, { uuid: "R9", issuerId: "999888777", issuerName: "Stranger", internalId: "5", total: 10 }]])
+  const r = await receiveSupplierDocuments(db, "test", { from: "2026-11-01", to: "2026-11-15" }, { portal: first.portal, sleep: async () => {} })
+  assert.equal(r.unknownSuppliers, 1)
+  assert.deepEqual(r.unknownIssuers, [{ issuerId: "999888777", issuerName: "Stranger" }])
+  assert.equal(db.tables.eta_received_documents.find((x) => x.uuid === "R9")!.supplier_id, null)
+  const before = { ...db.tables.eta_received_documents.find((x) => x.uuid === "R1")! }
+  const later = receivePortal([[{ uuid: "R1", issuerId: "111222333", internalId: "12", total: 999, status: "Cancelled" }, { uuid: "R9", issuerId: "999888777", internalId: "5", total: 10 }]])
+  db.tables.suppliers.push({ supplier_id: 4, supplier_name: "Stranger Ltd", tax_registration_number: "999888777" })
+  const u = await receiveSupplierDocuments(db, "test", { from: "2026-11-01", to: "2026-11-15" }, { portal: later.portal, sleep: async () => {}, clock: () => new Date("2026-11-16T00:00:00Z") })
+  assert.deepEqual([u.added, u.updated, u.unknownSuppliers], [0, 2, 0])
+  const after = db.tables.eta_received_documents.find((x) => x.uuid === "R1")!
+  assert.deepEqual([after.status, after.total, after.received_id, after.first_seen_at], ["Cancelled", before.total, before.received_id, before.first_seen_at])
+  assert.equal(after.updated_at, "2026-11-16T00:00:00.000Z")
+  assert.equal(db.tables.eta_received_documents.find((x) => x.uuid === "R9")!.supplier_id, 4)
+  assert.equal(db.tables.eta_received_documents.length, 2)
+  assert.deepEqual(later.calls.details, [])
+})
+
+test("F54c. receive: 30-day windows; a busy period stops at the time budget and continues from the cursor; bad ranges refused", async () => {
+  assert.deepEqual(receiveWindows("2026-09-01", "2026-11-15").map((w) => `${w.from}..${w.to}`), ["2026-09-01..2026-09-30", "2026-10-01..2026-10-30", "2026-10-31..2026-11-15"])
+  assert.match(rangeError("2026-02-01", "2026-01-01")!, /start date/)
+  assert.match(rangeError("x", "2026-01-01")!, /look like/)
+  assert.match(rangeError("2024-01-01", "2026-01-01")!, /at most/)
+  assert.equal(rangeError("2026-09-01", "2026-11-15"), null)
+  const db = recvDb()
+  const { portal, calls } = receivePortal([[1, 2, 3, 4].map((i) => ({ uuid: `B${i}`, issuerId: "111222333", internalId: String(i), total: 10 * i }))])
+  let clock = 0
+  const deps = { portal, sleep: async (ms: number) => { clock += ms * 20 }, now: () => clock, budgetMs: 15_000 }
+  const parts: any[] = []
+  let cursor: any = null
+  for (let k = 0; k < 20; k++) {
+    clock = 0
+    const r = await receiveSupplierDocuments(db, "test", { from: "2026-10-01", to: "2026-11-15", cursor }, deps)
+    parts.push(r)
+    cursor = r.cursor
+    if (!cursor) break
+  }
+  assert.ok(parts.length > 2, `several parts (${parts.length})`)
+  assert.equal(parts.reduce((s, p) => s + p.added, 0), 4)
+  assert.deepEqual(new Set(calls.details).size, 4)
+  assert.equal(calls.details.length, 4, "a document is read once across parts")
+  assert.equal(db.tables.eta_received_documents.length, 4)
+  assert.equal(parts.reduce((s, p) => s + p.windows, 0), 2)
+  assert.deepEqual(receivedRow({ uuid: "X", typeName: "c", total: 50, netAmount: 40 }, {}, "real", null).document_type, "C")
+  assert.equal(receivedRow({ uuid: "X", total: 50, netAmount: 40 }, {}, "real", null).vat, 10, "VAT from total - net when no tax totals")
+})
+
+const sup54 = [
+  { supplier_id: 1, supplier_name: "Oil Co", tax_registration_number: "111222333" },
+  { supplier_id: 2, supplier_name: "Parts Co", tax_registration_number: "444555666" },
+  { supplier_id: 3, supplier_name: "Cash only", tax_registration_number: null },
+]
+const rec54 = (id: number, o: Partial<Record<string, any>>) => ({ received_id: id, document_type: "I", issuer_id: "111222333", supplier_id: 1, internal_id: null, date_issued: "2026-11-10T08:00:00Z", total: 100, status: "Valid", ...o })
+const ap54 = (id: number, o: Partial<Record<string, any>>) => ({ invoice_id: id, invoice_number: `AP-${id}`, supplier_id: 1, amount: 100, invoice_date: "2026-11-10", ...o })
+
+test("F54d. matching: by number, by amount + date, amount differs, missing in ERP, unknown supplier, missing on portal, credit note", () => {
+  assert.equal(numberKey("INV-00123"), "123"); assert.equal(numberKey("0"), "0"); assert.equal(numberKey("abc"), "")
+  assert.ok(AMOUNT_TOLERANCE === 1 && DATE_WINDOW_DAYS === 45)
+  const received = [
+    rec54(1, { internal_id: "INV-0012", total: 500 }), // number match (amount equal)
+    rec54(2, { internal_id: "77", total: 300 }), // number match, amount differs
+    rec54(3, { internal_id: "X", total: 250.6, date_issued: "2026-11-20T00:00:00Z" }), // amount + date
+    rec54(4, { internal_id: "", total: 999 }), // missing in ERP
+    rec54(5, { issuer_id: "999888777", supplier_id: null, total: 10 }), // unknown supplier
+    rec54(6, { document_type: "C", total: 40 }), // credit note
+    rec54(7, { issuer_id: "444555666", supplier_id: null, internal_id: "", total: 80, date_issued: "2026-11-01T00:00:00Z" }), // supplier by tax number, two equal candidates -> no guess
+  ]
+  const ap = [
+    ap54(10, { invoice_number: "12", amount: 500 }),
+    ap54(11, { invoice_number: "S-077", amount: 280 }),
+    ap54(12, { invoice_number: "AP-AAA", amount: 251, invoice_date: "2026-11-01" }),
+    ap54(13, { invoice_number: "AP-BBB", amount: 251, invoice_date: "2026-08-01" }), // too old for 3
+    ap54(14, { supplier_id: 2, invoice_number: "P-1", amount: 80, invoice_date: "2026-11-03" }),
+    ap54(15, { supplier_id: 2, invoice_number: "P-2", amount: 80, invoice_date: "2026-10-30" }),
+    ap54(16, { supplier_id: 3, invoice_number: "C-1", amount: 5 }), // supplier without tax number: never "missing on portal"
+    ap54(17, { invoice_number: "OLD", amount: 7, invoice_date: "2026-09-01" }), // outside the period
+  ]
+  const r = matchReceived(received, ap, sup54, { from: "2026-10-01", to: "2026-11-30" })
+  const by = Object.fromEntries(r.documents.map((m) => [m.receivedId, m]))
+  assert.deepEqual([by[1].status, by[1].apInvoiceId, by[1].by, by[1].difference], ["matched", 10, "number", 0])
+  assert.deepEqual([by[2].status, by[2].apInvoiceId, by[2].difference], ["amount_differs", 11, 20])
+  assert.deepEqual([by[3].status, by[3].apInvoiceId, by[3].by], ["matched", 12, "amount"])
+  assert.equal(by[4].status, "missing_in_erp")
+  assert.equal(by[5].status, "unknown_supplier")
+  assert.deepEqual([by[7].status, by[7].supplierId], ["missing_in_erp", 2], "two equally good candidates: no guess")
+  assert.equal(by[6], undefined, "credit notes are not matched")
+  assert.deepEqual(r.creditNotes.map((c) => [c.receivedId, c.supplierId]), [[6, 1]])
+  assert.deepEqual(r.missingOnPortal.map((m) => m.invoiceId), [14, 15], "13 and 17 are outside the period, 16's supplier has no tax number")
+  const oil = r.supplierTotals.find((t) => t.supplierId === 1)!
+  assert.deepEqual([oil.portal, oil.creditNotes], [round54(500 + 300 + 250.6 + 999 - 40), 40], "credit notes reduce the portal total")
+  // a cancelled document never takes the AP invoice from the standing one with the same number
+  const c = matchReceived([rec54(1, { internal_id: "12", status: "Cancelled" }), rec54(2, { internal_id: "12" })], [ap54(10, { invoice_number: "12" })], sup54)
+  assert.deepEqual(c.documents.map((m) => [m.receivedId, m.status]), [[1, "missing_in_erp"], [2, "matched"]])
+})
+
+test("F54e. routes: list with matches and the reverse list; sync refuses bad input; received PDF; permissions accountant / CEO / admin", async () => {
+  const db = recvDb({
+    eta_received_documents: [
+      { received_id: 1, uuid: "R1", environment: "test", document_type: "I", issuer_id: "111222333", supplier_id: 1, internal_id: "12", date_issued: "2026-11-10T08:00:00Z", net: 87.72, vat: 12.28, total: 100, status: "Valid" },
+      { received_id: 2, uuid: "R2", environment: "real", document_type: "I", issuer_id: "111222333", supplier_id: 1, internal_id: "13", date_issued: "2026-11-10T08:00:00Z", total: 100, status: "Valid" },
+      { received_id: 3, uuid: "R3", environment: "test", document_type: "C", issuer_id: "111222333", supplier_id: 1, internal_id: "14", date_issued: "2026-11-11T08:00:00Z", total: 20, status: "Valid" },
+    ],
+    accounts_payable: [ap54(10, { invoice_number: "12" }), ap54(11, { invoice_number: "NOPE", amount: 333 })],
+  })
+  useDb(db)
+  const res = await receivedRoute.GET(rq("GET", "/api/eta/received?from=2026-11-01&to=2026-11-30"))
+  assert.equal(res.status, 200)
+  const b = await res.json()
+  assert.equal(b.environment, "test")
+  assert.deepEqual(b.documents.map((d: any) => [d.receivedId, d.supplierName, d.match.status, d.match.apInvoiceNumber]), [[1, "Oil Co", "matched", "12"]], "only the selected environment")
+  assert.deepEqual(b.creditNotes.map((d: any) => d.receivedId), [3])
+  assert.deepEqual(b.missingOnPortal.map((m: any) => [m.invoiceNumber, m.supplierName]), [["NOPE", "Oil Co"]])
+  assert.equal((await receivedRoute.GET(rq("GET", "/api/eta/received?from=bad&to=2026-11-30"))).status, 400)
+  assert.equal((await receivedSyncRoute.POST(rq("POST", "/api/eta/received/sync", { from: "2026-11-30", to: "2026-11-01" }))).status, 400)
+  assert.equal((await receivedPdfRoute.GET(rq("GET", "/api/eta/received/x/pdf"), { params: Promise.resolve({ id: "x" }) })).status, 400)
+  assert.equal((await receivedPdfRoute.GET(rq("GET", "/api/eta/received/99/pdf"), { params: Promise.resolve({ id: "99" }) })).status, 404)
+  for (const path of ["/api/eta/received", "/api/eta/received/sync", "/api/eta/received/1/pdf"]) {
+    const rule = ruleFor(path)!
+    for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, path.endsWith("sync") ? "POST" : "GET", [role] as any), true, `${path} ${role}`)
+    for (const role of ["sales-rep", "po-rep", "warehouse-rep"]) assert.equal(allows(rule, path.endsWith("sync") ? "POST" : "GET", [role] as any), false, `${path} ${role}`)
+  }
+  assert.equal(JSON.stringify(db.tables.accounts_payable.map((a) => a.invoice_number)), JSON.stringify(["12", "NOPE"]), "AP unchanged")
+})
+
+test("F54f. /api/eta-sync: 401 without or with a wrong bearer (or no CRON_SECRET); the right bearer runs the last 2 days and the follow-up; daily cron in vercel.json", async () => {
+  const keep = process.env.CRON_SECRET
+  try {
+    delete process.env.CRON_SECRET
+    useDb(recvDb())
+    const call = (auth?: string) => etaSyncRoute.GET(rq("GET", "/api/eta-sync", undefined, { "x-mm-roles": "", ...(auth ? { authorization: auth } : {}) }))
+    assert.equal((await call("Bearer anything")).status, 401, "no secret configured")
+    process.env.CRON_SECRET = "s3cret"
+    assert.equal((await call()).status, 401)
+    assert.equal((await call("Bearer wrong")).status, 401)
+    assert.equal((await call("s3cret")).status, 401)
+    const ok = await call("Bearer s3cret")
+    assert.equal(ok.status, 200)
+    const body = await ok.json()
+    assert.equal(body.environment, "test")
+    assert.ok("followUp" in body && "received" in body)
+  } finally {
+    if (keep === undefined) delete process.env.CRON_SECRET
+    else process.env.CRON_SECRET = keep
+  }
+  assert.equal(cronAuthorized("Bearer a", "a"), true)
+  assert.equal(cronAuthorized("Bearer a", undefined), false)
+  assert.ok(PUBLIC_PATHS.includes("/api/eta-sync"))
+
+  const db = recvDb()
+  const { portal, calls } = receivePortal([[{ uuid: "D1", issuerId: "111222333", internalId: "1", total: 5 }]])
+  const r = await runDailySync(db, { receive: { portal, sleep: async () => {} }, credentialsSet: () => true, today: () => new Date("2026-11-16T03:17:00Z") })
+  assert.deepEqual(calls.search, ["2026-11-15T00:00:00Z|2026-11-16T23:59:59Z|"])
+  assert.equal((r.received as any).added, 1)
+  const none = await runDailySync(recvDb(), { credentialsSet: () => false })
+  assert.equal(none.received, null, "no credentials: no portal read")
+
+  const vercel = JSON.parse(readFileSync(join(process.env.REPO_ROOT || process.cwd(), "vercel.json"), "utf8"))
+  assert.deepEqual(vercel.crons, [{ path: "/api/eta-sync", schedule: "17 3 * * *" }])
+  assert.match(vercel.buildCommand, /bun run build/)
+})
+
+test("F54g. screen wired: Accounts Payable shows Supplier e-invoices; texts in EN and AR", () => {
+  const root = process.env.REPO_ROOT || process.cwd()
+  const ap = readFileSync(join(root, "components/modules/accounts-payable-module.tsx"), "utf8")
+  assert.match(ap, /<SupplierEInvoices \/>/)
+  const ui = readFileSync(join(root, "components/accounting/supplier-einvoices.tsx"), "utf8")
+  for (const s of ["/api/eta/received/sync", "/api/eta/received?from=", "/pdf", "cursor"]) assert.ok(ui.includes(s), s)
+  const i18n = readFileSync(join(root, "lib/i18n-context.tsx"), "utf8")
+  const keys = [...new Set([...ui.matchAll(/t\(\s*[`"](eta\.sup-[a-z_-]+)/g)].map((m) => m[1]).filter((k) => !k.endsWith("-")))]
+  for (const k of ["matched", "amount_differs", "missing_in_erp", "unknown_supplier"]) keys.push(`eta.sup-status-${k}`)
+  for (const k of keys) assert.equal(i18n.split(`"${k}":`).length - 1, 2, `${k} in EN and AR`)
 })
