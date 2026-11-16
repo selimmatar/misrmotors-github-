@@ -70,7 +70,7 @@ test("responseAction: 401 AUTH_REQUIRED logs out; 403 FORBIDDEN only tells; othe
 })
 
 test("start screen: asks who is logged in, keeps the role picker only when logins are off", () => {
-  const page = read("app/page.tsx")
+  const page = read("components/home/home-client.tsx")
   assert.match(page, /fetch\("\/api\/auth\/me"/)
   assert.match(page, /fetch\("\/api\/auth\/logout", \{ method: "POST" \}\)/)
   assert.match(page, /mustChangePassword/)

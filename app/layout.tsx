@@ -14,8 +14,19 @@ const almarai = Almarai({
 })
 
 export const metadata: Metadata = {
-  title: "Misr Motors",
-  description: "Misr Motors Management System",
+  metadataBase: new URL("https://misrmotors.app"),
+  title: "Misr Motors | مصر موتورز",
+  description:
+    "Misr Motors Management System - vehicle sales, spare parts, service orders, invoicing and reporting. نظام إدارة مصر موتورز.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "Misr Motors | مصر موتورز",
+    description: "Automotive dealership and workshop management system.",
+    url: "https://misrmotors.app",
+    siteName: "Misr Motors",
+    type: "website",
+  },
+  robots: { index: true, follow: true },
   generator: "v0.app",
   icons: {
     icon: "/icon.svg",

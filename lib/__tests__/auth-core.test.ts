@@ -249,7 +249,7 @@ test("final review: logging out always works, even after the idle timeout or wit
 })
 
 test("final review: a session ended for inactivity is really closed (start screen calls logout)", () => {
-  const page = srcK("app/page.tsx")
+  const page = srcK("components/home/home-client.tsx")
   const onLogout = page.slice(page.indexOf("onLogout:"), page.indexOf("onForbidden:"))
   assert.match(onLogout, /fetch\("\/api\/auth\/logout", \{ method: "POST" \}\)/)
 })
