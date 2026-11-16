@@ -143,6 +143,7 @@ declare
   v_status text;
   v_name text;
   v_has_payments boolean;
+  v_ret_permits text[];
 begin
   if v_amount is null or v_amount <= 0 then
     raise exception 'The new invoice has no amount.' using errcode = 'P0001', hint = 'REISSUE_BAD_ROW';
@@ -159,6 +160,34 @@ begin
   ) then
     raise exception 'The new invoice must include every delivery permit of invoice %.', v_old.invoice_number
       using errcode = 'P0001', hint = 'REISSUE_MISSING_PERMITS';
+  end if;
+  -- a whole-order invoice (no links) reissued from delivery permits takes every permit of its order (P16)
+  if cardinality(v_permits) > 0
+    and not exists (select 1 from public.invoice_delivery_permits l where l.invoice_id = p_old)
+    and exists (
+      select 1 from public.delivery_permits d
+      where d.sales_order_id = v_old.so_id and d.status is distinct from 'REJECTED' and not (d.permit_id = any(v_permits))
+    ) then
+    raise exception 'The new invoice must include every delivery permit of invoice %.', v_old.invoice_number
+      using errcode = 'P0001', hint = 'REISSUE_MISSING_PERMITS';
+  end if;
+
+  -- P14: returns on the old invoice's permits (all the order's permits for a whole-order invoice) that already gave
+  -- the customer a credit are billed less by the new invoice, so those credits are settled by it; one already used
+  -- (in part) refuses the reissue.
+  select coalesce(array_agg(l.permit_id::text), '{}'::text[]) into v_ret_permits
+    from public.invoice_delivery_permits l where l.invoice_id = p_old;
+  if cardinality(v_ret_permits) = 0 then
+    select coalesce(array_agg(d.permit_id::text), '{}'::text[]) into v_ret_permits
+      from public.delivery_permits d where d.sales_order_id = v_old.so_id;
+  end if;
+  if exists (
+    select 1 from public.customer_credits c
+    where c.credit_type = 'sales_return' and c.reference_type = 'product_return' and c.status is distinct from 'active'
+      and c.reference_id in (select r.return_id from public.product_returns r where r.permit_id::text = any(v_ret_permits))
+  ) then
+    raise exception 'A return credit from this invoice was already used. Un-apply it first.'
+      using errcode = 'P0001', hint = 'REISSUE_RETURN_CREDIT_USED';
   end if;
 
   v_collected := round(coalesce(v_old.collected_amount, 0), 2);
@@ -212,6 +241,11 @@ begin
   update public.payment_schedules set invoice_id = v_new_id
     where invoice_id = p_old and coalesce(schedule_type, '') <> 'payable' and not (po_id is not null and so_id is null);
   update public.customer_credits set used_in_invoice_id = v_new_id where used_in_invoice_id = p_old;
+  update public.customer_credits c
+    set status = 'used', used_at = now(), used_in_invoice_id = v_new_id,
+        notes = concat_ws(' | ', nullif(c.notes, ''), 'Settled by corrected invoice ' || (p_new_row->>'invoice_number') || ': it bills the returned goods less')
+    where c.credit_type = 'sales_return' and c.reference_type = 'product_return' and c.status = 'active'
+      and c.reference_id in (select r.return_id from public.product_returns r where r.permit_id::text = any(v_ret_permits));
   if v_excess > 0.005 then
     insert into public.customer_credits (customer_id, amount, status, credit_type, reference_type, reference_id, invoice_id, description, notes)
     values (
@@ -254,6 +288,10 @@ begin
   update public.customer_payments set invoice_id = v_old.invoice_id where invoice_id = p_new;
   update public.payment_schedules set invoice_id = v_old.invoice_id
     where invoice_id = p_new and coalesce(schedule_type, '') <> 'payable' and not (po_id is not null and so_id is null);
+  update public.customer_credits c
+    set status = 'active', used_at = null, used_in_invoice_id = null,
+        notes = nullif(regexp_replace(coalesce(c.notes, ''), '( \| )?Settled by corrected invoice .*$', ''), '')
+    where c.used_in_invoice_id = p_new and c.credit_type = 'sales_return' and c.notes like '%Settled by corrected invoice %';
   update public.customer_credits set used_in_invoice_id = v_old.invoice_id where used_in_invoice_id = p_new;
   update public.accounts_receivable
     set collected_amount = round(coalesce(v_new.collected_amount, 0) + v_credit, 2), months_paid = coalesce(v_new.months_paid, 0), replaced_by_invoice_id = null

@@ -2121,3 +2121,135 @@ test("F39. everything of a corrected invoice returned: nothing left to invoice, 
   assert.equal(plain.status, 409)
   assert.match(plain.body.error, /^Nothing to invoice/)
 })
+
+// ---- F40-F42: no double-counted return credits; order edits scoped to the correction (rulings P14-P16) ----
+const returned7 = (db: FakeDb, returnId: number, qty: number, at: string) => {
+  db.tables.product_returns.push({ return_id: returnId, permit_id: "1", so_id: 1, so_number: "SO-7", status: "received", created_at: at })
+  db.tables.return_items.push({ return_item_id: returnId, return_id: returnId, product_id: 100, product_name: "Pump", returned_quantity: qty })
+}
+
+test("F40. a return credited before the correction is settled by the reissue (owes 142, not -86); a used return credit refuses it", async () => {
+  const db = reissueDb()
+  db.clock = Date.parse("2026-11-16T10:00:00Z")
+  returned7(db, 1, 2, "2026-11-05T10:00:00Z")
+  assert.deepEqual(await creditInvoicedReturn(db, { return_id: 1, so_id: 1, permit_id: "1" }), { amount: 228 })
+  assert.equal(await owes(db), 142)
+  await startReissue(db, 10, 7)
+  const snap = mirror(db)
+  const made = await createDpInvoices(db, [1])
+  assert.equal(made.status, 200, JSON.stringify(made.body))
+  const newId = made.body.invoices[0].invoice_id
+  assert.equal(made.body.invoices[0].amount, 342, "3 kept units")
+  assert.equal(await owes(db), 142, "the return is counted once")
+  const credit = db.tables.customer_credits[0]
+  assert.deepEqual([credit.status, credit.used_in_invoice_id, credit.amount], ["used", newId, 228])
+  assert.match(credit.notes, /Settled by corrected invoice/)
+  // the stand-in's undo gives the credit back
+  etaUndoReissue(db, { p_new: newId, p_moved_permit_ids: [1] })
+  assert.deepEqual([db.tables.customer_credits[0].status, db.tables.customer_credits[0].used_in_invoice_id, db.tables.customer_credits[0].notes], ["active", null, null])
+  assert.equal(JSON.stringify(db.tables.accounts_receivable), JSON.stringify(JSON.parse(snap).accounts_receivable))
+
+  // the return credit was already applied (in part) to an invoice: refused, nothing changed
+  const used = reissueDb()
+  used.clock = Date.parse("2026-11-16T10:00:00Z")
+  returned7(used, 1, 2, "2026-11-05T10:00:00Z")
+  await creditInvoicedReturn(used, { return_id: 1, so_id: 1, permit_id: "1" })
+  Object.assign(used.tables.customer_credits[0], { status: "used", amount: 100, used_in_invoice_id: 10 })
+  used.tables.customer_credits.push({ ...used.tables.customer_credits[0], credit_id: 99, status: "active", amount: 128, used_in_invoice_id: null })
+  await startReissue(used, 10, 7)
+  const before = mirror(used)
+  const refused = await createDpInvoices(used, [1])
+  assert.equal(refused.status, 409)
+  assert.equal(refused.body.code, "REISSUE_RETURN_CREDIT_USED")
+  assert.equal(refused.body.error, "A return credit from this invoice was already used. Un-apply it first.")
+  assert.match(refused.body.errorAr, /[؀-ۿ]/)
+  assert.equal(mirror(used), before)
+})
+
+// SO 1 split: DP-1 (Pump) on the corrected INV-2026-0010, DP-2 (Belt) on the live INV-2026-0011
+function splitDb() {
+  const db = reissueDb()
+  db.tables.sales_order_items.push({ so_item_id: 2, so_id: 1, product_id: 101, outsourced_name: null, quantity: 1, unit_price: 50, total: 50, item_type: "stock" })
+  db.tables.delivery_permits.push({ permit_id: 2, permit_no: "DP-7-2", sales_order_id: 1, customer_id: 5, status: "APPROVED", invoice_id: 11 })
+  db.tables.delivery_permit_items.push({ item_id: 12, permit_id: 2, product_id: 101, item_name_snapshot: "Belt", quantity: 1, unit_price: 50, total: 50, warehouse_id: 1 })
+  db.tables.accounts_receivable.push({ ...db.tables.accounts_receivable[0], invoice_id: 11, invoice_number: "INV-2026-0011", amount: 57, collected_amount: 0, balance: 57, months_paid: 0, status: "pending", source_delivery_permit_id: 2 })
+  db.tables.invoice_delivery_permits.push({ invoice_id: 11, permit_id: 2 })
+  return db
+}
+
+test("F41. order edits during a correction: only the correction's lines; no customer change while another invoice counts; the permits' customer moves all or nothing", async () => {
+  const pump = (extra: Row = {}) => ({ id: "1", productId: "100", productName: "Pump", quantity: 5, unitPrice: 100, total: 500, ...extra })
+  const belt = (extra: Row = {}) => ({ id: "2", productId: "101", productName: "Belt", quantity: 1, unitPrice: 50, total: 50, ...extra })
+  const db = splitDb()
+  await startReissue(db, 10, 7)
+  // the Belt is billed by the live INV-2026-0011: locked
+  let r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", items: [pump(), belt({ unitPrice: 40, total: 40 })] })
+  assert.equal(r.status, 409)
+  assert.match(r.body.error, /"Belt" is on a delivery permit/)
+  assert.equal(db.tables.delivery_permit_items[1].unit_price, 50)
+  // the customer can't move while INV-2026-0011 still counts
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", customerId: 6 })
+  assert.equal(r.status, 409)
+  assert.match(r.body.error, /INV-2026-0011/)
+  assert.deepEqual(db.tables.delivery_permits.map((p) => p.customer_id), [5, 5])
+  assert.equal(db.tables.sales_orders[0].customer_id, 5)
+  // the Pump sits only on the correction's DP-1: it can be corrected
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", items: [pump({ unitPrice: 90, total: 450 }), belt()] })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.deepEqual(db.tables.delivery_permit_items.map((i) => i.unit_price), [90, 50])
+
+  // the permits can't follow the new customer: refused, nothing changed
+  const m = reissueDb()
+  await startReissue(m, 10, 7)
+  m.failOn["delivery_permits:update"] = "boom"
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", customerId: 6 })
+  assert.equal(r.status, 500)
+  assert.equal(r.body.code, "PERMIT_CUSTOMER_NOT_MOVED")
+  assert.equal(m.tables.sales_orders[0].customer_id, 5)
+  assert.equal(m.tables.delivery_permits[0].customer_id, 5)
+  // the order itself fails after the permits moved: they move back
+  const o = reissueDb()
+  await startReissue(o, 10, 7)
+  o.failOn["sales_orders:update"] = "boom"
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", customerId: 6 })
+  assert.equal(r.status, 500)
+  assert.equal(o.tables.sales_orders[0].customer_id, 5)
+  assert.equal(o.tables.delivery_permits[0].customer_id, 5)
+})
+
+test("F42. whole-order and permit invoices are reissued the same way; a correction that can't be undone says so", async () => {
+  // a delivery-permit invoice is not reissued as a whole-order invoice
+  const dp = reissueDb()
+  await startReissue(dp, 10, 7)
+  const so = await createSoInvoice(dp, 1)
+  assert.equal(so.status, 409)
+  assert.equal(so.body.code, "REISSUE_USE_PERMITS")
+  assert.equal(ar7(dp, 10).replaced_by_invoice_id, null)
+  // a whole-order invoice reissued from permits takes every permit of the order
+  const w = reissueDb({ wholeOrder: true })
+  Object.assign(w.tables.sales_order_items[0], { quantity: 6, total: 600 })
+  Object.assign(w.tables.sales_orders[0], { total: 684, subtotal: 600 })
+  w.tables.delivery_permits.push({ permit_id: 2, permit_no: "DP-7-2", sales_order_id: 1, customer_id: 5, status: "APPROVED", invoice_id: null })
+  w.tables.delivery_permit_items.push({ item_id: 12, permit_id: 2, product_id: 100, item_name_snapshot: "Pump", quantity: 1, unit_price: 100, total: 100, warehouse_id: 1 })
+  await startReissue(w, 10, 7)
+  const part = await createDpInvoices(w, [1])
+  assert.equal(part.status, 409)
+  assert.equal(part.body.code, "REISSUE_MISSING_PERMITS")
+  assert.match(part.body.error, /DP-7-2/)
+  assert.throws(() => etaReissueInvoice(w, { p_old: 10, p_new_row: { invoice_number: "INV-Y", amount: 570, customer_id: 5 }, p_permit_ids: [1] }), (e: any) => e.hint === "REISSUE_MISSING_PERMITS")
+  const all = await createDpInvoices(w, [1, 2])
+  assert.equal(all.status, 200, JSON.stringify(all.body))
+  assert.equal(all.body.replacesInvoiceId, 10)
+
+  // correctPermit: the permit line can't be put back after a failure -> partial failure, never "nothing was changed"
+  const c = reissueDb()
+  await startReissue(c, 10, 7)
+  c.failOn["dp_corrections:insert"] = "boom"
+  c.failOn["delivery_permit_items:update"] = "boom"
+  c.failAfter["delivery_permit_items:update"] = 1
+  const res = await correctPermit(c, 1, [{ permitItemId: 11, quantity: 3 }], 7)
+  assert.equal(res.ok, false)
+  assert.equal((res as any).code, "partial_failure")
+  assert.ok(!/Nothing was changed/.test((res as any).message), (res as any).message)
+  assert.match((res as any).message, /permit quantities/)
+})

@@ -128,6 +128,30 @@ export async function correctionPermitIds(db: Db, soId: number): Promise<number[
   return [...ids].sort((a, b) => a - b)
 }
 
+export interface OrderCorrectionScope {
+  /** the permits of the order's open corrections: only lines that sit on these (or on no permit) may change */
+  permitIds: number[]
+  /** the order's other invoices that still count (not replaced): while there is one, the customer can't change */
+  liveInvoiceNumbers: string[]
+}
+
+/** What a sales-order edit may touch while the order has an open correction (ruling P15); null without one. */
+export async function orderCorrectionScope(db: Db, soId: number): Promise<OrderCorrectionScope | null> {
+  const permitIds = await correctionPermitIds(db, soId)
+  const corrections = await openCorrectionsForOrder(db, soId)
+  if (corrections.length === 0) return null
+  const permits = must(await db.from("delivery_permits").select("permit_id").eq("sales_order_id", soId), "load delivery permits") as any[]
+  const all = permits.map((p) => Number(p.permit_id))
+  const links = all.length ? (must(await db.from("invoice_delivery_permits").select("invoice_id").in("permit_id", all), "load invoice links") as any[]) : []
+  const bySo = must(await db.from("accounts_receivable").select("invoice_id, invoice_number, status").eq("so_id", soId), "load order invoices") as any[]
+  const linkedIds = [...new Set(links.map((l) => l.invoice_id))].filter((id) => !bySo.some((r) => r.invoice_id === id))
+  const byLink = linkedIds.length
+    ? (must(await db.from("accounts_receivable").select("invoice_id, invoice_number, status").in("invoice_id", linkedIds), "load linked invoices") as any[])
+    : []
+  const live = [...bySo, ...byLink].filter((r) => r.status !== REPLACED_AR_STATUS)
+  return { permitIds, liveInvoiceNumbers: live.map((r) => r.invoice_number || `#${r.invoice_id}`) }
+}
+
 /** Spec interface: the open correction (its old invoice) of a sales order or a delivery permit, or null. */
 export async function openCorrection(db: Db, by: { soId?: number; permitId?: number }): Promise<{ oldInvoiceId: number } | null> {
   if (by.permitId) {
@@ -151,6 +175,15 @@ export const paymentsOtherCustomerMessage = (customer: string) => ({
   message: `This invoice has payments from ${customer}. Move or refund them first`,
   messageAr: `على هذه الفاتورة مدفوعات من ${customer}. انقلها إلى العميل الصحيح أو ردّها أولاً`,
 })
+
+/** Arabic for the database function's refusals shown to the accountant. */
+const REISSUE_MESSAGES_AR: Record<string, string> = {
+  REISSUE_RETURN_CREDIT_USED: "تم استخدام رصيد دائن ناتج عن مرتجع من هذه الفاتورة. ألغِ استخدامه أولاً.",
+  REISSUE_MISSING_PERMITS: "يجب أن تشمل الفاتورة الجديدة كل أذون التسليم الخاصة بالفاتورة القديمة.",
+  REISSUE_OVERPAID: "المدفوعات أكبر من الفاتورة الجديدة. أكّد لحفظ الفرق رصيداً دائناً للعميل.",
+  REISSUE_NOT_OPEN: "الفاتورة ليست قيد التصحيح.",
+  REISSUE_PERMIT_TAKEN: "أحد أذون التسليم مفوتر بالفعل.",
+}
 
 export class ReissueRefused extends Error {
   constructor(readonly code: string, message: string, readonly messageAr?: string) {
@@ -186,7 +219,7 @@ export async function reissueInvoice(
       const text = paymentsOtherCustomerMessage(name)
       throw new ReissueRefused(code, text.message, text.messageAr)
     }
-    if (code.startsWith("REISSUE_")) throw new ReissueRefused(code, String(error.message))
+    if (code.startsWith("REISSUE_")) throw new ReissueRefused(code, String(error.message), REISSUE_MESSAGES_AR[code])
     throw new Error(`reissue invoice: ${error.message || error}`)
   }
   const id = Number(Array.isArray(data) ? data[0] : data)

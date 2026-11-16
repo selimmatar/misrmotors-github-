@@ -901,6 +901,14 @@ export async function createSoInvoice(db: Db, soId: number, options: CreateInvoi
     const corrections = await openCorrectionsForOrder(db, soId)
     if (corrections.length > 1) return failure(409, `Sales order ${soLabel(state)} has more than one invoice being corrected. Create each new invoice from its own delivery permits.`, { code: "REISSUE_AMBIGUOUS" })
     const correction = corrections[0] || null
+    // P16: an invoice made from delivery permits is reissued from its permits (their links move with it)
+    if (correction && correction.permitIds.length > 0) {
+      const old = correction.invoiceNumber || `#${correction.invoiceId}`
+      return failure(409, `${old} was made from delivery permits. Create the corrected invoice from the same delivery permits.`, {
+        code: "REISSUE_USE_PERMITS",
+        errorAr: `الفاتورة ${old} صدرت من أذون تسليم. أنشئ الفاتورة المصححة من أذون التسليم نفسها.`,
+      })
+    }
     if (correction) {
       const overpaid = options.confirmOverpaid === true ? null : overpaidRefusal(correction, priced.amount)
       if (overpaid) return overpaid
@@ -1023,7 +1031,13 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
 
     // The reissue takes over every delivery permit of the old invoice (its links move to the new invoice).
     if (correction) {
-      const missingIds = correction.permitIds.filter((id) => !group.some((p) => p.permit_id === id))
+      // a whole-order invoice (no links) covered every permit of its order (P16)
+      const required = correction.permitIds.length > 0
+        ? correction.permitIds
+        : (must(await db.from("delivery_permits").select("permit_id, status").eq("sales_order_id", correction.soId), "load delivery permits") as any[])
+            .filter((p) => p.status !== "REJECTED")
+            .map((p) => Number(p.permit_id))
+      const missingIds = required.filter((id) => !group.some((p) => p.permit_id === id))
       if (missingIds.length > 0) {
         const rows = must(await db.from("delivery_permits").select("permit_id, permit_no").in("permit_id", missingIds), "load delivery permits") as any[]
         const names = missingIds.map((id) => rows.find((r) => r.permit_id === id)?.permit_no || `#${id}`)

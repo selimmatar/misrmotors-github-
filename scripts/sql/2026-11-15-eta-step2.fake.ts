@@ -51,6 +51,15 @@ export function etaReissueInvoice(db: FakeDb, args: { p_old: number; p_new_row: 
     if (permits.length > 0 && links.some((l) => l.invoice_id === args.p_old && !permits.includes(l.permit_id)))
       raise("REISSUE_MISSING_PERMITS", `The new invoice must include every delivery permit of invoice ${old!.invoice_number}.`)
 
+    const oldLinked = links.some((l) => l.invoice_id === args.p_old)
+    if (permits.length > 0 && !oldLinked && t("delivery_permits").some((d) => d.sales_order_id === old!.so_id && d.status !== "REJECTED" && !permits.includes(d.permit_id)))
+      raise("REISSUE_MISSING_PERMITS", `The new invoice must include every delivery permit of invoice ${old!.invoice_number}.`)
+    // P14: the return credits of the old invoice's permits (all the order's permits for a whole-order invoice)
+    const retPermits = (oldLinked ? links.filter((l) => l.invoice_id === args.p_old).map((l) => l.permit_id) : t("delivery_permits").filter((d) => d.sales_order_id === old!.so_id).map((d) => d.permit_id)).map(String)
+    const retIds = t("product_returns").filter((r) => retPermits.includes(String(r.permit_id))).map((r) => r.return_id)
+    const returnCredits = t("customer_credits").filter((c) => c.credit_type === "sales_return" && c.reference_type === "product_return" && retIds.includes(c.reference_id))
+    if (returnCredits.some((c) => c.status !== "active")) raise("REISSUE_RETURN_CREDIT_USED", "A return credit from this invoice was already used. Un-apply it first.")
+
     const collected = round2(Number(old!.collected_amount) || 0)
     const hasPayments =
       collected > 0.005 || t("customer_payments").some((p) => p.invoice_id === args.p_old) || t("customer_credits").some((c) => c.used_in_invoice_id === args.p_old)
@@ -101,6 +110,12 @@ export function etaReissueInvoice(db: FakeDb, args: { p_old: number; p_new_row: 
     for (const p of t("customer_payments")) if (p.invoice_id === args.p_old) p.invoice_id = newId
     for (const s of t("payment_schedules")) if (s.invoice_id === args.p_old && isReceivableSchedule(s)) s.invoice_id = newId
     for (const c of t("customer_credits")) if (c.used_in_invoice_id === args.p_old) c.used_in_invoice_id = newId
+    for (const c of returnCredits) {
+      Object.assign(c, {
+        status: "used", used_at: new Date(db.clock).toISOString(), used_in_invoice_id: newId,
+        notes: [c.notes || null, `Settled by corrected invoice ${number}: it bills the returned goods less`].filter(Boolean).join(" | "),
+      })
+    }
     if (excess > 0.005) {
       const note = `Overpayment on ${number} (moved from ${old!.invoice_number})`
       insertRow(db, "customer_credits", "credit_id", {
@@ -129,6 +144,11 @@ export function etaUndoReissue(db: FakeDb, args: { p_new: number; p_moved_permit
     const oldId = old!.invoice_id
     for (const p of t("customer_payments")) if (p.invoice_id === args.p_new) p.invoice_id = oldId
     for (const s of t("payment_schedules")) if (s.invoice_id === args.p_new && isReceivableSchedule(s)) s.invoice_id = oldId
+    for (const c of t("customer_credits")) {
+      if (c.used_in_invoice_id === args.p_new && c.credit_type === "sales_return" && String(c.notes || "").includes("Settled by corrected invoice ")) {
+        Object.assign(c, { status: "active", used_at: null, used_in_invoice_id: null, notes: String(c.notes).replace(/( \| )?Settled by corrected invoice .*$/, "") || null })
+      }
+    }
     for (const c of t("customer_credits")) if (c.used_in_invoice_id === args.p_new) c.used_in_invoice_id = oldId
     const collected = round2((Number(fresh!.collected_amount) || 0) + credit)
     Object.assign(old!, { collected_amount: collected, months_paid: fresh!.months_paid || 0, replaced_by_invoice_id: null, balance: round2((Number(old!.amount) || 0) - collected) })

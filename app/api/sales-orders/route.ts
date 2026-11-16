@@ -9,7 +9,7 @@ import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status
 import { correctionPermitUpdates, markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit, type PermitLineUpdate } from "@/lib/so-edit"
 import { refreshSoFulfilment } from "@/lib/goods-receiving"
 import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
-import { correctionPermitIds, openCorrection } from "@/lib/eta/correction"
+import { orderCorrectionScope } from "@/lib/eta/correction"
 
 export const dynamic = "force-dynamic"
 
@@ -703,10 +703,12 @@ export async function PUT(request: Request) {
       dbUpdates.status = current?.[0]?.entity_type === "quotation" ? "rejected_quotation" : "cancelled"
     }
 
-    // An order whose invoice was reversed on the portal and is being corrected (spec §6.5a) may change its customer and
-    // the price / quantity of delivered lines until the new invoice exists; otherwise the usual locks apply.
-    const correcting = (await openCorrection(supabase, { soId: numericId })) !== null
-    const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items, openCorrection: correcting })
+    // An order whose invoice was reversed on the portal and is being corrected (spec §6.5a, P15) may change the price /
+    // quantity of lines that sit only on the correction's permits, and its customer when no other invoice of the order
+    // still counts, until the new invoice exists; otherwise the usual locks apply.
+    const correction = await orderCorrectionScope(supabase, numericId)
+    const correcting = correction !== null
+    const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items, correction })
     if (!editVerdict.ok) {
       return NextResponse.json({ error: editVerdict.error }, { status: editVerdict.status })
     }
@@ -714,7 +716,7 @@ export async function PUT(request: Request) {
     // here, before anything is written; applied after the order lines are saved).
     let permitLineUpdates: PermitLineUpdate[] = []
     if (correcting && items) {
-      const plan = await correctionPermitUpdates(supabase, numericId, items, await correctionPermitIds(supabase, numericId))
+      const plan = await correctionPermitUpdates(supabase, numericId, items, correction.permitIds)
       if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status })
       permitLineUpdates = plan.updates
     }
@@ -728,6 +730,48 @@ export async function PUT(request: Request) {
     }
 
 
+    // A customer corrected during an open correction (P15): the order's delivery permits follow it, so the records
+    // agree. Written BEFORE the order: if the permits can't move, nothing is changed; if the order then fails, they move back.
+    let movedPermits: { permit_id: number; customer_id: number | null }[] = []
+    const putPermitsBack = async () => {
+      const failed: number[] = []
+      for (const p of movedPermits) {
+        const { error: backError } = await supabase.from("delivery_permits").update({ customer_id: p.customer_id }).eq("permit_id", p.permit_id)
+        if (backError) failed.push(p.permit_id)
+      }
+      if (failed.length) console.error("Sales Orders PUT: could not put the delivery permits back on their customer:", failed)
+      return failed
+    }
+    if (correcting && dbUpdates.customer_id !== undefined) {
+      const { data: current } = await supabase.from("sales_orders").select("customer_id").eq("so_id", numericId).maybeSingle()
+      if (current && Number(current.customer_id) !== Number(dbUpdates.customer_id)) {
+        const { data: permitRows, error: permitReadError } = await supabase.from("delivery_permits").select("permit_id, customer_id").eq("sales_order_id", numericId)
+        if (permitReadError) return NextResponse.json({ error: "Could not read the delivery permits of the order. Nothing was changed." }, { status: 500 })
+        const { data: moved, error: moveError } = await supabase
+          .from("delivery_permits")
+          .update({ customer_id: Number(dbUpdates.customer_id) })
+          .eq("sales_order_id", numericId)
+          .select("permit_id")
+        // one statement: when it errors nothing moved; when it moved only some, those are put back
+        if (moveError) {
+          return NextResponse.json({ error: "The delivery permits could not follow the new customer. Nothing was changed.", code: "PERMIT_CUSTOMER_NOT_MOVED" }, { status: 500 })
+        }
+        movedPermits = (permitRows || []).map((p: any) => ({ permit_id: p.permit_id, customer_id: p.customer_id ?? null }))
+        if (!moved || moved.length !== movedPermits.length) {
+          const failed = await putPermitsBack()
+          return NextResponse.json(
+            {
+              error: failed.length
+                ? "The delivery permits could not follow the new customer and could not all be put back. Contact an administrator."
+                : "The delivery permits could not follow the new customer. Nothing was changed.",
+              code: "PERMIT_CUSTOMER_NOT_MOVED",
+            },
+            { status: 500 },
+          )
+        }
+      }
+    }
+
     const { data: order, error: orderError } = await supabase
       .from("sales_orders")
       .update(dbUpdates)
@@ -736,22 +780,15 @@ export async function PUT(request: Request) {
       .maybeSingle()
 
     if (orderError) {
+      await putPermitsBack()
       console.error("Sales Orders PUT: Error updating order", JSON.stringify(orderError), "ID:", numericId, "Updates:", JSON.stringify(dbUpdates))
       return NextResponse.json({ error: `Database error: ${orderError.message || orderError.code || "Unknown"}` }, { status: 500 })
     }
 
     if (!order || !order.so_id) {
+      await putPermitsBack()
       console.error("Sales Orders PUT: No order data returned for ID:", numericId)
       return NextResponse.json({ error: `Sales order ${numericId} not found or update blocked by RLS policy` }, { status: 404 })
-    }
-
-    // A customer corrected during an open correction: the order's delivery permits follow it, so the records agree.
-    if (correcting && dbUpdates.customer_id !== undefined) {
-      const { error: permitCustomerError } = await supabase
-        .from("delivery_permits")
-        .update({ customer_id: Number(dbUpdates.customer_id) })
-        .eq("sales_order_id", numericId)
-      if (permitCustomerError) console.error("Sales Orders PUT: could not move the delivery permits to the corrected customer:", permitCustomerError.message)
     }
 
 

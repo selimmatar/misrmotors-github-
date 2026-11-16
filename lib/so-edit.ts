@@ -12,9 +12,10 @@
 //     (delivered / permitted items are locked; extra quantity goes on a new line, see lib/so-edit-eligibility.ts),
 //   * change the customer once delivery permits exist.
 // Nothing here writes; the PUT route calls validateSoEdit BEFORE it changes anything.
-// While the order has an invoice open for correction (spec §6.5a, `openCorrection`), the sales-order screen may also
-// change the customer and the quantity and price of permitted lines (as for a line with a return: never below what
-// the customer keeps); removing a kept line or turning it into another item stays refused.
+// While the order has an invoice open for correction (spec §6.5a, `correction`, ruling P15), the sales-order screen may
+// also change the quantity and price of a line whose item sits only on the correction's permits (as for a line with a
+// return: never below what the customer keeps), and the customer when no other invoice of the order still counts;
+// removing a kept line or turning it into another item stays refused. Lines on other permits stay locked.
 import { isSOFullyDelivered } from "./delivery-status"
 import { computeWholeOrderAmount, loadSoInvoicingState } from "./invoicing"
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey } from "./return-lines"
@@ -35,8 +36,12 @@ function incomingKey(item: any): string {
   return lineKey(Number.isNaN(productId as number) ? null : productId, name)
 }
 
-export async function validateSoEdit(db: Db, soId: number, input: { customerId?: any; items?: any[]; openCorrection?: boolean }): Promise<SoEditVerdict> {
-  const correcting = input.openCorrection === true
+export async function validateSoEdit(
+  db: Db,
+  soId: number,
+  input: { customerId?: any; items?: any[]; correction?: { permitIds: number[]; liveInvoiceNumbers: string[] } | null },
+): Promise<SoEditVerdict> {
+  const correction = input.correction || null
   const so = must(await db.from("sales_orders").select("so_id, so_number, customer_id").eq("so_id", soId).maybeSingle(), "load sales order")
   if (!so) return { ok: true } // the route reports "not found" itself
 
@@ -46,8 +51,15 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
   if (permits.length === 0) return { ok: true } // nothing delivered yet: ordinary editing rules
 
   const soLabel = so.so_number || `#${so.so_id}`
-  if (!correcting && input.customerId !== undefined && input.customerId !== null && input.customerId !== "" && Number(input.customerId) !== so.customer_id) {
-    return { ok: false, status: 409, error: `The customer of ${soLabel} cannot be changed once delivery permits exist.` }
+  if (input.customerId !== undefined && input.customerId !== null && input.customerId !== "" && Number(input.customerId) !== so.customer_id) {
+    if (!correction) return { ok: false, status: 409, error: `The customer of ${soLabel} cannot be changed once delivery permits exist.` }
+    if (correction.liveInvoiceNumbers.length > 0) {
+      return {
+        ok: false,
+        status: 409,
+        error: `The customer of ${soLabel} cannot be changed while other invoices of the order still count (${correction.liveInvoiceNumbers.join(", ")}).`,
+      }
+    }
   }
   if (!input.items) return { ok: true }
 
@@ -74,6 +86,11 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
     const permit = permits.find((p) => p.permit_id === item.permit_id)
     if (permit && DELIVERED_PERMIT_STATUSES.includes(permit.status)) delivered.set(key, (delivered.get(key) || 0) + (Number(item.quantity) || 0))
   }
+  // a line may be corrected only when its item sits on no permit outside the open correction(s)
+  const outside = new Set(
+    permitItems.filter((i) => !(correction?.permitIds || []).includes(Number(i.permit_id))).map((i) => lineKey(i.product_id, i.item_name_snapshot)),
+  )
+  const unlocked = (key: string) => correction !== null && !outside.has(key)
   const label = (key: string) => names.get(key) || key.slice(2) || "this item"
   // What the customer has or is about to get: on live permits, less what came back. A returned / refused quantity is
   // free again: it may be edited, removed or put on a new delivery permit.
@@ -90,7 +107,7 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
     const key = lineKey(row.product_id, row.outsourced_name)
     if (!onPermit.has(key)) continue
     const incoming = incomingById.get(row.so_item_id)
-    if (!correcting && (returns.get(key) || 0) <= EPS) {
+    if (!unlocked(key) && (returns.get(key) || 0) <= EPS) {
       // On a permit with no return: the line is locked.
       const lockedError = `"${label(key)}" is on a delivery permit of ${soLabel}; its quantity and price cannot be changed and it cannot be removed. Add any extra quantity or a different item as a new line.`
       if (!incoming || incomingKey(incoming) !== key) return { ok: false, status: 409, error: lockedError }
@@ -106,7 +123,7 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
       return { ok: false, status: 409, error: `"${label(key)}" is on a delivery permit of ${soLabel} and cannot be removed while the customer keeps ${kept(key)} of it. Lower the line to ${kept(key)} instead, and add any replacement as a new line.` }
     }
     // During a correction an outsourced line may be renamed (same line, still outsourced): its permit lines follow it.
-    if (correcting && !row.product_id && incomingKey(incoming).startsWith("n:") && incomingKey(incoming) !== key) {
+    if (unlocked(key) && !row.product_id && incomingKey(incoming).startsWith("n:") && incomingKey(incoming) !== key) {
       renamed.set(key, incomingKey(incoming))
       continue
     }

@@ -309,14 +309,25 @@ export async function correctPermit(db: Db, permitId: number, lines: CorrectionL
   const moves: CorrectionMove[] = []
   const restored: { itemId: number; quantity: number; total: any; expected: number }[] = []
   const undo = async (reason: string): Promise<ReissueRefusal> => {
+    const linesNotRestored: number[] = []
     for (const r of restored) {
       const res = await db.from("delivery_permit_items").update({ quantity: r.quantity, total: r.total }).eq("item_id", r.itemId).eq("quantity", r.expected).select("item_id")
-      if (res.error || !res.data || res.data.length !== 1) console.error(`[reissue] could not restore permit item ${r.itemId} to ${r.quantity}`)
+      if (res.error || !res.data || res.data.length !== 1) {
+        console.error(`[reissue] could not restore permit item ${r.itemId} to ${r.quantity}`)
+        linesNotRestored.push(r.itemId)
+      }
     }
     const failed = await undoCorrectionMoves(db, moves)
-    if (failed.length > 0) {
-      console.error(`[reissue] correction of ${permitNo}: stock could not be fully restored`, failed)
-      return refuse(500, "partial_failure", `${reason} The stock could not be fully put back; contact an administrator.`, `${reason} تعذّر إرجاع المخزون بالكامل؛ تواصل مع المسؤول.`)
+    if (failed.length > 0 || linesNotRestored.length > 0) {
+      console.error(`[reissue] correction of ${permitNo}: could not be fully undone`, { stock: failed, permitItems: linesNotRestored })
+      const what = [failed.length > 0 ? "the stock" : "", linesNotRestored.length > 0 ? "the permit quantities" : ""].filter(Boolean).join(" and ")
+      const whatAr = [failed.length > 0 ? "المخزون" : "", linesNotRestored.length > 0 ? "كميات الإذن" : ""].filter(Boolean).join(" و")
+      return refuse(
+        500,
+        "partial_failure",
+        `The correction of ${permitNo} failed and ${what} could not be fully put back; contact an administrator.`,
+        `فشل تصحيح ${permitNo} وتعذّر إرجاع ${whatAr} بالكامل؛ تواصل مع المسؤول.`,
+      )
     }
     return refuse(409, "changed", reason, "تغيّر الإذن أو المخزون أثناء التصحيح. لم يتغير شيء؛ حاول مرة أخرى.")
   }
