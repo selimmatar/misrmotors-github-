@@ -115,6 +115,8 @@ export interface EtaPortal {
   searchSent(p: { internalId: string; from: string; to: string }): Promise<any>
   printout(uuid: string): Promise<ArrayBuffer>
   documentType(id: number | string): Promise<any>
+  /** one page of the company's approved, active code requests (read-only). SDK: GET /api/v1.0/codetypes/requests/my, query Pn / Ps */
+  myCodes(p: { pageNo: number; pageSize: number }): Promise<any>
 }
 
 const tokenCache = new Map<string, { token: string; expiresAt: number }>()
@@ -217,6 +219,10 @@ export function createPortal(env: EtaEnv, deps: PortalDeps = {}): EtaPortal {
     async printout(uuid) {
       const res = await call("GET", `/api/v1.0/documents/${encodeURIComponent(uuid)}/pdf`, { accept: "application/pdf" })
       return await res.arrayBuffer()
+    },
+    myCodes({ pageNo, pageSize }) {
+      const q = new URLSearchParams({ Active: "true", Status: "Approved", Pn: String(pageNo), Ps: String(pageSize) })
+      return json("GET", `/api/v1.0/codetypes/requests/my?${q.toString()}`)
     },
     documentType: (id) => json("GET", `/api/v1.0/documenttypes/${encodeURIComponent(String(id))}`),
   }
