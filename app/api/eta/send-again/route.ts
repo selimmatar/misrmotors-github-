@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const result = await sendAgain(db, invoiceId, env, userId)
     await followUpQuietly(db)
     if (!result.ok)
-      return NextResponse.json({ error: result.message, code: result.code, ...(result.reasons ? { reasons: result.reasons } : {}) }, { status: result.code === "not_found" ? 404 : 409 })
+      return NextResponse.json({ error: result.message, code: result.code, ...(result.reasons ? { reasons: result.reasons } : {}) }, { status: result.code === "not_found" ? 404 : result.status || 409 })
     return NextResponse.json({ environment: env, documentType: result.documentType, docId: result.docId, version: result.version })
   } catch (error: any) {
     console.error("Error sending the e-invoice again:", error)

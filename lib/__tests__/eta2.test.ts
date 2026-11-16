@@ -2389,3 +2389,143 @@ test("F44. screens wired: actions by document state, AR badge and reissue, permi
   assert.equal(allows(ruleFor("/api/eta/statuses")!, "GET", ["accountant"]), true)
   assert.equal(allows(ruleFor("/api/eta/statuses")!, "GET", ["sales-rep"]), false)
 })
+
+// ---- F45-F49: final review fixes ----
+import * as statusesRoute from "../../app/api/eta/statuses/route"
+
+test("F45. a signature for an invoice that changed while the signer waited is not submitted: needs review (I1)", async () => {
+  const { db, id } = await withInvoice("real")
+  await queueSend(db, [id], "real", 7, { now: NOW })
+  const row = db.tables.eta_documents[0]
+  const signature = await signCms(row.canonical) // handed out, signed (the PIN dialog stays open) ...
+  db.tables.customers[0].customer_name = "Acme Trading Co" // ... and the ERP changes the invoice meanwhile
+  const fake = portalFake()
+  const r = await acceptSignatures(db, [{ docId: row.doc_id, signature }], fake.deps)
+  assert.deepEqual([r.submitted, r.invalid, r.unconfirmed], [[], [], []])
+  assert.equal(r.refused.length, 1)
+  assert.match(r.refused[0].reason, /changed after Send/)
+  assert.equal(fake.calls.submit.length, 0, "nothing reached the portal")
+  assert.equal(db.tables.eta_documents[0].status, "needs_review")
+  assert.equal(db.tables.eta_documents[0].errors[0].code, "CHANGED_AFTER_SEND")
+})
+
+test("F46. lost send: a search result without dateTimeReceived is not filtered by time; Send again after NotReceived searches once more first (I2)", async () => {
+  const t0 = Date.parse("2026-11-15T10:00:00Z")
+  // (b) the portal gives only the (old) issue date: still adopted
+  const b = await lostSend(() => { throw new EtaError(0, "Timeout", "x") })
+  const noTime = portalFake({ searchSent: (p) => ({ result: [{ uuid: "U9", longId: "L9", internalId: p.internalId, status: "Valid", dateTimeIssued: "2026-10-01T00:00:00Z" }] }) })
+  await followUp(b.db, noTime.deps, { now: t0 + 60_000 })
+  assert.deepEqual([b.db.tables.eta_documents[0].status, b.db.tables.eta_documents[0].eta_uuid], ["valid", "U9"])
+  // a result that does say when it was received is still filtered by time
+  const c = await lostSend(() => { throw new EtaError(0, "Timeout", "x") })
+  const old = portalFake({ searchSent: (p) => ({ result: [{ uuid: "UOLD", internalId: p.internalId, status: "Valid", dateTimeReceived: "2026-11-14T10:00:00Z" }] }) })
+  await followUp(c.db, old.deps, { now: t0 + 60_000 })
+  assert.equal(c.db.tables.eta_documents[0].status, "submitted")
+
+  // (a) NotReceived, but the portal has it after all: adopted, no new version
+  const a = await lostSend(() => { throw new EtaError(503, "HTTP503", "down") })
+  await followUp(a.db, portalFake().deps, { now: t0 + 31 * 60_000 })
+  assert.equal(a.db.tables.eta_documents[0].status, "invalid")
+  const later = { now: () => new Date(t0 + 32 * 60_000) }
+  const late = portalFake({ searchSent: (p) => ({ result: [{ uuid: "LATE", longId: "LL", internalId: p.internalId, status: "Valid", dateTimeReceived: "2026-11-15T10:00:05Z" }] }) })
+  const r = await sendAgain(a.db, a.id, "real", 7, { ...late.deps, ...later })
+  assert.ok(!r.ok && r.code === "found_on_portal", JSON.stringify(r))
+  assert.equal(late.calls.searchSent.length, 1)
+  assert.equal(a.db.tables.eta_documents.length, 1, "no second version")
+  assert.deepEqual([a.db.tables.eta_documents[0].status, a.db.tables.eta_documents[0].eta_uuid, a.db.tables.eta_documents[0].errors], ["submitted", "LATE", null])
+
+  // not on the portal either: one search, then the new version as before
+  const n = await lostSend(() => { throw new EtaError(503, "HTTP503", "down") })
+  await followUp(n.db, portalFake().deps, { now: t0 + 31 * 60_000 })
+  const none = portalFake()
+  const ok = await sendAgain(n.db, n.id, "real", 7, { ...none.deps, ...later })
+  assert.ok(ok.ok, JSON.stringify(ok))
+  assert.equal(none.calls.searchSent.length, 1)
+  assert.deepEqual(n.db.tables.eta_documents.map((d) => [d.version, d.status]), [[1, "invalid"], [2, "pending_signature"]])
+
+  // the search itself fails: nothing is queued (it might be there)
+  const f = await lostSend(() => { throw new EtaError(503, "HTTP503", "down") })
+  await followUp(f.db, portalFake().deps, { now: t0 + 31 * 60_000 })
+  const broken = portalFake({ searchSent: () => { throw new EtaError(0, "Timeout", "x") } })
+  const fr = await sendAgain(f.db, f.id, "real", 7, { ...broken.deps, ...later })
+  assert.ok(!fr.ok && fr.code === "portal_search_failed")
+  assert.equal(f.db.tables.eta_documents.length, 1)
+})
+
+test("F47. a document the customer rejected counts as reversed for Correct and reissue; Send again stays refused; badge in EN and AR (I5, ruling P19)", async () => {
+  const db = reissueDb({ docs: [realDoc({ status: "rejected" })] })
+  assert.deepEqual(await startReissue(db, 10, 7), { ok: true })
+  assert.equal(ar7(db, 10).status, "replaced")
+  // a test-portal rejection is not a reversal on the real portal
+  const t = reissueDb({ docs: [realDoc({ status: "rejected", environment: "test" })] })
+  assert.equal((await startReissue(t, 10, 7) as any).code, "not_reversed")
+  // Send again is still refused for it
+  const s = await withInvoice("real")
+  await queueSend(s.db, [s.id], "real", 7, { now: NOW })
+  s.db.tables.eta_documents[0].status = "rejected"
+  assert.equal((await sendAgain(s.db, s.id, "real", 7, { now: NOW }) as any).code, "not_invalid")
+  assert.equal(invoiceBadge([{ doc_id: 1, document_type: "I", status: "rejected" }]), "rejected")
+  const i18n = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "lib/i18n-context.tsx"), "utf8")
+  const arStart = i18n.indexOf("\n  ar: {")
+  assert.match(i18n.slice(0, arStart), /"eta\.badge-rejected": "Rejected by customer"/)
+  assert.match(i18n.slice(arStart), /"eta\.badge-rejected": "[؀-ۿ ]+"/)
+})
+
+test("F48. statuses read every row, not the first 1000 (I6)", async () => {
+  const db = sendDb("real")
+  for (let i = 1; i <= 1200; i++) db.tables.eta_documents.push({ doc_id: i, invoice_id: i, document_type: "I", environment: "real", version: 1, status: "pending_signature", errors: null, submitted_at: null })
+  // PostgREST answers a read without a range with at most 1000 rows
+  const from = db.from.bind(db)
+  ;(db as any).from = (table: string) => {
+    const q: any = from(table)
+    const run = q.run.bind(q)
+    q.run = async () => { const res = await run(); if (q.op === "select" && !q.window && Array.isArray(res.data)) res.data = res.data.slice(0, 1000); return res }
+    return q
+  }
+  useDb(db)
+  const res = await statusesRoute.GET()
+  const body = await res.json()
+  assert.equal(Object.keys(body.statuses).length, 1200)
+  assert.equal(body.waiting, 1200)
+  assert.equal(body.statuses["1200"], "waiting")
+})
+
+test("F49. submit refused with 401 / 403: back to waiting, not invalid; 401 clears the cached portal token (Task 4 minor 6)", () => withCreds(async () => {
+  for (const status of [401, 403]) {
+    resetPortalTokens()
+    const { db, id } = await withInvoice("test")
+    await queueSend(db, [id], "test", 7, { now: NOW })
+    const row = db.tables.eta_documents[0]
+    const signature = await signCms(row.canonical)
+    let submits = 0
+    const fp = fakePortal((c) => {
+      if (c.url.endsWith("/connect/token")) return okHandler(c)
+      if (++submits === 1) return jres(status, { error: { code: "Unauthorized", message: "no" } })
+      return jres(200, { submissionUUID: "S1", acceptedDocuments: [{ uuid: "U1", longId: "L1", internalId: JSON.parse(row.document).internalID }], rejectedDocuments: [] })
+    })
+    const deps: SendDeps = { now: NOW, credentialsSet: yes, portalFor: () => fp.portal }
+    const r = await acceptSignatures(db, [{ docId: row.doc_id, signature }], deps)
+    assert.equal(r.invalid.length, 0, String(status))
+    assert.equal(r.refused.length, 1)
+    assert.deepEqual([db.tables.eta_documents[0].status, db.tables.eta_documents[0].signature ?? null], ["pending_signature", null], String(status))
+    const tokens = () => fp.calls.filter((c) => c.url.endsWith("/connect/token")).length
+    assert.equal(tokens(), 1)
+    // signed and sent again: a new token is fetched only after a 401
+    const again = await acceptSignatures(db, [{ docId: row.doc_id, signature }], deps)
+    assert.deepEqual(again.submitted, [row.doc_id])
+    assert.equal(tokens(), status === 401 ? 2 : 1, `token fetches after ${status}`)
+  }
+}))
+
+test("F50. signer package: Pkcs bumped to a patched 8.x; CI fails the build on a vulnerable package", () => {
+  const root = process.env.REPO_ROOT || process.cwd()
+  const csproj = readFileSync(join(root, "signer/MisrMotorsSigner.Core/MisrMotorsSigner.Core.csproj"), "utf8")
+  const v = csproj.match(/Include="System\.Security\.Cryptography\.Pkcs" Version="(\d+)\.(\d+)\.(\d+)"/)
+  assert.ok(v, "Pkcs reference")
+  assert.equal(Number(v![1]), 8)
+  assert.ok(Number(v![3]) >= 2, `Pkcs 8.0.${v![3]} is the vulnerable 8.0.0 / 8.0.1`)
+  const ci = readFileSync(join(root, ".github/workflows/signer.yml"), "utf8")
+  assert.match(ci, /dotnet list [^\n]*package --vulnerable --include-transitive/)
+  assert.match(ci, /has the following vulnerable packages[\s\S]*exit 1/)
+  assert.ok(ci.indexOf("package --vulnerable") > ci.indexOf("dotnet restore"), "after restore")
+})

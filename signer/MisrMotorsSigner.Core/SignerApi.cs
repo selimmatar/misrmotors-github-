@@ -16,10 +16,16 @@ public sealed class KeyRejectedException : Exception
     public KeyRejectedException() : base("The ERP does not accept this signer key (it was disconnected or replaced).") { }
 }
 
+/// <summary>A document the ERP did not take, with its reason in plain words.</summary>
+public sealed record RefusedItem(long DocId, string Reason);
+
+/// <summary>The ERP's answer to /signed: what it refused, and the ids it took.</summary>
+public sealed record SignedAnswer(IReadOnlyList<RefusedItem> Refused, IReadOnlyList<long> Accepted);
+
 public interface ISignerApi
 {
     Task<NextResult> NextAsync(CancellationToken ct);
-    Task PostSignedAsync(IEnumerable<(long DocId, string Signature)> items, CancellationToken ct);
+    Task<SignedAnswer> PostSignedAsync(IEnumerable<(long DocId, string Signature)> items, CancellationToken ct);
     Task PingAsync(bool unlocked, string version, CancellationToken ct);
 }
 
@@ -70,11 +76,30 @@ public sealed class SignerApi : ISignerApi
             docs);
     }
 
-    public async Task PostSignedAsync(IEnumerable<(long DocId, string Signature)> items, CancellationToken ct)
+    public async Task<SignedAnswer> PostSignedAsync(IEnumerable<(long DocId, string Signature)> items, CancellationToken ct)
     {
-        var body = JsonContent.Create(new { items = items.Select(i => new { docId = i.DocId, signature = i.Signature }).ToArray() });
+        var sent = items.ToList();
+        var body = JsonContent.Create(new { items = sent.Select(i => new { docId = i.DocId, signature = i.Signature }).ToArray() });
         using var r = await _http.SendAsync(Req(HttpMethod.Post, "/api/eta-signer/signed", body), ct);
         await Check(r, ct);
+        return ParseSigned(await r.Content.ReadAsStringAsync(ct), sent.Select(i => i.DocId));
+    }
+
+    /// <summary>{ submitted, invalid, unconfirmed, refused: [{ docId, reason }] }. Anything the ERP did not refuse was taken.</summary>
+    public static SignedAnswer ParseSigned(string json, IEnumerable<long> sent)
+    {
+        var refused = new List<RefusedItem>();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("refused", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                foreach (var x in arr.EnumerateArray())
+                    if (x.TryGetProperty("docId", out var id) && id.TryGetInt64(out var docId))
+                        refused.Add(new RefusedItem(docId, x.TryGetProperty("reason", out var why) ? why.GetString() ?? "" : ""));
+        }
+        catch (JsonException) { /* an answer that cannot be read counts as nothing refused: the ERP shows each document's state */ }
+        var bad = refused.Select(x => x.DocId).ToHashSet();
+        return new SignedAnswer(refused, sent.Where(id => !bad.Contains(id)).ToList());
     }
 
     public async Task PingAsync(bool unlocked, string version, CancellationToken ct)

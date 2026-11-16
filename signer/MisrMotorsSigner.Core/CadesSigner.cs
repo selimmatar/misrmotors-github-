@@ -61,6 +61,11 @@ public static class CertificateFilter
     public static bool Matches(X509Certificate2 cert, string rin, DateTime now) =>
         cert.HasPrivateKey && cert.NotBefore <= now && now <= cert.NotAfter && HoldsRin(cert.Subject, rin);
 
+    /// <summary>The certificate in use is still the right one: the same one is still in the store (token not removed
+    /// or swapped), it is in date, has its key and holds the ERP's current tax number.</summary>
+    public static bool StillCurrent(X509Certificate2 cert, X509Certificate2? inStore, string rin, DateTime now) =>
+        inStore is not null && inStore.Thumbprint == cert.Thumbprint && Matches(cert, rin, now);
+
     /// <summary>The company's e-seal in the store, or null. Certificates for any other number are never used.</summary>
     public static X509Certificate2? Find(X509Certificate2Collection certs, string rin, DateTime now) =>
         certs.Cast<X509Certificate2>().Where(c => Matches(c, rin, now)).OrderByDescending(c => c.NotAfter).FirstOrDefault();

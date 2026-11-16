@@ -84,6 +84,19 @@ public class CadesSignerTests
         Assert.Equal(good.Thumbprint, CertificateFilter.Find(col, "100060455", DateTime.UtcNow)?.Thumbprint);
         Assert.Null(CertificateFilter.Find(col, "100060455", DateTime.UtcNow.AddYears(5))); // expired
     }
+
+    [Fact]
+    public void Certificate_is_checked_again_for_expiry_a_swapped_token_and_the_RIN()
+    {
+        using var cert = Cert("CN=Misr Motors, O=EG-100060455");
+        using var swapped = Cert("CN=Misr Motors, O=EG-100060455");
+        var now = DateTime.UtcNow;
+        Assert.True(CertificateFilter.StillCurrent(cert, cert, "100060455", now));
+        Assert.False(CertificateFilter.StillCurrent(cert, cert, "100060455", now.AddYears(5)), "expired");
+        Assert.False(CertificateFilter.StillCurrent(cert, null, "100060455", now), "token removed");
+        Assert.False(CertificateFilter.StillCurrent(cert, swapped, "100060455", now), "another certificate in the store now");
+        Assert.False(CertificateFilter.StillCurrent(cert, cert, "200000001", now), "the ERP's tax number changed");
+    }
 }
 
 static class Ext { public static T Also<T>(this T t, Action<T> a) { a(t); return t; } }

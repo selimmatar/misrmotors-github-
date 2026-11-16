@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
-import { readEtaSettings } from "@/lib/eta/store"
+import { allRows, readEtaSettings } from "@/lib/eta/store"
 import { etaEnvironment } from "@/lib/eta/send"
 import { invoiceBadge } from "@/lib/eta/badge"
 import { credentialsSet } from "@/lib/eta/portal"
@@ -16,13 +16,13 @@ export async function GET() {
   try {
     const db = createAdminClient()
     const environment = etaEnvironment(await readEtaSettings(db))
-    const { data, error } = await db.from("eta_documents").select("doc_id, invoice_id, document_type, environment, status, errors, submitted_at")
-    if (error) throw error
+    // every row, in pages with a stable order (one read is capped at 1000 rows)
+    const data = await allRows(db, "eta_documents", "doc_id, invoice_id, document_type, environment, status, errors, submitted_at", [{ column: "doc_id" }])
     const today = cairoToday()
     let waiting = 0
     let sentToday = 0
     const byInvoice = new Map<number, any[]>()
-    for (const row of (data || []) as any[]) {
+    for (const row of data) {
       if ((row.environment || "real") !== environment) continue
       if (row.status === "pending_signature") waiting++
       if (row.submitted_at && cairoToday(new Date(row.submitted_at)) === today) sentToday++

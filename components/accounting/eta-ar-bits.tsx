@@ -20,6 +20,7 @@ const TONE: Record<EtaBadgeKey, string> = {
   invalid: "bg-red-500/15 text-red-700 dark:text-red-300",
   cancel_requested: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
   cancelled: "bg-muted text-muted-foreground",
+  rejected: "bg-red-500/15 text-red-700 dark:text-red-300",
   credit_waiting: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
   credited: "bg-muted text-muted-foreground",
   credit_invalid: "bg-red-500/15 text-red-700 dark:text-red-300",

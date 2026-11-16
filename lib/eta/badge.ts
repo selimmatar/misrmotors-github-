@@ -3,7 +3,7 @@
 import { cancelPending } from "./send"
 
 export type EtaBadgeKey =
-  | "not_sent" | "waiting" | "sent" | "valid" | "invalid" | "cancel_requested" | "cancelled"
+  | "not_sent" | "waiting" | "sent" | "valid" | "invalid" | "cancel_requested" | "cancelled" | "rejected"
   | "credit_waiting" | "credited" | "credit_invalid" | "manual"
 
 interface DocRow { doc_id?: number; document_type?: string | null; status?: string | null; errors?: unknown }
@@ -25,5 +25,6 @@ export function invoiceBadge(docs: DocRow[]): EtaBadgeKey {
   if (inv.status === "valid") return "valid"
   if (inv.status === "invalid") return "invalid"
   if (inv.status === "cancelled") return cancelPending({ status: inv.status, errors: inv.errors }) ? "cancel_requested" : "cancelled"
+  if (inv.status === "rejected") return "rejected"
   return "not_sent"
 }

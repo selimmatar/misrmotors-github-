@@ -49,7 +49,8 @@ export async function startReissue(db: Db, invoiceId: number, userId: number | n
   ) as any[]).filter((d) => (d.environment || "real") === "real")
   const invoices = docs.filter((d) => d.document_type !== "C")
   const notes = docs.filter((d) => d.document_type === "C")
-  let reversed = notes.some((n) => n.status === "valid")
+  // a document the customer rejected is reversed on the portal (ruling P19); a credit note can't be made for it
+  let reversed = notes.some((n) => n.status === "valid") || invoices.some((d) => d.status === "rejected")
   if (!reversed) {
     // newest first; the portal must confirm the cancellation now (the customer can decline a cancellation)
     const cancelled = invoices.filter((d) => d.status === "cancelled").sort((a, b) => Number(b.version) - Number(a.version))

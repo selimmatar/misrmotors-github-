@@ -6,7 +6,7 @@ import { buildCreditNoteDocument, buildInvoiceDocument } from "./document"
 import { canonicalize, toEtaJson } from "./serialize"
 import { readEtaSettings } from "./store"
 import { checkSignature } from "./cms"
-import { createPortal, credentialsSet, EtaBusyError, EtaCredentialsError, EtaError, type EtaEnv, type EtaPortal, type FetchFn } from "./portal"
+import { createPortal, credentialsSet, resetPortalTokens, EtaBusyError, EtaCredentialsError, EtaError, type EtaEnv, type EtaPortal, type FetchFn } from "./portal"
 import { plainError } from "./portal-errors"
 
 export { ETA_LIVE_MESSAGE, clearRemovableDocuments, liveRealDocument } from "./live"
@@ -236,11 +236,11 @@ export async function sendAgain(
   invoiceId: number,
   env: EtaEnv,
   userId: number | null,
-  deps: { now?: () => Date } = {},
+  deps: SendDeps = {},
 ): Promise<{ ok: true; documentType: "I" | "C"; docId: number; version: number } | EtaRefusal> {
   if (!Number.isInteger(invoiceId) || invoiceId < 1) return refusal("not_found", "Invoice not found.")
   const rows = must(
-    await db.from("eta_documents").select("doc_id, document_type, environment, version, status").eq("invoice_id", invoiceId),
+    await db.from("eta_documents").select("doc_id, document_type, environment, version, status, errors, eta_uuid, submitted_at, updated_at, document").eq("invoice_id", invoiceId),
     "load e-invoice documents",
   ) as any[]
   const mine = rows.filter((r) => (r.environment || "real") === env && r.status !== "manual")
@@ -250,6 +250,43 @@ export async function sendAgain(
   if (mine.some((r) => r.document_type === type && LIVE_STATUSES.includes(r.status)))
     return refusal("still_live", "The earlier version is still waiting, sent or valid on the portal; it can't be sent again.")
   if (latest.status !== "invalid") return refusal("not_invalid", "Only a document the portal marked invalid can be sent again.")
+
+  // "never received" is only our guess: look once more before making a second document (ruling P8)
+  if (Array.isArray(latest.errors) && latest.errors.some((e: any) => e?.code === "NotReceived")) {
+    const internalId = text(parsedBody(latest)?.internalID)
+    const attemptMs = Date.parse(text(latest.submitted_at) || text(latest.updated_at))
+    const attempt = Number.isFinite(attemptMs) ? attemptMs : (deps.now || (() => new Date()))().getTime()
+    const nowMs = (deps.now || (() => new Date()))().getTime()
+    let found: any[]
+    try {
+      const res = await portalOf(deps, env).searchSent({
+        internalId,
+        from: new Date(attempt - 60 * 60_000).toISOString(),
+        to: new Date(Math.max(nowMs, attempt) + 60_000).toISOString(),
+      })
+      found = Array.isArray(res?.result) ? res.result : []
+    } catch (e: any) {
+      console.error(`[eta] search before sending again failed: ${e?.message || e}`)
+      return refusal("portal_search_failed", "The tax portal could not be asked whether it already has this document. Try again in a minute.", { status: 503 })
+    }
+    const taken = new Set(rows.filter((r) => r.doc_id !== latest.doc_id && text(r.eta_uuid)).map((r) => text(r.eta_uuid)))
+    const s = pickLost(found, internalId, latest.document_type, attempt, taken)
+    if (s) {
+      // adopt it: back to submitted with the portal's ids, so the follow-up records its real state
+      must(
+        await db
+          .from("eta_documents")
+          .update({
+            status: "submitted", eta_uuid: text(s.uuid) || null, eta_long_id: text(s.longId) || null,
+            submission_uuid: text(s.submissionUUID || s.submissionUuid) || null, errors: null, checked_at: null, updated_at: new Date(nowMs).toISOString(),
+          })
+          .eq("doc_id", latest.doc_id)
+          .eq("status", "invalid"),
+        "adopt the portal document",
+      )
+      return refusal("found_on_portal", "The portal already has this document. It was found and is being followed up; it was not sent again.")
+    }
+  }
 
   if (type === "C") {
     const r = await queueCreditNote(db, invoiceId, env, userId, deps)
@@ -414,6 +451,7 @@ export async function acceptSignatures(db: Db, items: { docId: number; signature
   ) as any[]
   const byId = new Map<number, any>(rows.map((r) => [r.doc_id, r]))
   const hasCreds = credsOf(deps)
+  const settings = await readEtaSettings(db)
 
   const good: { row: any; signature: string; env: EtaEnv; internalId: string; body: string }[] = []
   for (const w of wanted) {
@@ -426,6 +464,15 @@ export async function acceptSignatures(db: Db, items: { docId: number; signature
     if (!hasCreds(env)) { result.refused.push({ docId: w.docId, reason: new EtaCredentialsError(env).message }); continue }
     const check = await checkSignature(w.signature, row.canonical, text(doc?.issuer?.id), now())
     if (!check.ok) { result.refused.push({ docId: w.docId, reason: check.reason }); continue }
+    // the same check as at hand-out: the invoice may have changed while the signer waited (e.g. for the PIN)
+    if (!(await stillSame(db, row, settings))) {
+      must(
+        await db.from("eta_documents").update({ status: "needs_review", errors: [CHANGED], updated_at: now().toISOString() }).eq("doc_id", row.doc_id).eq("status", "pending_signature"),
+        "mark needs review",
+      )
+      result.refused.push({ docId: w.docId, reason: CHANGED.message })
+      continue
+    }
     good.push({ row, signature: w.signature, env, internalId: text(doc.internalID), body })
   }
 
@@ -487,6 +534,18 @@ async function submitBatch(
       // already submitted - check status; never resubmitted
       for (const id of ids) await update(id, { errors: [known("DuplicateSubmission")] })
       result.unconfirmed.push(...ids)
+      return
+    }
+    if (e instanceof EtaError && (e.status === 401 || e.status === 403)) {
+      // our login was refused: nothing reached the portal, so the batch is not invalid - back to the waiting list
+      if (e.status === 401) resetPortalTokens()
+      for (const id of ids) {
+        must(
+          await db.from("eta_documents").update({ status: "pending_signature", signature: null, submitted_at: null, updated_at: now().toISOString() }).eq("doc_id", id).eq("status", "submitted"),
+          "return to waiting",
+        )
+        result.refused.push({ docId: id, reason: e.message })
+      }
       return
     }
     if (e instanceof EtaError && e.status >= 400 && e.status < 500) {
@@ -592,6 +651,21 @@ function searchType(x: any): string {
   if (t.includes("credit")) return "c"
   if (t.includes("invoice")) return "i"
   return ""
+}
+
+/**
+ * The portal document that is a lost send: same internal number, not held by another row, the right type, and (only
+ * when the portal says when it received it) received about when we sent it. A result with no dateTimeReceived is not
+ * filtered by time - its issue date is the invoice's old date, never the time of the send.
+ */
+function pickLost(found: any[], internalId: string, documentType: string, attempt: number, taken: Set<string>): any {
+  const received = (x: any) => Date.parse(text(x?.dateTimeReceived))
+  return found
+    .filter((x) => text(x?.internalId) === internalId && text(x?.uuid) && !taken.has(text(x.uuid)))
+    // an invoice and its credit note share the internal number: when the portal says the type, it must match
+    .filter((x) => { const t = searchType(x); return !t || t === (documentType === "C" ? "c" : "i") })
+    .filter((x) => !Number.isFinite(received(x)) || received(x) >= attempt - 15 * 60_000)
+    .sort((a, b) => (received(b) || 0) - (received(a) || 0))[0]
 }
 
 /**
@@ -764,14 +838,7 @@ export async function followUp(
     // never adopt a portal document another row already holds (an earlier version of the same invoice)
     const held = must(await db.from("eta_documents").select("doc_id, eta_uuid").eq("invoice_id", row.invoice_id), "load invoice documents") as any[]
     const taken = new Set(held.filter((h) => h.doc_id !== row.doc_id && text(h.eta_uuid)).map((h) => text(h.eta_uuid)))
-    const received = (x: any) => Date.parse(text(x?.dateTimeReceived) || text(x?.dateTimeIssued))
-    const candidates = found
-      .filter((x) => text(x?.internalId) === internalId && text(x?.uuid) && !taken.has(text(x.uuid)))
-      // an invoice and its credit note share the internal number: when the portal says the type, it must match
-      .filter((x) => { const t = searchType(x); return !t || t === (row.document_type === "C" ? "c" : "i") })
-      .filter((x) => !Number.isFinite(received(x)) || received(x) >= attempt - 15 * 60_000)
-      .sort((a, b) => (received(b) || 0) - (received(a) || 0))
-    const s = candidates[0]
+    const s = pickLost(found, internalId, row.document_type, attempt, taken)
     if (s) return apply(row, env, s, text(s.submissionUUID || s.submissionUuid) || undefined)
     if (at.getTime() - attempt >= NOT_RECEIVED_AFTER_MS) return save(row, { status: "invalid", errors: [known("NotReceived")] })
   }

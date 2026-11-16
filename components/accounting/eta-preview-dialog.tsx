@@ -265,7 +265,7 @@ function EtaActions({
 
   const canSend = docs.length === 0 && preview.missing.length === 0 && (env === "test" || !preview.handledManually)
   const canSendAgain = newest?.status === "invalid"
-  const reversed = env === "real" && (note?.status === "valid" || (inv?.status === "cancelled" && !liveNote))
+  const reversed = env === "real" && (note?.status === "valid" || ((inv?.status === "cancelled" || inv?.status === "rejected") && !liveNote))
   const validDocs = docs.filter((d) => d.status === "valid")
 
   return (
