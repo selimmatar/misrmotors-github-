@@ -47,24 +47,27 @@ interface AppContextType {
   setSupplierInvoices: (invoices: SupplierInvoice[]) => void
   addSupplierInvoice: (invoice: SupplierInvoice) => Promise<void>
   updateSupplierInvoice: (invoiceId: string, updates: Partial<SupplierInvoice>) => Promise<void>
+  /** the invoices that count: a replaced invoice (corrected and reissued) is left out of every balance, report and total */
   customerInvoices: CustomerInvoice[]
+  /** every invoice including replaced ones, for the receivables list that shows them labelled */
+  allCustomerInvoices: CustomerInvoice[]
   setCustomerInvoices: (invoices: CustomerInvoice[]) => void
   addCustomerInvoice: (invoice: CustomerInvoice) => Promise<void>
   updateCustomerInvoice: (invoiceId: string, updates: Partial<CustomerInvoice>) => Promise<void>
   suppliers: Supplier[]
   setSuppliers: (suppliers: Supplier[]) => void
   addSupplier: (supplier: Supplier) => Promise<void>
-  updateSupplier: (supplier: Supplier) => Promise<void>
+  updateSupplier: (supplier: Supplier) => Promise<string[]>
   deleteSupplier: (id: string) => Promise<void>
   customers: Customer[]
   setCustomers: (customers: Customer[]) => void
   addCustomer: (customer: Customer) => Promise<void>
-  updateCustomer: (customer: Customer) => Promise<void>
+  updateCustomer: (customer: Customer) => Promise<string[]>
   deleteCustomer: (id: string) => Promise<void>
   products: Product[]
   setProducts: (products: Product[]) => void
   addProduct: (product: Product) => Promise<void>
-  updateProduct: (product: Product) => Promise<void>
+  updateProduct: (product: Pick<Product, "id"> & Partial<Product>) => Promise<void>
   deleteProduct: (id: string) => Promise<void>
   couriers: Courier[]
   setCouriers: (couriers: Courier[]) => void
@@ -340,7 +343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const salesOrders: SalesOrder[] = salesOrdersData || []
 
   // Process customer invoices
-  const customerInvoices: CustomerInvoice[] = (customerInvoicesData || []).map((inv: any) => ({
+  const allCustomerInvoices: CustomerInvoice[] = (customerInvoicesData || []).map((inv: any) => ({
     id: inv.id,
     invoiceNumber: inv.invoiceNumber,
     soId: inv.soId,
@@ -352,10 +355,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     date: inv.date,
     dueDate: inv.dueDate,
     status: inv.status,
+    replacedByInvoiceId: inv.replacedByInvoiceId ?? null,
     installmentMonths: inv.installmentMonths,
     monthsPaid: inv.monthsPaid || 0,
     items: inv.items || [],
   }))
+  const customerInvoices: CustomerInvoice[] = allCustomerInvoices.filter((inv) => (inv.status as string) !== "replaced")
 
   useEffect(() => {
     if (hasMountedRef.current) return
@@ -914,7 +919,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(supplier),
       })
       await ensureOk(response, "Failed to update supplier")
+      const saved = await response.json().catch(() => null)
       mutateSuppliers()
+      return Array.isArray(saved?.taxWarnings) ? (saved.taxWarnings as string[]) : []
     } catch (error) {
       console.error("Error updating supplier:", error)
       throw error
@@ -961,7 +968,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(customer),
       })
       await ensureOk(response, "Failed to update customer")
+      const saved = await response.json().catch(() => null)
       mutateCustomers()
+      return Array.isArray(saved?.taxWarnings) ? (saved.taxWarnings as string[]) : []
     } catch (error) {
       console.error("Error updating customer:", error)
       throw error
@@ -999,7 +1008,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const updateProduct = async (product: Product) => {
+  const updateProduct = async (product: Pick<Product, "id"> & Partial<Product>) => {
     try {
       const response = await fetch("/api/products", {
         method: "PUT",
@@ -1051,6 +1060,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addSupplierInvoice,
         updateSupplierInvoice,
         customerInvoices,
+        allCustomerInvoices,
         setCustomerInvoices,
         addCustomerInvoice,
         updateCustomerInvoice,

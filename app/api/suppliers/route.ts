@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
+import { cleanTaxNumber, taxField } from "@/lib/eta/egypt"
 
 export const dynamic = "force-dynamic"
 
@@ -36,6 +37,7 @@ export async function GET() {
         paymentTerms: item.payment_terms || "prepaid",
         createdDate: item.created_at,
         leadTimeDays: item.lead_time_days || 7,
+        taxRegistrationNumber: item.tax_registration_number || "",
       }
     })
 
@@ -49,6 +51,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+    const warnings: string[] = []
 
     const supabase = createAdminClient()
 
@@ -62,6 +65,9 @@ export async function POST(request: Request) {
       city: body.city || "",
       country: body.country || "",
       lead_time_days: body.leadTimeDays || 7,
+      ...(body.taxRegistrationNumber !== undefined
+        ? { tax_registration_number: taxField("tax_registration_number", body.taxRegistrationNumber, cleanTaxNumber, 9, warnings) }
+        : {}),
     }
 
 
@@ -83,9 +89,10 @@ export async function POST(request: Request) {
       paymentTerms: data.payment_terms || "prepaid",
       createdDate: data.created_at,
       leadTimeDays: data.lead_time_days || 7,
+      taxRegistrationNumber: data.tax_registration_number || "",
     }
 
-    return NextResponse.json(transformed)
+    return NextResponse.json(warnings.length ? { ...transformed, taxWarnings: warnings } : transformed)
   } catch (error) {
     console.error("Error creating supplier:", error)
     return NextResponse.json({ error: "Failed to create supplier" }, { status: 500 })
@@ -97,6 +104,7 @@ export async function PUT(request: Request) {
     const supabase = createAdminClient()
     const body = await request.json()
     const { id, ...updates } = body
+    const warnings: string[] = []
 
     const dbUpdates: any = {}
     if (updates.name) dbUpdates.supplier_name = updates.name
@@ -109,6 +117,8 @@ export async function PUT(request: Request) {
     if (updates.city !== undefined) dbUpdates.city = updates.city
     if (updates.country !== undefined) dbUpdates.country = updates.country
     if (updates.leadTimeDays !== undefined) dbUpdates.lead_time_days = updates.leadTimeDays
+    if (updates.taxRegistrationNumber !== undefined)
+      dbUpdates.tax_registration_number = taxField("tax_registration_number", updates.taxRegistrationNumber, cleanTaxNumber, 9, warnings)
 
     const { data, error } = await supabase
       .from("suppliers")
@@ -130,9 +140,10 @@ export async function PUT(request: Request) {
       paymentTerms: data.payment_terms || "prepaid",
       createdDate: data.created_at,
       leadTimeDays: data.lead_time_days || 7,
+      taxRegistrationNumber: data.tax_registration_number || "",
     }
 
-    return NextResponse.json(transformed)
+    return NextResponse.json(warnings.length ? { ...transformed, taxWarnings: warnings } : transformed)
   } catch (error) {
     console.error("Error updating supplier:", error)
     return NextResponse.json({ error: "Failed to update supplier" }, { status: 500 })

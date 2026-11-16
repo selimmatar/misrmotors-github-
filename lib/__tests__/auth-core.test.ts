@@ -88,6 +88,11 @@ test("decide: off allows everything; on refuses; test only records", () => {
   const noRule = decide({ mode: "on", path: "/api/nothing-here", method: "GET", identity: person(["ceo"]), idle: false })
   assert.equal(noRule.kind === "refuse" && noRule.status, 403)
   assert.deepEqual(decide({ mode: "on", path: "/api/auth/login", method: "POST", identity: null, idle: false }), { kind: "allow" })
+  // e-invoice signer and sync paths (spec §8): no login, the route checks its own key; nothing else under them is open
+  assert.deepEqual(PUBLIC_PATHS, ["/api/auth/login", "/api/auth/logout", "/api/auth/forgot", "/api/auth/me", "/api/eta-signer/next", "/api/eta-signer/signed", "/api/eta-signer/ping", "/api/eta-sync"])
+  assert.deepEqual(decide({ mode: "on", path: "/api/eta-signer/next", method: "GET", identity: null, idle: false }), { kind: "allow" })
+  const signerAdmin = decide({ mode: "on", path: "/api/eta/signer", method: "POST", identity: null, idle: false })
+  assert.equal(signerAdmin.kind === "refuse" && signerAdmin.status, 401, "/api/eta/signer still needs a login")
   const t = decide({ ...base, mode: "test", identity: person(["sales-rep"]) })
   assert.equal(t.kind, "would-refuse")
   assert.equal(t.kind === "would-refuse" && t.status, 403)

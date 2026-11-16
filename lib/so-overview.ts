@@ -6,6 +6,7 @@
 import { lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "./return-lines"
 import { lineDeliveryStates, DP_DELIVERED_STATUSES } from "./delivery-status"
 import { loadSoInvoicingState } from "./invoicing"
+import { excludeReplaced } from "./ar-live"
 
 type Db = any
 const must = (result: any, what: string): any => {
@@ -224,7 +225,7 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
   const invoices = invoicing?.invoices || []
   const invoiceIds = invoices.map((inv) => Number(inv.invoice_id))
   const arRows = invoiceIds.length
-    ? (must(await db.from("accounts_receivable").select("invoice_id, invoice_number, amount, balance, created_at").in("invoice_id", invoiceIds), "load invoices") as any[])
+    ? (must(await excludeReplaced(db.from("accounts_receivable").select("invoice_id, invoice_number, amount, balance, created_at").in("invoice_id", invoiceIds)), "load invoices") as any[])
     : []
   const payments = invoiceIds.length
     ? (must(await db.from("customer_payments").select("invoice_id, amount, payment_date, payment_method").in("invoice_id", invoiceIds), "load customer payments") as any[])

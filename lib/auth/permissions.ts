@@ -60,6 +60,8 @@ export const RULES: Rule[] = [
   // Delivery
   rule("/api/delivery-permits", ALL, ["sales-rep", "accountant", "warehouse-rep", "shipment"]),
   rule("/api/delivery-permits/upload", ALL, ALL),
+  // "Correct delivery permit" during correct-and-reissue (spec §6.5a): accountant, CEO, admin only
+  rule("/api/delivery-permits/correct", ACCOUNTANT, ACCOUNTANT),
   rule("/api/couriers", ALL, ONLY_TOP),
   rule("/api/operations", ALL, ONLY_TOP),
   rule("/api/returns", RETURNS, RETURNS),
@@ -103,12 +105,20 @@ export const RULES: Rule[] = [
   rule("/api/pending-counts", ALL, ONLY_TOP),
   rule("/api/pending-counts/dismiss", ["po-rep"], ["po-rep"]),
   rule("/api/chain", ALL, ONLY_TOP),
+  // E-invoice (ETA) settings, item codes and name memory
+  rule("/api/eta", ACCOUNTANT, ACCOUNTANT),
   // Own session (any logged-in person)
   rule("/api/auth", ALL, ALL),
 ]
 
-/** Reachable without logging in. */
-export const PUBLIC_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/auth/forgot", "/api/auth/me"]
+/**
+ * Reachable without logging in. The e-invoice signer paths check the signer key themselves (x-eta-signer-key) and
+ * /api/eta-sync checks the cron secret (spec §8, owner-approved 2026-11-15); each refuses anything without it.
+ */
+export const PUBLIC_PATHS = [
+  "/api/auth/login", "/api/auth/logout", "/api/auth/forgot", "/api/auth/me",
+  "/api/eta-signer/next", "/api/eta-signer/signed", "/api/eta-signer/ping", "/api/eta-sync",
+]
 
 export function ruleFor(path: string): Rule | null {
   let best: Rule | null = null

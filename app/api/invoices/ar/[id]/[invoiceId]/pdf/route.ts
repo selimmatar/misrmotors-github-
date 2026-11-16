@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { escapeHtml } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
+import { replacedPrint } from "@/lib/eta/replaced-print"
 
 export const dynamic = "force-dynamic"
 
@@ -15,7 +16,9 @@ function formatDate(dateStr: string | null | undefined): string {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ invoiceId: string }> }) {
-  const { invoiceId } = await params
+  const { invoiceId: rawInvoiceId } = await params
+  // a numeric id is passed as a number (the column is an integer)
+  const invoiceId: string | number = /^\d{1,15}$/.test(String(rawInvoiceId)) ? Number(rawInvoiceId) : rawInvoiceId
 
   try {
     const supabase = createAdminClient()
@@ -45,9 +48,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
     }
 
+    // A replaced invoice (correct and reissue, spec §6.5a) prints what was sent to the tax portal, with "Replaced by".
+    const replaced = await replacedPrint(supabase, invoice)
+
     // Fetch line items from linked delivery permits
-    let items: any[] = []
-    const { data: dpLinks } = await supabase
+    let items: any[] = replaced
+      ? (replaced.lines || []).map((l) => ({ eta_line: true, item_name_snapshot: l.name, quantity: l.quantity, unit_price: l.unitPrice, total: l.total }))
+      : []
+    const { data: dpLinks } = replaced ? { data: [] as any[] } : await supabase
       .from("invoice_delivery_permits")
       .select("permit_id")
       .eq("invoice_id", invoiceId)
@@ -65,7 +73,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
     }
 
     // Fallback: fetch SO items if no DP items
-    if (items.length === 0 && invoice.so_id) {
+    if (!replaced && items.length === 0 && invoice.so_id) {
       const { data: soItems } = await supabase
         .from("sales_order_items")
         .select(`
@@ -141,7 +149,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
       <span class="badge badge-${invoice.status === "paid" ? "paid" : invoice.status === "overdue" ? "overdue" : invoice.status === "partially_paid" ? "partial" : "pending"}">
         ${escapeHtml(invoice.status?.replace("_", " ") || "Pending")}
       </span>`,
-  })}
+  })}${replaced ? `
+  <div class="pm-field" style="border: 2px solid #b91c1c; padding: 6px 10px; margin: 8px 0; font-weight: 700;">${escapeHtml(replaced.note.en)} <span dir="rtl">${escapeHtml(replaced.note.ar)}</span></div>` : ""}
 
   <!-- Meta: From / To -->
   <div class="meta-grid">
@@ -198,7 +207,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
     <tbody>
       ${items.length > 0
         ? items.map((item: any, i: number) => {
-            const isOutsourced = !item.product_id || item.item_type === "outsourced"
+            const isOutsourced = !item.eta_line && (!item.product_id || item.item_type === "outsourced")
             const itemName = isOutsourced
               ? (item.outsourced_name || item.item_name_snapshot || "Outsourced Item")
               : (item.products?.product_name || item.item_name_snapshot || "—")

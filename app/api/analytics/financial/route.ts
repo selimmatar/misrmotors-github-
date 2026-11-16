@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { excludeReplaced } from "@/lib/ar-live"
 
 export const dynamic = "force-dynamic"
 
@@ -15,7 +16,7 @@ export async function GET() {
       { data: salesOrders },
       { data: purchaseOrders },
     ] = await Promise.all([
-      supabase.from("accounts_receivable").select("*"),
+      excludeReplaced(supabase.from("accounts_receivable").select("*")),
       supabase.from("accounts_payable").select("*"),
       supabase.from("customer_payments").select("*"),
       supabase.from("supplier_payments").select("*"),

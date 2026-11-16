@@ -8,7 +8,11 @@
 // has. Example: 4 pumps invoiced at 228,000; 1 returned -> 57,000 credit. A gun invoiced on its own delivery permit
 // and returned is credited even while other items are still to be delivered. A return the later invoices can still
 // leave out (the same item is still to be delivered and invoiced) gives no credit: those invoices bill less instead.
+//
+// Correct and reissue (spec §6.5a): while the permit's invoice is Replaced and not yet reissued (an open correction),
+// a return raises no credit - the new invoice simply bills less, so nothing is counted twice.
 import { loadSoInvoicingState, orderTotalAfterReturns, overBilledValue, round2 } from "./invoicing"
+import { openCorrection } from "./eta/correction"
 
 type Db = any // supabase-js client (or a test double)
 
@@ -20,8 +24,13 @@ const must = (result: any, what: string): any => {
   return result.data
 }
 
-export async function creditInvoicedReturn(db: Db, ret: { return_id: number; so_id: number | null; so_number?: string | null }): Promise<{ amount: number } | null> {
+export async function creditInvoicedReturn(
+  db: Db,
+  ret: { return_id: number; so_id: number | null; so_number?: string | null; permit_id?: string | number | null },
+): Promise<{ amount: number } | null> {
   if (!ret.so_id) return null // historical returns carry no order link
+  const permitId = Number(ret.permit_id)
+  if (Number.isInteger(permitId) && permitId > 0 && (await openCorrection(db, { permitId }))) return null
   const state = await loadSoInvoicingState(db, ret.so_id)
   if (!state || state.invoices.length === 0) return null
 

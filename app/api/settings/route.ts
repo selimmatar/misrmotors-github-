@@ -37,6 +37,10 @@ export async function PUT(request: Request) {
     if (!key || value === undefined) {
       return NextResponse.json({ error: "Key and value are required" }, { status: 400 })
     }
+    // the e-invoice go-live date is guarded by /api/eta/settings (future dates only, locked once started)
+    if (String(key).trim().toLowerCase() === "eta_go_live_at") {
+      return NextResponse.json({ error: "Set the e-invoice go-live date from the e-invoice settings screen" }, { status: 400 })
+    }
 
     const { data, error } = await supabase
       .from("company_settings")

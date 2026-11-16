@@ -26,6 +26,7 @@ import { PaymentScheduleModule } from "@/components/modules/payment-schedule-mod
 import { ShippingModule } from "@/components/modules/shipping-module"
 import { BalanceModule } from "@/components/modules/balance-module"
 import { FinanceReportsModule } from "@/components/modules/finance-reports-module"
+import { EInvoiceSettingsModule } from "@/components/modules/e-invoice-settings-module"
 import { GoodsReceiptModule } from "@/components/modules/goods-receipt-module"
 import { AnalyticsDashboard } from "@/components/modules/analytics-dashboard"
 import { CEOChatAssistant } from "@/components/modules/ceo-chat-assistant"
@@ -92,6 +93,7 @@ type ModuleType =
   | "payment-schedule" // Added payment-schedule module type
   | "maintenance-invoices" // Added maintenance-invoices module type
   | "operations-management" // Added operations-management module type
+  | "e-invoice-settings"
 
 export function Dashboard({ user: account, onLogout }: DashboardProps) {
   // A person can hold several roles: the menu shows all their screens, and each screen opens with the role that owns it.
@@ -141,6 +143,9 @@ export function Dashboard({ user: account, onLogout }: DashboardProps) {
       }
       if (activeModule === "hr-management") {
         return <HRManagementModule userRole={user.role} />
+      }
+      if (activeModule === "e-invoice-settings") {
+        return <EInvoiceSettingsModule roles={roles} />
       }
       return <UserManagementModule />
     }
@@ -223,6 +228,8 @@ case "po-requests":
         return <BalanceModule />
       case "finance-reports":
         return <FinanceReportsModule />
+      case "e-invoice-settings":
+        return <EInvoiceSettingsModule roles={roles} />
       case "goods-receipt":
         return <GoodsReceiptModule />
       case "goods-receipt-tracking":

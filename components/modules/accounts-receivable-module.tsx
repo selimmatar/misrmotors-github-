@@ -22,7 +22,7 @@ import { fill } from "@/lib/i18n-format"
 import type { CustomerInvoice } from "@/lib/types"
 import { isSinglePayment } from "@/lib/payment-type"
 import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet } from "lucide-react"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
@@ -38,6 +38,9 @@ import { arDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
 import { OrdersToInvoice, useOrdersToInvoice } from "@/components/accounting/orders-to-invoice"
 import type { OrderToInvoice } from "@/lib/ready-to-invoice"
 import { OrderOverviewDialog } from "@/components/sales-order/order-overview-dialog"
+import { EtaPreviewDialog } from "@/components/accounting/eta-preview-dialog"
+import { EtaReissueDialog } from "@/components/accounting/eta-reissue-dialog"
+import { EtaBadge, EtaSendAll, ReplacementMarks, useEtaBadges } from "@/components/accounting/eta-ar-bits"
 
 interface PaymentScheduleEntry {
   id: string
@@ -58,9 +61,12 @@ interface AccountsReceivableModuleProps {
   userRole?: string
 }
 
+// Who sees the e-invoice preview (the /api/eta routes allow the accountant, CEO and admin).
+const ETA_ROLES = ["accountant", "ceo", "admin"]
+
 export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleProps) {
   const { t, formatNumber, language } = useI18n()
-  const { customerInvoices, customers, salesOrders, loadData } = useAppContext()
+  const { customerInvoices, allCustomerInvoices, customers, salesOrders, loadData } = useAppContext()
   // One idempotency key per payment attempt (re-used if the same attempt is retried), and a guard against
   // a second submit while one is in flight.
   const paymentAttemptRef = useRef<{ scope: string; key: string } | null>(null)
@@ -100,6 +106,9 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   // Orders to invoice (owner request, 2026-11-14)
   const toInvoice = useOrdersToInvoice()
   const [overviewSoId, setOverviewSoId] = useState<number | null>(null)
+  const [etaInvoice, setEtaInvoice] = useState<CustomerInvoice | null>(null)
+  const [reissueInvoice, setReissueInvoice] = useState<CustomerInvoice | null>(null)
+  const etaBadges = useEtaBadges(ETA_ROLES.includes(userRole || ""))
   const readyOrders = (toInvoice.orders || []).filter((o) => o.ready)
   const openOrders = (toInvoice.orders || []).filter((o) => !o.ready)
   // Create Invoice (owner request, 2026-11-14): pick a sales order, then its delivery permits.
@@ -193,7 +202,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
             const rawInvoices = await invoicesResponse.json()
             wholeInvoicedSoIds = new Set(
               (rawInvoices || [])
-                .filter((inv: any) => inv.soId && !inv.isMaintenance && (inv.deliveryPermits || []).length === 0)
+                .filter((inv: any) => inv.status !== "replaced" && inv.soId && !inv.isMaintenance && (inv.deliveryPermits || []).length === 0)
                 .map((inv: any) => String(inv.soId)),
             )
           }
@@ -1055,7 +1064,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
  filtered = overdueInvoices
  break
  default:
- filtered = allInvoices
+ filtered = allCustomerInvoices
  }
 
  const query = invoiceSearchQuery.trim().toLowerCase()
@@ -1139,8 +1148,60 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     return remaining > 0.005 ? (isFinalInstallment ? remaining : Math.min(installmentAmount, remaining)) : installmentAmount
   }
 
+  // A corrected invoice is Replaced; the new one replaces it (spec §6.5a). Each links to the other.
+  const isReplaced = (invoice: CustomerInvoice) => (invoice.status as string) === "replaced"
+  const replacedByOf = (invoice: CustomerInvoice) =>
+    invoice.replacedByInvoiceId ? allCustomerInvoices.find((i) => i.id === invoice.replacedByInvoiceId) || null : null
+  const replacesOf = (invoice: CustomerInvoice) => allCustomerInvoices.find((i) => i.replacedByInvoiceId === invoice.id) || null
+  const mayEta = ETA_ROLES.includes(userRole || "")
+
+  // The e-invoice badge and the Replaced / Replaces marks of a row.
+  const renderEtaMarks = (invoice: CustomerInvoice) => (
+    <div className="flex flex-col items-start gap-1">
+      {mayEta && !isReplaced(invoice) && <EtaBadge state={etaBadges.statuses[invoice.id]} environment={etaBadges.environment} />}
+      <ReplacementMarks
+        invoice={invoice}
+        replacedBy={replacedByOf(invoice)}
+        replaces={replacesOf(invoice)}
+        replaced={isReplaced(invoice)}
+        onOpen={(other) => handleViewSchedule(allCustomerInvoices.find((i) => i.id === other.id) || invoice)}
+      />
+    </div>
+  )
+
   // The row's actions, shared by the table's actions cell and the phone card.
   const renderRowActions = (invoice: CustomerInvoice) => {
+    if (isReplaced(invoice)) {
+      return mayEta ? (
+        <>
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`${t("eta.row-action")} ${invoice.invoiceNumber}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              setEtaInvoice(invoice)
+            }}
+          >
+            <Receipt className="w-4 h-4 me-1" />
+            {t("eta.row-action")}
+          </Button>
+          {!invoice.replacedByInvoiceId && (
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label={`${t("eta.correction-steps")} ${invoice.invoiceNumber}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                setReissueInvoice(invoice)
+              }}
+            >
+              {t("eta.correction-steps")}
+            </Button>
+          )}
+        </>
+      ) : null
+    }
     const status = getInvoiceStatus(invoice)
     return (
       <>
@@ -1196,6 +1257,20 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           <FileText className="w-4 h-4 me-2" />
           {t("action.print-invoice")}
         </Button>
+        {ETA_ROLES.includes(userRole || "") && (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`${t("eta.row-action")} ${invoice.invoiceNumber}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              setEtaInvoice(invoice)
+            }}
+          >
+            <Receipt className="w-4 h-4 me-1" />
+            {t("eta.row-action")}
+          </Button>
+        )}
         {invoice.vatInvoiceUrl ? (
           <Button
             size="sm"
@@ -1314,9 +1389,43 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       {overviewSoId !== null && (
         <OrderOverviewDialog soId={overviewSoId} userRole={userRole as any} onClose={() => setOverviewSoId(null)} />
       )}
+      {etaInvoice && (
+        <EtaPreviewDialog
+          invoiceId={etaInvoice.id}
+          invoiceNumber={etaInvoice.invoiceNumber}
+          invoiceDate={etaInvoice.date}
+          onClose={() => setEtaInvoice(null)}
+          onChanged={etaBadges.reload}
+          onReissue={() => {
+            setReissueInvoice(etaInvoice)
+            setEtaInvoice(null)
+          }}
+        />
+      )}
+      {reissueInvoice && (
+        <EtaReissueDialog
+          invoiceId={reissueInvoice.id}
+          invoiceNumber={reissueInvoice.invoiceNumber}
+          started={isReplaced(reissueInvoice)}
+          onClose={() => setReissueInvoice(null)}
+          onStarted={() => {
+            loadData()
+            etaBadges.reload()
+          }}
+        />
+      )}
 
       {/* Filter Buttons */}
       <div className="flex gap-2 flex-wrap">
+        {mayEta && (
+          <EtaSendAll
+            invoiceIds={getDisplayedInvoices()
+              .filter((i) => !isReplaced(i) && !etaBadges.statuses[i.id])
+              .map((i) => Number(i.id))
+              .filter((n) => Number.isInteger(n) && n > 0)}
+            onDone={etaBadges.reload}
+          />
+        )}
         <Button variant={listFilter === "all" ? "default" : "outline"} onClick={() => setListFilter("all")}>
           {t("ar.all-invoices")} ({formatNumber(allInvoices.length)})
         </Button>
@@ -1379,7 +1488,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   id={invoice.invoiceNumber}
                   amount={formatMoney(invoice.amount || 0, language)}
                   party={getCustomerName(invoice.customerId)}
-                  status={<StatusBadge status={status} label={t(`status.${status}`)} />}
+                  status={
+                    <div className="flex flex-col items-start gap-1">
+                      <StatusBadge status={status} label={t(`status.${status}`)} />
+                      {renderEtaMarks(invoice)}
+                    </div>
+                  }
                   actions={renderRowActions(invoice)}
                 />
               )
@@ -1437,7 +1551,10 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                           </div>
                         </TableCell>
                         <TableCell>
-                          <StatusBadge status={status} label={t(`status.${status}`)} />
+                          <div className="flex flex-col items-start gap-1">
+                            <StatusBadge status={status} label={t(`status.${status}`)} />
+                            {renderEtaMarks(invoice)}
+                          </div>
                         </TableCell>
                         <ActionsCell>{renderRowActions(invoice)}</ActionsCell>
                       </TableRow>

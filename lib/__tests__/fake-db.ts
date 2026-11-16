@@ -35,6 +35,10 @@ const PK: Record<string, string> = {
   po_request_items: "item_id",
   sales_quotations: "id",
   workflow_events: "event_id",
+  eta_item_codes: "code_id",
+  eta_code_memory: "memory_id",
+  eta_documents: "doc_id",
+  eta_signers: "signer_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
@@ -50,6 +54,14 @@ const UNIQUE: Record<string, string[][]> = {
   purchase_orders: [["po_number"]],
   sales_quotations: [["quotation_number"]],
   po_requests: [["request_number"]],
+  eta_item_codes: [["item_code"]],
+  eta_code_memory: [["normalized_name"]],
+  eta_documents: [["invoice_id", "document_type", "environment", "version"]],
+  eta_signers: [["key_hash"]],
+}
+// Column defaults applied on insert (as the database does).
+const DEFAULTS: Record<string, Row> = {
+  eta_documents: { environment: "real", version: 1 },
 }
 const STAMP_CREATED_AT = new Set(["product_returns", "accounts_receivable", "return_items"])
 
@@ -79,7 +91,14 @@ export class FakeDb {
     const key = `rpc:${name}`
     this.calls[key] = (this.calls[key] || 0) + 1
     if (this.failOn[key]) return { data: null, error: { message: this.failOn[key], code: "XX000" } }
-    if (this.rpcHandlers[name]) return { data: this.rpcHandlers[name](args), error: null }
+    // A handler that throws { code, message, hint } answers like a raised Postgres exception (PostgREST error).
+    if (this.rpcHandlers[name]) {
+      try {
+        return { data: this.rpcHandlers[name](args), error: null }
+      } catch (e: any) {
+        return { data: null, error: e && typeof e === "object" && "code" in e ? e : { message: String(e?.message || e), code: "XX000" } }
+      }
+    }
     if (name === "get_next_grn_number") return { data: ++this.grnSeq, error: null }
     if (name === "generate_product_sku") return { data: `SKU-${100000 + ++this.skuSeq}`, error: null }
     return { data: null, error: { message: `unknown rpc ${name}`, code: "42883" } }
@@ -106,7 +125,7 @@ class Query {
   filters: ((r: Row) => boolean)[] = []
   wantRows = false
   one: "none" | "single" | "maybe" = "none"
-  sortBy: { col: string; asc: boolean } | null = null
+  sortBy: { col: string; asc: boolean }[] = []
   max: number | null = null
   conflict: string[] = []
   constructor(private db: FakeDb, private table: string) {}
@@ -133,12 +152,13 @@ class Query {
   is(c: string, v: any) { this.filters.push((r) => (r[c] ?? null) === v); return this }
   /** PostgREST `not`: only `not(col, "is", null)` */
   not(c: string, op: string, v: any) { this.filters.push((r) => (op === "is" ? (r[c] ?? null) !== v : r[c] !== v)); return this }
-  /** PostgREST `or`: only the "col.is.null" / "col.eq.value" terms the routes use */
+  /** PostgREST `or`: only the "col.is.null" / "col.eq.value" / "col.neq.value" terms the routes use */
   or(expr: string) {
     const terms = expr.split(",").map((t) => {
       const [col, op, ...rest] = t.split(".")
       const val = rest.join(".")
-      return (r: Row) => (op === "is" ? (val === "null" ? (r[col] ?? null) === null : String(r[col]) === val) : String(r[col]) === val)
+      return (r: Row) =>
+        op === "is" ? (val === "null" ? (r[col] ?? null) === null : String(r[col]) === val) : op === "neq" ? String(r[col]) !== val : String(r[col]) === val
     })
     this.filters.push((r) => terms.some((f) => f(r)))
     return this
@@ -153,7 +173,7 @@ class Query {
     this.filters.push((r) => re.test(String(r[c] ?? "")))
     return this
   }
-  order(col: string, opts: { ascending?: boolean } = {}) { this.sortBy = { col, asc: opts.ascending !== false }; return this }
+  order(col: string, opts: { ascending?: boolean } = {}) { this.sortBy.push({ col, asc: opts.ascending !== false }); return this }
   limit(n: number) { this.max = n; return this }
   /** PostgREST `.range(from, to)` (inclusive): slices the ordered result */
   window: { from: number; to: number } | null = null
@@ -188,9 +208,14 @@ class Query {
         return copy
       })
     }
-    if (this.sortBy) {
-      const { col, asc } = this.sortBy
-      out = [...out].sort((a, b) => (a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0) * (asc ? 1 : -1))
+    if (this.sortBy.length) {
+      out = [...out].sort((a, b) => {
+        for (const { col, asc } of this.sortBy) {
+          const d = a[col] > b[col] ? 1 : a[col] < b[col] ? -1 : 0
+          if (d) return d * (asc ? 1 : -1)
+        }
+        return 0
+      })
     }
     const count = out.length
     if (this.max !== null) out = out.slice(0, this.max)
@@ -236,6 +261,7 @@ class Query {
           if (item[pk] === undefined) item[pk] = ++this.db.seq[this.table]
           else this.db.seq[this.table] = Math.max(this.db.seq[this.table], Number(item[pk]))
         }
+        for (const [k, v] of Object.entries(DEFAULTS[this.table] || {})) if (item[k] === undefined) item[k] = v
         if (STAMP_CREATED_AT.has(this.table) && !item.created_at) item.created_at = this.db.stamp()
         const unique = this.violates(rows, item)
         if (unique) return { data: null, error: { code: "23505", message: `duplicate key (${unique})` } }

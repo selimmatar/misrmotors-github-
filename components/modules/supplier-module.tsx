@@ -353,13 +353,15 @@ export function SupplierModule({ userRole }: SupplierModuleProps) {
             city: selectedSupplier.city || "",
             address: selectedSupplier.address,
             leadTimeDays: selectedSupplier.leadTimeDays,
+            taxRegistrationNumber: selectedSupplier.taxRegistrationNumber || "",
           }}
           onSave={async (details) => {
             // Payment terms are left out on purpose so editing contact details never changes them
             const { paymentTerms: _terms, ...rest } = selectedSupplier
             const updated = { ...rest, ...details }
-            await updateSupplier(updated as Supplier)
+            const warnings = await updateSupplier(updated as Supplier)
             setSelectedSupplier({ ...selectedSupplier, ...details })
+            return warnings
           }}
         />
 

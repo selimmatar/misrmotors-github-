@@ -12,6 +12,7 @@
 // LOWEST invoice_id survives; a higher-id invoice rolls itself back. See createSoInvoice/createDpInvoices.
 
 import { resolveInstallmentCount } from "./payment-type"
+import { excludeReplaced } from "./ar-live"
 import { numberTakenMessage } from "./doc-number"
 import {
   DELIVERED_PERMIT_STATUSES,
@@ -23,6 +24,11 @@ import {
   toMs,
   type ReturnLine,
 } from "./return-lines"
+import { etaLines, etaTolerance, isAfterGoLive, type EtaLineIn } from "./eta/totals"
+import {
+  correctionOfPermits, openCorrectionsForOrder, reissueInvoice, ReissueNumberTaken, ReissueRefused, REISSUE_OVERPAID, undoReissue,
+  type OpenCorrection,
+} from "./eta/correction"
 
 // Batch 2: quantity returned against a delivery permit (valid = non-rejected) reduces what can still be invoiced:
 //   ordered - already invoiced - returned = remaining invoiceable (never below zero)
@@ -76,6 +82,91 @@ export function dpInvoicePrintTotals(rawItemsTotal: number, discountBase: number
   return { totalWithVat: computed, subtotalBeforeVat, vatAmount: round2(computed - subtotalBeforeVat) }
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// E-invoice (ETA) go-live switch - spec §6. An invoice created at or after company_settings.eta_go_live_at is priced
+// line by line (lib/eta/totals.ts: VAT rounded per line, totals = sums of the rounded lines) and the over-invoicing
+// checks use etaCheckTolerance (the e-invoice lines involved). Invoices created before go-live, and everything while the setting
+// is empty, keep today's rule (netInvoiceValue / computeInvoiceAmount / MONEY_TOLERANCE) unchanged.
+// ---------------------------------------------------------------------------------------------------------
+export const ETA_GO_LIVE_KEY = "eta_go_live_at"
+const nowIso = () => new Date().toISOString()
+
+/** The order discount rate today's rule applies: discount_amount over the pre-discount line total (0 when that is 0). */
+export function orderDiscountRate(soItems: { total?: any; quantity?: any; unit_price?: any }[], soSubtotal: number, soDiscountAmount: number) {
+  const base = soDiscountBase(soItems, soSubtotal)
+  return base > 0 ? (Number(soDiscountAmount) || 0) / base : 0
+}
+
+/** Unit price of a billed line: its unit_price; when that is missing (or 0 on a line that has a value), total / quantity. */
+export function etaUnitPrice(item: { total?: any; quantity?: any; unit_price?: any }) {
+  const unit = item.unit_price == null || item.unit_price === "" ? Number.NaN : Number(item.unit_price)
+  const qty = Number(item.quantity) || 0
+  const fromTotal = qty > 0 ? itemRawTotal(item) / qty : 0
+  if (!Number.isFinite(unit) || (unit === 0 && fromTotal > 0)) return fromTotal
+  return unit
+}
+
+/**
+ * Totals printed on an invoice created after go-live: the per-line totals of the printed lines. The printed total must
+ * equal the stored amount, so when they differ (e.g. the order was edited after invoicing) the stored amount is printed
+ * and split into pre-VAT and VAT, as dpInvoicePrintTotals does.
+ */
+export function etaInvoicePrintTotals(lines: EtaLineIn[], discountRate: number, storedAmount: number | null | undefined) {
+  const { totals } = etaLines(lines, discountRate)
+  const stored = storedAmount == null ? NaN : Number(storedAmount)
+  if (Number.isFinite(stored) && Math.abs(stored - totals.total) > 0.005) {
+    const totalWithVat = round2(stored)
+    const subtotalBeforeVat = round2(totalWithVat / (1 + VAT_RATE))
+    return { totalWithVat, subtotalBeforeVat, vatAmount: round2(totalWithVat - subtotalBeforeVat) }
+  }
+  return { totalWithVat: totals.total, subtotalBeforeVat: totals.net, vatAmount: totals.vat }
+}
+
+// Postgres "relation does not exist" / PostgREST "table not in the schema cache": no settings table = not live.
+const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"])
+/** Whether the "set but not a date" warning was logged in this process (once is enough). */
+export const etaGoLiveWarning = { shown: false }
+
+/**
+ * The go-live moment (company_settings.eta_go_live_at), or null when it is not set: no row, an empty value, or no
+ * company_settings table. Any other read error THROWS - after go-live a guess would store an amount under the wrong
+ * rule. A value that is set but cannot be read as a date also means "not live" (warned once).
+ */
+export async function loadEtaGoLiveAt(db: any): Promise<string | null> {
+  const res = await db.from("company_settings").select("setting_key, setting_value").eq("setting_key", ETA_GO_LIVE_KEY)
+  if (res?.error) {
+    if (MISSING_TABLE_CODES.has(String(res.error.code || ""))) return null
+    throw new Error(`load ${ETA_GO_LIVE_KEY}: ${res.error.message || res.error}`)
+  }
+  const rows: any[] = Array.isArray(res?.data) ? res.data : res?.data ? [res.data] : []
+  const value = rows.find((r) => r?.setting_key === ETA_GO_LIVE_KEY)?.setting_value
+  const text = value == null ? "" : String(value).trim()
+  if (!text) return null
+  if (Number.isNaN(toMs(text)) && !etaGoLiveWarning.shown) {
+    etaGoLiveWarning.shown = true
+    console.warn(`[invoicing] ${ETA_GO_LIVE_KEY} is set but is not a date (${JSON.stringify(text)}); the pre-go-live rule stays in force.`)
+  }
+  return text
+}
+
+// Invoices may not be priced while the go-live setting cannot be read.
+const goLiveUnreadable = (state: SoInvoicingState): Verdict | null =>
+  state.etaGoLiveError
+    ? { ok: false, status: 503, error: `The e-invoice go-live setting could not be read (${state.etaGoLiveError}). Nothing was created; please try again.` }
+    : null
+
+/**
+ * Over-invoicing slack after go-live: per-line rounding happens on every e-invoice line, and with a discount one line
+ * can move by about 0.0107 (discount and VAT both rounded), so the count is the larger of the order's lines and the
+ * e-invoice lines of the post-go-live invoices being compared (`etaLineTotal`), at 0.011 a line (never below 0.05).
+ */
+export function etaCheckTolerance(orderLines: number, etaLineTotal: number) {
+  const count = Math.max(orderLines, etaLineTotal)
+  return Math.max(etaTolerance(count), Math.round(11 * count) / 1000)
+}
+// Float slack on the post-go-live comparison, so a sum landing exactly on the limit is not refused.
+const ETA_COMPARE_EPSILON = 1e-6
+
 // Same line matching as isSOFullyDelivered in the delivery-permits route: by product, else by name.
 // (Defined in return-lines.ts so returns and invoicing can never disagree on what "the same line" means.)
 export { lineKey }
@@ -118,6 +209,10 @@ export interface SoInvoicingState {
   }[]
   /** valid (non-rejected) return lines against this sales order's delivery permits */
   returns: ReturnLine[]
+  /** company_settings.eta_go_live_at (ISO date-time); empty / missing = not live, today's rule everywhere */
+  etaGoLiveAt?: string | null
+  /** set when the go-live setting could not be read: no invoice may be created (evaluate* refuse with 503) */
+  etaGoLiveError?: string
 }
 
 export type Verdict = { ok: true; newValue?: number } | { ok: false; status: number; error: string }
@@ -127,9 +222,14 @@ const ownPermitIds = (state: SoInvoicingState) => new Set(state.permits.map((p) 
 
 // How much of an invoice counts against THIS sales order. A normal invoice counts in full; an invoice that
 // also covers other sales orders' permits counts only for this order's permits.
+// An invoice created after go-live counts its per-line value for this order's permits (net of the returns known
+// when it was created, as it was priced); one created before go-live counts as it always did.
 function invoiceShare(state: SoInvoicingState, inv: SoInvoicingState["invoices"][number]) {
   const own = ownPermitIds(state)
   if (inv.permit_ids.length > 0 && inv.permit_ids.some((id) => !own.has(id))) {
+    if (isAfterGoLive(inv.created_at, state.etaGoLiveAt)) {
+      return etaLines(dpInvoiceEtaLines(state, inv.permit_ids, invoiceAsOf(inv)), stateDiscountRate(state)).totals.total
+    }
     const raw = state.permits
       .filter((p) => inv.permit_ids.includes(p.permit_id))
       .reduce((sum, p) => sum + p.items.reduce((s, it) => s + itemRawTotal(it), 0), 0)
@@ -179,41 +279,85 @@ function poolByKey(state: SoInvoicingState, returned: Map<string, number>) {
  * of line value that is still billable (so discount and VAT are applied exactly as on the order). Unchanged when
  * nothing was returned.
  */
-export function computeWholeOrderAmount(state: SoInvoicingState): { ok: true; amount: number; excluded: Map<string, number> } | { ok: false; status: number; error: string } {
+export function computeWholeOrderAmount(
+  state: SoInvoicingState,
+  rule: { eta?: boolean } = {},
+): { ok: true; amount: number; excluded: Map<string, number> } | { ok: false; status: number; error: string } {
   const total = Number(state.so.total) || 0
-  const pools = poolByKey(state, returnedByKey(state.returns || []))
-  const excludedLeft = new Map<string, number>()
-  for (const [key, info] of pools) {
-    const excluded = Math.max(0, info.ordered - info.pool)
-    if (excluded > QTY_EPSILON) excludedLeft.set(key, excluded)
-  }
-  if (excludedLeft.size === 0) return { ok: true, amount: total, excluded: new Map() }
+  const excludedLeft = excludedByKey(state)
+  // rule.eta (only for an invoice created after go-live): the order lines less returns, priced line by line.
+  // Default: today's rule - also for net_total and return credits (per-line credit notes are step 2).
+  const eta = rule.eta === true
+  if (excludedLeft.size === 0 && !eta) return { ok: true, amount: total, excluded: new Map() }
 
   const excluded = new Map(excludedLeft)
+  const billed = billedOrderLines(state, excludedLeft)
   let rawAll = 0
   let rawExcluded = 0
-  for (const line of state.soItems) {
-    const qty = Number(line.quantity) || 0
-    const lineRaw = itemRawTotal({ total: line.total, quantity: line.quantity, unit_price: line.unit_price })
+  for (const { qty, take, lineRaw } of billed) {
     rawAll += lineRaw
-    const key = lineKey(line.product_id, line.outsourced_name)
-    const take = Math.min(excludedLeft.get(key) || 0, qty)
-    if (take > 0) {
-      excludedLeft.set(key, (excludedLeft.get(key) || 0) - take)
-      rawExcluded += qty > 0 ? (lineRaw * take) / qty : 0
-    }
+    if (take > 0) rawExcluded += qty > 0 ? (lineRaw * take) / qty : 0
   }
   if (rawAll <= 0) return { ok: true, amount: total, excluded: new Map() }
-  const amount = round2(total * (1 - rawExcluded / rawAll))
+  const amount = eta
+    ? etaLines(billed.map((b) => orderEtaLine(b).line), stateDiscountRate(state)).totals.total
+    : round2(total * (1 - rawExcluded / rawAll))
+  if (excluded.size === 0) return { ok: true, amount, excluded }
   if (amount <= 0.005) {
     return { ok: false, status: 409, error: `Nothing to invoice: every item on sales order ${soLabel(state)} has been returned.` }
   }
   return { ok: true, amount, excluded }
 }
 
+// Per line key: the ordered quantity a whole-order invoice leaves out because it was returned.
+function excludedByKey(state: SoInvoicingState) {
+  const pools = poolByKey(state, returnedByKey(state.returns || []))
+  const excludedLeft = new Map<string, number>()
+  for (const [key, info] of pools) {
+    const excluded = Math.max(0, info.ordered - info.pool)
+    if (excluded > QTY_EPSILON) excludedLeft.set(key, excluded)
+  }
+  return excludedLeft
+}
+
+// The order lines a whole-order invoice bills: each line with the returned quantity (`take`) taken off it, first lines
+// of a key first. Consumes `excludedLeft`.
+function billedOrderLines(state: SoInvoicingState, excludedLeft: Map<string, number>) {
+  return state.soItems.map((line) => {
+    const qty = Number(line.quantity) || 0
+    const lineRaw = itemRawTotal({ total: line.total, quantity: line.quantity, unit_price: line.unit_price })
+    const key = lineKey(line.product_id, line.outsourced_name)
+    const take = Math.min(excludedLeft.get(key) || 0, qty)
+    if (take > 0) excludedLeft.set(key, (excludedLeft.get(key) || 0) - take)
+    return { line, qty, take, lineRaw }
+  })
+}
+
+/** An e-invoice line with the product it bills (null for a line without a product, e.g. outsourced). */
+export interface BilledEtaLine {
+  line: EtaLineIn
+  productId: number | null
+}
+
+// A billed order line (from billedOrderLines) as an e-invoice line: the quantity less what was returned.
+const orderEtaLine = (b: ReturnType<typeof billedOrderLines>[number]): BilledEtaLine => ({
+  line: { name: b.line.outsourced_name || "", quantity: b.qty - b.take, unitPrice: etaUnitPrice(b.line) },
+  productId: b.line.product_id ?? null,
+})
+
+// The lines a whole-order invoice bills given `state.returns` (the order lines less those returns).
+const wholeOrderBilledLines = (state: SoInvoicingState): BilledEtaLine[] => billedOrderLines(state, excludedByKey(state)).map(orderEtaLine)
+
+/** The lines a whole-order invoice created now would bill (the order lines less returns), as e-invoice lines. */
+export function wholeOrderEtaLines(state: SoInvoicingState): EtaLineIn[] {
+  return wholeOrderBilledLines(state).map((b) => b.line)
+}
+
+const stateDiscountRate = (state: SoInvoicingState) => orderDiscountRate(state.soItems, state.so.subtotal, state.so.discount_amount)
+
 // The order total once returned quantity is left out (the whole-order invoice amount); 0 when nothing is left to bill.
-function effectiveOrderTotal(state: SoInvoicingState, returns: ReturnLine[]) {
-  const priced = computeWholeOrderAmount({ ...state, returns })
+function effectiveOrderTotal(state: SoInvoicingState, returns: ReturnLine[], rule: { eta?: boolean } = {}) {
+  const priced = computeWholeOrderAmount({ ...state, returns }, rule)
   return priced.ok ? priced.amount : 0
 }
 
@@ -236,6 +380,52 @@ function netPermitQuantities(state: SoInvoicingState, permit: SoInvoicingState["
     permit.items.map((it) => ({ key: lineKey(it.product_id, it.item_name_snapshot), quantity: Number(it.quantity) || 0 })),
     returnedByKey(state.returns || [], { permitId: permit.permit_id, asOfMs }),
   )
+}
+
+// One e-invoice line per permit item, at the net quantity billed (`net`, from netPermitQuantities).
+const permitEtaLines = (permit: SoInvoicingState["permits"][number], net: number[]): BilledEtaLine[] =>
+  permit.items.map((item, idx) => ({
+    line: { name: item.item_name_snapshot || "", quantity: net[idx], unitPrice: etaUnitPrice(item) },
+    productId: item.product_id ?? null,
+  }))
+
+const dpInvoiceBilledLines = (state: SoInvoicingState, permitIds: number[], asOfMs?: number): BilledEtaLine[] =>
+  state.permits.filter((p) => permitIds.includes(p.permit_id)).flatMap((p) => permitEtaLines(p, netPermitQuantities(state, p, asOfMs)))
+
+/**
+ * The lines a delivery-permit invoice bills for this order's permits among `permitIds`: each permit item at its net
+ * quantity (delivered less the returns known at `asOfMs`; all returns when omitted). The same item on two permits
+ * stays two lines.
+ */
+export function dpInvoiceEtaLines(state: SoInvoicingState, permitIds: number[], asOfMs?: number): EtaLineIn[] {
+  return dpInvoiceBilledLines(state, permitIds, asOfMs).map((b) => b.line)
+}
+
+// The return lines that already existed when `inv` was created (an invoice without a timestamp: none).
+const returnsKnownAt = (state: SoInvoicingState, inv: SoInvoicingState["invoices"][number]) =>
+  (state.returns || []).filter((r) => returnedByKey([r], { asOfMs: invoiceAsOf(inv) }).size > 0)
+
+/**
+ * The lines an existing invoice bills for this order, with their products: a delivery-permit invoice, this order's
+ * permit items at the net quantity billed (dpInvoiceEtaLines); a whole-order invoice, the order lines less the returns
+ * known when it was created. Lines may carry quantity 0 (returned in full); etaLines drops them.
+ */
+export function billedLinesForInvoice(state: SoInvoicingState, inv: SoInvoicingState["invoices"][number]): BilledEtaLine[] {
+  if (!isSoLevelInvoice(inv)) return dpInvoiceBilledLines(state, inv.permit_ids, invoiceAsOf(inv))
+  return wholeOrderBilledLines({ ...state, returns: returnsKnownAt(state, inv) })
+}
+
+const countedLines = (lines: EtaLineIn[]) => lines.filter((l) => l.quantity > QTY_EPSILON).length
+
+// E-invoice lines of the post-go-live invoices among `invoices` (a whole-order invoice: the order's lines).
+function postGoLiveEtaLineCount(
+  state: SoInvoicingState,
+  invoices: SoInvoicingState["invoices"],
+  createdAt: (inv: SoInvoicingState["invoices"][number]) => string | null | undefined = (inv) => inv.created_at,
+) {
+  return invoices
+    .filter((inv) => isAfterGoLive(createdAt(inv), state.etaGoLiveAt))
+    .reduce((n, inv) => n + (isSoLevelInvoice(inv) ? state.soItems.length : countedLines(dpInvoiceEtaLines(state, inv.permit_ids, invoiceAsOf(inv)))), 0)
 }
 
 // Value of an item for `netQty` units (pro-rata of its stored line total).
@@ -303,6 +493,8 @@ const invoiceLabels = (invs: SoInvoicingState["invoices"]) => invs.map((i) => i.
 
 // Workflow A guard: a whole-order invoice is only allowed while NOTHING has been invoiced against the order.
 export function evaluateSoInvoice(state: SoInvoicingState): Verdict {
+  const unreadable = goLiveUnreadable(state)
+  if (unreadable) return unreadable
   if (state.invoices.length === 0) return { ok: true }
   const viaDps = state.invoices.filter((i) => !isSoLevelInvoice(i))
   if (viaDps.length > 0) {
@@ -321,6 +513,8 @@ export function evaluateSoInvoice(state: SoInvoicingState): Verdict {
 
 // Workflow B guard for the permits `newPermitIds` (all belonging to this sales order).
 export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[]): Verdict {
+  const unreadable = goLiveUnreadable(state)
+  if (unreadable) return unreadable
   const full = state.invoices.filter(isSoLevelInvoice)
   if (full.length > 0) {
     return {
@@ -376,15 +570,23 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
   }
 
   const priorValue = state.invoices.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
-  const newValue = newPermits.reduce((sum, p) => {
-    const net = netByPermit.get(p.permit_id) || []
-    const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)
-    return sum + netInvoiceValue(raw, soDiscountBase(state.soItems, state.so.subtotal), state.so.discount_amount)
-  }, 0)
+  // The invoice is created now: after go-live it is priced line by line (spec §6), before it as always.
+  const eta = isAfterGoLive(nowIso(), state.etaGoLiveAt)
+  const newLines = eta ? newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])).map((b) => b.line) : []
+  const newValue = eta
+    ? etaLines(newLines, stateDiscountRate(state)).totals.total
+    : newPermits.reduce((sum, p) => {
+        const net = netByPermit.get(p.permit_id) || []
+        const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)
+        return sum + netInvoiceValue(raw, soDiscountBase(state.soItems, state.so.subtotal), state.so.discount_amount)
+      }, 0)
   // The order total less the value of what was returned (nothing was credited on existing invoices, so returned
   // goods that were already billed are not billed again).
-  const billableTotal = effectiveOrderTotal(state, state.returns || [])
-  if (priorValue + newValue > billableTotal + MONEY_TOLERANCE) {
+  const billableTotal = effectiveOrderTotal(state, state.returns || [], { eta })
+  const tolerance = eta
+    ? etaCheckTolerance(state.soItems.length, postGoLiveEtaLineCount(state, state.invoices) + countedLines(newLines)) + ETA_COMPARE_EPSILON
+    : MONEY_TOLERANCE
+  if (priorValue + newValue > billableTotal + tolerance) {
     return {
       ok: false,
       status: 409,
@@ -397,6 +599,8 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
 // Post-insert safety net. `myInvoiceId` is the invoice this request just created. Only invoices with an id
 // LOWER than mine can displace me, so of any set of racing requests the lowest id always survives.
 export function evaluateAfterInsert(state: SoInvoicingState, myInvoiceId: number): Verdict {
+  const unreadable = goLiveUnreadable(state)
+  if (unreadable) return unreadable
   const mine = state.invoices.find((i) => i.invoice_id === myInvoiceId)
   const earlier = state.invoices.filter((i) => i.invoice_id < myInvoiceId)
   const considered = state.invoices.filter((i) => i.invoice_id <= myInvoiceId)
@@ -424,8 +628,14 @@ export function evaluateAfterInsert(state: SoInvoicingState, myInvoiceId: number
     }
   }
   const value = considered.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
-  const returnsBefore = mine ? (state.returns || []).filter((r) => returnedByKey([r], { asOfMs: invoiceAsOf(mine) }).size > 0) : []
-  if (value > effectiveOrderTotal(state, returnsBefore) + MONEY_TOLERANCE) {
+  const returnsBefore = mine ? returnsKnownAt(state, mine) : []
+  // The rule of the invoice being checked: its own created_at (now when the row carries none).
+  const mineAt = mine?.created_at || nowIso()
+  const eta = isAfterGoLive(mineAt, state.etaGoLiveAt)
+  const tolerance = eta
+    ? etaCheckTolerance(state.soItems.length, postGoLiveEtaLineCount(state, considered, (inv) => (inv === mine ? mineAt : inv.created_at))) + ETA_COMPARE_EPSILON
+    : MONEY_TOLERANCE
+  if (value > effectiveOrderTotal(state, returnsBefore, { eta }) + tolerance) {
     return { ok: false, status: 409, error: `Concurrent invoicing would exceed the total of sales order ${soLabel(state)}.` }
   }
   return { ok: true }
@@ -478,12 +688,12 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
   const returns = await loadReturnLines(db, permitIds)
 
   const bySo = must(
-    await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").eq("so_id", soId),
+    await excludeReplaced(db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").eq("so_id", soId)),
     "load invoices by sales order",
   ) as any[]
   const linkedIds = [...new Set(ownLinks.map((l) => l.invoice_id))]
   const byLink = linkedIds.length
-    ? (must(await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").in("invoice_id", linkedIds), "load linked invoices") as any[])
+    ? (must(await excludeReplaced(db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").in("invoice_id", linkedIds)), "load linked invoices") as any[])
     : []
   const invoiceRows = new Map<number, any>()
   for (const row of [...bySo, ...byLink]) invoiceRows.set(row.invoice_id, row)
@@ -522,6 +732,18 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
       created_at: r.created_at ?? null,
     })),
     returns,
+    ...(await goLiveFields(db)),
+  }
+}
+
+// The go-live setting for a loaded state. A read failure is recorded, not thrown: only creating an invoice needs it
+// (evaluate* refuse), while the overview, order edits and return credits keep working.
+async function goLiveFields(db: Db): Promise<Pick<SoInvoicingState, "etaGoLiveAt" | "etaGoLiveError">> {
+  try {
+    return { etaGoLiveAt: await loadEtaGoLiveAt(db) }
+  } catch (error: any) {
+    console.error(`[invoicing] ${error?.message || error}`)
+    return { etaGoLiveAt: null, etaGoLiveError: String(error?.message || error) }
   }
 }
 
@@ -566,6 +788,66 @@ async function insertInvoice(db: Db, row: Record<string, any>, manualNumber: str
   throw new Error(`create invoice: ${lastError?.message || lastError}`)
 }
 
+// Correct and reissue (spec §6.5a): the new invoice of an open correction is created by one database function that
+// also moves the old invoice's permit links, payments, schedules and collected amount (lib/eta/correction.ts). The
+// number is chosen exactly as insertInvoice does.
+async function insertReissue(db: Db, correction: OpenCorrection, row: Record<string, any>, permitIds: number[], manualNumber: string | null, confirmOverpaid: boolean) {
+  if (manualNumber) {
+    try {
+      return await reissueInvoice(db, correction.invoiceId, { ...row, invoice_number: manualNumber }, permitIds, confirmOverpaid)
+    } catch (error) {
+      if (error instanceof ReissueNumberTaken) throw new InvoiceNumberTaken(manualNumber)
+      throw error
+    }
+  }
+  let last: unknown = null
+  for (let attempt = 0; attempt < MAX_NUMBER_ATTEMPTS; attempt++) {
+    const invoiceNumber = await nextInvoiceNumber(db, attempt)
+    try {
+      return await reissueInvoice(db, correction.invoiceId, { ...row, invoice_number: invoiceNumber }, permitIds, confirmOverpaid)
+    } catch (error) {
+      if (!(error instanceof ReissueNumberTaken)) throw error
+      last = error
+    }
+  }
+  throw new Error(`create invoice: ${(last as any)?.message || "no free invoice number"}`)
+}
+
+// Payments of the old invoice above the new amount stay as the customer's credit only after a confirm.
+function overpaidRefusal(correction: OpenCorrection, amount: number): WorkflowResult | null {
+  const excess = round2(correction.collected - amount)
+  if (!(excess > 0.005)) return null
+  return failure(
+    409,
+    `The payments of ${correction.invoiceNumber || `#${correction.invoiceId}`} (${round2(correction.collected).toFixed(2)}) exceed the new invoice (${amount.toFixed(2)}). Confirm to keep ${excess.toFixed(2)} as the customer's credit.`,
+    { code: REISSUE_OVERPAID, collected: round2(correction.collected), amount, excess, replacesInvoiceId: correction.invoiceId },
+  )
+}
+
+// Every item of a corrected invoice came back (P13): nothing is left to bill, so there is no reissue to move the
+// payments to. They stay on the replaced invoice, to be refunded or kept as credit with the existing flows.
+const isNothingToInvoice = (error: string) => error.startsWith("Nothing to invoice")
+function nothingLeftRefusal(correction: OpenCorrection): WorkflowResult {
+  const old = correction.invoiceNumber || `#${correction.invoiceId}`
+  return failure(
+    409,
+    `Nothing is left to invoice: every item of ${old} was returned. Its payments stay on the replaced invoice ${old}; refund them or keep them as the customer's credit with the existing payment and credit screens.`,
+    {
+      code: "REISSUE_NOTHING_LEFT",
+      errorAr: `لا يوجد ما يُفوتر: تم إرجاع كل أصناف ${old}. تبقى مدفوعاتها على الفاتورة المستبدلة ${old}؛ ردّها للعميل أو احتفظ بها رصيداً دائناً له من شاشات المدفوعات والأرصدة الحالية.`,
+      replacesInvoiceId: correction.invoiceId,
+    },
+  )
+}
+
+const reissueRefusal = (error: unknown): WorkflowResult | null =>
+  error instanceof ReissueRefused ? failure(409, error.message, { code: error.code, ...(error.messageAr ? { errorAr: error.messageAr } : {}) }) : null
+
+export interface CreateInvoiceOptions {
+  /** a reissue whose moved payments exceed the new amount: keep the excess as customer credit (spec §6.5a) */
+  confirmOverpaid?: boolean
+}
+
 async function rollbackInvoice(db: Db, invoiceId: number) {
   const steps: [string, any][] = [
     ["unlink delivery permits", await db.from("invoice_delivery_permits").delete().eq("invoice_id", invoiceId)],
@@ -584,7 +866,7 @@ export interface WorkflowResult {
 const failure = (status: number, error: string, extra: Record<string, any> = {}): WorkflowResult => ({ status, body: { error, ...extra } })
 
 // ---- Workflow A: sales order -> invoice -------------------------------------------------------------------
-export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowResult> {
+export async function createSoInvoice(db: Db, soId: number, options: CreateInvoiceOptions = {}): Promise<WorkflowResult> {
   try {
     const state = await loadSoInvoicingState(db, soId)
     if (!state) return failure(404, "Sales order not found")
@@ -594,11 +876,15 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
 
     // Return-aware: quantity returned against the order's delivery permits is not billed (existing invoices are
     // never touched - there can be none here, evaluateSoInvoice just checked).
-    const priced = computeWholeOrderAmount(state)
-    if (!priced.ok) return failure(priced.status, priced.error)
+    // A whole-order invoice created now after go-live is priced line by line.
+    const priced = computeWholeOrderAmount(state, { eta: isAfterGoLive(nowIso(), state.etaGoLiveAt) })
+    if (!priced.ok) {
+      const open = isNothingToInvoice(priced.error) ? (await openCorrectionsForOrder(db, soId))[0] : null
+      return open ? nothingLeftRefusal(open) : failure(priced.status, priced.error)
+    }
 
     const paymentType = state.so.payment_type || state.so.payment_terms || "cash"
-    const invoice = await insertInvoice(db, {
+    const row = {
       customer_id: state.so.customer_id,
       so_id: state.so.so_id,
       invoice_date: new Date().toISOString().split("T")[0],
@@ -609,13 +895,40 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
       installment_months: resolveInstallmentCount(paymentType, state.so.installments) || 1,
       months_paid: 0,
       status: "pending",
-    })
+    }
+
+    // An order with an open correction (spec §6.5a): this invoice is its reissue.
+    const corrections = await openCorrectionsForOrder(db, soId)
+    if (corrections.length > 1) return failure(409, `Sales order ${soLabel(state)} has more than one invoice being corrected. Create each new invoice from its own delivery permits.`, { code: "REISSUE_AMBIGUOUS" })
+    const correction = corrections[0] || null
+    // P16: an invoice made from delivery permits is reissued from its permits (their links move with it)
+    if (correction && correction.permitIds.length > 0) {
+      const old = correction.invoiceNumber || `#${correction.invoiceId}`
+      return failure(409, `${old} was made from delivery permits. Create the corrected invoice from the same delivery permits.`, {
+        code: "REISSUE_USE_PERMITS",
+        errorAr: `الفاتورة ${old} صدرت من أذون تسليم. أنشئ الفاتورة المصححة من أذون التسليم نفسها.`,
+      })
+    }
+    if (correction) {
+      const overpaid = options.confirmOverpaid === true ? null : overpaidRefusal(correction, priced.amount)
+      if (overpaid) return overpaid
+    }
+    let invoice: any
+    try {
+      invoice = correction ? await insertReissue(db, correction, row, [], null, options.confirmOverpaid === true) : await insertInvoice(db, row)
+    } catch (error) {
+      const refused = reissueRefusal(error)
+      if (refused) return refused
+      throw error
+    }
 
     // Safety net against a concurrent request: the lowest invoice_id wins.
     const after = await loadSoInvoicingState(db, soId)
     const check = after ? evaluateAfterInsert(after, invoice.invoice_id) : ({ ok: true } as Verdict)
     if (!check.ok) {
-      await rollbackInvoice(db, invoice.invoice_id)
+      if (correction) {
+        if (!(await undoReissue(db, invoice.invoice_id, []))) return failure(500, `${check.error} The new invoice could not be taken back; contact an administrator.`, { partialFailure: true })
+      } else await rollbackInvoice(db, invoice.invoice_id)
       return failure(check.status, check.error)
     }
 
@@ -632,6 +945,7 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
         soId: invoice.so_id,
         soNumber: state.so.so_number,
         deliveryPermits: state.permits.map((p) => ({ permit_id: p.permit_id, permit_no: p.permit_no, status: p.status })),
+        ...(correction ? { replacesInvoiceId: correction.invoiceId, replacesInvoiceNumber: correction.invoiceNumber } : {}),
       },
     }
   } catch (error: any) {
@@ -641,7 +955,7 @@ export async function createSoInvoice(db: Db, soId: number): Promise<WorkflowRes
 }
 
 // ---- Workflow B: delivery permit(s) -> invoice ------------------------------------------------------------
-export async function createDpInvoices(db: Db, permitIds: number[], manualNumber: string | null = null): Promise<WorkflowResult> {
+export async function createDpInvoices(db: Db, permitIds: number[], manualNumber: string | null = null, options: CreateInvoiceOptions = {}): Promise<WorkflowResult> {
   try {
     const permits = must(
       await db.from("delivery_permits").select("permit_id, permit_no, sales_order_id, status").in("permit_id", permitIds),
@@ -674,13 +988,20 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
     const customerIds = new Set(orders.map((o) => o.customer_id))
     if (customerIds.size > 1) return failure(400, "Selected delivery permits belong to different customers. Cannot consolidate.")
 
-    const existingLinks = must(
-      await db.from("invoice_delivery_permits").select("permit_id").in("permit_id", permitIds),
-      "check existing invoices",
-    ) as any[]
-    if (existingLinks.length > 0) {
-      return failure(400, `Delivery permits already invoiced: ${existingLinks.map((l) => l.permit_id).join(", ")}`)
+    // A permit linked only to an invoice that is open for correction (spec §6.5a) is available: the new invoice is the
+    // reissue of that invoice. Any other link means the permit is invoiced.
+    const linked = await correctionOfPermits(db, permitIds, soIds)
+    if (linked.taken.length > 0) {
+      return failure(400, `Delivery permits already invoiced: ${linked.taken.join(", ")}`)
     }
+    if (linked.corrections.length > 1) {
+      return failure(
+        409,
+        `These delivery permits belong to more than one invoice being corrected (${linked.corrections.map((c) => c.invoiceNumber || `#${c.invoiceId}`).join(", ")}). Create each new invoice from its own delivery permits.`,
+        { code: "REISSUE_AMBIGUOUS" },
+      )
+    }
+    const correction = linked.corrections[0] || null
 
     const byPaymentType: Record<string, any[]> = {}
     for (const permit of permits) {
@@ -708,6 +1029,26 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
     const group = byPaymentType[paymentType]
     const groupSoIds = [...new Set(group.map((p) => p.sales_order_id))] as number[]
 
+    // The reissue takes over every delivery permit of the old invoice (its links move to the new invoice).
+    if (correction) {
+      // a whole-order invoice (no links) covered every permit of its order (P16)
+      const required = correction.permitIds.length > 0
+        ? correction.permitIds
+        : (must(await db.from("delivery_permits").select("permit_id, status").eq("sales_order_id", correction.soId), "load delivery permits") as any[])
+            .filter((p) => p.status !== "REJECTED")
+            .map((p) => Number(p.permit_id))
+      const missingIds = required.filter((id) => !group.some((p) => p.permit_id === id))
+      if (missingIds.length > 0) {
+        const rows = must(await db.from("delivery_permits").select("permit_id, permit_no").in("permit_id", missingIds), "load delivery permits") as any[]
+        const names = missingIds.map((id) => rows.find((r) => r.permit_id === id)?.permit_no || `#${id}`)
+        return failure(
+          409,
+          `The corrected invoice must include every delivery permit of ${correction.invoiceNumber || `invoice #${correction.invoiceId}`}. Add: ${names.join(", ")}.`,
+          { code: "REISSUE_MISSING_PERMITS", missing: missingIds },
+        )
+      }
+    }
+
     // Pre-check every affected sales order, and price the invoice from the items on the selected permits.
     let amount = 0
     const states = new Map<number, SoInvoicingState>()
@@ -716,14 +1057,14 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
       if (!state) return failure(404, "Sales order not found")
       const ids = group.filter((p) => p.sales_order_id === soId).map((p) => p.permit_id)
       const verdict = evaluateDpInvoice(state, ids)
-      if (!verdict.ok) return failure(verdict.status, verdict.error)
+      if (!verdict.ok) return correction && isNothingToInvoice(verdict.error) ? nothingLeftRefusal(correction) : failure(verdict.status, verdict.error)
       amount += verdict.newValue || 0
       states.set(soId, state)
     }
     amount = round2(amount)
 
     const firstState = states.get(group[0].sales_order_id)!
-    const invoice = await insertInvoice(db, {
+    const row = {
       customer_id: Array.from(customerIds)[0],
       so_id: group[0].sales_order_id,
       // Provenance: a single-DP invoice points at its delivery permit; multi-DP invoices use invoice_delivery_permits.
@@ -736,7 +1077,43 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
       installment_months: resolveInstallmentCount(paymentType, firstState.so.installments) || 1,
       months_paid: 0,
       status: "pending",
-    }, manualNumber)
+    }
+
+    if (correction) {
+      const overpaid = options.confirmOverpaid === true ? null : overpaidRefusal(correction, amount)
+      if (overpaid) return overpaid
+      let invoice: any
+      try {
+        // one transaction: the invoice, its permit links (moved from the old invoice, or new), payments and links both ways
+        invoice = await insertReissue(db, correction, row, group.map((p) => p.permit_id), manualNumber, options.confirmOverpaid === true)
+      } catch (error) {
+        const refused = reissueRefusal(error)
+        if (refused) return refused
+        throw error
+      }
+      for (const soId of groupSoIds) {
+        const after = await loadSoInvoicingState(db, soId)
+        const check = after ? evaluateAfterInsert(after, invoice.invoice_id) : ({ ok: true } as Verdict)
+        if (!check.ok) {
+          if (!(await undoReissue(db, invoice.invoice_id, correction.permitIds))) {
+            return failure(500, `${check.error} The new invoice could not be taken back; contact an administrator.`, { partialFailure: true })
+          }
+          return failure(check.status, check.error)
+        }
+      }
+      return {
+        status: 200,
+        body: {
+          success: true,
+          invoices: [{ ...invoice, invoiceNumber: invoice.invoice_number, deliveryPermits: group.map((p) => p.permit_no), paymentType }],
+          replacesInvoiceId: correction.invoiceId,
+          replacesInvoiceNumber: correction.invoiceNumber,
+          message: "Invoice created successfully",
+        },
+      }
+    }
+
+    const invoice = await insertInvoice(db, row, manualNumber)
 
     const { error: linksError } = await db
       .from("invoice_delivery_permits")

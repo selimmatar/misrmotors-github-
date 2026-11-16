@@ -5,6 +5,16 @@ import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
+function etaProductFields(b: any) {
+  const o: any = {}
+  if (b.etaCodeId !== undefined) {
+    const n = Number(b.etaCodeId)
+    o.eta_code_id = b.etaCodeId === null || b.etaCodeId === "" || !Number.isInteger(n) || n <= 0 ? null : n
+  }
+  if (b.etaUnitType !== undefined) o.eta_unit_type = String(b.etaUnitType ?? "")
+  return o
+}
+
 export async function GET() {
   try {
     const result = await withRetry(async () => {
@@ -34,6 +44,8 @@ export async function GET() {
       moq: item.moq,
       desiredExcess: item.desired_excess || 0,
       unit: item.unit,
+      etaCodeId: item.eta_code_id ?? null,
+      etaUnitType: item.eta_unit_type || "",
     }))
 
     return NextResponse.json(transformed)
@@ -88,6 +100,7 @@ export async function POST(request: Request) {
       moq: body.moq || 1,
       desired_excess: body.desiredExcess || 0,
       is_active: true,
+      ...etaProductFields(body),
     }
 
     const { data, error } = await supabase
@@ -112,6 +125,8 @@ export async function POST(request: Request) {
       moq: data.moq,
       desiredExcess: data.desired_excess || 0,
       unit: data.unit,
+      etaCodeId: data.eta_code_id ?? null,
+      etaUnitType: data.eta_unit_type || "",
     }
 
     return NextResponse.json(transformed)
@@ -134,6 +149,7 @@ export async function PUT(request: Request) {
     if (updates.moq !== undefined) dbUpdates.moq = updates.moq
     if (updates.desiredExcess !== undefined) dbUpdates.desired_excess = updates.desiredExcess
     if (updates.unit) dbUpdates.unit = updates.unit
+    Object.assign(dbUpdates, etaProductFields(updates))
 
     // Handle category
     if (updates.category && !updates.categoryId) {
@@ -179,6 +195,8 @@ export async function PUT(request: Request) {
       moq: data.moq,
       desiredExcess: data.desired_excess || 0,
       unit: data.unit,
+      etaCodeId: data.eta_code_id ?? null,
+      etaUnitType: data.eta_unit_type || "",
     }
 
     return NextResponse.json(transformed)

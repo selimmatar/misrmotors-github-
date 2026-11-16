@@ -6,9 +6,10 @@ import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } fr
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { checkSoStock, loadAvailability } from "@/lib/stock-hold"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
-import { markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
+import { correctionPermitUpdates, markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit, type PermitLineUpdate } from "@/lib/so-edit"
 import { refreshSoFulfilment } from "@/lib/goods-receiving"
 import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
+import { orderCorrectionScope } from "@/lib/eta/correction"
 
 export const dynamic = "force-dynamic"
 
@@ -702,9 +703,22 @@ export async function PUT(request: Request) {
       dbUpdates.status = current?.[0]?.entity_type === "quotation" ? "rejected_quotation" : "cancelled"
     }
 
-    const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items })
+    // An order whose invoice was reversed on the portal and is being corrected (spec §6.5a, P15) may change the price /
+    // quantity of lines that sit only on the correction's permits, and its customer when no other invoice of the order
+    // still counts, until the new invoice exists; otherwise the usual locks apply.
+    const correction = await orderCorrectionScope(supabase, numericId)
+    const correcting = correction !== null
+    const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items, correction })
     if (!editVerdict.ok) {
       return NextResponse.json({ error: editVerdict.error }, { status: editVerdict.status })
+    }
+    // P11: a price or item name corrected on the order is copied onto the correction's delivery-permit lines (planned
+    // here, before anything is written; applied after the order lines are saved).
+    let permitLineUpdates: PermitLineUpdate[] = []
+    if (correcting && items) {
+      const plan = await correctionPermitUpdates(supabase, numericId, items, correction.permitIds)
+      if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status })
+      permitLineUpdates = plan.updates
     }
 
     // The accountant's approval puts the order's stock on hold, and a bigger quantity on a held order holds more:
@@ -716,6 +730,48 @@ export async function PUT(request: Request) {
     }
 
 
+    // A customer corrected during an open correction (P15): the order's delivery permits follow it, so the records
+    // agree. Written BEFORE the order: if the permits can't move, nothing is changed; if the order then fails, they move back.
+    let movedPermits: { permit_id: number; customer_id: number | null }[] = []
+    const putPermitsBack = async () => {
+      const failed: number[] = []
+      for (const p of movedPermits) {
+        const { error: backError } = await supabase.from("delivery_permits").update({ customer_id: p.customer_id }).eq("permit_id", p.permit_id)
+        if (backError) failed.push(p.permit_id)
+      }
+      if (failed.length) console.error("Sales Orders PUT: could not put the delivery permits back on their customer:", failed)
+      return failed
+    }
+    if (correcting && dbUpdates.customer_id !== undefined) {
+      const { data: current } = await supabase.from("sales_orders").select("customer_id").eq("so_id", numericId).maybeSingle()
+      if (current && Number(current.customer_id) !== Number(dbUpdates.customer_id)) {
+        const { data: permitRows, error: permitReadError } = await supabase.from("delivery_permits").select("permit_id, customer_id").eq("sales_order_id", numericId)
+        if (permitReadError) return NextResponse.json({ error: "Could not read the delivery permits of the order. Nothing was changed." }, { status: 500 })
+        const { data: moved, error: moveError } = await supabase
+          .from("delivery_permits")
+          .update({ customer_id: Number(dbUpdates.customer_id) })
+          .eq("sales_order_id", numericId)
+          .select("permit_id")
+        // one statement: when it errors nothing moved; when it moved only some, those are put back
+        if (moveError) {
+          return NextResponse.json({ error: "The delivery permits could not follow the new customer. Nothing was changed.", code: "PERMIT_CUSTOMER_NOT_MOVED" }, { status: 500 })
+        }
+        movedPermits = (permitRows || []).map((p: any) => ({ permit_id: p.permit_id, customer_id: p.customer_id ?? null }))
+        if (!moved || moved.length !== movedPermits.length) {
+          const failed = await putPermitsBack()
+          return NextResponse.json(
+            {
+              error: failed.length
+                ? "The delivery permits could not follow the new customer and could not all be put back. Contact an administrator."
+                : "The delivery permits could not follow the new customer. Nothing was changed.",
+              code: "PERMIT_CUSTOMER_NOT_MOVED",
+            },
+            { status: 500 },
+          )
+        }
+      }
+    }
+
     const { data: order, error: orderError } = await supabase
       .from("sales_orders")
       .update(dbUpdates)
@@ -723,12 +779,28 @@ export async function PUT(request: Request) {
       .select()
       .maybeSingle()
 
+    // the order was not saved: a permit that could not move back leaves the edit only partly undone - say so
+    const partlyUndone = (failed: number[]) =>
+      NextResponse.json(
+        {
+          error: `The order could not be saved, and ${failed.length} delivery permit(s) could not be moved back to the old customer: the edit was only partly undone. Contact an administrator.`,
+          errorAr: `تعذّر حفظ أمر البيع، وتعذّر إرجاع ${failed.length} من أذون التسليم إلى العميل السابق: تم التراجع عن التعديل جزئياً فقط. تواصل مع المسؤول.`,
+          code: "PARTIALLY_UNDONE",
+          partialFailure: true,
+          permitIds: failed,
+        },
+        { status: 500 },
+      )
     if (orderError) {
+      const notBack = await putPermitsBack()
+      if (notBack.length) return partlyUndone(notBack)
       console.error("Sales Orders PUT: Error updating order", JSON.stringify(orderError), "ID:", numericId, "Updates:", JSON.stringify(dbUpdates))
       return NextResponse.json({ error: `Database error: ${orderError.message || orderError.code || "Unknown"}` }, { status: 500 })
     }
 
     if (!order || !order.so_id) {
+      const notBack = await putPermitsBack()
+      if (notBack.length) return partlyUndone(notBack)
       console.error("Sales Orders PUT: No order data returned for ID:", numericId)
       return NextResponse.json({ error: `Sales order ${numericId} not found or update blocked by RLS policy` }, { status: 404 })
     }
@@ -801,6 +873,26 @@ export async function PUT(request: Request) {
           await supabase.from("sales_order_items").insert(itemRow)
         }
       }
+    }
+
+    // P11: the correction's permit lines follow the corrected price / name, so the new invoice bills them.
+    const permitLineFailures: number[] = []
+    for (const update of permitLineUpdates) {
+      const { error: lineError } = await supabase.from("delivery_permit_items").update(update.patch).eq("item_id", update.itemId)
+      if (lineError) {
+        console.error("Sales Orders PUT: could not copy the corrected price / name onto permit line", update.itemId, lineError.message)
+        permitLineFailures.push(update.itemId)
+      }
+    }
+    if (permitLineFailures.length > 0) {
+      return NextResponse.json(
+        {
+          error: `The order was saved, but ${permitLineFailures.length} delivery permit line(s) could not take the corrected price or name. Save the order again before creating the new invoice.`,
+          code: "PERMIT_LINES_NOT_UPDATED",
+          permitItemIds: permitLineFailures,
+        },
+        { status: 500 },
+      )
     }
 
     // An outsourced line lowered to what was already received now counts as received (it can go on a DP).

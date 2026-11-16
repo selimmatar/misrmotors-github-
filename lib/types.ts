@@ -25,6 +25,7 @@ export interface Supplier {
   paymentTerms?: string
   createdDate?: string
   leadTimeDays?: number // Average lead time in days for orders from this supplier
+  taxRegistrationNumber?: string // ETA e-invoice
 }
 
 export interface Product {
@@ -42,6 +43,8 @@ export interface Product {
   markupPercentage?: number
   costUpdatedAt?: string
   costUpdatedBy?: number
+  etaCodeId?: number | null // ETA e-invoice item code (eta_item_codes.code_id)
+  etaUnitType?: string // ETA unit code (EA, SET, KGM, ...)
 }
 
 export type PaymentType = "cash" | "installments" | "cheque" | "hybrid" | "bank_transfer"
@@ -275,6 +278,14 @@ export interface Customer {
   paymentTerms?: number
   status?: "active" | "inactive"
   createdDate?: string
+  // ETA e-invoice
+  receiverType?: "B" | "P" | "F"
+  taxRegistrationNumber?: string
+  nationalId?: string
+  governorate?: string // English name
+  region?: string
+  street?: string
+  buildingNumber?: string
 }
 
 export interface SalesOrder {
@@ -347,6 +358,8 @@ export interface AccountsReceivableInvoice {
   paymentReceipts?: Array<{ month: number; url: string }>
   pdfUrl?: string
   vatInvoiceUrl?: string
+  /** the invoice that replaced this one (a corrected and reissued invoice); null while still being corrected */
+  replacedByInvoiceId?: string | null
 }
 
 export type CustomerInvoice = AccountsReceivableInvoice
@@ -467,6 +480,8 @@ export interface DeliveryPermit {
   updatedAt?: string
   items?: DeliveryPermitItem[]
   files?: DeliveryPermitFile[]
+  /** set while the permit's invoice is open for correction (Correct and reissue) */
+  openCorrection?: { invoiceNumber: string | null } | null
 }
 
 export interface DeliveryPermitItem {
@@ -479,6 +494,7 @@ export interface DeliveryPermitItem {
   quantity: number
   unitPrice?: number
   total?: number
+  returnedQuantity?: number
 }
 
 export interface DeliveryPermitFile {

@@ -11,6 +11,7 @@ import { knownUserId } from "@/lib/po-history"
 import { asUuid } from "@/lib/idempotency"
 import { actorOr } from "@/lib/auth/actor"
 import { badNumberResponse, cleanManualNumber, highestSerial, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
+import { openCorrectionsByPermit } from "@/lib/eta/correction"
 
 export const dynamic = "force-dynamic"
 
@@ -217,7 +218,15 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json(finalPermits)
+    // an approved permit of an invoice that is open for correction can be corrected (Correct and reissue)
+    let corrections = new Map<number, string | null>()
+    try {
+      corrections = await openCorrectionsByPermit(supabase, finalPermits.filter((p: any) => p.status === "APPROVED").map((p: any) => Number(p.id)))
+    } catch (correctionError: any) {
+      console.error("Delivery Permits GET: could not read open corrections:", correctionError?.message)
+    }
+
+    return NextResponse.json(finalPermits.map((p: any) => ({ ...p, openCorrection: corrections.has(Number(p.id)) ? { invoiceNumber: corrections.get(Number(p.id)) ?? null } : null })))
   } catch (error: any) {
     console.error("Delivery Permits GET error:", error)
     return NextResponse.json({ error: error.message || "Failed to fetch delivery permits" }, { status: 500 })

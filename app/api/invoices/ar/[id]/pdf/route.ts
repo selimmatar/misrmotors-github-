@@ -4,7 +4,20 @@ import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { moneyCell } from "@/lib/print-html"
 import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
-import { VAT_RATE, computeWholeOrderAmount, dpInvoicePrintTotals, loadSoInvoicingState, round2, soDiscountBase } from "@/lib/invoicing"
+import {
+  VAT_RATE,
+  computeWholeOrderAmount,
+  dpInvoicePrintTotals,
+  etaInvoicePrintTotals,
+  etaUnitPrice,
+  loadEtaGoLiveAt,
+  loadSoInvoicingState,
+  orderDiscountRate,
+  round2,
+  soDiscountBase,
+} from "@/lib/invoicing"
+import { isAfterGoLive } from "@/lib/eta/totals"
+import { replacedPrint } from "@/lib/eta/replaced-print"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 
 export const dynamic = "force-dynamic"
@@ -83,12 +96,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const customer = invoice.customers || {}
     const so = invoice.sales_orders || {}
     const qrNumber = so.quotation_request_number || null
+    // A replaced invoice (correct and reissue, spec §6.5a) prints what was sent to the tax portal, with "Replaced by".
+    const replaced = await replacedPrint(supabase, invoice)
 
     // A single sales order can have multiple delivery permits, each invoiced
     // separately. Find the delivery permit(s) actually linked to THIS invoice
     // (via invoice_delivery_permits) - if any exist, this invoice only covers
     // those DPs' items, not every item on the whole sales order.
-    const { data: dpLinks } = await supabase
+    const { data: dpLinks } = replaced ? { data: [] as any[] } : await supabase
       .from("invoice_delivery_permits")
       .select(
         `
@@ -120,7 +135,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // never change it. With no such returns the lines are exactly what they were before.
     const invoiceMs = toMs(invoice.created_at)
     const returnLines = isDpBasedInvoice ? await loadReturnLines(supabase, linkedPermits.map((p: any) => p.permit_id)) : []
-    let items = isDpBasedInvoice
+    let items = replaced
+      ? (replaced.lines || []).map((l) => ({ quantity: l.quantity, unit_price: l.unitPrice, total: l.total, item_type: null, outsourced_name: null, products: { product_name: l.name } }))
+      : isDpBasedInvoice
       ? linkedPermits.flatMap((permit: any) => {
           const rows: any[] = permit.delivery_permit_items || []
           const net = netLineQuantities(
@@ -147,7 +164,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Batch 2: a whole-order invoice leaves out the quantity returned before it was created, so its printed lines
     // must too (the stored amount is already net). With no such returns the lines are exactly the order's lines.
-    if (!isDpBasedInvoice && invoice.so_id) {
+    if (!replaced && !isDpBasedInvoice && invoice.so_id) {
       const state = await loadSoInvoicingState(supabase, invoice.so_id)
       if (state && state.returns.length > 0) {
         const asOf = Number.isNaN(invoiceMs) ? Number.NEGATIVE_INFINITY : invoiceMs
@@ -199,7 +216,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let totalWithVat: number
     let subtotalBeforeVat: number
     let vatAmount: number
-    if (isDpBasedInvoice) {
+    // E-invoice go-live (spec §6): an invoice created at or after company_settings.eta_go_live_at was priced line by
+    // line, so it prints the per-line totals of its printed lines. Earlier invoices print exactly as before.
+    // Soft fallback for the print only: an unreadable setting prints as before (creating invoices refuses instead).
+    const etaGoLiveAt = await loadEtaGoLiveAt(supabase).catch((error: any) => {
+      console.warn("AR Invoice PDF - e-invoice go-live setting unreadable:", error?.message || error)
+      return null
+    })
+    if (replaced) {
+      // the sent document's totals; without one, the stored amount
+      totalWithVat = replaced.totals ? round2(replaced.totals.total) : round2(Number(invoice.amount) || 0)
+      subtotalBeforeVat = replaced.totals ? round2(replaced.totals.net) : round2(totalWithVat / VAT_RATE_PDF)
+      vatAmount = replaced.totals ? round2(replaced.totals.vat) : round2(totalWithVat - subtotalBeforeVat)
+    } else if (isAfterGoLive(invoice.created_at, etaGoLiveAt)) {
+      const lines = items.map((item: any) => ({
+        name: item.item_type === "outsourced" ? item.outsourced_name || "" : item.products?.product_name || "",
+        quantity: Number(item.quantity) || 0,
+        unitPrice: etaUnitPrice(item),
+      }))
+      const printed = etaInvoicePrintTotals(lines, orderDiscountRate(so.sales_order_items || [], soSubtotal, soDiscount), invoice.amount)
+      ;({ totalWithVat, subtotalBeforeVat, vatAmount } = printed)
+    } else if (isDpBasedInvoice) {
       const printed = dpInvoicePrintTotals(rawItemsTotal, soDiscountBase(so.sales_order_items || [], soSubtotal), soDiscount, invoice.amount)
       ;({ totalWithVat, subtotalBeforeVat, vatAmount } = printed)
     } else {
@@ -263,7 +300,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   })}
   
   <!-- Document Title -->
-  ${docTitle({ titleAr: `فاتورة` })}
+  ${docTitle({ titleAr: `فاتورة` })}${
+    replaced
+      ? `
+  <div class="pm-field pm-field-wide" style="border: 2px solid #b91c1c; padding: 6px 10px; margin: 8px 0; font-weight: 700;"><span class="pm-label">${escapeHtml(replaced.note.ar)}</span> <span class="pm-value" dir="ltr">${escapeHtml(replaced.note.en)}</span></div>`
+      : ""
+  }
   
   <!-- Invoice Info -->
   <section class="pm-info">

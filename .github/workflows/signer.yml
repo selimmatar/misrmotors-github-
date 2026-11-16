@@ -1,0 +1,31 @@
+name: Signer
+on:
+  push:
+    paths: ["signer/**", ".github/workflows/signer.yml"]
+  pull_request:
+    paths: ["signer/**", ".github/workflows/signer.yml"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: signer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet restore MisrMotorsSigner.sln
+      # `dotnet list` always exits 0, so a vulnerable package is detected from its report
+      - name: No vulnerable packages
+        shell: bash
+        run: |
+          dotnet list MisrMotorsSigner.sln package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then echo "A vulnerable package was found"; exit 1; fi
+      - run: dotnet test tests --no-restore
+      - run: dotnet publish MisrMotorsSigner -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MisrMotorsSigner-win-x64
+          path: signer/out/MisrMotorsSigner.exe
