@@ -2010,3 +2010,114 @@ test("F36. sales-order edit: allowed with an open correction, refused as today w
   r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", items: [] })
   assert.equal(r.status, 409)
 })
+
+// ---- F37-F39: reissue keeps order, permits and prints consistent (rulings P11-P13) ----
+import { dpInvoiceEtaLines } from "../invoicing"
+import * as arPdf7 from "../../app/api/invoices/ar/[id]/pdf/route"
+import * as arPdf7b from "../../app/api/invoices/ar/[id]/[invoiceId]/pdf/route"
+
+test("F37. a price or name corrected on the order during an open correction reaches the permit lines and the new invoice; not otherwise", async () => {
+  const line = (extra: Row = {}) => ({ id: "1", productId: "100", productName: "Pump", quantity: 5, unitPrice: 100, total: 500, ...extra })
+  // no open correction: a name sent with the order leaves the permit lines as they are
+  const plain = reissueDb()
+  let r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", items: [line({ productName: "Pump Mk2" })] })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.deepEqual([plain.tables.delivery_permit_items[0].item_name_snapshot, plain.tables.delivery_permit_items[0].unit_price, plain.tables.delivery_permit_items[0].total], ["Pump", 100, 500])
+
+  // open correction: price 100 -> 90 and the name follow onto DP-7-1
+  const db = reissueDb()
+  await startReissue(db, 10, 7)
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", items: [line({ productName: "Pump Mk2", unitPrice: 90, total: 450 })] })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  const permitLine = db.tables.delivery_permit_items[0]
+  assert.deepEqual([permitLine.item_name_snapshot, permitLine.unit_price, permitLine.total, permitLine.quantity], ["Pump Mk2", 90, 450, 5])
+  const made = await createDpInvoices(db, [1])
+  assert.equal(made.status, 200, JSON.stringify(made.body))
+  assert.equal(made.body.invoices[0].amount, 513, "5 x 90 + 14 %")
+  const billed = dpInvoiceEtaLines((await loadSoInvoicingState(db, 1))!, [1])
+  assert.deepEqual(billed.map((l) => [l.name, l.quantity, l.unitPrice]), [["Pump Mk2", 5, 90]])
+
+  // the same item twice on the order at two prices: the permit lines can't tell them apart -> refused, nothing written
+  const two = reissueDb()
+  await startReissue(two, 10, 7)
+  two.tables.sales_order_items.push({ so_item_id: 2, so_id: 1, product_id: 100, outsourced_name: null, quantity: 1, unit_price: 100, total: 100, item_type: "stock" })
+  r = await callRoute(soRoute7.PUT, "PUT", { so_id: 1, notes: "edit", items: [line({ unitPrice: 90, total: 450 }), line({ id: "2", quantity: 1, unitPrice: 95, total: 95 })] })
+  assert.equal(r.status, 409)
+  assert.match(r.body.error, /more than once with different prices/)
+  assert.equal(two.tables.sales_order_items[0].unit_price, 100)
+  assert.equal(two.tables.delivery_permit_items[0].unit_price, 100)
+})
+
+const SENT_BODY = JSON.stringify({
+  internalID: "INV-2026-0010",
+  invoiceLines: [{ description: "Pump as sent", quantity: 5, unitValue: { currencySold: "EGP", amountEGP: 100 }, salesTotal: 500, netTotal: 500, total: 570 }],
+  netAmount: 500, taxTotals: [{ taxType: "T1", amount: 70 }], totalAmount: 570,
+})
+
+test("F38. a replaced invoice prints from its sent e-invoice with 'Replaced by'; without a snapshot, the header and the note only", async () => {
+  const pdf = async (id: number) => (await arPdf7.GET(rq("GET", `/api/invoices/ar/${id}/pdf`), { params: Promise.resolve({ id: String(id) }) })).text()
+  const pdf2 = async (id: number) => (await arPdf7b.GET(new Request("http://test.local/x"), { params: Promise.resolve({ invoiceId: String(id) }) })).text()
+  const db = reissueDb({ docs: [realDoc({ document: SENT_BODY }), creditNote()] })
+  await startReissue(db, 10, 7)
+  // open correction: printed from the snapshot, no new number yet
+  let html = await pdf(10)
+  assert.match(html, /Pump as sent/)
+  assert.match(html, /the corrected invoice has not been created yet/)
+  const made = await createDpInvoices(db, [1])
+  const newNumber = made.body.invoices[0].invoice_number
+  html = await pdf(10)
+  assert.ok(html.includes(`Replaced by ${newNumber}`), "Replaced by (EN)")
+  assert.ok(html.includes(`استُبدلت بالفاتورة ${newNumber}`), "Replaced by (AR)")
+  assert.match(html, /Pump as sent/)
+  assert.ok(!html.includes("DP-7-1"), "the moved permit is not listed")
+  assert.ok(html.includes("570"), "the sent total")
+  const html2 = await pdf2(10)
+  assert.ok(html2.includes(`Replaced by ${newNumber}`))
+  assert.match(html2, /Pump as sent/)
+  // the new invoice prints normally (its permit, no note)
+  const fresh = await pdf(made.body.invoices[0].invoice_id)
+  assert.ok(!fresh.includes("Replaced by") && !fresh.includes("Pump as sent"))
+  assert.ok(!(await pdf2(made.body.invoices[0].invoice_id)).includes("Replaced"))
+
+  // no snapshot: header and note, no lines
+  const bare = reissueDb()
+  await startReissue(bare, 10, 7)
+  const done = await createDpInvoices(bare, [1])
+  html = await pdf(10)
+  assert.ok(html.includes(`Replaced by ${done.body.invoices[0].invoice_number}`))
+  assert.ok(!html.includes(">Pump<"), "no lines")
+  assert.ok(!(await pdf2(10)).includes(">Pump<"))
+})
+
+test("F39. everything of a corrected invoice returned: nothing left to invoice, payments stay on the replaced invoice", async () => {
+  const returnAll = (db: FakeDb) => {
+    db.tables.product_returns.push({ return_id: 1, permit_id: "1", so_id: 1, status: "received", created_at: "2026-10-01T10:00:00Z" })
+    db.tables.return_items.push({ return_item_id: 1, return_id: 1, product_id: 100, product_name: "Pump", returned_quantity: 5 })
+  }
+  const db = reissueDb()
+  await startReissue(db, 10, 7)
+  returnAll(db)
+  const snap = mirror(db)
+  const r = await createDpInvoices(db, [1])
+  assert.equal(r.status, 409)
+  assert.equal(r.body.code, "REISSUE_NOTHING_LEFT")
+  assert.match(r.body.error, /Nothing is left to invoice: every item of INV-2026-0010 was returned\. Its payments stay on the replaced invoice INV-2026-0010; refund them or keep them as the customer's credit/)
+  assert.match(r.body.errorAr, /[؀-ۿ]/)
+  assert.equal(mirror(db), snap)
+  assert.equal(db.tables.customer_payments[0].invoice_id, 10)
+  // whole-order invoice: the same message
+  const w = reissueDb({ wholeOrder: true })
+  await startReissue(w, 10, 7)
+  returnAll(w)
+  const s = await createSoInvoice(w, 1)
+  assert.equal(s.status, 409)
+  assert.equal(s.body.code, "REISSUE_NOTHING_LEFT")
+  // without a correction the old message stays
+  const n = reissueDb({ paid: false })
+  n.tables.accounts_receivable = []
+  n.tables.invoice_delivery_permits = []
+  returnAll(n)
+  const plain = await createDpInvoices(n, [1])
+  assert.equal(plain.status, 409)
+  assert.match(plain.body.error, /^Nothing to invoice/)
+})

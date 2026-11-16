@@ -85,6 +85,7 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
     if (id !== undefined && id !== null && id !== "") incomingById.set(Number(id), item)
   }
 
+  const renamed = new Map<string, string>() // old key -> new key of an outsourced line renamed during a correction
   for (const row of stored) {
     const key = lineKey(row.product_id, row.outsourced_name)
     if (!onPermit.has(key)) continue
@@ -104,19 +105,25 @@ export async function validateSoEdit(db: Db, soId: number, input: { customerId?:
       if (kept(key) <= EPS) continue // fully returned: the line may go, its permit and return stay as history
       return { ok: false, status: 409, error: `"${label(key)}" is on a delivery permit of ${soLabel} and cannot be removed while the customer keeps ${kept(key)} of it. Lower the line to ${kept(key)} instead, and add any replacement as a new line.` }
     }
+    // During a correction an outsourced line may be renamed (same line, still outsourced): its permit lines follow it.
+    if (correcting && !row.product_id && incomingKey(incoming).startsWith("n:") && incomingKey(incoming) !== key) {
+      renamed.set(key, incomingKey(incoming))
+      continue
+    }
     if (incomingKey(incoming) !== key && kept(key) > EPS) {
       return { ok: false, status: 409, error: `"${label(key)}" is on a delivery permit of ${soLabel}; its line cannot be turned into a different item. Add the replacement as a new line.` }
     }
   }
 
   const orderedAfter = new Map<string, number>()
+
   for (const item of input.items) {
     const key = incomingKey(item)
     orderedAfter.set(key, (orderedAfter.get(key) || 0) + (Number(item?.quantity) || 0))
   }
   for (const key of onPermit) {
     const keep = kept(key)
-    const after = orderedAfter.get(key) || 0
+    const after = orderedAfter.get(renamed.get(key) ?? key) || 0
     if (after + EPS < keep) {
       return {
         ok: false,
@@ -195,4 +202,76 @@ export async function markDeliveredIfComplete(db: Db, soId: number): Promise<boo
     "mark sales order delivered",
   ) as any[]
   return rows.length === 1
+}
+
+// ---- correct and reissue (spec §6.5a, ruling P11) ----
+
+export interface PermitLineUpdate {
+  itemId: number
+  patch: { unit_price?: number; total?: number; item_name_snapshot?: string }
+}
+
+const incomingName = (item: any): string => String(item?.productName || item?.outsourcedName || item?.outsourced_name || "").trim()
+
+/**
+ * While a correction is open, an order edit that changes a line's unit price or item name is copied onto the matching
+ * delivery-permit lines of that correction's permits (`permitIds`), so the order, the permits and the new invoice
+ * agree. A permit line comes from the order line with the same item (lineKey: product, or name for an outsourced
+ * line). When the order has the same item on two lines that would give it different prices or names, the permits can't
+ * tell them apart and the edit is refused. Nothing here writes.
+ */
+export async function correctionPermitUpdates(
+  db: Db,
+  soId: number,
+  items: any[],
+  permitIds: number[],
+): Promise<{ ok: true; updates: PermitLineUpdate[] } | { ok: false; status: number; error: string }> {
+  if (!Array.isArray(items) || permitIds.length === 0) return { ok: true, updates: [] }
+  const stored = must(
+    await db.from("sales_order_items").select("so_item_id, product_id, outsourced_name, quantity, unit_price").eq("so_id", soId),
+    "load sales order items",
+  ) as any[]
+  const permitLines = must(
+    await db.from("delivery_permit_items").select("item_id, permit_id, product_id, item_name_snapshot, quantity, unit_price, total").in("permit_id", permitIds),
+    "load delivery permit items",
+  ) as any[]
+  const incomingById = new Map<number, any>()
+  for (const item of items) {
+    const id = item?.id ?? item?.so_item_id ?? item?.soItemId
+    if (id !== undefined && id !== null && id !== "") incomingById.set(Number(id), item)
+  }
+  // per item key: the price / name the order now gives it
+  const wanted = new Map<string, { price: number | null; name: string | null; label: string }>()
+  for (const row of stored) {
+    const incoming = incomingById.get(row.so_item_id)
+    if (!incoming) continue
+    const key = lineKey(row.product_id, row.outsourced_name)
+    const rawPrice = incoming.unitPrice ?? incoming.unit_price
+    const price = rawPrice === undefined || rawPrice === null || rawPrice === "" || !Number.isFinite(Number(rawPrice)) ? null : Number(rawPrice)
+    const name = incomingName(incoming) || null
+    const label = name || row.outsourced_name || key.slice(2)
+    const seen = wanted.get(key)
+    if (seen && ((seen.price !== null && price !== null && Math.abs(seen.price - price) > EPS) || (seen.name && name && seen.name !== name))) {
+      return {
+        ok: false,
+        status: 409,
+        error: `"${label}" is on the order more than once with different prices or names, so its delivery permit lines can't follow the edit. Give the lines the same price and name, or correct the delivery permit.`,
+      }
+    }
+    wanted.set(key, { price: seen?.price ?? price, name: seen?.name ?? name, label })
+  }
+  const updates: PermitLineUpdate[] = []
+  for (const line of permitLines) {
+    const want = wanted.get(lineKey(line.product_id, line.item_name_snapshot))
+    if (!want) continue
+    const patch: PermitLineUpdate["patch"] = {}
+    const qty = Number(line.quantity) || 0
+    if (want.price !== null && Math.abs(want.price - (Number(line.unit_price) || 0)) > EPS) {
+      patch.unit_price = want.price
+      patch.total = Math.round((want.price * qty + Number.EPSILON) * 100) / 100
+    }
+    if (want.name && want.name !== (line.item_name_snapshot || "")) patch.item_name_snapshot = want.name
+    if (Object.keys(patch).length > 0) updates.push({ itemId: Number(line.item_id), patch })
+  }
+  return { ok: true, updates }
 }

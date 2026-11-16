@@ -6,10 +6,10 @@ import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } fr
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { checkSoStock, loadAvailability } from "@/lib/stock-hold"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
-import { markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit } from "@/lib/so-edit"
+import { correctionPermitUpdates, markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit, type PermitLineUpdate } from "@/lib/so-edit"
 import { refreshSoFulfilment } from "@/lib/goods-receiving"
 import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
-import { openCorrection } from "@/lib/eta/correction"
+import { correctionPermitIds, openCorrection } from "@/lib/eta/correction"
 
 export const dynamic = "force-dynamic"
 
@@ -710,6 +710,14 @@ export async function PUT(request: Request) {
     if (!editVerdict.ok) {
       return NextResponse.json({ error: editVerdict.error }, { status: editVerdict.status })
     }
+    // P11: a price or item name corrected on the order is copied onto the correction's delivery-permit lines (planned
+    // here, before anything is written; applied after the order lines are saved).
+    let permitLineUpdates: PermitLineUpdate[] = []
+    if (correcting && items) {
+      const plan = await correctionPermitUpdates(supabase, numericId, items, await correctionPermitIds(supabase, numericId))
+      if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status })
+      permitLineUpdates = plan.updates
+    }
 
     // The accountant's approval puts the order's stock on hold, and a bigger quantity on a held order holds more:
     // both must fit in the stock other orders leave free, or two orders get sold the same units.
@@ -814,6 +822,26 @@ export async function PUT(request: Request) {
           await supabase.from("sales_order_items").insert(itemRow)
         }
       }
+    }
+
+    // P11: the correction's permit lines follow the corrected price / name, so the new invoice bills them.
+    const permitLineFailures: number[] = []
+    for (const update of permitLineUpdates) {
+      const { error: lineError } = await supabase.from("delivery_permit_items").update(update.patch).eq("item_id", update.itemId)
+      if (lineError) {
+        console.error("Sales Orders PUT: could not copy the corrected price / name onto permit line", update.itemId, lineError.message)
+        permitLineFailures.push(update.itemId)
+      }
+    }
+    if (permitLineFailures.length > 0) {
+      return NextResponse.json(
+        {
+          error: `The order was saved, but ${permitLineFailures.length} delivery permit line(s) could not take the corrected price or name. Save the order again before creating the new invoice.`,
+          code: "PERMIT_LINES_NOT_UPDATED",
+          permitItemIds: permitLineFailures,
+        },
+        { status: 500 },
+      )
     }
 
     // An outsourced line lowered to what was already received now counts as received (it can go on a DP).

@@ -110,6 +110,24 @@ export async function correctionOfPermits(db: Db, permitIds: number[], soIds: nu
   return { taken, corrections }
 }
 
+/**
+ * The delivery permits of a sales order that belong to its open corrections (ruling P11): those linked to an open
+ * correction, and - for an open whole-order invoice, which has no links - every permit of the order not invoiced elsewhere.
+ */
+export async function correctionPermitIds(db: Db, soId: number): Promise<number[]> {
+  const corrections = await openCorrectionsForOrder(db, soId)
+  if (corrections.length === 0) return []
+  const ids = new Set(corrections.flatMap((c) => c.permitIds))
+  if (corrections.some((c) => c.permitIds.length === 0)) {
+    const permits = must(await db.from("delivery_permits").select("permit_id").eq("sales_order_id", soId), "load delivery permits") as any[]
+    const all = permits.map((p) => Number(p.permit_id))
+    const links = all.length ? (must(await db.from("invoice_delivery_permits").select("invoice_id, permit_id").in("permit_id", all), "load invoice links") as any[]) : []
+    const open = new Set(corrections.map((c) => c.invoiceId))
+    for (const id of all) if (!links.some((l) => Number(l.permit_id) === id && !open.has(l.invoice_id))) ids.add(id)
+  }
+  return [...ids].sort((a, b) => a - b)
+}
+
 /** Spec interface: the open correction (its old invoice) of a sales order or a delivery permit, or null. */
 export async function openCorrection(db: Db, by: { soId?: number; permitId?: number }): Promise<{ oldInvoiceId: number } | null> {
   if (by.permitId) {

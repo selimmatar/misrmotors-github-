@@ -824,6 +824,22 @@ function overpaidRefusal(correction: OpenCorrection, amount: number): WorkflowRe
   )
 }
 
+// Every item of a corrected invoice came back (P13): nothing is left to bill, so there is no reissue to move the
+// payments to. They stay on the replaced invoice, to be refunded or kept as credit with the existing flows.
+const isNothingToInvoice = (error: string) => error.startsWith("Nothing to invoice")
+function nothingLeftRefusal(correction: OpenCorrection): WorkflowResult {
+  const old = correction.invoiceNumber || `#${correction.invoiceId}`
+  return failure(
+    409,
+    `Nothing is left to invoice: every item of ${old} was returned. Its payments stay on the replaced invoice ${old}; refund them or keep them as the customer's credit with the existing payment and credit screens.`,
+    {
+      code: "REISSUE_NOTHING_LEFT",
+      errorAr: `لا يوجد ما يُفوتر: تم إرجاع كل أصناف ${old}. تبقى مدفوعاتها على الفاتورة المستبدلة ${old}؛ ردّها للعميل أو احتفظ بها رصيداً دائناً له من شاشات المدفوعات والأرصدة الحالية.`,
+      replacesInvoiceId: correction.invoiceId,
+    },
+  )
+}
+
 const reissueRefusal = (error: unknown): WorkflowResult | null =>
   error instanceof ReissueRefused ? failure(409, error.message, { code: error.code, ...(error.messageAr ? { errorAr: error.messageAr } : {}) }) : null
 
@@ -862,7 +878,10 @@ export async function createSoInvoice(db: Db, soId: number, options: CreateInvoi
     // never touched - there can be none here, evaluateSoInvoice just checked).
     // A whole-order invoice created now after go-live is priced line by line.
     const priced = computeWholeOrderAmount(state, { eta: isAfterGoLive(nowIso(), state.etaGoLiveAt) })
-    if (!priced.ok) return failure(priced.status, priced.error)
+    if (!priced.ok) {
+      const open = isNothingToInvoice(priced.error) ? (await openCorrectionsForOrder(db, soId))[0] : null
+      return open ? nothingLeftRefusal(open) : failure(priced.status, priced.error)
+    }
 
     const paymentType = state.so.payment_type || state.so.payment_terms || "cash"
     const row = {
@@ -1024,7 +1043,7 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
       if (!state) return failure(404, "Sales order not found")
       const ids = group.filter((p) => p.sales_order_id === soId).map((p) => p.permit_id)
       const verdict = evaluateDpInvoice(state, ids)
-      if (!verdict.ok) return failure(verdict.status, verdict.error)
+      if (!verdict.ok) return correction && isNothingToInvoice(verdict.error) ? nothingLeftRefusal(correction) : failure(verdict.status, verdict.error)
       amount += verdict.newValue || 0
       states.set(soId, state)
     }
