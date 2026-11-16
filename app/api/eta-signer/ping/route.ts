@@ -6,6 +6,7 @@ import { followUpQuietly } from "@/lib/eta/send"
 export const dynamic = "force-dynamic"
 
 // POST { unlocked: boolean, version } (signer key in x-eta-signer-key; no login): the signer's heartbeat.
+// `version` (the signer program's version) is accepted but not stored: there is no column for it and none is added.
 export async function POST(request: Request) {
   try {
     const db = createAdminClient()

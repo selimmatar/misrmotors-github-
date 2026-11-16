@@ -456,13 +456,15 @@ const NOW = () => new Date("2026-11-15T10:00:00Z")
 const yes = () => true
 
 // a fake portal that records every call
-function portalFake(opts: { submit?: (docs: string[], n: number) => any; getSubmission?: (uuid: string, n: number) => any; getDetails?: (uuid: string) => any } = {}) {
-  const calls = { submit: [] as string[][], getSubmission: [] as string[], getDetails: [] as string[] }
+function portalFake(opts: { submit?: (docs: string[], n: number) => any; getSubmission?: (uuid: string, n: number) => any; getDetails?: (uuid: string) => any; searchSent?: (p: { internalId: string; from: string; to: string }) => any } = {}) {
+  const calls = { submit: [] as string[][], getSubmission: [] as string[], getDetails: [] as string[], searchSent: [] as { internalId: string; from: string; to: string }[] }
   const portal: EtaPortal = {
     async submit(docs) { calls.submit.push(docs); return opts.submit ? opts.submit(docs, calls.submit.length) : { submissionUUID: "SUB1", acceptedDocuments: docs.map((d, i) => ({ uuid: `UUID${i}`, longId: `LONG${i}`, internalId: JSON.parse(d).internalID })), rejectedDocuments: [] } },
     async getSubmission(uuid) { calls.getSubmission.push(uuid); return opts.getSubmission ? opts.getSubmission(uuid, calls.getSubmission.length) : { overallStatus: "InProgress", documentSummary: [] } },
     async getDetails(uuid) { calls.getDetails.push(uuid); return opts.getDetails ? opts.getDetails(uuid) : {} },
-    async cancel() { throw new Error("no") }, async searchReceived() { throw new Error("no") }, async printout() { throw new Error("no") }, async documentType() { throw new Error("no") },
+    async cancel() { throw new Error("no") }, async searchReceived() { throw new Error("no") },
+    async searchSent(p) { calls.searchSent.push(p); return opts.searchSent ? opts.searchSent(p) : { result: [] } },
+    async printout() { throw new Error("no") }, async documentType() { throw new Error("no") },
   }
   const deps: SendDeps = { now: NOW, portalFor: () => portal, credentialsSet: yes }
   return { portal, calls, deps }
@@ -845,4 +847,128 @@ test("F19. AR delete: test rows never block, a real valid row does (ETA_LIVE); e
   assert.equal((await put({ eta_environment: "real" }, "accountant")).status, 200, "unchanged")
   assert.equal((await put({ eta_environment: "test" }, "accountant")).status, 403)
   assert.equal((await put({ eta_environment: "preprod" }, "admin")).status, 400)
+})
+
+// ---- fix round 1: lost sends reconciled (P8), bounded follow-up ----
+test("F20. portal searchSent: the company's sent documents by internal number", () => withCreds(async () => {
+  const { portal, calls } = fakePortal((c) => c.url.endsWith("/connect/token") ? okHandler(c) : jres(200, { result: [{ uuid: "U9", internalId: "10363" }], metadata: {} }))
+  const r = await portal.searchSent({ internalId: "10363", from: "2026-11-15T09:00:00.000Z", to: "2026-11-15T11:00:00.000Z" })
+  assert.equal(r.result[0].uuid, "U9")
+  const u = new URL(calls[1].url)
+  assert.equal(u.origin + u.pathname, "https://api.preprod.invoicing.eta.gov.eg/api/v1.0/documents/search")
+  assert.equal(u.searchParams.get("direction"), "Sent")
+  assert.equal(u.searchParams.get("internalID"), "10363")
+  assert.equal(u.searchParams.get("submissionDateFrom"), "2026-11-15T09:00:00.000Z")
+  assert.equal(u.searchParams.get("submissionDateTo"), "2026-11-15T11:00:00.000Z")
+  assert.equal(calls[1].init.method, "GET")
+  // same 429 policy as every call
+  let n = 0
+  const b = fakePortal((c) => c.url.endsWith("/connect/token") ? okHandler(c) : (++n === 1 ? jres(429, {}, { "retry-after": "1" }) : jres(200, { result: [] })))
+  await b.portal.searchSent({ internalId: "1", from: "a", to: "b" })
+  assert.deepEqual(b.sleeps, [1000])
+  assert.match(plainError("NotReceived", undefined, "en"), /never received it/)
+  assert.match(plainError("NotReceived", undefined, "ar"), /[؀-ۿ]/)
+}))
+
+// an invoice sent, whose portal answer was lost (no submission id)
+async function lostSend(failure: () => never) {
+  const { db, id } = await withInvoice("real")
+  await queueSend(db, [id], "real", 7, { now: NOW })
+  const row = db.tables.eta_documents[0]
+  const lost = portalFake({ submit: failure })
+  await acceptSignatures(db, [{ docId: row.doc_id, signature: await signCms(row.canonical) }], lost.deps)
+  assert.equal(db.tables.eta_documents[0].status, "submitted")
+  assert.equal(db.tables.eta_documents[0].submission_uuid ?? null, null)
+  return { db, id, row: db.tables.eta_documents[0], internalId: JSON.parse(row.document).internalID as string }
+}
+
+test("F21. lost sends: found on the portal -> adopted; not found -> left for 30 min, then NotReceived and sendable again", async () => {
+  const t0 = Date.parse("2026-11-15T10:00:00Z")
+  // 422 duplicate: found among sent documents (an older version's uuid is never adopted)
+  const a = await lostSend(() => { throw new EtaError(422, "DuplicateSubmission", "dup") })
+  a.db.tables.eta_documents.push({ doc_id: 77, invoice_id: a.id, document_type: "I", environment: "real", version: 9, status: "invalid", eta_uuid: "OLD" })
+  const found = portalFake({
+    searchSent: (p) => ({ result: [
+      { uuid: "OLD", internalId: p.internalId, status: "Invalid", dateTimeReceived: "2026-11-15T09:59:30Z" },
+      { uuid: "NEWU", longId: "NEWL", submissionUUID: "SUBX", internalId: p.internalId, status: "Valid", dateTimeReceived: "2026-11-15T10:00:01Z" },
+    ] }),
+  })
+  await followUp(a.db, found.deps, { now: t0 + 60_000 })
+  assert.equal(found.calls.searchSent.length, 1)
+  assert.equal(found.calls.searchSent[0].internalId, a.internalId)
+  assert.ok(found.calls.searchSent[0].from < "2026-11-15T10:00:00Z" && found.calls.searchSent[0].to > "2026-11-15T10:00:00Z", "a window around the attempt")
+  const ar = a.db.tables.eta_documents[0]
+  assert.deepEqual([ar.status, ar.eta_uuid, ar.eta_long_id, ar.submission_uuid], ["valid", "NEWU", "NEWL", "SUBX"])
+  assert.equal(found.calls.submit.length, 0)
+
+  // found but still being checked: ids adopted, stays submitted, later followed by submission
+  const s = await lostSend(() => { throw new EtaError(0, "Timeout", "x") })
+  const pending = portalFake({ searchSent: (p) => ({ result: [{ uuid: "U2", longId: "L2", submissionUUID: "S2", internalId: p.internalId, status: "Submitted" }] }) })
+  await followUp(s.db, pending.deps, { now: t0 + 60_000 })
+  assert.deepEqual([s.db.tables.eta_documents[0].status, s.db.tables.eta_documents[0].eta_uuid, s.db.tables.eta_documents[0].submission_uuid, s.db.tables.eta_documents[0].errors], ["submitted", "U2", "S2", null])
+
+  // not found: unchanged under 30 min, also when the request was cut off between claim and answer
+  const n = await lostSend(() => { throw new EtaError(503, "HTTP503", "down") })
+  const none = portalFake()
+  await followUp(n.db, none.deps, { now: t0 + 10 * 60_000 })
+  assert.equal(n.db.tables.eta_documents[0].status, "submitted")
+  assert.equal(await liveRealDocument(n.db, n.id), true)
+  assert.deepEqual((await queueSend(n.db, [n.id], "real", 7, { now: NOW })).refused[0].reasons, ["already_live"])
+  // throttled like any check: not searched again within 30 s
+  await followUp(n.db, none.deps, { now: t0 + 10 * 60_000 + 5_000 })
+  assert.equal(none.calls.searchSent.length, 1)
+  // 30 min after the attempt and still not found: invalid NotReceived -> Send again allowed, delete no longer blocked
+  await followUp(n.db, none.deps, { now: t0 + 31 * 60_000 })
+  const nr = n.db.tables.eta_documents[0]
+  assert.equal(nr.status, "invalid")
+  assert.deepEqual(nr.errors.map((e: any) => [e.code, e.message]), [["NotReceived", "The portal never received it — send again"]])
+  assert.equal(await liveRealDocument(n.db, n.id), false)
+  assert.deepEqual((await queueSend(n.db, [n.id], "real", 7, { now: NOW })).queued, [n.id])
+  assert.deepEqual(n.db.tables.eta_documents.map((r) => [r.version, r.status]), [[1, "invalid"], [2, "pending_signature"]])
+  n.db.tables.eta_documents.pop()
+  useDb(n.db)
+  assert.equal((await arRoute.DELETE(rq("DELETE", `/api/accounts-receivable?id=${n.id}`))).status, 200)
+
+  // a search that fails leaves the row as it is, even after 30 min
+  const f = await lostSend(() => { throw new EtaError(0, "Network", "x") })
+  const broken = portalFake({ searchSent: () => { throw new EtaError(0, "Timeout", "x") } })
+  await followUp(f.db, broken.deps, { now: t0 + 60 * 60_000 })
+  assert.equal(f.db.tables.eta_documents[0].status, "submitted")
+})
+
+test("F22. follow-up is bounded: a slow portal never holds the signer's answer beyond the budget", async () => {
+  const { db, id } = await withInvoice("real")
+  await queueSend(db, [id], "real", 7, { now: NOW })
+  // another document of this portal already sent, whose check hangs
+  db.tables.eta_documents.push({ doc_id: 500, invoice_id: id, document_type: "I", environment: "real", version: 5, status: "submitted", submission_uuid: "HANG", document: db.tables.eta_documents[0].document })
+  db.tables.eta_documents.push({ doc_id: 501, invoice_id: id, document_type: "I", environment: "real", version: 6, status: "submitted", submission_uuid: "HANG2", document: db.tables.eta_documents[0].document })
+  const hang = portalFake({ getSubmission: () => new Promise(() => {}) })
+  // lib: stops at the budget, and starts no new call once it is spent
+  const t = Date.now()
+  await followUp(db, hang.deps, { now: NOW(), budgetMs: 80 })
+  assert.ok(Date.now() - t < 1000, `took ${Date.now() - t} ms`)
+  assert.equal(hang.calls.getSubmission.length, 1, "no second call after the budget ran out")
+  assert.equal(db.tables.eta_documents.find((r) => r.doc_id === 500)!.status, "submitted")
+
+  // route: the signer's documents come back, the follow-up runs after them within its budget
+  useDb(db)
+  db.tables.eta_documents.forEach((r) => { if (r.status === "submitted") r.checked_at = null })
+  Object.assign(etaSendDefaults, { portalFor: hang.deps.portalFor, credentialsSet: yes, followUpBudgetMs: 150 })
+  try {
+    const paired = await (await signerRoute.POST(rq("POST", "/api/eta/signer", {}, { "x-mm-roles": "ceo" }))).json()
+    const t1 = Date.now()
+    const res = await signerNext.GET(signerRq("GET", "/api/eta-signer/next", paired.key))
+    assert.ok(Date.now() - t1 < 1500, `next took ${Date.now() - t1} ms`)
+    assert.equal(res.status, 200)
+    assert.equal((await res.json()).documents.length, 1)
+    const t2 = Date.now()
+    assert.equal((await signerPingRoute.POST(signerRq("POST", "/api/eta-signer/ping", paired.key, { unlocked: false, version: "1.2" }))).status, 200)
+    assert.ok(Date.now() - t2 < 1500)
+    // a follow-up that throws never fails the signer's answer
+    Object.assign(etaSendDefaults, { portalFor: () => { throw new Error("boom") } })
+    db.tables.eta_documents.forEach((r) => { if (r.status === "submitted") r.checked_at = null })
+    assert.equal((await signerNext.GET(signerRq("GET", "/api/eta-signer/next", paired.key))).status, 200)
+  } finally {
+    for (const k of Object.keys(etaSendDefaults)) delete (etaSendDefaults as any)[k]
+  }
 })

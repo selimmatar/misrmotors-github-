@@ -211,12 +211,14 @@ export interface SendDeps {
   /** the portal client per environment (tests inject a fake) */
   portalFor?: (env: EtaEnv) => EtaPortal
   credentialsSet?: (env: EtaEnv) => boolean
+  /** follow-up time budget in ms (default FOLLOW_UP_BUDGET_MS) */
+  followUpBudgetMs?: number
 }
 /** Defaults the route handlers use (tests set a fake portal here; the app leaves it empty). */
 export const etaSendDefaults: SendDeps = {}
-const portalOf = (deps: SendDeps, env: EtaEnv) => {
+const portalOf = (deps: SendDeps, env: EtaEnv, timeoutMs?: number) => {
   const d = { ...etaSendDefaults, ...deps }
-  return d.portalFor ? d.portalFor(env) : createPortal(env, d.fetch ? { fetch: d.fetch } : {})
+  return d.portalFor ? d.portalFor(env) : createPortal(env, { ...(d.fetch ? { fetch: d.fetch } : {}), ...(timeoutMs ? { timeoutMs } : {}) })
 }
 const credsOf = (deps: SendDeps) => deps.credentialsSet || etaSendDefaults.credentialsSet || credentialsSet
 
@@ -373,8 +375,8 @@ async function submitBatch(
     // timeout, network or a portal fault: it may or may not have arrived. Kept as submitted, never sent again by itself.
     const errors: EtaDocError[] = [{
       code: "Unconfirmed",
-      message: "The portal did not confirm this submission. Check its status on the portal before sending it again.",
-      messageAr: "لم تؤكد البوابة استلام هذا الإرسال. تحقق من حالته على البوابة قبل إرساله مرة أخرى.",
+      message: "The portal did not confirm this submission yet. The ERP is looking for it on the portal; it is not sent again meanwhile.",
+      messageAr: "لم تؤكد البوابة استلام هذا الإرسال بعد. يبحث النظام عنه على البوابة ولن يُعاد إرساله في الأثناء.",
     }]
     for (const id of ids) await update(id, { errors })
     result.unconfirmed.push(...ids)
@@ -422,80 +424,166 @@ export function validationErrors(details: any): EtaDocError[] {
   return out
 }
 
+/** Follow-up stops starting portal calls after this much time, so it never holds up the request it rides on. */
+export const FOLLOW_UP_BUDGET_MS = 8_000
+/** A send whose portal answer was lost is given this long to show up in the portal's search before it counts as never received. */
+export const NOT_RECEIVED_AFTER_MS = 30 * 60_000
+
+class OutOfBudget extends Error {}
+
 /**
- * Follow-up (spec §6.1): asks the portal about `submitted` documents, each submission at most once every 30 s, and
- * records valid / invalid (with the portal's reasons) / cancelled / rejected. A failed check leaves the row as it is.
- * It never submits anything.
+ * Follow-up (spec §6.1): asks the portal about `submitted` documents, each at most once every 30 s, and records
+ * valid / invalid (with the portal's reasons) / cancelled / rejected. A failed check leaves the row as it is.
+ * Rows with no submission id (the portal's answer was lost: 422 duplicate, timeout, portal fault, or the request was
+ * cut off between claiming the row and the answer) are reconciled by searching the portal's sent documents for the
+ * invoice number (ruling P8): found -> its uuid / longId / status are adopted; not found 30 min after the attempt ->
+ * invalid "NotReceived", so it can be sent again. Every portal call is bounded by a time budget (default 8 s in
+ * total); when it runs out, the rest waits for the next run. It never submits anything.
  */
-export async function followUp(db: Db, deps: SendDeps & { now?: () => Date } = {}, opts: { now?: Date | number } = {}): Promise<{ checked: number; changed: number }> {
-  const nowDate = () => (opts.now != null ? new Date(opts.now) : deps.now ? deps.now() : new Date())
-  const at = nowDate()
+export async function followUp(
+  db: Db,
+  deps: SendDeps = {},
+  opts: { now?: Date | number; budgetMs?: number; clock?: () => number } = {},
+): Promise<{ checked: number; changed: number }> {
+  const d = { ...etaSendDefaults, ...deps }
+  const at = opts.now != null ? new Date(opts.now) : d.now ? d.now() : new Date()
+  const clock = opts.clock || (() => Date.now())
+  const started = clock()
+  const budget = opts.budgetMs ?? d.followUpBudgetMs ?? FOLLOW_UP_BUDGET_MS
+  // one portal call, given at most what is left of the budget (the call itself may go on; its answer is then dropped)
+  const call = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const left = budget - (clock() - started)
+    if (left <= 0) throw new OutOfBudget()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([fn(), new Promise<T>((_r, reject) => { timer = setTimeout(() => reject(new OutOfBudget()), left) })])
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
   const cutoff = at.getTime() - FOLLOW_UP_EVERY_MS
+  const stamp = at.toISOString()
   const rows = must(
     await db
       .from("eta_documents")
-      .select("doc_id, environment, status, submission_uuid, eta_uuid, eta_long_id, checked_at, document")
-      .eq("status", "submitted")
-      .not("submission_uuid", "is", null),
+      .select("doc_id, invoice_id, environment, status, submission_uuid, eta_uuid, eta_long_id, checked_at, submitted_at, updated_at, document")
+      .eq("status", "submitted"),
     "load submitted documents",
   ) as any[]
   const lastCheck = (r: any) => {
     const t = Date.parse(text(r.checked_at))
     return Number.isFinite(t) ? t : 0
   }
-  const due = rows.filter((r) => text(r.submission_uuid) && lastCheck(r) <= cutoff)
-  const groups = new Map<string, any[]>()
-  for (const r of due.sort((a, b) => lastCheck(a) - lastCheck(b))) {
-    const key = `${r.environment === "test" ? "test" : "real"}|${r.submission_uuid}`
-    groups.set(key, [...(groups.get(key) || []), r])
+  const envOf = (r: any): EtaEnv => (r.environment === "test" ? "test" : "real")
+  const due = rows.filter((r) => lastCheck(r) <= cutoff).sort((a, b) => lastCheck(a) - lastCheck(b))
+
+  // jobs, oldest check first: one per submission, one per lost send
+  type Job = { env: EtaEnv; submissionUuid: string | null; rows: any[] }
+  const jobs: Job[] = []
+  for (const r of due) {
+    const sub = text(r.submission_uuid)
+    const job = sub ? jobs.find((j) => j.submissionUuid === sub && j.env === envOf(r)) : undefined
+    if (job) job.rows.push(r)
+    else jobs.push({ env: envOf(r), submissionUuid: sub || null, rows: [r] })
   }
+
   let checked = 0
   let changed = 0
   const portals = new Map<EtaEnv, EtaPortal>()
-  for (const [key, group] of [...groups.entries()].slice(0, FOLLOW_UP_MAX_SUBMISSIONS)) {
-    const [envText, submissionUuid] = key.split("|") as [EtaEnv, string]
-    const env = envText === "test" ? "test" : "real"
-    if (!portals.has(env)) portals.set(env, portalOf(deps, env))
-    const portal = portals.get(env)!
-    const stamp = at.toISOString()
-    // throttle first, so a failing check is not repeated before 30 s either
-    must(await db.from("eta_documents").update({ checked_at: stamp }).in("doc_id", group.map((r) => r.doc_id)).eq("status", "submitted"), "stamp check")
-    checked++
-    let summary: any[]
-    try {
-      const sub = await portal.getSubmission(submissionUuid)
-      summary = Array.isArray(sub?.documentSummary) ? sub.documentSummary : []
-    } catch (e: any) {
-      console.error(`[eta] follow-up of submission ${submissionUuid} failed: ${e?.message || e}`)
-      continue
+  const portal = (env: EtaEnv) => {
+    if (!portals.has(env)) portals.set(env, portalOf(d, env, Math.min(budget, FOLLOW_UP_BUDGET_MS)))
+    return portals.get(env)!
+  }
+  const save = async (row: any, patch: Record<string, any>) => {
+    must(await db.from("eta_documents").update({ ...patch, updated_at: stamp }).eq("doc_id", row.doc_id).eq("status", "submitted"), "save portal status")
+    if (patch.status) changed++
+  }
+  // what the portal says about one document -> the row's new state
+  const apply = async (row: any, env: EtaEnv, s: any, submissionUuid?: string) => {
+    const ids: Record<string, any> = { eta_uuid: text(s.uuid) || row.eta_uuid || null, eta_long_id: text(s.longId) || row.eta_long_id || null }
+    if (submissionUuid) ids.submission_uuid = submissionUuid
+    const status = text(s.status).toLowerCase()
+    if (status === "valid") return save(row, { ...ids, status: "valid", validated_at: stamp, errors: null })
+    if (status === "invalid") {
+      let errors: EtaDocError[] = []
+      try {
+        errors = validationErrors(await call(() => portal(env).getDetails(ids.eta_uuid || "")))
+      } catch (e: any) {
+        if (e instanceof OutOfBudget) throw e
+        console.error(`[eta] details of ${ids.eta_uuid} failed: ${e?.message || e}`)
+      }
+      return save(row, { ...ids, status: "invalid", errors: errors.length ? errors : [{ code: "Invalid", message: "The portal marked this document invalid. Open it on the portal for the reasons." }] })
     }
-    for (const row of group) {
-      const internalId = text(parsedBody(row)?.internalID)
-      const s = summary.find((d: any) => row.eta_uuid && text(d?.uuid) === text(row.eta_uuid)) || (!row.eta_uuid ? summary.find((d: any) => text(d?.internalId) === internalId) : undefined)
-      if (!s) continue
-      const ids = { eta_uuid: text(s.uuid) || row.eta_uuid || null, eta_long_id: text(s.longId) || row.eta_long_id || null }
-      const status = text(s.status).toLowerCase()
-      let patch: Record<string, any> | null = null
-      if (status === "valid") patch = { ...ids, status: "valid", validated_at: stamp, errors: null }
-      else if (status === "invalid") {
-        let errors: EtaDocError[] = []
+    if (status === "cancelled" || status === "rejected") return save(row, { ...ids, status })
+    const lost = !text(row.submission_uuid)
+    if (lost || ids.eta_uuid !== row.eta_uuid || ids.eta_long_id !== row.eta_long_id) return save(row, { ...ids, ...(lost ? { errors: null } : {}) })
+  }
+
+  try {
+    for (const job of jobs.slice(0, FOLLOW_UP_MAX_SUBMISSIONS)) {
+      if (clock() - started >= budget) break
+      // throttle first, so a failing check is not repeated before 30 s either
+      must(await db.from("eta_documents").update({ checked_at: stamp }).in("doc_id", job.rows.map((r) => r.doc_id)).eq("status", "submitted"), "stamp check")
+      checked++
+      if (job.submissionUuid) {
+        let summary: any[]
         try {
-          errors = validationErrors(await portal.getDetails(ids.eta_uuid || ""))
+          const sub = await call(() => portal(job.env).getSubmission(job.submissionUuid!))
+          summary = Array.isArray(sub?.documentSummary) ? sub.documentSummary : []
         } catch (e: any) {
-          console.error(`[eta] details of ${ids.eta_uuid} failed: ${e?.message || e}`)
+          if (e instanceof OutOfBudget) throw e
+          console.error(`[eta] follow-up of submission ${job.submissionUuid} failed: ${e?.message || e}`)
+          continue
         }
-        patch = { ...ids, status: "invalid", errors: errors.length ? errors : [{ code: "Invalid", message: "The portal marked this document invalid. Open it on the portal for the reasons." }] }
-      } else if (status === "cancelled" || status === "rejected") patch = { ...ids, status }
-      else if (ids.eta_uuid !== row.eta_uuid || ids.eta_long_id !== row.eta_long_id) patch = ids
-      if (!patch) continue
-      must(await db.from("eta_documents").update({ ...patch, updated_at: stamp }).eq("doc_id", row.doc_id).eq("status", "submitted"), "save portal status")
-      if (patch.status) changed++
+        for (const row of job.rows) {
+          const internalId = text(parsedBody(row)?.internalID)
+          const s = summary.find((x: any) => row.eta_uuid && text(x?.uuid) === text(row.eta_uuid)) || (!row.eta_uuid ? summary.find((x: any) => text(x?.internalId) === internalId) : undefined)
+          if (s) await apply(row, job.env, s)
+        }
+        continue
+      }
+      await reconcileLost(job.rows[0], job.env)
     }
+  } catch (e: any) {
+    if (!(e instanceof OutOfBudget)) throw e
   }
   return { checked, changed }
+
+  // P8: a send with no submission id - look for it among the portal's sent documents
+  async function reconcileLost(row: any, env: EtaEnv) {
+    const internalId = text(parsedBody(row)?.internalID)
+    const attemptMs = Date.parse(text(row.submitted_at) || text(row.updated_at))
+    const attempt = Number.isFinite(attemptMs) ? attemptMs : at.getTime()
+    let found: any[]
+    try {
+      const res = await call(() =>
+        portal(env).searchSent({
+          internalId,
+          from: new Date(attempt - 60 * 60_000).toISOString(),
+          to: new Date(Math.max(at.getTime(), attempt) + 60_000).toISOString(),
+        }),
+      )
+      found = Array.isArray(res?.result) ? res.result : []
+    } catch (e: any) {
+      if (e instanceof OutOfBudget) throw e
+      console.error(`[eta] search for lost send ${row.doc_id} failed: ${e?.message || e}`)
+      return
+    }
+    // never adopt a portal document another row already holds (an earlier version of the same invoice)
+    const held = must(await db.from("eta_documents").select("doc_id, eta_uuid").eq("invoice_id", row.invoice_id), "load invoice documents") as any[]
+    const taken = new Set(held.filter((h) => h.doc_id !== row.doc_id && text(h.eta_uuid)).map((h) => text(h.eta_uuid)))
+    const received = (x: any) => Date.parse(text(x?.dateTimeReceived) || text(x?.dateTimeIssued))
+    const candidates = found
+      .filter((x) => text(x?.internalId) === internalId && text(x?.uuid) && !taken.has(text(x.uuid)))
+      .filter((x) => !Number.isFinite(received(x)) || received(x) >= attempt - 15 * 60_000)
+      .sort((a, b) => (received(b) || 0) - (received(a) || 0))
+    const s = candidates[0]
+    if (s) return apply(row, env, s, text(s.submissionUUID || s.submissionUuid) || undefined)
+    if (at.getTime() - attempt >= NOT_RECEIVED_AFTER_MS) return save(row, { status: "invalid", errors: [known("NotReceived")] })
+  }
 }
 
-/** Runs the follow-up and never fails the caller (it piggybacks on other requests). */
+/** Runs the follow-up and never fails the caller (it piggybacks on other requests, after their own work). */
 export async function followUpQuietly(db: Db, deps: SendDeps = {}): Promise<void> {
   try {
     await followUp(db, deps)

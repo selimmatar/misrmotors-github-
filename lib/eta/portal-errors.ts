@@ -42,6 +42,10 @@ const TEXT: Record<string, { en: string; ar: string }> = {
     en: "The portal is busy and asked us to slow down. Try again in a minute.",
     ar: "البوابة مشغولة وطلبت التمهل. حاول مرة أخرى بعد دقيقة.",
   },
+  NotReceived: {
+    en: "The portal never received it — send again",
+    ar: "لم تستلم البوابة هذا المستند — أرسله مرة أخرى",
+  },
   invalid_client: {
     en: "The portal did not accept the login (client ID or secret). Check the credentials saved in Vercel and that they belong to this environment.",
     ar: "لم تقبل البوابة بيانات الدخول (المعرّف أو السر). راجع البيانات المحفوظة في Vercel وتأكد أنها تخص هذه البيئة.",

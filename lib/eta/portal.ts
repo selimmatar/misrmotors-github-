@@ -111,6 +111,8 @@ export interface EtaPortal {
   getDetails(uuid: string): Promise<any>
   cancel(uuid: string, reason: string): Promise<void>
   searchReceived(p: { from: string; to: string; continuationToken?: string }): Promise<any>
+  /** the company's own sent documents with this internal number (to find a send whose answer was lost) */
+  searchSent(p: { internalId: string; from: string; to: string }): Promise<any>
   printout(uuid: string): Promise<ArrayBuffer>
   documentType(id: number | string): Promise<any>
 }
@@ -206,6 +208,10 @@ export function createPortal(env: EtaEnv, deps: PortalDeps = {}): EtaPortal {
     searchReceived({ from, to, continuationToken }) {
       const q = new URLSearchParams({ submissionDateFrom: from, submissionDateTo: to, direction: "Received", pageSize: "100" })
       if (continuationToken) q.set("continuationToken", continuationToken)
+      return json("GET", `/api/v1.0/documents/search?${q.toString()}`)
+    },
+    searchSent({ internalId, from, to }) {
+      const q = new URLSearchParams({ submissionDateFrom: from, submissionDateTo: to, direction: "Sent", internalID: internalId, pageSize: "100" })
       return json("GET", `/api/v1.0/documents/search?${q.toString()}`)
     },
     async printout(uuid) {
