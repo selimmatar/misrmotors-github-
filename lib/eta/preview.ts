@@ -1,7 +1,7 @@
 // E-invoice preview of one customer invoice (spec §2 goal 6-7, §6 "Which lines an invoice contains", §9): exactly the
 // lines the invoice bills (the input step 2 will send), each with its item code and state, the portal totals and what
 // is still missing before it could be sent. Read-only.
-import { matchCode, type CodeState } from "./codes"
+import { matchCode, type CodeState, type MatchContext } from "./codes"
 import { loadMatchContext, readEtaSettings } from "./store"
 import { etaLines, isAfterGoLive, type EtaLineIn, type EtaLineOut, type EtaTotals } from "./totals"
 import { billedLinesForInvoice, loadSoInvoicingState, orderDiscountRate, round2 } from "../invoicing"
@@ -30,6 +30,8 @@ export interface EtaPreviewLine extends EtaLineOut {
   discountRate: number
   unit: string
   state: CodeState
+  /** the stock product the line bills (null for an outsourced / free-text line): confirming sets its card code when empty */
+  productId?: number | null
 }
 
 export interface EtaPreview {
@@ -60,7 +62,12 @@ const must = (result: any, what: string): any => {
 const text = (value: unknown) => (value == null ? "" : String(value).trim())
 
 /** The e-invoice preview of a customer invoice (accounts_receivable.invoice_id); null when there is no such invoice. */
-export async function buildEtaPreview(db: Db, invoiceId: number): Promise<EtaPreview | null> {
+export async function buildEtaPreview(
+  db: Db,
+  invoiceId: number,
+  /** already-loaded match context and settings, when many invoices are previewed in one request */
+  pre: { ctx?: MatchContext; settings?: Record<string, string> } = {},
+): Promise<EtaPreview | null> {
   const invoice = must(
     await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, customer_id, created_at").eq("invoice_id", invoiceId).maybeSingle(),
     "load invoice",
@@ -99,8 +106,8 @@ export async function buildEtaPreview(db: Db, invoiceId: number): Promise<EtaPre
   const productById = new Map<number, any>(products.map((p) => [p.product_id, p]))
 
   const [ctx, settings, customer, documents] = await Promise.all([
-    loadMatchContext(db),
-    readEtaSettings(db),
+    pre.ctx ? Promise.resolve(pre.ctx) : loadMatchContext(db),
+    pre.settings ? Promise.resolve(pre.settings) : readEtaSettings(db),
     invoice.customer_id != null
       ? db
           .from("customers")
@@ -129,7 +136,8 @@ export async function buildEtaPreview(db: Db, invoiceId: number): Promise<EtaPre
       const match = matchCode({ name: line.name, productCodeId: product?.eta_code_id ?? null, productUnit: text(product?.eta_unit_type) || null }, ctx)
       const code = match.codeId != null ? codeById.get(match.codeId) : undefined
       const itemCode = code?.itemCode ?? null
-      lines.push({ ...line, codeId: match.codeId, itemCode, itemType: etaItemType(itemCode, code?.codeType), discountRate: rate, unit: match.unit, state: match.state })
+      const productId = group.lines[idx].productId ?? null
+      lines.push({ ...line, codeId: match.codeId, itemCode, itemType: etaItemType(itemCode, code?.codeType), discountRate: rate, unit: match.unit, state: match.state, productId })
     })
     for (const key of Object.keys(sums) as (keyof EtaTotals)[]) sums[key] += priced.totals[key]
   }

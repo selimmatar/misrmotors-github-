@@ -1,5 +1,6 @@
 // Item-code matching engine (spec section 8.3 to 8.5). Pure, no I/O.
 import { normalizeName, coreName, similarity } from "./normalize"
+import type { Predictor } from "./predict"
 
 export { normalizeName, coreName, similarity, DEFAULT_BRANDS, SIZE_WORDS, FILLER_WORDS } from "./normalize"
 
@@ -7,7 +8,7 @@ export const AUTO_SIMILARITY = 0.92
 export const SUGGEST_SIMILARITY = 0.8
 
 export type CodeState = "green" | "orange" | "red"
-export type MatchBy = "product" | "memory" | "core" | "close" | "keyword" | "none"
+export type MatchBy = "product" | "memory" | "core" | "close" | "predict" | "keyword" | "none"
 
 export interface EtaCode {
   codeId: number
@@ -25,6 +26,8 @@ export interface MemoryRow {
   coreName: string
   codeId: number
   unitType: string
+  /** "confirmed" (the accountant) or "imported" (learned); absent in older callers */
+  source?: string
 }
 
 export interface MatchInput {
@@ -37,6 +40,8 @@ export interface MatchContext {
   codes: EtaCode[]
   memory: MemoryRow[]
   brands: string[]
+  /** name -> code prediction over the memory (lib/eta/predict.ts); built once per request by loadMatchContext */
+  predictor?: Predictor
 }
 
 export interface MatchResult {
@@ -103,7 +108,18 @@ export function matchCode(input: MatchInput, ctx: MatchContext): MatchResult {
     }
   }
 
-  // 5. keyword rules
+  // 5. predicted from similar remembered names: green acts as a memory hit, orange as a suggestion. Never written
+  // to the memory by itself; confirming the line (POST /api/eta/memory) remembers it.
+  if (ctx.predictor) {
+    const p = ctx.predictor.predict(input.name)
+    if (p.state !== "red" && p.codeId != null && active.has(p.codeId)) {
+      const near = p.neighbours.find((n) => n.codeId === p.codeId)
+      const row = near ? memory.find((r) => r.normalizedName === near.name && r.codeId === p.codeId) : undefined
+      return done(p.codeId, p.state, "predict", row?.unitType)
+    }
+  }
+
+  // 6. keyword rules
   const tokens = (core || full).split(" ").filter(Boolean)
   if (tokens.length) {
     for (const c of active.values()) {
@@ -112,7 +128,7 @@ export function matchCode(input: MatchInput, ctx: MatchContext): MatchResult {
     }
   }
 
-  // 6. unknown
+  // 7. unknown
   return { codeId: null, unit: "EA", state: "red", by: "none" }
 }
 

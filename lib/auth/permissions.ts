@@ -107,6 +107,8 @@ export const RULES: Rule[] = [
   rule("/api/chain", ALL, ONLY_TOP),
   // E-invoice (ETA) settings, item codes and name memory
   rule("/api/eta", ACCOUNTANT, ACCOUNTANT),
+  // how well the item-code prediction does on the real memory (tuning): CEO / admin only
+  rule("/api/eta/predict/evaluate", ONLY_TOP, ONLY_TOP),
   // Own session (any logged-in person)
   rule("/api/auth", ALL, ALL),
 ]
