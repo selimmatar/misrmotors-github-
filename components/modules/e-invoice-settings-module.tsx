@@ -69,6 +69,9 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
 
   const [settings, setSettings] = useState<Record<string, string> | null>(null)
   const [loadError, setLoadError] = useState(false)
+  // The code list is long (all the portal codes): hidden until asked for, with a search box.
+  const [showCodes, setShowCodes] = useState(false)
+  const [codeSearch, setCodeSearch] = useState("")
   const [company, setCompany] = useState<Record<string, string>>({})
   const [goLive, setGoLive] = useState("")
   const [brands, setBrands] = useState("")
@@ -593,9 +596,28 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
           </div>
           {codes.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("eta.no-codes")}</p>
+          ) : !showCodes ? (
+            <Button variant="outline" onClick={() => setShowCodes(true)}>
+              {fill(t("eta.codes-show"), { count: String(codes.length) })}
+            </Button>
           ) : (
+            <div className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={codeSearch}
+                onChange={(e) => setCodeSearch(e.target.value)}
+                placeholder={t("eta.codes-search")}
+                aria-label={t("eta.codes-search")}
+              />
+              <Button variant="outline" onClick={() => { setShowCodes(false); setCodeSearch("") }}>
+                {t("eta.codes-hide")}
+              </Button>
+            </div>
             <ul className="divide-y rounded-lg border">
-              {codes.map((c) => (
+              {codes.filter((c) => {
+                const q = codeSearch.trim().toLowerCase()
+                return !q || `${c.item_code} ${c.name ?? ""} ${(c.keywords ?? []).join(" ")}`.toLowerCase().includes(q)
+              }).map((c) => (
                 <li key={c.code_id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="font-medium break-words">
@@ -619,6 +641,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
                 </li>
               ))}
             </ul>
+            </div>
           )}
         </CardContent>
       </Card>
