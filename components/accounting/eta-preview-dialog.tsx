@@ -109,7 +109,7 @@ function LineRow({ line, codes, onSaved }: { line: EtaPreviewLine; codes: EtaCod
       const res = await fetch("/api/eta/memory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: line.name, codeId: Number(codeId), unitType: unit === NONE ? "" : unit }),
+        body: JSON.stringify({ name: line.name, codeId: Number(codeId), unitType: unit === NONE ? "" : unit, productId: line.productId ?? null }),
       })
       if (!res.ok) throw new Error(await readError(res, t("message.error")))
       toast({ title: t("eta.confirmed") })

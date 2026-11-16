@@ -19,6 +19,7 @@ import { fill } from "@/lib/i18n-format"
 import { ETA_UNITS, GOVERNORATES, toLatinDigits } from "@/lib/eta/egypt"
 import { EtaSignerCard } from "@/components/accounting/eta-signer-card"
 import { EtaCodePicker } from "@/components/accounting/eta-code-picker"
+import { EtaWaitingClassify } from "@/components/accounting/eta-waiting-classify"
 import { cairoTomorrow, canSetGoLive, goLiveDate, goLiveStarted } from "@/lib/eta/go-live"
 import { DEFAULT_BRANDS } from "@/lib/eta/normalize"
 import { chunk, prepareRowsToPost, PREPARE_BATCH, type CodeState } from "@/lib/eta/codes"
@@ -717,6 +718,9 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
           )}
         </CardContent>
       </Card>
+
+      {/* Classify waiting invoices */}
+      <EtaWaitingClassify codes={codes} onSaved={() => loadMemory(memoryQuery)} />
 
       {/* Remembered names */}
       <Card>

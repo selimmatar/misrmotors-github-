@@ -1,6 +1,7 @@
 // Server-side access to the e-invoice settings, item codes and name memory (spec sections 7 and 8).
 import { normalizeName, coreName, DEFAULT_BRANDS } from "./normalize"
-import type { EtaCode, MemoryRow } from "./codes"
+import type { EtaCode, MatchContext, MemoryRow } from "./codes"
+import { buildPredictor } from "./predict"
 
 type Db = any
 
@@ -62,10 +63,10 @@ export function parseBrands(raw: string | undefined | null): string[] {
   return DEFAULT_BRANDS
 }
 
-export async function loadMatchContext(db: Db): Promise<{ codes: EtaCode[]; memory: MemoryRow[]; brands: string[] }> {
+export async function loadMatchContext(db: Db): Promise<Required<MatchContext>> {
   const [codeRows, memRows, settings] = await Promise.all([
     allRows(db, "eta_item_codes", "code_id, item_code, code_type, name, keywords, default_unit, active", [{ column: "code_id" }]),
-    allRows(db, "eta_code_memory", "normalized_name, core_name, code_id, unit_type, confirmed_at, memory_id", [{ column: "confirmed_at" }, { column: "memory_id" }]),
+    allRows(db, "eta_code_memory", "normalized_name, core_name, code_id, unit_type, source, confirmed_at, memory_id", [{ column: "confirmed_at" }, { column: "memory_id" }]),
     readEtaSettings(db),
   ])
   const codes: EtaCode[] = codeRows.map((c) => ({
@@ -82,8 +83,15 @@ export async function loadMatchContext(db: Db): Promise<{ codes: EtaCode[]; memo
     coreName: m.core_name || "",
     codeId: m.code_id,
     unitType: m.unit_type || "EA",
+    source: m.source || "imported",
   }))
-  return { codes, memory, brands: parseBrands(settings.eta_brands) }
+  const brands = parseBrands(settings.eta_brands)
+  const predictor = buildPredictor(
+    memRows.map((m) => ({ normalized_name: m.normalized_name, core_name: m.core_name, code_id: m.code_id, source: m.source })),
+    codeRows.map((c) => ({ code_id: c.code_id, name: c.name, active: c.active !== false })),
+    brands,
+  )
+  return { codes, memory, brands, predictor }
 }
 
 export interface RememberInput {
@@ -140,4 +148,16 @@ export async function rememberCode(db: Db, input: RememberInput): Promise<void> 
 
   await save(normalized, core, name)
   if (core && core !== normalized) await save(core, core, core, true)
+}
+
+/**
+ * A line the accountant confirmed that is a stock product: the product card takes the code when it has none yet
+ * (an existing card code is never replaced). Returns true when the card was set.
+ */
+export async function setProductCodeIfEmpty(db: Db, productId: unknown, codeId: number): Promise<boolean> {
+  const id = Number(productId)
+  if (!Number.isInteger(id) || id < 1) return false
+  const { data, error } = await db.from("products").update({ eta_code_id: codeId }).eq("product_id", id).is("eta_code_id", null).select("product_id")
+  if (error) throw new Error(error.message || "Could not set the product's item code")
+  return Array.isArray(data) && data.length > 0
 }

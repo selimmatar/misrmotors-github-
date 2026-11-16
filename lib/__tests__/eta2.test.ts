@@ -2708,3 +2708,198 @@ test("F52e. learn route: window over 31 days refused; bad dates refused; permiss
   for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, "POST", [role] as any), true, role)
   for (const role of ["sales-rep", "warehouse-rep"]) assert.equal(allows(rule, "POST", [role] as any), false, role)
 })
+
+// ---- F53: predict the item code from the name ----
+import {
+  buildPredictor, evaluate as evaluatePrediction, stem, GREEN_SIMILARITY, GREEN_CONFIDENCE, GREEN_AGREE, ORANGE_SIMILARITY, ORANGE_CONFIDENCE,
+  CONFIRMED_WEIGHT, CODE_NAME_WEIGHT, TOP_K,
+} from "../eta/predict"
+import { coreName as coreName53, DEFAULT_BRANDS as BRANDS53 } from "../eta/normalize"
+import { matchCode as matchCode53 } from "../eta/codes"
+import { loadMatchContext as loadMatchContext53 } from "../eta/store"
+import { classifyWaiting, mergeWaiting } from "../eta/waiting"
+import * as waitingRoute from "../../app/api/eta/predict/waiting/route"
+import * as evaluateRoute from "../../app/api/eta/predict/evaluate/route"
+import * as memoryRoute53 from "../../app/api/eta/memory/route"
+
+const mem53 = (name: string, code: number, source = "imported") => {
+  const n = normalizeName(name)
+  return { normalized_name: n, core_name: coreName53(n, BRANDS53), code_id: code, source }
+}
+const FILLER53 = ["بنسه", "زرديه", "قصافه", "شاكوش", "منشار", "مبرد", "ازميل", "بلطه", "مسدس شمع", "دريل", "صاروخ", "مثقاب", "ميزان ماء",
+  "شريط قياس", "قفاز", "نظاره", "خوذه", "سلم", "عربه يد", "ونش", "سير", "بلي", "جوان", "مسمار", "صامولة", "شنيور", "لحام", "كمبروسر"]
+const MEMORY53 = [
+  mem53("مفك صليبة", 10), mem53("مفك صليبة طويل", 10), mem53("مفك صليبة ستانلي 6 بوصة", 10), mem53("مفك صليبه عازل", 10),
+  mem53("مفك عادة", 11), mem53("مفك عادة قصير", 11), mem53("مفك ساعاتي", 12),
+  mem53("كوريك هيدروليك", 20), mem53("مكبس هيدروليك", 21), mem53("رافعة هيدروليك", 22), mem53("خرطوم هيدروليك", 23), mem53("زيت هيدروليك", 24),
+  mem53("تروللي عدة", 30), mem53("تروللي عدة 7 درج", 30), mem53("شنطة عدة", 31), mem53("علبة عدة", 31), mem53("طقم عدة", 32),
+  ...FILLER53.map((n, i) => mem53(n, 100 + i)),
+]
+
+test("F53a. predict: a longer spelling of a screwdriver gets its code (green); a shared common word alone does not", () => {
+  const p = buildPredictor(MEMORY53, [])
+  const a = p.predict("مفك صليبة بطيخة")
+  assert.equal(a.codeId, 10); assert.equal(a.state, "green")
+  assert.ok(a.confidence >= GREEN_CONFIDENCE && a.neighbours[0].score >= GREEN_SIMILARITY)
+  assert.equal(a.neighbours[0].name, normalizeName("مفك صليبة"))
+  // the full-name row and its core row are one neighbour, not two
+  assert.equal(a.neighbours.filter((n) => n.name === normalizeName("مفك صليبة")).length, 1)
+
+  const h = p.predict("هيدروليك")
+  assert.notEqual(h.state, "green"); assert.equal(h.state, "red")
+  assert.ok(h.neighbours.length >= 3, "it does see the hydraulic items")
+  assert.notEqual(p.predict("مفك").state, "green", "the word every screwdriver shares is not enough")
+  assert.equal(p.predict("").state, "red")
+  assert.equal(p.predict("بطيخة 12").state, "red", "a word nobody used carries no evidence")
+})
+
+test("F53b. predict: a misspelling finds the remembered name; stemming; confirmed rows and code names", () => {
+  const p = buildPredictor(MEMORY53, [])
+  const t = p.predict("ترولى عده")
+  assert.equal(t.codeId, 30); assert.notEqual(t.state, "red")
+  assert.equal(t.neighbours[0].name, normalizeName("تروللي عدة"))
+  assert.deepEqual([stem("الشنطه"), stem("مفاتيين"), stem("كماشات"), stem("عده")], ["شنطه", "مفاتي", "كماش", "عده"])
+
+  // one imported neighbour: a suggestion only; the same row confirmed by the accountant counts as agreement
+  const single = [mem53("مفتاح عزم", 40), ...FILLER53.map((n, i) => mem53(n, 100 + i))]
+  assert.equal(buildPredictor(single, []).predict("مفتاح عزم كهرباء").state, "orange")
+  const confirmed = [mem53("مفتاح عزم", 40, "confirmed"), ...FILLER53.map((n, i) => mem53(n, 100 + i))]
+  const c = buildPredictor(confirmed, []).predict("مفتاح عزم كهرباء")
+  assert.deepEqual([c.codeId, c.state], [40, "green"])
+
+  // confirmed weighs more in the vote: two codes tied on one name each, the confirmed one wins
+  const tie = buildPredictor([mem53("بكره خرطوم", 50), mem53("بكره خرطوم", 51, "confirmed"), ...FILLER53.map((n, i) => mem53(n, 100 + i))], [])
+  assert.equal(tie.predict("بكره خرطوم مياه").codeId, 51)
+
+  // the code names are weak extra entries; an inactive code is never predicted
+  const codes = [{ code_id: 60, name: "مثقاب كهربائي / Electric drill", active: true }, { code_id: 61, name: "منشار صاروخ / Saw", active: false }]
+  const byName = buildPredictor(FILLER53.map((n, i) => mem53(n, 100 + i)), [...codes, ...FILLER53.map((_, i) => ({ code_id: 100 + i, name: "", active: true }))])
+  assert.equal(byName.predict("electric drill").codeId, 60)
+  const inactive = buildPredictor([mem53("منشار صاروخ", 61)], codes)
+  assert.equal(inactive.predict("منشار صاروخ").codeId, null)
+})
+
+test("F53c. thresholds are named and ordered; evaluate reports leave-one-out accuracy", () => {
+  assert.ok(GREEN_SIMILARITY === 0.75 && GREEN_CONFIDENCE === 0.75 && GREEN_AGREE === 2)
+  assert.ok(ORANGE_SIMILARITY === 0.45 && ORANGE_CONFIDENCE === 0.5)
+  assert.ok(CONFIRMED_WEIGHT === 2 && CODE_NAME_WEIGHT === 0.5 && TOP_K === 5)
+  const r = evaluatePrediction(MEMORY53)
+  assert.equal(r.total, r.green.n + r.orange.n + r.red)
+  assert.ok(r.green.correct <= r.green.n && r.orange.correct <= r.orange.n)
+  assert.ok(r.green.n > 0 && r.green.correct === r.green.n, JSON.stringify(r))
+  // held out together: "مفك صليبة" and its "ستانلي 6 بوصة" twin share one core and never answer each other
+  assert.equal(r.total, new Set(MEMORY53.map((m) => m.core_name)).size)
+})
+
+test("F53d. matchCode: the prediction comes after close spelling and before keywords; loadMatchContext builds it", async () => {
+  const codes = [10, 11, 12, 20, 21, 22, 23, 24, 30, 31, 32, ...FILLER53.map((_, i) => 100 + i)].map((codeId) => ({
+    codeId, itemCode: `EG-1-${codeId}`, name: "", keywords: codeId === 31 ? ["بطيخه"] : [], defaultUnit: "EA", active: true,
+  }))
+  const memory = MEMORY53.map((m) => ({ normalizedName: m.normalized_name, coreName: m.core_name, codeId: m.code_id, unitType: m.code_id === 10 ? "BX" : "EA", source: m.source }))
+  const predictor = buildPredictor(MEMORY53, codes.map((c) => ({ code_id: c.codeId, name: c.name, active: true })))
+  const ctx = { codes, memory, brands: BRANDS53, predictor }
+  const m = matchCode53({ name: "مفك صليبة بطيخة" }, ctx)
+  assert.deepEqual([m.codeId, m.state, m.by, m.unit], [10, "green", "predict", "BX"], "before the keyword rule that would say 31")
+  assert.equal(matchCode53({ name: "مفك صليبة بطيخة" }, { ...ctx, predictor: undefined }).by, "keyword")
+  assert.equal(matchCode53({ name: "مفك صليبه" }, ctx).by, "memory")
+  const hyd = matchCode53({ name: "هيدروليك" }, ctx)
+  assert.notEqual(hyd.state, "green", JSON.stringify(hyd))
+  assert.notEqual(hyd.by, "predict", "close spelling (orange) answers first")
+
+  const db = new FakeDb({
+    eta_item_codes: [{ code_id: 10, item_code: "EG-1-10", name: "مفكات", keywords: [], default_unit: "EA", active: true }],
+    eta_code_memory: MEMORY53.filter((x) => x.code_id === 10).map((x, i) => ({ memory_id: i + 1, ...x, unit_type: "EA", confirmed_at: "2026-01-01" })),
+    company_settings: [],
+  })
+  const loaded = await loadMatchContext53(db)
+  assert.ok(loaded.predictor.size > 0)
+  assert.equal(loaded.memory[0].source, "imported")
+  assert.equal(matchCode53({ name: "مفك صليبة بطيخة" }, loaded).by, "predict")
+  assert.equal(db.tables.eta_code_memory.length, 4, "a prediction writes nothing")
+})
+
+function waitingDb() {
+  const db = sendDb("real")
+  db.tables.products.find((p) => p.product_id === 101)!.eta_code_id = null
+  db.tables.sales_orders.push({ so_id: 2, so_number: "SO-2", customer_id: 5, total: 114, subtotal: 100, discount_amount: 0, payment_type: "cash" })
+  db.tables.sales_order_items.push({ so_id: 2, product_id: 101, outsourced_name: null, quantity: 1, unit_price: 100, total: 100 })
+  db.tables.delivery_permits.push({ permit_id: 2, permit_no: "DP-2", sales_order_id: 2, status: "APPROVED" })
+  db.tables.delivery_permit_items.push({ permit_id: 2, product_id: 101, item_name_snapshot: "Trolley", quantity: 1, unit_price: 100, total: 100 })
+  db.tables.sales_orders.push({ so_id: 3, so_number: "SO-3", customer_id: 5, total: 114, subtotal: 100, discount_amount: 0, payment_type: "cash" })
+  db.tables.sales_order_items.push({ so_id: 3, product_id: 101, outsourced_name: null, quantity: 1, unit_price: 100, total: 100 })
+  db.tables.delivery_permits.push({ permit_id: 3, permit_no: "DP-3", sales_order_id: 3, status: "APPROVED" })
+  db.tables.delivery_permit_items.push({ permit_id: 3, product_id: 101, item_name_snapshot: "Trolley", quantity: 1, unit_price: 100, total: 100 })
+  db.tables.sales_orders.push({ so_id: 4, so_number: "SO-4", customer_id: 5, total: 114, subtotal: 100, discount_amount: 0, payment_type: "cash" })
+  db.tables.sales_order_items.push({ so_id: 4, product_id: 101, outsourced_name: null, quantity: 1, unit_price: 100, total: 100 })
+  db.tables.delivery_permits.push({ permit_id: 4, permit_no: "DP-4", sales_order_id: 4, status: "APPROVED" })
+  db.tables.delivery_permit_items.push({ permit_id: 4, product_id: 101, item_name_snapshot: "Trolley", quantity: 1, unit_price: 100, total: 100 })
+  return db
+}
+
+test("F53e. waiting list: not-green lines of waiting invoices grouped by name; sent / pre-go-live / replaced left out; confirming fills memory and empty product cards", async () => {
+  const db = waitingDb()
+  for (const permit of [1, 2, 3, 4]) assert.equal((await createDpInvoices(db, [permit])).status, 200)
+  const ar = db.tables.accounts_receivable
+  assert.equal(ar.length, 4)
+  ar[2].created_at = "2025-06-01T00:00:00Z" // before go-live
+  db.tables.eta_documents.push({ doc_id: 1, invoice_id: ar[3].invoice_id, document_type: "I", environment: "real", version: 1, status: "valid" })
+  useDb(db)
+  const res = await waitingRoute.POST(rq("POST", "/api/eta/predict/waiting", {}))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.cursor, null); assert.equal(body.invoices, 2)
+  assert.deepEqual(body.items.map((i: any) => [i.name, i.count, i.suggestion.state, i.invoices, i.productIds]), [
+    ["Trolley", 2, "red", [ar[0].invoice_number, ar[1].invoice_number], [101]],
+  ], "Wrench is green from its product card")
+  assert.equal((await waitingRoute.POST(rq("POST", "/api/eta/predict/waiting", { cursor: -1 }))).status, 400)
+
+  // a replaced invoice drops out
+  ar[1].status = "replaced"
+  assert.equal((await classifyWaiting(db)).items[0].count, 1)
+  ar[1].status = "pending"
+
+  // the time budget: one invoice per call, continued from the cursor; the screen adds the parts up
+  let clock = 0
+  const deps = { now: () => (clock += 50_000), budgetMs: 40_000 }
+  const p1 = await classifyWaiting(db, null, deps)
+  assert.equal(p1.invoices, 1); assert.equal(p1.cursor, 1)
+  const p2 = await classifyWaiting(db, p1.cursor, deps)
+  assert.equal(p2.cursor, null)
+  const merged = mergeWaiting(p1.items, p2.items)
+  assert.deepEqual([merged.length, merged[0].count, merged[0].invoices.length], [1, 2, 2])
+
+  // "Confirm all shown": chunks to /api/eta/memory, remembered as confirmed; the empty product card takes the code
+  const products = JSON.stringify(db.tables.products.find((p) => p.product_id === 100))
+  const post = await memoryRoute53.POST(rq("POST", "/api/eta/memory", { items: [{ name: "Trolley", codeId: 1, unitType: "", productIds: [101, 100] }] }))
+  assert.equal(post.status, 200)
+  assert.deepEqual(await post.json(), { success: true, saved: 1, failed: [], productsSet: 1 })
+  assert.equal(db.tables.eta_code_memory.find((m) => m.normalized_name === "trolley")!.source, "confirmed")
+  assert.equal(db.tables.products.find((p) => p.product_id === 101)!.eta_code_id, 1)
+  assert.equal(JSON.stringify(db.tables.products.find((p) => p.product_id === 100)), products, "a card with a code is never changed")
+  assert.deepEqual((await classifyWaiting(db)).items, [])
+  const tooMany = Array.from({ length: 51 }, (_, i) => ({ name: `x${i}`, codeId: 1 }))
+  assert.equal((await memoryRoute53.POST(rq("POST", "/api/eta/memory", { items: tooMany }))).status, 400)
+
+  // no go-live: nothing listed
+  const none = sendDb("real")
+  none.tables.company_settings = none.tables.company_settings.filter((s) => s.setting_key !== "eta_go_live_at")
+  assert.deepEqual(await classifyWaiting(none), { items: [], invoices: 0, cursor: null, goLive: null })
+})
+
+test("F53f. permissions: the waiting list is accountant / CEO / admin; the evaluation is CEO / admin only", async () => {
+  const w = ruleFor("/api/eta/predict/waiting")!
+  for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(w, "POST", [role] as any), true, role)
+  for (const role of ["sales-rep", "warehouse-rep", "po-rep"]) assert.equal(allows(w, "POST", [role] as any), false, role)
+  const e = ruleFor("/api/eta/predict/evaluate")!
+  for (const role of ["ceo", "admin"]) assert.equal(allows(e, "GET", [role] as any), true, role)
+  for (const role of ["accountant", "sales-rep"]) assert.equal(allows(e, "GET", [role] as any), false, role)
+  useDb(new FakeDb({
+    eta_code_memory: MEMORY53.map((m, i) => ({ memory_id: i + 1, ...m })),
+    eta_item_codes: [], company_settings: [],
+  }))
+  const res = await evaluateRoute.GET(rq("GET", "/api/eta/predict/evaluate", undefined, { "x-mm-roles": "ceo" }))
+  assert.equal(res.status, 200)
+  const r = await res.json()
+  assert.deepEqual(Object.keys(r).sort(), ["green", "orange", "red", "total"])
+  assert.equal(r.total, r.green.n + r.orange.n + r.red)
+})
