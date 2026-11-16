@@ -1431,26 +1431,69 @@ import * as analyticsRoute6 from "../../app/api/analytics/financial/route"
 
 const REPO6 = process.env.REPO_ROOT || process.cwd()
 
-// Files that read accounts_receivable and show or touch a replaced invoice ON PURPOSE. Every other non-test file that
-// names accounts_receivable in code must call excludeReplaced / isReplacedInvoice (lib/ar-live.ts).
-export const REPLACED_VISIBLE: Record<string, string> = {
-  "app/api/accounts-receivable/route.ts": "the receivables list shows a replaced invoice, labelled; PUT/DELETE address one invoice by id",
-  "app/api/invoices/ar/[id]/pdf/route.ts": "the invoice's own PDF still opens for a replaced invoice",
-  "app/api/invoices/ar/[id]/[invoiceId]/pdf/route.ts": "the invoice's own PDF still opens for a replaced invoice",
-  "app/api/sales-orders/route.ts": "inserts invoices; the delete guard keeps a sales order that any invoice (replaced too) still points at",
-  "app/api/customer-credits/route.ts": "only turns invoice ids into invoice numbers for display; a credit's source invoice may be a replaced one",
-  "app/api/eta/preview/route.ts": "looks one invoice up by id so its e-invoice window opens, replaced or not",
-  "app/api/maintenance/invoices/route.ts": "maintenance invoices have no sales order or permits so are never replaced; the number check is a uniqueness guard",
-  "app/api/maintenance/work-orders/ready-for-invoice/route.ts": "maintenance invoices are never replaced; matches a work order to the invoice number it already holds",
-  "app/api/pending-counts/route.ts": "counts maintenance work orders by the invoice number they hold; maintenance invoices are never replaced",
-  "app/api/system-health/route.ts": "integrity check of each row's amount, collected and balance: applies to replaced rows as well",
-  "lib/sales-orders/on-approved.ts": "the down-payment invoice number is unique: a replaced one still holds it (insert guard, not a total)",
-  "lib/supplier-credit-ap-apply.ts": "a failure label for the receivable ledger; reads nothing",
-  "lib/invoicing.ts": "numbering and insert/rollback must see replaced invoice numbers; loadSoInvoicingState itself uses excludeReplaced",
+// Every place that names accounts_receivable in code is a "reader". A reader is either wrapped in excludeReplaced
+// (lib/ar-live.ts) or listed here, ONE reason per unfiltered reader, in source order. The test counts them per file, so
+// one more unfiltered reader anywhere (even in a file that already uses excludeReplaced) fails until it is filtered
+// or given a reason.
+export const UNFILTERED_READERS: Record<string, string[]> = {
+  "app/api/accounts-receivable/route.ts": [
+    "the receivables list shows a replaced invoice, labelled",
+    "PUT: updates the VAT file of one invoice by id",
+    "DELETE: reads one invoice by id for the has-payments refusal",
+    "DELETE: removes one invoice by id",
+  ],
+  "app/api/invoices/ar/[id]/pdf/route.ts": ["the invoice's own PDF still opens for a replaced invoice"],
+  "app/api/invoices/ar/[id]/[invoiceId]/pdf/route.ts": ["the invoice's own PDF still opens for a replaced invoice"],
+  "app/api/sales-orders/route.ts": [
+    "inserts the down-payment invoice",
+    "inserts the invoice",
+    "delete guard: an order that any invoice (replaced too) still points at is not deleted",
+  ],
+  "app/api/customer-credits/route.ts": ["only turns invoice ids into numbers for display; a credit's source invoice may be a replaced one"],
+  "app/api/eta/preview/route.ts": ["looks one invoice up by id so its e-invoice window opens, replaced or not"],
+  "app/api/maintenance/invoices/route.ts": [
+    "number-taken check: maintenance invoices are never replaced and the number stays unique",
+    "inserts the maintenance invoice",
+    "rolls back that insert by id",
+  ],
+  "app/api/maintenance/work-orders/ready-for-invoice/route.ts": ["matches a work order to the maintenance invoice number it holds; never replaced"],
+  "app/api/pending-counts/route.ts": ["counts maintenance work orders by the invoice number they hold; never replaced"],
+  "app/api/system-health/route.ts": [
+    "table-reachability list, reads no invoice",
+    "integrity check of each row's amount, collected and balance: replaced rows too",
+  ],
+  "app/api/payment-schedules/route.ts": [
+    "reads one invoice by id; the payment is refused when it is replaced (isReplacedInvoice)",
+    "guarded update of one invoice by id, reached only after that refusal",
+  ],
+  "lib/ar-payments.ts": [
+    "audit entity label, reads nothing",
+    "idempotent replay returns the invoice as it is",
+    "reads one invoice by id; the payment is refused when it is replaced",
+    "guarded update of one invoice by id, reached only after that refusal",
+    "ledger step label, reads nothing",
+    "payment reference type label, reads nothing",
+  ],
+  "lib/customer-credit-apply.ts": [
+    "audit entity label, reads nothing",
+    "idempotent replay returns the invoice as it is",
+    "reads one invoice by id; the credit is refused when it is replaced",
+    "guarded update of one invoice by id, reached only after that refusal",
+    "failure label, reads nothing",
+    "restore of that same update by id",
+  ],
+  "lib/invoicing.ts": [
+    "next invoice number must see replaced invoice numbers (unique)",
+    "insert with the typed number",
+    "insert with the generated number",
+    "rollback delete of an invoice just inserted, by id",
+  ],
+  "lib/sales-orders/on-approved.ts": [
+    "down-payment invoice number is unique: a replaced one still holds it",
+    "inserts the down-payment invoice",
+  ],
+  "lib/supplier-credit-ap-apply.ts": ["failure label for the receivable ledger, reads nothing"],
 }
-// the files above that also use excludeReplaced / isReplacedInvoice need no more than their reason
-
-const CODE_REF = /(["'`])accounts_receivable\1|\.from\(\s*["'`]accounts_receivable["'`]/
 
 function stripComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/(^|[^:"'`\\])\/\/.*$/, "$1")).join("\n")
@@ -1464,39 +1507,55 @@ function walk(dir: string, out: string[] = []): string[] {
   }
   return out
 }
-/** the files (path -> source) that read accounts_receivable without excludeReplaced / isReplacedInvoice and without a reason */
-export function unguardedArReaders(files: Record<string, string>, allowed: Record<string, string> = REPLACED_VISIBLE): string[] {
-  const bad: string[] = []
+/** readers that name accounts_receivable in code, and how many of the file's uses are excludeReplaced */
+export function arReaderCounts(text: string): { readers: number; filtered: number } {
+  const code = stripComments(text)
+  // a quoted table name, also split over a "+" chain
+  const readers = (code.match(/(["'`])accounts_receivable\1|accounts_["'`]\s*\+\s*["'`]receivable/g) || []).length
+  const filtered = code.split("\n").filter((l) => !/^\s*import\b/.test(l)).join("\n").match(/\bexcludeReplaced\b/g)?.length ?? 0
+  return { readers, filtered }
+}
+/** the files whose number of unfiltered readers differs from the explicit expectation */
+export function arGuardProblems(files: Record<string, string>, expected: Record<string, string[]> = UNFILTERED_READERS): string[] {
+  const problems: string[] = []
   for (const [path, text] of Object.entries(files)) {
     if (path.startsWith("lib/eta/") || path === "lib/ar-live.ts") continue
-    const code = stripComments(text)
-    if (!CODE_REF.test(code)) continue
-    if (allowed[path]) continue
-    if (/\b(excludeReplaced|isReplacedInvoice)\b/.test(code)) continue
-    bad.push(path)
+    const { readers, filtered } = arReaderCounts(text)
+    const unfiltered = Math.max(0, readers - filtered)
+    const want = (expected[path] || []).length
+    if (unfiltered !== want) problems.push(`${path}: ${unfiltered} unfiltered accounts_receivable reader(s), ${want} listed with a reason`)
   }
-  return bad
+  return problems
 }
+const staleEntries = (files: Record<string, string>) => Object.keys(UNFILTERED_READERS).filter((path) => !(path in files))
 
-test("F28. guard: every reader of accounts_receivable excludes replaced invoices or says why it shows them", () => {
+test("F28. guard: every accounts_receivable reader excludes replaced invoices or is listed with its own reason", () => {
   const files: Record<string, string> = {}
   for (const f of [...walk("app"), ...walk("lib")]) files[f] = readFileSync(join(REPO6, f), "utf8")
-  assert.deepEqual(unguardedArReaders(files), [], "a new accounts_receivable reader needs excludeReplaced (lib/ar-live.ts) or a REPLACED_VISIBLE entry with a reason")
-  // the allowlist is honest: every entry still names the table, has a reason, and nothing is listed twice over
-  for (const [path, reason] of Object.entries(REPLACED_VISIBLE)) {
-    assert.ok(reason.length >= 20, `${path}: reason`)
-    assert.ok(files[path], `${path} does not exist (stale allowlist entry)`)
-    assert.match(files[path], /accounts_receivable/, `${path} no longer reads accounts_receivable (stale allowlist entry)`)
+  assert.deepEqual(arGuardProblems(files), [], "a new accounts_receivable reader needs excludeReplaced (lib/ar-live.ts) or one more reasoned UNFILTERED_READERS entry")
+  assert.deepEqual(staleEntries(files), [], "listed files that no longer exist")
+  for (const [path, reasons] of Object.entries(UNFILTERED_READERS)) {
+    assert.ok(reasons.length > 0 && reasons.every((r) => r.length >= 15), `${path}: a reason per reader`)
   }
-  // the guard fails on a new reader, and passes once it filters or is listed with a reason
+
+  // synthetic: a new unfiltered reader fails
   const fresh = { "app/api/new-report/route.ts": 'const { data } = await db.from("accounts_receivable").select("*")' }
-  assert.deepEqual(unguardedArReaders(fresh), ["app/api/new-report/route.ts"])
-  assert.deepEqual(unguardedArReaders({ "lib/x.ts": 'db.from(`accounts_receivable`).select("amount")' }), ["lib/x.ts"])
-  assert.deepEqual(unguardedArReaders({ "lib/x.ts": 'const q = excludeReplaced(db.from("accounts_receivable").select("*"))' }), [])
-  assert.deepEqual(unguardedArReaders({ "lib/x.ts": 'if (isReplacedInvoice(row)) return\nawait db.from("accounts_receivable").select("*")' }), [])
-  assert.deepEqual(unguardedArReaders(fresh, { "app/api/new-report/route.ts": "shows history" }), [])
-  assert.deepEqual(unguardedArReaders({ "lib/x.ts": '// reads accounts_receivable later\nconst a = 1' }), [], "a comment is not a reader")
-  assert.deepEqual(unguardedArReaders({ "lib/eta/y.ts": 'db.from("accounts_receivable")' }), [], "lib/eta is outside this guard")
+  assert.equal(arGuardProblems(fresh).length, 1)
+  assert.deepEqual(arGuardProblems(fresh, { "app/api/new-report/route.ts": ["shows history, reason given"] }), [])
+  assert.equal(arGuardProblems({ "lib/x.ts": 'db.from(`accounts_receivable`).select("amount")' }).length, 1)
+  assert.equal(arGuardProblems({ "lib/x.ts": 'db.from("accounts_" + "receivable").select("amount")' }).length, 1, "split chain")
+  assert.deepEqual(arGuardProblems({ "lib/x.ts": 'import { excludeReplaced } from "./ar-live"\nconst q = excludeReplaced(db.from("accounts_receivable").select("*"))' }), [])
+  assert.deepEqual(arGuardProblems({ "lib/x.ts": "// reads accounts_receivable later\nconst a = 1" }), [], "a comment is not a reader")
+  assert.deepEqual(arGuardProblems({ "lib/eta/y.ts": 'db.from("accounts_receivable")' }), [], "lib/eta is outside this guard")
+  // a file that already filters (or is allowlisted) fails when it gains one more unfiltered reader; filtered, it passes
+  for (const path of ["lib/invoicing.ts", "lib/so-overview.ts", "lib/ar-payments.ts", "lib/reports/views.ts"]) {
+    const bare = 'async function newReader(db: any) { return db.from("accounts_receivable").select("amount, balance") }\n'
+    const problems = arGuardProblems({ ...files, [path]: files[path] + "\n" + bare })
+    assert.equal(problems.length, 1, `${path} + one unfiltered reader`)
+    assert.ok(problems[0].startsWith(path + ":"), problems[0])
+    const withFilter = 'async function newReader(db: any) { return excludeReplaced(db.from("accounts_receivable").select("amount, balance")) }\n'
+    assert.deepEqual(arGuardProblems({ ...files, [path]: files[path] + "\n" + withFilter }), [], `${path} + one filtered reader`)
+  }
 })
 
 const ar6 = (id: number, status: string | null, extra: Row = {}): Row => ({
@@ -1530,7 +1589,7 @@ function soDb6(arRows: Row[], links: Row[] = []) {
   })
 }
 
-test("F29b. over-invoicing / already-invoiced: a replaced invoice is not counted, its permit is invoiceable again", async () => {
+test("F29b. over-invoicing / already-invoiced: a replaced invoice is left out of the order's invoices", async () => {
   const live = await loadSoInvoicingState(soDb6([ar6(1, "pending")], [{ invoice_id: 1, permit_id: 1 }]), 1)
   assert.deepEqual(live!.invoices.map((i) => i.invoice_id), [1])
   const replaced = await loadSoInvoicingState(soDb6([ar6(1, "replaced")], [{ invoice_id: 1, permit_id: 1 }]), 1)
