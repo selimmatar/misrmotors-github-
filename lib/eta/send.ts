@@ -2,7 +2,7 @@
 // the follow-up. Never sends a document twice: a row leaves `pending_signature` once (a guarded update claims it before
 // the portal is called), and nothing here ever submits a row that is already `submitted`.
 import { buildEtaPreview, type EtaPreview } from "./preview"
-import { buildInvoiceDocument } from "./document"
+import { buildCreditNoteDocument, buildInvoiceDocument } from "./document"
 import { canonicalize, toEtaJson } from "./serialize"
 import { readEtaSettings } from "./store"
 import { checkSignature } from "./cms"
@@ -20,7 +20,8 @@ export const FOLLOW_UP_EVERY_MS = 30_000
 /** Submissions checked per follow-up run (keeps each request short and inside the portal's rate limits). */
 export const FOLLOW_UP_MAX_SUBMISSIONS = 5
 
-const LIVE_STATUSES = ["pending_signature", "submitted", "valid"]
+/** A document that is waiting to be signed, sent or valid on its portal (an "active" one). */
+export const LIVE_STATUSES = ["pending_signature", "submitted", "valid"]
 
 export interface EtaDocError {
   code: string
@@ -145,6 +146,128 @@ export async function queueSend(db: Db, invoiceIds: number[], env: EtaEnv, userI
   return out
 }
 
+/** A request refused before anything was saved or sent: a code for the screen plus plain English (API errors). */
+export interface EtaRefusal { ok: false; code: string; message: string; messageAr?: string; reasons?: string[]; /** HTTP status for the route */ status?: number }
+const refusal = (code: string, message: string, extra: Partial<EtaRefusal> = {}): EtaRefusal => ({ ok: false, code, message, ...extra })
+
+/** The totals column of a row, from its document. */
+function rowTotals(doc: any) {
+  return { sales: doc.totalSalesAmount, discount: doc.totalDiscountAmount, net: doc.netAmount, vat: doc.taxTotals?.[0]?.amount ?? 0, total: doc.totalAmount }
+}
+
+/**
+ * "Credit note for the whole invoice" (spec §6.4): only on an invoice whose document on this portal is `valid`, and
+ * only while the invoice has no active credit note (waiting, sent or valid) on this portal. The credit note repeats the
+ * invoice's SENT document (the stored body text, ruling P5) - never the invoice as it is now - with documentType "c",
+ * references = [the invoice's portal uuid] and the same internal number. It waits for the signer like any document
+ * (version 1; after an invalid credit note the next one is version 2).
+ */
+export async function queueCreditNote(
+  db: Db,
+  invoiceId: number,
+  env: EtaEnv,
+  userId: number | null,
+  deps: { now?: () => Date } = {},
+): Promise<{ ok: true; docId: number; version: number } | EtaRefusal> {
+  const now = deps.now || (() => new Date())
+  if (!Number.isInteger(invoiceId) || invoiceId < 1) return refusal("not_found", "Invoice not found.")
+  const invoice = must(await db.from("accounts_receivable").select("invoice_id").eq("invoice_id", invoiceId).maybeSingle(), "load invoice")
+  if (!invoice) return refusal("not_found", "Invoice not found.")
+  const rows = must(
+    await db.from("eta_documents").select("doc_id, document_type, environment, version, status, eta_uuid, document").eq("invoice_id", invoiceId),
+    "load e-invoice documents",
+  ) as any[]
+  const mine = rows.filter((r) => (r.environment || "real") === env)
+  if (mine.some((r) => r.document_type === "C" && LIVE_STATUSES.includes(r.status)))
+    return refusal("credit_note_active", "This invoice already has a credit note on the portal (waiting to be signed, sent or valid).")
+  const valid = mine.filter((r) => r.document_type === "I" && r.status === "valid").sort((a, b) => (Number(b.version) || 0) - (Number(a.version) || 0))[0]
+  if (!valid) return refusal("not_valid", "A credit note can only be made for an invoice that is valid on the portal.")
+  const uuid = text(valid.eta_uuid)
+  const snapshot = parsedBody(valid)
+  if (!uuid || !snapshot) return refusal("snapshot_unreadable", "The invoice's sent document or its portal ID is missing, so a credit note can't be built.")
+
+  let body: string
+  let canonical: string
+  let doc
+  try {
+    doc = buildCreditNoteDocument(snapshot, uuid, now().toISOString())
+    body = toEtaJson(doc)
+    canonical = canonicalize(body)
+  } catch (e: any) {
+    console.error(`[eta] could not build the credit note of invoice ${invoiceId}: ${e?.message || e}`)
+    return refusal("build_failed", "The credit note could not be built from the sent invoice.")
+  }
+  const version = Math.max(0, ...mine.filter((r) => r.document_type === "C").map((r) => Number(r.version) || 0)) + 1
+  const at = now().toISOString()
+  const { data, error } = await db
+    .from("eta_documents")
+    .insert({
+      invoice_id: invoiceId,
+      document_type: "C",
+      environment: env,
+      version,
+      status: "pending_signature",
+      document: body,
+      canonical,
+      references: [uuid],
+      lines: doc.invoiceLines,
+      totals: rowTotals(doc),
+      errors: null,
+      created_by: userId,
+      created_at: at,
+      updated_at: at,
+    })
+    .select("doc_id")
+  // another request made the credit note first
+  if (error?.code === "23505") return refusal("credit_note_active", "This invoice already has a credit note on the portal (waiting to be signed, sent or valid).")
+  if (error) throw new Error(`save credit note: ${error.message || error}`)
+  const docId = Array.isArray(data) ? data[0]?.doc_id : data?.doc_id
+  return { ok: true, docId, version }
+}
+
+/**
+ * "Send again" (spec §6.1): only when the invoice's latest document on this portal is `invalid` (the portal refused it,
+ * or never received it - ruling P8), and nothing of the same kind is still live there. An invalid invoice is rebuilt
+ * from the invoice as it is now (after the fix); an invalid credit note is rebuilt from the invoice's sent snapshot.
+ * Either way a new row with the next version; the invalid one stays as history.
+ */
+export async function sendAgain(
+  db: Db,
+  invoiceId: number,
+  env: EtaEnv,
+  userId: number | null,
+  deps: { now?: () => Date } = {},
+): Promise<{ ok: true; documentType: "I" | "C"; docId: number; version: number } | EtaRefusal> {
+  if (!Number.isInteger(invoiceId) || invoiceId < 1) return refusal("not_found", "Invoice not found.")
+  const rows = must(
+    await db.from("eta_documents").select("doc_id, document_type, environment, version, status").eq("invoice_id", invoiceId),
+    "load e-invoice documents",
+  ) as any[]
+  const mine = rows.filter((r) => (r.environment || "real") === env && r.status !== "manual")
+  const latest = [...mine].sort((a, b) => Number(b.doc_id) - Number(a.doc_id))[0]
+  if (!latest) return refusal("not_sent", "This invoice has not been sent to this portal yet.")
+  const type: "I" | "C" = latest.document_type === "C" ? "C" : "I"
+  if (mine.some((r) => r.document_type === type && LIVE_STATUSES.includes(r.status)))
+    return refusal("still_live", "The earlier version is still waiting, sent or valid on the portal; it can't be sent again.")
+  if (latest.status !== "invalid") return refusal("not_invalid", "Only a document the portal marked invalid can be sent again.")
+
+  if (type === "C") {
+    const r = await queueCreditNote(db, invoiceId, env, userId, deps)
+    return r.ok ? { ok: true, documentType: "C", docId: r.docId, version: r.version } : r
+  }
+  const q = await queueSend(db, [invoiceId], env, userId, deps)
+  if (!q.queued.length) {
+    const reasons = q.refused[0]?.reasons || ["refused"]
+    return refusal(reasons[0], "The invoice can't be sent yet: something is still missing or changed.", { reasons })
+  }
+  const added = must(
+    await db.from("eta_documents").select("doc_id, version").eq("invoice_id", invoiceId).eq("environment", env).eq("document_type", "I").eq("status", "pending_signature"),
+    "load the new version",
+  ) as any[]
+  const row = added.sort((a, b) => Number(b.version) - Number(a.version))[0]
+  return { ok: true, documentType: "I", docId: row?.doc_id, version: row?.version }
+}
+
 const CHANGED: EtaDocError = {
   code: "CHANGED_AFTER_SEND",
   message: "The invoice, its lines, the customer or the company details changed after Send. Check it and send again.",
@@ -216,11 +339,12 @@ export interface SendDeps {
 }
 /** Defaults the route handlers use (tests set a fake portal here; the app leaves it empty). */
 export const etaSendDefaults: SendDeps = {}
-const portalOf = (deps: SendDeps, env: EtaEnv, timeoutMs?: number) => {
+/** The portal client for an environment, honouring injected test portals (also used by ./after-send). */
+export const portalOf = (deps: SendDeps, env: EtaEnv, timeoutMs?: number) => {
   const d = { ...etaSendDefaults, ...deps }
   return d.portalFor ? d.portalFor(env) : createPortal(env, { ...(d.fetch ? { fetch: d.fetch } : {}), ...(timeoutMs ? { timeoutMs } : {}) })
 }
-const credsOf = (deps: SendDeps) => deps.credentialsSet || etaSendDefaults.credentialsSet || credentialsSet
+export const credsOf = (deps: SendDeps) => deps.credentialsSet || etaSendDefaults.credentialsSet || credentialsSet
 
 export interface AcceptResult {
   /** sent to the portal and accepted (status submitted, with its portal ids) */
@@ -431,6 +555,15 @@ export const NOT_RECEIVED_AFTER_MS = 30 * 60_000
 
 class OutOfBudget extends Error {}
 
+/** "i" / "c" when a portal search result says its type (typeName "I" / "C", or a name such as "Credit Note"), else "". */
+function searchType(x: any): string {
+  const t = text(x?.typeName).toLowerCase()
+  if (t === "i" || t === "c") return t
+  if (t.includes("credit")) return "c"
+  if (t.includes("invoice")) return "i"
+  return ""
+}
+
 /**
  * Follow-up (spec §6.1): asks the portal about `submitted` documents, each at most once every 30 s, and records
  * valid / invalid (with the portal's reasons) / cancelled / rejected. A failed check leaves the row as it is.
@@ -466,7 +599,7 @@ export async function followUp(
   const rows = must(
     await db
       .from("eta_documents")
-      .select("doc_id, invoice_id, environment, status, submission_uuid, eta_uuid, eta_long_id, checked_at, submitted_at, updated_at, document")
+      .select("doc_id, invoice_id, document_type, environment, status, submission_uuid, eta_uuid, eta_long_id, checked_at, submitted_at, updated_at, document")
       .eq("status", "submitted"),
     "load submitted documents",
   ) as any[]
@@ -575,6 +708,8 @@ export async function followUp(
     const received = (x: any) => Date.parse(text(x?.dateTimeReceived) || text(x?.dateTimeIssued))
     const candidates = found
       .filter((x) => text(x?.internalId) === internalId && text(x?.uuid) && !taken.has(text(x.uuid)))
+      // an invoice and its credit note share the internal number: when the portal says the type, it must match
+      .filter((x) => { const t = searchType(x); return !t || t === (row.document_type === "C" ? "c" : "i") })
       .filter((x) => !Number.isFinite(received(x)) || received(x) >= attempt - 15 * 60_000)
       .sort((a, b) => (received(b) || 0) - (received(a) || 0))
     const s = candidates[0]

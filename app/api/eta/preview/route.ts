@@ -4,17 +4,28 @@ import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { parsePositiveId } from "@/lib/parse-id"
 import { buildEtaPreview } from "@/lib/eta/preview"
+import { readEtaSettings } from "@/lib/eta/store"
+import { etaEnvironment, followUpQuietly } from "@/lib/eta/send"
+import { cancelWindowHours, invoiceDocuments } from "@/lib/eta/after-send"
 
 export const dynamic = "force-dynamic"
 
-// GET ?invoiceId=N: the e-invoice preview of one customer invoice (read-only).
+// GET ?invoiceId=N: the e-invoice preview of one customer invoice, plus its portal documents per environment
+// (`documents`), the selected portal (`environment`) and that portal's cancel window (`cancelWindowHours`, null when
+// unknown or nothing there is valid). The throttled, time-boxed follow-up runs first, so opening the invoice refreshes
+// the status of whatever is waiting on the portal.
 export async function GET(request: Request) {
   try {
     const invoiceId = parsePositiveId(new URL(request.url).searchParams.get("invoiceId"))
     if (invoiceId === null) return NextResponse.json({ error: "invoiceId is required" }, { status: 400 })
-    const preview = await buildEtaPreview(createAdminClient(), invoiceId)
+    const db = createAdminClient()
+    await followUpQuietly(db)
+    const preview = await buildEtaPreview(db, invoiceId)
     if (!preview) return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
-    return NextResponse.json(preview)
+    const environment = etaEnvironment(await readEtaSettings(db))
+    const documents = await invoiceDocuments(db, invoiceId)
+    const windowHours = documents[environment].some((d) => d.status === "valid") ? await cancelWindowHours(environment) : null
+    return NextResponse.json({ ...preview, environment, documents, cancelWindowHours: windowHours })
   } catch (error: any) {
     console.error("Error building the e-invoice preview:", error)
     return NextResponse.json({ error: error.message || "Failed to build the e-invoice preview" }, { status: 500 })

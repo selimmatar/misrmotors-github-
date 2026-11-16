@@ -456,15 +456,23 @@ const NOW = () => new Date("2026-11-15T10:00:00Z")
 const yes = () => true
 
 // a fake portal that records every call
-function portalFake(opts: { submit?: (docs: string[], n: number) => any; getSubmission?: (uuid: string, n: number) => any; getDetails?: (uuid: string) => any; searchSent?: (p: { internalId: string; from: string; to: string }) => any } = {}) {
-  const calls = { submit: [] as string[][], getSubmission: [] as string[], getDetails: [] as string[], searchSent: [] as { internalId: string; from: string; to: string }[] }
+function portalFake(opts: {
+  submit?: (docs: string[], n: number) => any; getSubmission?: (uuid: string, n: number) => any; getDetails?: (uuid: string) => any; searchSent?: (p: { internalId: string; from: string; to: string }) => any
+  cancel?: (uuid: string, reason: string) => any; printout?: (uuid: string) => any; documentType?: (id: number | string) => any
+} = {}) {
+  const calls = {
+    submit: [] as string[][], getSubmission: [] as string[], getDetails: [] as string[], searchSent: [] as { internalId: string; from: string; to: string }[],
+    cancel: [] as [string, string][], printout: [] as string[], documentType: [] as (number | string)[],
+  }
   const portal: EtaPortal = {
     async submit(docs) { calls.submit.push(docs); return opts.submit ? opts.submit(docs, calls.submit.length) : { submissionUUID: "SUB1", acceptedDocuments: docs.map((d, i) => ({ uuid: `UUID${i}`, longId: `LONG${i}`, internalId: JSON.parse(d).internalID })), rejectedDocuments: [] } },
     async getSubmission(uuid) { calls.getSubmission.push(uuid); return opts.getSubmission ? opts.getSubmission(uuid, calls.getSubmission.length) : { overallStatus: "InProgress", documentSummary: [] } },
     async getDetails(uuid) { calls.getDetails.push(uuid); return opts.getDetails ? opts.getDetails(uuid) : {} },
-    async cancel() { throw new Error("no") }, async searchReceived() { throw new Error("no") },
+    async cancel(uuid, reason) { calls.cancel.push([uuid, reason]); if (!opts.cancel) throw new Error("no"); await opts.cancel(uuid, reason) },
+    async searchReceived() { throw new Error("no") },
     async searchSent(p) { calls.searchSent.push(p); return opts.searchSent ? opts.searchSent(p) : { result: [] } },
-    async printout() { throw new Error("no") }, async documentType() { throw new Error("no") },
+    async printout(uuid) { calls.printout.push(uuid); if (!opts.printout) throw new Error("no"); return opts.printout(uuid) },
+    async documentType(id) { calls.documentType.push(id); if (!opts.documentType) throw new Error("no"); return opts.documentType(id) },
   }
   const deps: SendDeps = { now: NOW, portalFor: () => portal, credentialsSet: yes }
   return { portal, calls, deps }
@@ -971,4 +979,347 @@ test("F22. follow-up is bounded: a slow portal never holds the signer's answer b
   } finally {
     for (const k of Object.keys(etaSendDefaults)) delete (etaSendDefaults as any)[k]
   }
+})
+
+// ---- F23-F26: credit note, cancel, send again, portal PDF (task 5) ----
+import { LIVE_STATUSES, queueCreditNote, sendAgain } from "../eta/send"
+import {
+  cancelOnPortal, cancelWindowHours, CANCEL_WINDOW_RETRY_MS, ETA_DOCUMENT_TYPE_IDS, invoiceDocuments, portalPrintout, PRINTOUT_EVERY_MS,
+  resetCancelWindowCache, resetPrintoutGuard, windowHoursOf,
+} from "../eta/after-send"
+import * as creditNoteRoute from "../../app/api/eta/credit-note/route"
+import * as cancelRoute from "../../app/api/eta/cancel/route"
+import * as printoutRoute from "../../app/api/eta/printout/route"
+import * as sendAgainRoute from "../../app/api/eta/send-again/route"
+import * as previewRoute2 from "../../app/api/eta/preview/route"
+
+// an invoice whose document is valid on the given portal
+async function validInvoice(env: "test" | "real" = "real") {
+  const { db, id } = await withInvoice(env)
+  await queueSend(db, [id], env, 7, { now: NOW })
+  Object.assign(db.tables.eta_documents[0], { status: "valid", eta_uuid: "INV-UUID", eta_long_id: "INV-LONG", submission_uuid: "SUB1", submitted_at: "2026-11-15T10:00:00Z", validated_at: "2026-11-15T10:01:00Z" })
+  return { db, id, inv: db.tables.eta_documents[0] }
+}
+const creditNotes = (db: FakeDb) => db.tables.eta_documents.filter((r) => r.document_type === "C")
+const withDefaults = async (deps: SendDeps, fn: () => Promise<void>) => {
+  Object.assign(etaSendDefaults, deps)
+  try { await fn() } finally { for (const k of Object.keys(etaSendDefaults)) delete (etaSendDefaults as any)[k] }
+}
+
+test("F23. credit note: only after valid, references the uuid, built from the sent snapshot; one active at a time", async () => {
+  // not valid yet (waiting to be signed): refused, nothing saved
+  const w = await withInvoice("real")
+  await queueSend(w.db, [w.id], "real", 7, { now: NOW })
+  const nv = await queueCreditNote(w.db, w.id, "real", 7, { now: NOW })
+  assert.equal(nv.ok, false)
+  assert.equal(!nv.ok && nv.code, "not_valid")
+  assert.equal(creditNotes(w.db).length, 0)
+  assert.equal((await queueCreditNote(w.db, 999, "real", 7) as any).code, "not_found")
+
+  const { db, id, inv } = await validInvoice("real")
+  const sent = JSON.parse(inv.document)
+  // the invoice changes after it was sent: the credit note still repeats what was sent
+  db.tables.customers[0].customer_name = "Acme Trading Co"
+  db.tables.accounts_receivable[0].amount = 999
+  const later = () => new Date("2026-11-16T08:00:00Z")
+  const cn = await queueCreditNote(db, id, "real", 7, { now: later })
+  assert.ok(cn.ok, JSON.stringify(cn))
+  const [c] = creditNotes(db)
+  assert.equal(cn.ok && cn.docId, c.doc_id)
+  assert.deepEqual([c.document_type, c.environment, c.version, c.status, c.invoice_id, c.created_by], ["C", "real", 1, "pending_signature", id, 7])
+  assert.deepEqual(c.references, ["INV-UUID"])
+  assert.equal(typeof c.document, "string", "P5: the exact body text")
+  assert.equal(c.canonical, canonicalize(c.document))
+  const body = JSON.parse(c.document)
+  assert.equal(body.documentType, "c")
+  assert.deepEqual(body.references, ["INV-UUID"])
+  assert.equal(body.internalID, sent.internalID, "same internal number")
+  assert.equal(body.receiver.name, "Acme Trading", "the sent receiver, not the edited customer")
+  assert.deepEqual(body.invoiceLines, sent.invoiceLines)
+  assert.equal(body.totalAmount, 342)
+  assert.equal(body.dateTimeIssued, "2026-11-16T08:00:00Z")
+  assert.equal(c.document, toEtaJson(buildCreditNoteDocument(sent, "INV-UUID", "2026-11-16T08:00:00Z")))
+  assert.equal(inv.status, "valid", "the invoice document is untouched")
+
+  // the signer gets it although the invoice changed (a credit note is not rebuilt from the current invoice)
+  const handed = await nextForSigner(db, 1, 20, { credentialsSet: yes, now: NOW })
+  assert.deepEqual(handed, [{ docId: c.doc_id, canonical: c.canonical }])
+  assert.equal(c.status, "pending_signature")
+  // signed and submitted like any document: the submitted text carries the reference
+  const fake = portalFake()
+  const ok = await acceptSignatures(db, [{ docId: c.doc_id, signature: await signCms(c.canonical) }], fake.deps)
+  assert.deepEqual(ok.submitted, [c.doc_id])
+  assert.ok(fake.calls.submit[0][0].includes('"documentType":"c"') && fake.calls.submit[0][0].includes('"references":["INV-UUID"]'))
+
+  // a second credit note while one is waiting, sent or valid: refused
+  for (const status of LIVE_STATUSES) {
+    c.status = status
+    const again = await queueCreditNote(db, id, "real", 7, { now: later })
+    assert.equal(!again.ok && again.code, "credit_note_active", status)
+    assert.equal(creditNotes(db).length, 1)
+  }
+  // the other portal has no valid invoice: refused there
+  assert.equal((await queueCreditNote(db, id, "test", 7)).ok, false)
+  // after an invalid credit note a new one can be made: version 2, from the same snapshot
+  c.status = "invalid"
+  const v2 = await queueCreditNote(db, id, "real", 7, { now: later })
+  assert.ok(v2.ok && v2.version === 2)
+  assert.equal(creditNotes(db)[1].document, c.document)
+
+  // the route: the portal from settings
+  const r = await validInvoice("real")
+  useDb(r.db)
+  assert.equal((await creditNoteRoute.POST(rq("POST", "/api/eta/credit-note", {}))).status, 400)
+  assert.equal((await creditNoteRoute.POST(rq("POST", "/api/eta/credit-note", { invoiceId: "x" }))).status, 400)
+  const res = await creditNoteRoute.POST(rq("POST", "/api/eta/credit-note", { invoiceId: r.id }))
+  assert.equal(res.status, 200)
+  assert.deepEqual(await res.json(), { environment: "real", docId: creditNotes(r.db)[0].doc_id, version: 1 })
+  const dup = await creditNoteRoute.POST(rq("POST", "/api/eta/credit-note", { invoiceId: r.id }))
+  assert.equal(dup.status, 409)
+  assert.equal((await dup.json()).code, "credit_note_active")
+  assert.equal((await creditNoteRoute.POST(rq("POST", "/api/eta/credit-note", { invoiceId: 999 }))).status, 404)
+})
+
+test("F24. cancel: refused with an active credit note; portal refusals in plain words, status unchanged; valid -> cancelled", async () => {
+  const { db, id, inv } = await validInvoice("real")
+  await queueCreditNote(db, id, "real", 7, { now: NOW })
+  const [c] = creditNotes(db)
+  const okPortal = portalFake({ cancel: () => undefined })
+  // the invoice has an active credit note (waiting / sent / valid): refused without asking the portal
+  for (const status of LIVE_STATUSES) {
+    c.status = status
+    const r = await cancelOnPortal(db, inv.doc_id, "Wrong customer", okPortal.deps)
+    assert.equal(!r.ok && r.code, "credit_note_active", status)
+  }
+  assert.equal(okPortal.calls.cancel.length, 0)
+  assert.equal(inv.status, "valid")
+  // a credit note on the other portal does not count
+  c.environment = "test"
+  c.status = "valid"
+
+  // the portal says the cancel window has passed: plain words (EN / AR), the document stays valid
+  const late = portalFake({ cancel: () => { throw new EtaError(400, "OperationPeriodOver", plainError("OperationPeriodOver")) } })
+  const r = await cancelOnPortal(db, inv.doc_id, "Wrong customer", late.deps)
+  assert.equal(r.ok, false)
+  assert.ok(!r.ok)
+  assert.equal(r.code, "OperationPeriodOver")
+  assert.equal(r.message, plainError("OperationPeriodOver", undefined, "en"))
+  assert.match(r.message, /time allowed for this action has passed/)
+  assert.equal(r.messageAr, plainError("OperationPeriodOver", undefined, "ar"))
+  assert.equal(r.status, 409)
+  assert.deepEqual(late.calls.cancel, [["INV-UUID", "Wrong customer"]])
+  assert.equal(inv.status, "valid")
+  for (const code of ["IncorrectState", "ActiveReferencingDocuments"]) {
+    const p = portalFake({ cancel: () => { throw new EtaError(400, code, plainError(code)) } })
+    const x = await cancelOnPortal(db, inv.doc_id, "x", p.deps)
+    assert.ok(!x.ok && x.message === plainError(code) && x.messageAr === plainError(code, undefined, "ar"), code)
+    assert.equal(inv.status, "valid")
+  }
+  // a portal fault or timeout: unchanged too
+  const down = portalFake({ cancel: () => { throw new EtaError(0, "Timeout", "The ETA portal did not answer in time. Try again in a minute.") } })
+  assert.equal((await cancelOnPortal(db, inv.doc_id, "x", down.deps)).ok, false)
+  assert.equal(inv.status, "valid")
+
+  // a reason is required; only valid documents
+  assert.equal((await cancelOnPortal(db, inv.doc_id, "  ", okPortal.deps) as any).code, "reason_required")
+  assert.equal((await cancelOnPortal(db, inv.doc_id, "x".repeat(501), okPortal.deps) as any).code, "reason_too_long")
+  assert.equal((await cancelOnPortal(db, 999, "x", okPortal.deps) as any).code, "not_found")
+  assert.equal(okPortal.calls.cancel.length, 0)
+
+  // accepted: cancelled; cancelling again is refused (not valid any more)
+  assert.deepEqual(await cancelOnPortal(db, inv.doc_id, " Wrong customer ", okPortal.deps), { ok: true })
+  assert.deepEqual(okPortal.calls.cancel, [["INV-UUID", "Wrong customer"]])
+  assert.equal(inv.status, "cancelled")
+  assert.equal((await cancelOnPortal(db, inv.doc_id, "x", okPortal.deps) as any).code, "not_valid")
+  // a valid credit note can be cancelled itself
+  c.eta_uuid = "CN-UUID"
+  assert.deepEqual(await cancelOnPortal(db, c.doc_id, "Credit note by mistake", okPortal.deps), { ok: true })
+  assert.equal(c.status, "cancelled")
+  assert.deepEqual(okPortal.calls.cancel[1], ["CN-UUID", "Credit note by mistake"])
+
+  // the route
+  const v = await validInvoice("real")
+  useDb(v.db)
+  await withDefaults({ portalFor: late.deps.portalFor, credentialsSet: yes, now: NOW }, async () => {
+    assert.equal((await cancelRoute.POST(rq("POST", "/api/eta/cancel", { docId: v.inv.doc_id }))).status, 400)
+    assert.equal((await cancelRoute.POST(rq("POST", "/api/eta/cancel", { reason: "x" }))).status, 400)
+    const res = await cancelRoute.POST(rq("POST", "/api/eta/cancel", { docId: v.inv.doc_id, reason: "Wrong customer" }))
+    assert.equal(res.status, 409)
+    const b = await res.json()
+    assert.deepEqual([b.code, b.error, b.errorAr], ["OperationPeriodOver", plainError("OperationPeriodOver"), plainError("OperationPeriodOver", undefined, "ar")])
+    assert.equal(v.inv.status, "valid")
+  })
+  await withDefaults({ portalFor: okPortal.deps.portalFor, credentialsSet: yes, now: NOW }, async () => {
+    const res = await cancelRoute.POST(rq("POST", "/api/eta/cancel", { docId: v.inv.doc_id, reason: "Wrong customer" }))
+    assert.equal(res.status, 200)
+    assert.equal(v.inv.status, "cancelled")
+  })
+})
+
+test("F25. send again: after invalid a new version; refused while the earlier version is still live", async () => {
+  const { db, id } = await withInvoice("real")
+  assert.equal((await sendAgain(db, id, "real", 7, { now: NOW }) as any).code, "not_sent")
+  await queueSend(db, [id], "real", 7, { now: NOW })
+  const v1 = db.tables.eta_documents[0]
+  for (const status of LIVE_STATUSES) {
+    v1.status = status
+    const r = await sendAgain(db, id, "real", 7, { now: NOW })
+    assert.equal(!r.ok && r.code, "still_live", status)
+    assert.equal(db.tables.eta_documents.length, 1)
+  }
+  for (const status of ["needs_review", "cancelled"]) {
+    v1.status = status
+    assert.equal((await sendAgain(db, id, "real", 7, { now: NOW }) as any).code, "not_invalid", status)
+  }
+  // invalid (e.g. the customer's address was wrong; fixed now): version 2, rebuilt from the invoice as it is now
+  v1.status = "invalid"
+  db.tables.customers[0].address_street = "Tahrir Sq"
+  const r = await sendAgain(db, id, "real", 7, { now: NOW })
+  assert.ok(r.ok, JSON.stringify(r))
+  assert.deepEqual([r.documentType, r.version], ["I", 2])
+  assert.deepEqual(db.tables.eta_documents.map((d) => [d.version, d.status]), [[1, "invalid"], [2, "pending_signature"]])
+  assert.equal(r.docId, db.tables.eta_documents[1].doc_id)
+  assert.equal(JSON.parse(db.tables.eta_documents[1].document).receiver.address.street, "Tahrir Sq")
+  assert.equal(JSON.parse(db.tables.eta_documents[1].document).internalID, JSON.parse(v1.document).internalID, "same internal number")
+  // version 2 is live: no third
+  assert.equal((await sendAgain(db, id, "real", 7, { now: NOW }) as any).code, "still_live")
+  // still something missing: refused with the reasons
+  const m = await withInvoice("real")
+  await queueSend(m.db, [m.id], "real", 7, { now: NOW })
+  m.db.tables.eta_documents[0].status = "invalid"
+  m.db.tables.customers[0].address_street = ""
+  const mr = await sendAgain(m.db, m.id, "real", 7, { now: NOW })
+  assert.ok(!mr.ok && mr.code === "customer_address" && mr.reasons?.includes("customer_address"))
+  assert.equal(m.db.tables.eta_documents.length, 1)
+
+  // an invalid credit note: sent again as credit note version 2, from the invoice's sent snapshot
+  const c = await validInvoice("real")
+  await queueCreditNote(c.db, c.id, "real", 7, { now: NOW })
+  const [cn1] = creditNotes(c.db)
+  assert.equal((await sendAgain(c.db, c.id, "real", 7, { now: NOW }) as any).code, "still_live")
+  cn1.status = "invalid"
+  const cr = await sendAgain(c.db, c.id, "real", 7, { now: NOW })
+  assert.ok(cr.ok && cr.documentType === "C" && cr.version === 2, JSON.stringify(cr))
+  const cn2 = creditNotes(c.db)[1]
+  assert.deepEqual([cn2.status, cn2.references], ["pending_signature", ["INV-UUID"]])
+  assert.equal(c.db.tables.eta_documents.filter((d) => d.document_type === "I").length, 1, "the invoice is not sent again")
+
+  // the route
+  const t = await withInvoice("test")
+  await queueSend(t.db, [t.id], "test", 7, { now: NOW })
+  useDb(t.db)
+  const live = await sendAgainRoute.POST(rq("POST", "/api/eta/send-again", { invoiceId: t.id }))
+  assert.equal(live.status, 409)
+  assert.equal((await live.json()).code, "still_live")
+  t.db.tables.eta_documents[0].status = "invalid"
+  const ok = await sendAgainRoute.POST(rq("POST", "/api/eta/send-again", { invoiceId: t.id }))
+  assert.equal(ok.status, 200)
+  assert.deepEqual(await ok.json(), { environment: "test", documentType: "I", docId: t.db.tables.eta_documents[1].doc_id, version: 2 })
+  assert.equal((await sendAgainRoute.POST(rq("POST", "/api/eta/send-again", {}))).status, 400)
+})
+
+test("F26. portal PDF (one per 5 s, NotReady in plain words, received documents); the invoice window's documents and cancel window", async () => {
+  const { db, id, inv } = await validInvoice("real")
+  db.tables.eta_received_documents = [{ received_id: 3, uuid: "SUPP-UUID", environment: "real", internal_id: "S-77" }]
+  const pdf = new TextEncoder().encode("%PDF-1.7 test").buffer
+  let ready = true
+  const fake = portalFake({ printout: () => { if (!ready) throw new EtaError(400, "NotReady", plainError("NotReady")); return pdf } })
+  let t = 1_000_000
+  const sleeps: number[] = []
+  const deps = { ...fake.deps, clock: () => t, sleep: async (ms: number) => { sleeps.push(ms); t += ms } }
+  resetPrintoutGuard()
+  const a = await portalPrintout(db, { docId: inv.doc_id }, deps)
+  assert.ok(a.ok)
+  assert.equal(a.pdf, pdf)
+  assert.match(a.filename, /^invoice-.+\.pdf$/)
+  assert.deepEqual(fake.calls.printout, ["INV-UUID"])
+  // a second printout within 5 s waits for its turn
+  t += 1_000
+  const b = await portalPrintout(db, { receivedId: 3 }, deps)
+  assert.ok(b.ok && b.filename === "supplier-S-77.pdf")
+  assert.deepEqual(sleeps, [PRINTOUT_EVERY_MS - 1_000])
+  assert.deepEqual(fake.calls.printout, ["INV-UUID", "SUPP-UUID"])
+  // not ready yet on the portal: plain words
+  t += 10_000
+  ready = false
+  const nr = await portalPrintout(db, { docId: inv.doc_id }, deps)
+  assert.ok(!nr.ok && nr.code === "NotReady" && nr.message === plainError("NotReady") && nr.messageAr === plainError("NotReady", undefined, "ar"))
+  // only valid / cancelled documents of ours
+  t += 10_000
+  inv.status = "submitted"
+  assert.equal((await portalPrintout(db, { docId: inv.doc_id }, deps) as any).code, "not_on_portal")
+  assert.equal((await portalPrintout(db, { receivedId: 9 }, deps) as any).code, "not_found")
+  inv.status = "cancelled"
+  ready = true
+  assert.ok((await portalPrintout(db, { docId: inv.doc_id }, deps)).ok)
+
+  // the route streams the PDF
+  useDb(db)
+  await withDefaults({ portalFor: fake.deps.portalFor, credentialsSet: yes }, async () => {
+    resetPrintoutGuard()
+    const res = await printoutRoute.GET(rq("GET", `/api/eta/printout?docId=${inv.doc_id}`))
+    assert.equal(res.status, 200)
+    assert.equal(res.headers.get("content-type"), "application/pdf")
+    assert.equal(Buffer.from(await res.arrayBuffer()).toString(), "%PDF-1.7 test")
+    assert.equal((await printoutRoute.GET(rq("GET", "/api/eta/printout"))).status, 400)
+    assert.equal((await printoutRoute.GET(rq("GET", "/api/eta/printout?docId=1&receivedId=3"))).status, 400)
+    resetPrintoutGuard()
+    assert.equal((await printoutRoute.GET(rq("GET", "/api/eta/printout?docId=999"))).status, 404)
+  })
+
+  // cancel window: read from the portal's document type, cached per environment; unknown -> null (retried later)
+  assert.equal(windowHoursOf({ id: 1, cancellationPeriodInDays: 3 }), 72)
+  assert.equal(windowHoursOf({ documentTypeVersions: [{ maxCancelPeriodHours: "48" }] }), 48)
+  assert.equal(windowHoursOf({ id: 1, name: "Invoice" }), null)
+  resetCancelWindowCache()
+  const dt = portalFake({ documentType: () => ({ id: 1, cancelPeriodHours: 72 }) })
+  assert.equal(await cancelWindowHours("real", dt.deps), 72)
+  assert.equal(await cancelWindowHours("real", dt.deps), 72)
+  assert.deepEqual(dt.calls.documentType, [ETA_DOCUMENT_TYPE_IDS.I], "cached")
+  let clock = 0
+  const broken = portalFake()
+  assert.equal(await cancelWindowHours("test", { ...broken.deps, clock: () => clock }), null)
+  assert.equal(await cancelWindowHours("test", { ...broken.deps, clock: () => clock }), null)
+  assert.equal(broken.calls.documentType.length, 1)
+  clock += CANCEL_WINDOW_RETRY_MS + 1
+  await cancelWindowHours("test", { ...broken.deps, clock: () => clock })
+  assert.equal(broken.calls.documentType.length, 2, "a failed read is retried later")
+  assert.equal(await cancelWindowHours("test", { credentialsSet: () => false }), null)
+
+  // the invoice window: documents per environment and the cancel window; opening it runs the follow-up first
+  const p = await validInvoice("real")
+  await queueCreditNote(p.db, p.id, "real", 7, { now: NOW })
+  const [pc] = creditNotes(p.db)
+  Object.assign(pc, { status: "submitted", submission_uuid: "SUBC", eta_uuid: "CN-UUID", submitted_at: "2026-11-15T10:05:00Z", checked_at: null })
+  p.db.tables.eta_documents.push({ doc_id: 80, invoice_id: p.id, document_type: "I", environment: "test", version: 1, status: "invalid", errors: [{ code: "NotReceived", message: plainError("NotReceived"), messageAr: plainError("NotReceived", undefined, "ar") }, { code: "BadStructure" }] })
+  const follow = portalFake({
+    getSubmission: () => ({ documentSummary: [{ uuid: "CN-UUID", longId: "CN-LONG", internalId: JSON.parse(pc.document).internalID, status: "Valid" }] }),
+    documentType: () => ({ cancellationPeriodInHours: 72 }),
+  })
+  useDb(p.db)
+  resetCancelWindowCache()
+  await withDefaults({ portalFor: follow.deps.portalFor, credentialsSet: yes, now: NOW }, async () => {
+    const res = await previewRoute2.GET(rq("GET", `/api/eta/preview?invoiceId=${p.id}`))
+    assert.equal(res.status, 200)
+    const body = await res.json()
+    assert.equal(body.invoiceId, p.id, "still the preview")
+    assert.equal(body.environment, "real")
+    assert.equal(body.cancelWindowHours, 72)
+    assert.equal(follow.calls.getSubmission.length, 1, "follow-up ran")
+    assert.deepEqual(body.documents.real.map((d: any) => [d.document_type, d.version, d.status, d.eta_uuid]), [["I", 1, "valid", "INV-UUID"], ["C", 1, "valid", "CN-UUID"]])
+    assert.deepEqual(Object.keys(body.documents.real[0]).sort(), ["doc_id", "document_type", "errors", "eta_long_id", "eta_uuid", "status", "submitted_at", "validated_at", "version"])
+    assert.equal(body.documents.real[1].eta_long_id, "CN-LONG")
+    assert.ok(body.documents.real[1].validated_at)
+    assert.deepEqual(body.documents.test[0].errors, [
+      { code: "NotReceived", message: plainError("NotReceived"), messageAr: plainError("NotReceived", undefined, "ar") },
+      { code: "BadStructure", message: plainError("BadStructure") },
+    ])
+    // nothing valid on the selected portal: the cancel window is not asked for
+    p.db.tables.eta_documents.forEach((d) => { if (d.environment === "real") d.status = "cancelled" })
+    resetCancelWindowCache()
+    const again = await (await previewRoute2.GET(rq("GET", `/api/eta/preview?invoiceId=${p.id}`))).json()
+    assert.equal(again.cancelWindowHours, null)
+    assert.equal(follow.calls.documentType.length, 1)
+  })
+  assert.deepEqual((await invoiceDocuments(p.db, 999)), { test: [], real: [] })
 })
