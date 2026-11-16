@@ -488,6 +488,7 @@ function portalFake(opts: {
     async getDetails(uuid) { calls.getDetails.push(uuid); return opts.getDetails ? opts.getDetails(uuid) : {} },
     async cancel(uuid, reason) { calls.cancel.push([uuid, reason]); if (!opts.cancel) throw new Error("no"); await opts.cancel(uuid, reason) },
     async searchReceived() { throw new Error("no") },
+    async searchSentWindow() { throw new Error("no") },
     async myCodes() { throw new Error("no") },
     async searchSent(p) { calls.searchSent.push(p); return opts.searchSent ? opts.searchSent(p) : { result: [] } },
     async printout(uuid) { calls.printout.push(uuid); if (!opts.printout) throw new Error("no"); return opts.printout(uuid) },
@@ -2593,6 +2594,101 @@ test("F51b. import route: missing credentials give a readable error; permission 
     if (keep.s !== undefined) process.env.ETA_TEST_CLIENT_SECRET = keep.s
   }
   const rule = ruleFor("/api/eta/codes/import")!
+  for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, "POST", [role] as any), true, role)
+  for (const role of ["sales-rep", "warehouse-rep"]) assert.equal(allows(rule, "POST", [role] as any), false, role)
+})
+
+// ---- F52: learn codes from past portal invoices ----
+import { learnFromPortalWindow, linesOf } from "../eta/learn"
+import { normalizeName } from "../eta/normalize"
+import * as learnRoute from "../../app/api/eta/memory/learn-from-portal/route"
+
+function learnPortal(pages: any[][], lines: Record<string, any[]>, statuses: Record<string, string> = {}) {
+  const urls: string[] = []
+  const f = (async (url: any, init: any) => {
+    const u = String(url)
+    if (u.endsWith("/connect/token")) return okHandler({ url: u, init })
+    urls.push(`${init.method || "GET"} ${u}`)
+    const x = new URL(u)
+    if (x.pathname.endsWith("/documents/search")) {
+      const n = Number(x.searchParams.get("continuationToken") || "0")
+      return jres(200, { result: (pages[n] || []).map((uuid) => ({ uuid, status: statuses[uuid] || "Valid" })), metadata: { continuationToken: n + 1 < pages.length ? String(n + 1) : "EndofResultSet" } })
+    }
+    const id = decodeURIComponent(x.pathname.split("/")[4])
+    return jres(200, { uuid: id, document: JSON.stringify({ invoiceLines: lines[id] || [] }) })
+  }) as typeof fetch
+  return { portal: createPortal("test", { fetch: f, now: () => 0, sleep: async () => {} }), urls }
+}
+const ln = (description: string, itemCode: string, unitType = "EA") => ({ description, itemCode, unitType })
+const learnDb = (memory: Row[] = []) => {
+  const db = new FakeDb({
+    eta_item_codes: [
+      { code_id: 1, item_code: "EG-1-A", name: "A", default_unit: "EA", active: true },
+      { code_id: 2, item_code: "EG-1-B", name: "B", default_unit: "EA", active: true },
+    ],
+    eta_code_memory: memory,
+  })
+  db.jitter = false
+  return db
+}
+
+test("F52a. learn: two search pages + details -> memory written as imported; reads only; unit kept", () => withCreds(async () => {
+  const db = learnDb()
+  const { portal, urls } = learnPortal([["U1", "U2"], ["U3"]], {
+    U1: [ln("مفتاح ربط 10 مم", "EG-1-A", "BX"), ln("Jack", "EG-1-B")],
+    U2: [ln("مفتاح ربط 10 مم", "EG-1-A", "BX")],
+    U3: [ln("Jack", "EG-1-B")],
+  }, {})
+  const r = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30" }, { portal, sleep: async () => {}, userId: 7 })
+  assert.deepEqual(r, { invoices: 3, lines: 4, learned: 2, alreadyKnown: 0, conflicts: 0, unknownCodes: [] })
+  assert.ok(urls.every((u) => u.startsWith("GET ")))
+  const s = urls.find((u) => u.includes("/documents/search"))!
+  assert.match(s, /direction=Sent/); assert.match(s, /issueDateFrom=2026-10-01T00%3A00%3A00Z/); assert.match(s, /pageSize=100/)
+  assert.ok(urls.some((u) => u.includes("continuationToken=1")))
+  const m = db.tables.eta_code_memory.find((x) => x.normalized_name === "jack")!
+  assert.deepEqual([m.code_id, m.source, m.confirmed_by], [2, "imported", 7])
+  assert.equal(db.tables.eta_code_memory.find((x) => x.normalized_name === normalizeName("مفتاح ربط 10 مم"))!.unit_type, "BX")
+  assert.equal(db.tables.eta_item_codes.length, 2)
+  assert.equal(linesOf({ invoiceLines: [1] }).length, 1)
+  // a second run changes nothing
+  const again = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30" }, { portal, sleep: async () => {} })
+  assert.equal(again.learned, 0); assert.equal(again.alreadyKnown, 2)
+}))
+
+test("F52b. learn: a confirmed row is never overwritten; non-valid documents ignored", () => withCreds(async () => {
+  const db = learnDb([{ memory_id: 1, normalized_name: "jack", core_name: "jack", code_id: 1, unit_type: "EA", source: "confirmed" }])
+  const { portal } = learnPortal([["U1", "U2"]], { U1: [ln("Jack", "EG-1-B")], U2: [ln("Other", "EG-1-B")] }, { U2: "Cancelled" })
+  const r = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30" }, { portal, sleep: async () => {} })
+  assert.equal(r.invoices, 1); assert.equal(r.learned, 0); assert.equal(r.alreadyKnown, 1)
+  assert.deepEqual([db.tables.eta_code_memory[0].code_id, db.tables.eta_code_memory[0].source], [1, "confirmed"])
+  assert.equal(db.tables.eta_code_memory.length, 1)
+}))
+
+test("F52c. learn: several codes for one description -> the most frequent wins, counted as a conflict", () => withCreds(async () => {
+  const db = learnDb()
+  const { portal } = learnPortal([["U1", "U2", "U3"]], { U1: [ln("Jack", "EG-1-A")], U2: [ln("jack", "EG-1-B")], U3: [ln("JACK", "EG-1-B")] })
+  const r = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30" }, { portal, sleep: async () => {} })
+  assert.equal(r.conflicts, 1); assert.equal(r.learned, 1)
+  assert.equal(db.tables.eta_code_memory.find((x) => x.normalized_name === "jack")!.code_id, 2)
+}))
+
+test("F52d. learn: a code not in eta_item_codes is skipped and listed once; nothing created", () => withCreds(async () => {
+  const db = learnDb()
+  const { portal } = learnPortal([["U1"]], { U1: [ln("Mystery", "EG-9-X"), ln("Mystery 2", "EG-9-X"), ln("Jack", "EG-1-B")] })
+  const r = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30" }, { portal, sleep: async () => {} })
+  assert.deepEqual(r.unknownCodes, ["EG-9-X"]); assert.equal(r.learned, 1); assert.equal(r.lines, 3)
+  assert.equal(db.tables.eta_code_memory.length, 1); assert.equal(db.tables.eta_item_codes.length, 2)
+}))
+
+test("F52e. learn route: window over 31 days refused; bad dates refused; permission is accountant / CEO / admin", async () => {
+  useDb(learnDb())
+  const post = (b: unknown) => learnRoute.POST(rq("POST", "/api/eta/memory/learn-from-portal", b))
+  assert.equal((await post({ from: "2026-01-01", to: "2026-02-15" })).status, 400)
+  assert.equal((await post({ from: "2026-01-01", to: "2026-02-01" })).status, 400, "32 days")
+  assert.equal((await post({ from: "x", to: "2026-02-01" })).status, 400)
+  assert.equal((await post({ from: "2026-02-01", to: "2026-01-01" })).status, 400)
+  await assert.rejects(() => learnFromPortalWindow(learnDb(), "test", { from: "2026-01-01", to: "2026-03-01" }, {}), /at most 31 days/)
+  const rule = ruleFor("/api/eta/memory/learn-from-portal")!
   for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, "POST", [role] as any), true, role)
   for (const role of ["sales-rep", "warehouse-rep"]) assert.equal(allows(rule, "POST", [role] as any), false, role)
 })

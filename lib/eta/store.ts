@@ -92,6 +92,8 @@ export interface RememberInput {
   unitType: string
   userId: number | null
   source: "confirmed" | "imported"
+  /** never replace a row the accountant confirmed (used by the portal learning) */
+  keepConfirmed?: boolean
 }
 
 /**
@@ -117,8 +119,9 @@ export async function rememberCode(db: Db, input: RememberInput): Promise<void> 
   const now = new Date().toISOString()
 
   const save = async (key: string, coreOfRow: string, sample: string, onlyIfNew = false) => {
-    const { data: existing, error } = await db.from("eta_code_memory").select("memory_id").eq("normalized_name", key).maybeSingle()
+    const { data: existing, error } = await db.from("eta_code_memory").select("memory_id, source").eq("normalized_name", key).maybeSingle()
     if (error) throw new Error(error.message || "Could not read the code memory")
+    if (existing && input.keepConfirmed && existing.source === "confirmed") return
     if (existing && onlyIfNew) return
     const row: Record<string, any> = {
       normalized_name: key,

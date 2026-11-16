@@ -86,6 +86,10 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
   const [preparing, setPreparing] = useState(false)
   const [prepareProgress, setPrepareProgress] = useState<{ done: number; total: number } | null>(null)
 
+  const [learnMonths, setLearnMonths] = useState("12")
+  const [learnProgress, setLearnProgress] = useState<{ done: number; total: number } | null>(null)
+  const [learnSummary, setLearnSummary] = useState<{ invoices: number; lines: number; learned: number; alreadyKnown: number; conflicts: number; unknownCodes: string[] } | null>(null)
+
   const failed = useCallback(
     (e: unknown) =>
       toast({ title: t("message.error"), description: fill(t("eta.save-failed"), { error: e instanceof Error ? e.message : String(e) }), variant: "destructive" }),
@@ -226,6 +230,41 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
       failed(e)
     } finally {
       setSaving(null)
+    }
+  }
+
+  // runs the portal windows (30 days each, newest first) one after the other and adds the results up
+  const learnFromPortal = async () => {
+    if (!window.confirm(t("eta.learn-confirm"))) return
+    const total = Number(learnMonths) || 12
+    const sum = { invoices: 0, lines: 0, learned: 0, alreadyKnown: 0, conflicts: 0, unknownCodes: [] as string[] }
+    setSaving("learn")
+    setLearnSummary(null)
+    try {
+      const day = 86400000
+      const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+      const today = Date.parse(iso(Date.now()))
+      for (let k = 0; k < total; k++) {
+        setLearnProgress({ done: k, total })
+        const to = today - k * 30 * day
+        const res = await fetch("/api/eta/memory/learn-from-portal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from: iso(to - 29 * day), to: iso(to) }),
+        })
+        if (!res.ok) throw new Error(await readError(res, t("message.error")))
+        const r = await res.json()
+        sum.invoices += r.invoices; sum.lines += r.lines; sum.learned += r.learned; sum.alreadyKnown += r.alreadyKnown; sum.conflicts += r.conflicts
+        for (const c of r.unknownCodes || []) if (!sum.unknownCodes.includes(c)) sum.unknownCodes.push(c)
+      }
+      setLearnProgress({ done: total, total })
+    } catch (e) {
+      failed(e)
+    } finally {
+      setLearnSummary({ ...sum, unknownCodes: sum.unknownCodes.slice(0, 50) })
+      setLearnProgress(null)
+      setSaving(null)
+      await loadMemory(memoryQuery)
     }
   }
 
@@ -662,6 +701,39 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">{t("eta.memory-help")}</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="eta-learn-months">{t("eta.learn-months")}</Label>
+              <Select value={learnMonths} onValueChange={setLearnMonths} disabled={saving !== null}>
+                <SelectTrigger id="eta-learn-months" className="w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["3", "6", "12", "18", "24"].map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button variant="outline" onClick={learnFromPortal} disabled={saving !== null}>
+              {saving === "learn" ? t("eta.learn-busy") : t("eta.learn")}
+            </Button>
+          </div>
+          {learnProgress && (
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {fill(t("eta.learn-progress"), { month: Math.min(learnProgress.done + 1, learnProgress.total), total: learnProgress.total })}
+            </p>
+          )}
+          {learnSummary && (
+            <div className="rounded-lg border p-3 text-sm space-y-1" aria-live="polite">
+              <p>{fill(t("eta.learn-result"), { invoices: learnSummary.invoices, lines: learnSummary.lines, learned: learnSummary.learned, alreadyKnown: learnSummary.alreadyKnown, conflicts: learnSummary.conflicts })}</p>
+              {learnSummary.unknownCodes.length > 0 && (
+                <p className="text-muted-foreground">
+                  {fill(t("eta.learn-unknown"), { count: learnSummary.unknownCodes.length })} {learnSummary.unknownCodes.join(", ")}
+                </p>
+              )}
+            </div>
+          )}
           <div className="space-y-1 sm:w-80">
             <Label htmlFor="eta-memory-search">{t("eta.memory-search")}</Label>
             <Input id="eta-memory-search" type="search" value={memoryQuery} onChange={(e) => setMemoryQuery(e.target.value)} />
