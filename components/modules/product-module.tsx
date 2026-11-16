@@ -14,6 +14,7 @@ import { Money } from "@/components/erp/money"
 import { formatDateTime } from "@/lib/format"
 import { Plus, Trash2, Filter, Eye, ImageIcon, X, Search } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { EtaCodePicker } from "@/components/accounting/eta-code-picker"
 import { ETA_UNITS } from "@/lib/eta/egypt"
 
 
@@ -361,26 +362,13 @@ export function ProductModule() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 border-t pt-4">
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">{t("eta.item-code")}</p>
-                    <Select
-                      value={product.etaCodeId ? String(product.etaCodeId) : "none"}
-                      onValueChange={(v) => saveEta(product, { etaCodeId: v === "none" ? null : Number(v) })}
-                    >
-                      <SelectTrigger aria-label={t("eta.item-code")}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">{t("eta.none")}</SelectItem>
-                        {etaCodes
-                          .filter((c) => c.active !== false || c.code_id === product.etaCodeId)
-                          .map((c) => (
-                            <SelectItem key={c.code_id} value={String(c.code_id)}>
-                              {c.item_code}
-                              {c.name ? ` - ${c.name}` : ""}
-                              {c.active === false ? ` (${t("eta.code-inactive")})` : ""}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                    <EtaCodePicker
+                      codes={etaCodes}
+                      value={product.etaCodeId ? Number(product.etaCodeId) : null}
+                      onChange={(id) => saveEta(product, { etaCodeId: id })}
+                      ariaLabel={t("eta.item-code")}
+                      noneLabel={t("eta.none")}
+                    />
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">{t("eta.unit")}</p>
