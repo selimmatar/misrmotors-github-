@@ -979,7 +979,9 @@ test("E24. preview dialog: readable errors, handled-manually totals, amount mism
 
   // product code picker keeps the product's own code even when that code was switched off
   const product = src("components/modules/product-module.tsx")
-  assert.match(product, /c\.active !== false \|\| c\.code_id === product\.etaCodeId/)
+  // the light picker keeps the product's own (even inactive) code among the choices
+  assert.match(product, /<EtaCodePicker[\s\S]{0,120}value=\{product\.etaCodeId/)
+  assert.match(src("components/accounting/eta-code-picker.tsx"), /c\.active !== false \|\| c\.code_id === value/)
 })
 
 test("E25. every e-invoice screen text is in English and Arabic", () => {

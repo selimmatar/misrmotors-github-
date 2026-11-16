@@ -18,6 +18,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { ETA_UNITS, GOVERNORATES, toLatinDigits } from "@/lib/eta/egypt"
 import { EtaSignerCard } from "@/components/accounting/eta-signer-card"
+import { EtaCodePicker } from "@/components/accounting/eta-code-picker"
 import { cairoTomorrow, canSetGoLive, goLiveDate, goLiveStarted } from "@/lib/eta/go-live"
 import { DEFAULT_BRANDS } from "@/lib/eta/normalize"
 import { chunk, prepareRowsToPost, PREPARE_BATCH, type CodeState } from "@/lib/eta/codes"
@@ -689,19 +690,13 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
                     </p>
                   </div>
                   <div className="sm:w-72">
-                    <Select value={r.pick} onValueChange={(v) => setPrepareRow(r.normalizedName, { pick: v, state: v === NONE ? "red" : "green" })}>
-                      <SelectTrigger aria-label={`${t("eta.item-code")} ${r.name}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NONE}>{t("eta.choose-code")}</SelectItem>
-                        {codeOptions(r.codeId).map((c) => (
-                          <SelectItem key={c.code_id} value={String(c.code_id)}>
-                            {codeLabel(c)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <EtaCodePicker
+                      codes={codes}
+                      value={r.pick === NONE ? null : Number(r.pick)}
+                      onChange={(id) => setPrepareRow(r.normalizedName, { pick: id == null ? NONE : String(id), state: id == null ? "red" : "green" })}
+                      ariaLabel={`${t("eta.item-code")} ${r.name}`}
+                      noneLabel={t("eta.choose-code")}
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <Checkbox
@@ -782,19 +777,13 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
                       </p>
                     </div>
                     <div className="sm:w-72">
-                      <Select value={code ? String(m.code_id) : NONE} onValueChange={(v) => changeMemory(m, v)}>
-                        <SelectTrigger aria-label={`${t("eta.item-code")} ${m.sample_name || m.normalized_name}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>{t("eta.choose-code")}</SelectItem>
-                          {codeOptions(m.code_id).map((c) => (
-                            <SelectItem key={c.code_id} value={String(c.code_id)}>
-                              {codeLabel(c)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <EtaCodePicker
+                        codes={codes}
+                        value={code ? m.code_id : null}
+                        onChange={(id) => changeMemory(m, id == null ? NONE : String(id))}
+                        ariaLabel={`${t("eta.item-code")} ${m.sample_name || m.normalized_name}`}
+                        noneLabel={t("eta.choose-code")}
+                      />
                     </div>
                     <Button
                       size="sm"

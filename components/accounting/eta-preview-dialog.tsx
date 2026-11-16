@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { EtaCodePicker } from "@/components/accounting/eta-code-picker"
 import { Money } from "@/components/erp/money"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
@@ -143,21 +144,13 @@ function LineRow({ line, codes, onSaved }: { line: EtaPreviewLine; codes: EtaCod
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1 min-w-0 space-y-1">
           <p className="text-xs text-muted-foreground">{t("eta.item-code")}</p>
-          <Select value={codeId} onValueChange={setCodeId}>
-            <SelectTrigger aria-label={`${t("eta.item-code")} ${line.name}`}>
-              <SelectValue placeholder={t("eta.choose-code")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>{t("eta.choose-code")}</SelectItem>
-              {options.map((c) => (
-                <SelectItem key={c.code_id} value={String(c.code_id)}>
-                  {c.item_code}
-                  {c.name ? ` - ${c.name}` : ""}
-                  {c.active === false ? ` (${t("eta.code-inactive")})` : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <EtaCodePicker
+            codes={options}
+            value={codeId === NONE ? null : Number(codeId)}
+            onChange={(id) => setCodeId(id == null ? NONE : String(id))}
+            ariaLabel={`${t("eta.item-code")} ${line.name}`}
+            noneLabel={t("eta.choose-code")}
+          />
         </div>
         <div className="sm:w-40 space-y-1">
           <p className="text-xs text-muted-foreground">{t("eta.unit")}</p>
