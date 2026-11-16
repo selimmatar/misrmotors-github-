@@ -2,7 +2,10 @@
 // cancel on the portal, the portal's cancel window, the portal's own PDF, and the documents shown on an invoice.
 import { EtaBusyError, EtaCredentialsError, EtaError, type EtaEnv } from "./portal"
 import { plainError } from "./portal-errors"
-import { credsOf, etaSendDefaults, LIVE_STATUSES, portalOf, storedBody, type EtaRefusal, type SendDeps } from "./send"
+import {
+  cancelAnswerPatch, cancelPending, cancelStateOf, credsOf, etaSendDefaults, FOLLOW_UP_BUDGET_MS, LIVE_STATUSES, portalOf, storedBody,
+  type EtaRefusal, type SendDeps,
+} from "./send"
 
 type Db = any
 
@@ -31,7 +34,8 @@ export const CANCEL_REASON_MAX = 500
  * "Cancel on portal" (spec §6.5): only a `valid` document (invoice or credit note) with its portal uuid, a reason is
  * required, and an invoice with an active credit note on the same portal is refused (the portal refuses it too). The
  * portal's refusals (OperationPeriodOver, IncorrectState, ActiveReferencingDocuments, ...) come back in plain words and
- * leave the document as it was. On success the document is `cancelled`.
+ * leave the document as it was. On success the document is `cancelled` with the note "CancelRequested": the receiver
+ * may still decline it on the portal, so the follow-up re-checks it (ruling P10) until the portal confirms it.
  */
 export async function cancelOnPortal(db: Db, docId: number, reason: string, deps: SendDeps = {}): Promise<{ ok: true } | EtaRefusal> {
   const now = deps.now || etaSendDefaults.now || (() => new Date())
@@ -65,10 +69,49 @@ export async function cancelOnPortal(db: Db, docId: number, reason: string, deps
     return portalRefusal(e)
   }
   must(
-    await db.from("eta_documents").update({ status: "cancelled", updated_at: now().toISOString() }).eq("doc_id", docId).eq("status", "valid"),
+    await db
+      .from("eta_documents")
+      .update({ status: "cancelled", errors: [requested()], checked_at: now().toISOString(), updated_at: now().toISOString() })
+      .eq("doc_id", docId)
+      .eq("status", "valid"),
     "save cancelled",
   )
   return { ok: true }
+}
+
+const requested = () => ({ code: "CancelRequested", message: plainError("CancelRequested", undefined, "en"), messageAr: plainError("CancelRequested", undefined, "ar") })
+
+/**
+ * True only when the portal confirms the document is cancelled (for correct-and-reissue, §6.5a). Asks the portal for a
+ * cancellation it has not confirmed yet and records the answer (declined -> valid again with "CancelDeclined").
+ * False for anything else, including when the portal can't be asked. Bounded by the follow-up budget (8 s).
+ */
+export async function confirmCancelled(db: Db, docId: number, deps: SendDeps = {}): Promise<boolean> {
+  const now = deps.now || etaSendDefaults.now || (() => new Date())
+  const row = must(await db.from("eta_documents").select("doc_id, environment, status, eta_uuid, errors").eq("doc_id", docId).maybeSingle(), "load document")
+  if (!row || row.status !== "cancelled") return false
+  if (!text(row.eta_uuid)) return false
+  const env = envOf(row)
+  if (!credsOf(deps)(env)) return false
+  let state: ReturnType<typeof cancelStateOf>
+  const budget = deps.followUpBudgetMs ?? etaSendDefaults.followUpBudgetMs ?? FOLLOW_UP_BUDGET_MS
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const details = await Promise.race([
+      portalOf(deps, env, budget).getDetails(text(row.eta_uuid)),
+      new Promise<never>((_r, reject) => { timer = setTimeout(() => reject(new Error("out of time")), budget) }),
+    ])
+    state = cancelStateOf(details)
+  } catch (e: any) {
+    console.error(`[eta] cancellation check of ${docId} failed: ${e?.message || e}`)
+    return false
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+  const patch = cancelAnswerPatch(state)
+  if (patch && (patch.status || cancelPending(row)))
+    must(await db.from("eta_documents").update({ ...patch, checked_at: now().toISOString(), updated_at: now().toISOString() }).eq("doc_id", docId).eq("status", "cancelled"), "save cancellation answer")
+  return state === "cancelled"
 }
 
 // ---- the cancel window, from the portal's document-type settings ----
@@ -219,6 +262,8 @@ export interface EtaDocumentView {
   errors: { code: string; message: string; messageAr?: string; path?: string }[]
   submitted_at: string | null
   validated_at: string | null
+  /** cancelled by us, waiting for the portal to confirm it (P10): "Cancellation requested — waiting for the portal" */
+  cancel_pending: boolean
 }
 
 /** Every e-invoice document of an invoice (invoice and credit note, every version), per environment, oldest first. */
@@ -250,6 +295,7 @@ export async function invoiceDocuments(db: Db, invoiceId: number): Promise<Recor
       }),
       submitted_at: r.submitted_at || null,
       validated_at: r.validated_at || null,
+      cancel_pending: cancelPending(r),
     })
   }
   return out

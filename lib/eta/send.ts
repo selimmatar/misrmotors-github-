@@ -548,6 +548,36 @@ export function validationErrors(details: any): EtaDocError[] {
   return out
 }
 
+/** A cancellation is re-checked on the portal (the receiver may decline it) for this long after it was requested (P10). */
+export const CANCEL_CONFIRM_DAYS = 8
+
+/** A row cancelled by us whose cancellation the portal has not confirmed yet (ruling P10). */
+export function cancelPending(row: { status?: unknown; errors?: unknown }): boolean {
+  return row?.status === "cancelled" && Array.isArray(row.errors) && row.errors.some((e: any) => e?.code === "CancelRequested")
+}
+/** A cancelled row whose cancellation stands (confirmed by the portal, or cancelled by the portal itself). */
+export function cancelConfirmed(row: { status?: unknown; errors?: unknown }): boolean {
+  return row?.status === "cancelled" && !cancelPending(row)
+}
+/**
+ * What the portal's document details say about a requested cancellation: "cancelled" (it stands), "declined" (the
+ * document is valid again), "pending" (requested, the receiver has not answered) or "unknown".
+ */
+export function cancelStateOf(details: any): "cancelled" | "declined" | "pending" | "unknown" {
+  const status = text(details?.status).toLowerCase()
+  if (status === "cancelled") return "cancelled"
+  if (status !== "valid") return "unknown"
+  if (text(details?.declineCancelRequestDate)) return "declined"
+  if (text(details?.cancelRequestDate)) return "pending"
+  return "declined"
+}
+/** The row change for a cancellation answer (P10), or null when nothing changes. */
+export function cancelAnswerPatch(state: ReturnType<typeof cancelStateOf>): Record<string, any> | null {
+  if (state === "cancelled") return { errors: null }
+  if (state === "declined") return { status: "valid", errors: [known("CancelDeclined")] }
+  return null
+}
+
 /** Follow-up stops starting portal calls after this much time, so it never holds up the request it rides on. */
 export const FOLLOW_UP_BUDGET_MS = 8_000
 /** A send whose portal answer was lost is given this long to show up in the portal's search before it counts as never received. */
@@ -676,6 +706,35 @@ export async function followUp(
         continue
       }
       await reconcileLost(job.rows[0], job.env)
+    }
+    // P10: our cancellations the portal has not confirmed yet (the receiver may decline them), within 8 days
+    const since = new Date(at.getTime() - CANCEL_CONFIRM_DAYS * 24 * 3600_000).toISOString()
+    const cancelled = must(
+      await db
+        .from("eta_documents")
+        .select("doc_id, environment, status, eta_uuid, errors, checked_at, updated_at")
+        .eq("status", "cancelled")
+        .gte("updated_at", since),
+      "load cancelled documents",
+    ) as any[]
+    const waiting = cancelled.filter((r) => cancelPending(r) && text(r.eta_uuid) && lastCheck(r) <= cutoff).sort((a, b) => lastCheck(a) - lastCheck(b))
+    for (const row of waiting.slice(0, FOLLOW_UP_MAX_SUBMISSIONS)) {
+      if (clock() - started >= budget) break
+      // throttle stamp only: updated_at stays the time of the cancel request
+      must(await db.from("eta_documents").update({ checked_at: stamp }).eq("doc_id", row.doc_id).eq("status", "cancelled"), "stamp check")
+      checked++
+      let state: ReturnType<typeof cancelStateOf>
+      try {
+        state = cancelStateOf(await call(() => portal(envOf(row)).getDetails(text(row.eta_uuid))))
+      } catch (e: any) {
+        if (e instanceof OutOfBudget) throw e
+        console.error(`[eta] cancellation check of ${row.doc_id} failed: ${e?.message || e}`)
+        continue
+      }
+      const patch = cancelAnswerPatch(state)
+      if (!patch) continue
+      must(await db.from("eta_documents").update({ ...patch, updated_at: stamp }).eq("doc_id", row.doc_id).eq("status", "cancelled"), "save cancellation answer")
+      if (patch.status) changed++
     }
   } catch (e: any) {
     if (!(e instanceof OutOfBudget)) throw e

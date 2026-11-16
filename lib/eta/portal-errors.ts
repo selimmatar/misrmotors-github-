@@ -42,6 +42,14 @@ const TEXT: Record<string, { en: string; ar: string }> = {
     en: "The portal is busy and asked us to slow down. Try again in a minute.",
     ar: "البوابة مشغولة وطلبت التمهل. حاول مرة أخرى بعد دقيقة.",
   },
+  CancelRequested: {
+    en: "Cancellation requested — waiting for the portal to confirm it",
+    ar: "تم طلب الإلغاء — في انتظار تأكيد البوابة",
+  },
+  CancelDeclined: {
+    en: "The customer declined the cancellation on the portal",
+    ar: "رفض العميل الإلغاء على البوابة",
+  },
   NotReceived: {
     en: "The portal never received it — send again",
     ar: "لم تستلم البوابة هذا المستند — أرسله مرة أخرى",

@@ -19,12 +19,15 @@ export async function GET(request: Request) {
     const invoiceId = parsePositiveId(new URL(request.url).searchParams.get("invoiceId"))
     if (invoiceId === null) return NextResponse.json({ error: "invoiceId is required" }, { status: 400 })
     const db = createAdminClient()
-    await followUpQuietly(db)
+    const environment = etaEnvironment(await readEtaSettings(db))
+    // the follow-up and the cancel-window read run side by side (opening an invoice waits ~8 s at most)
+    const before = await invoiceDocuments(db, invoiceId)
+    const wantWindow = before[environment].some((d) => d.status === "valid" || d.status === "submitted")
+    const [, hours] = await Promise.all([followUpQuietly(db), wantWindow ? cancelWindowHours(environment) : Promise.resolve(null)])
     const preview = await buildEtaPreview(db, invoiceId)
     if (!preview) return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
-    const environment = etaEnvironment(await readEtaSettings(db))
     const documents = await invoiceDocuments(db, invoiceId)
-    const windowHours = documents[environment].some((d) => d.status === "valid") ? await cancelWindowHours(environment) : null
+    const windowHours = documents[environment].some((d) => d.status === "valid") ? hours : null
     return NextResponse.json({ ...preview, environment, documents, cancelWindowHours: windowHours })
   } catch (error: any) {
     console.error("Error building the e-invoice preview:", error)

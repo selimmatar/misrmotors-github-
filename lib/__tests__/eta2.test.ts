@@ -992,6 +992,8 @@ import * as cancelRoute from "../../app/api/eta/cancel/route"
 import * as printoutRoute from "../../app/api/eta/printout/route"
 import * as sendAgainRoute from "../../app/api/eta/send-again/route"
 import * as previewRoute2 from "../../app/api/eta/preview/route"
+import { cancelConfirmed, cancelPending, CANCEL_CONFIRM_DAYS } from "../eta/send"
+import { confirmCancelled } from "../eta/after-send"
 
 // an invoice whose document is valid on the given portal
 async function validInvoice(env: "test" | "real" = "real") {
@@ -1130,6 +1132,7 @@ test("F24. cancel: refused with an active credit note; portal refusals in plain 
   assert.deepEqual(await cancelOnPortal(db, inv.doc_id, " Wrong customer ", okPortal.deps), { ok: true })
   assert.deepEqual(okPortal.calls.cancel, [["INV-UUID", "Wrong customer"]])
   assert.equal(inv.status, "cancelled")
+  assert.deepEqual(inv.errors.map((e: any) => e.code), ["CancelRequested"], "P10: a request until the portal confirms it")
   assert.equal((await cancelOnPortal(db, inv.doc_id, "x", okPortal.deps) as any).code, "not_valid")
   // a valid credit note can be cancelled itself
   c.eta_uuid = "CN-UUID"
@@ -1307,7 +1310,7 @@ test("F26. portal PDF (one per 5 s, NotReady in plain words, received documents)
     assert.equal(body.cancelWindowHours, 72)
     assert.equal(follow.calls.getSubmission.length, 1, "follow-up ran")
     assert.deepEqual(body.documents.real.map((d: any) => [d.document_type, d.version, d.status, d.eta_uuid]), [["I", 1, "valid", "INV-UUID"], ["C", 1, "valid", "CN-UUID"]])
-    assert.deepEqual(Object.keys(body.documents.real[0]).sort(), ["doc_id", "document_type", "errors", "eta_long_id", "eta_uuid", "status", "submitted_at", "validated_at", "version"])
+    assert.deepEqual(Object.keys(body.documents.real[0]).sort(), ["cancel_pending", "doc_id", "document_type", "errors", "eta_long_id", "eta_uuid", "status", "submitted_at", "validated_at", "version"])
     assert.equal(body.documents.real[1].eta_long_id, "CN-LONG")
     assert.ok(body.documents.real[1].validated_at)
     assert.deepEqual(body.documents.test[0].errors, [
@@ -1322,4 +1325,94 @@ test("F26. portal PDF (one per 5 s, NotReady in plain words, received documents)
     assert.equal(follow.calls.documentType.length, 1)
   })
   assert.deepEqual((await invoiceDocuments(p.db, 999)), { test: [], real: [] })
+})
+
+test("F27. a cancellation is a request until the portal confirms it: declined -> valid again; confirmed; 8 days; confirmCancelled", async () => {
+  const t0 = Date.parse("2026-11-15T10:00:00Z")
+  // cancelled by us at t0 (pending confirmation)
+  const cancelledAt = async (when: number) => {
+    const v = await validInvoice("real")
+    const ok = portalFake({ cancel: () => undefined })
+    assert.deepEqual(await cancelOnPortal(v.db, v.inv.doc_id, "Wrong customer", { ...ok.deps, now: () => new Date(when) }), { ok: true })
+    assert.ok(cancelPending(v.inv) && !cancelConfirmed(v.inv))
+    return v
+  }
+  let details: any = { status: "Valid", declineCancelRequestDate: "2026-11-15T12:00:00Z" }
+  const fake = portalFake({ getDetails: () => details })
+
+  // the receiver declined: valid again with the plain note; the follow-up never resubmits
+  const d = await cancelledAt(t0)
+  await followUp(d.db, fake.deps, { now: t0 + 60_000 })
+  assert.deepEqual(fake.calls.getDetails, ["INV-UUID"])
+  assert.equal(d.inv.status, "valid")
+  assert.deepEqual(d.inv.errors, [{ code: "CancelDeclined", message: "The customer declined the cancellation on the portal", messageAr: plainError("CancelDeclined", undefined, "ar") }])
+  assert.match(d.inv.errors[0].messageAr, /[؀-ۿ]/)
+  assert.equal(fake.calls.submit.length, 0)
+
+  // still waiting for the receiver: unchanged; throttled like any check
+  details = { status: "Valid", cancelRequestDate: "2026-11-15T10:00:00Z" }
+  const w = await cancelledAt(t0)
+  await followUp(w.db, fake.deps, { now: t0 + 60_000 })
+  assert.ok(cancelPending(w.inv))
+  await followUp(w.db, fake.deps, { now: t0 + 70_000 })
+  assert.equal(fake.calls.getDetails.length, 2, "not asked again within 30 s")
+  // the portal confirms: stays cancelled, note cleared, not asked again
+  details = { status: "Cancelled" }
+  await followUp(w.db, fake.deps, { now: t0 + 120_000 })
+  assert.equal(w.inv.status, "cancelled")
+  assert.ok(cancelConfirmed(w.inv))
+  assert.equal(w.inv.errors, null)
+  await followUp(w.db, fake.deps, { now: t0 + 10 * 60_000 })
+  assert.equal(fake.calls.getDetails.length, 3)
+
+  // requested more than 8 days ago: not re-checked
+  const o = await cancelledAt(t0)
+  const before = fake.calls.getDetails.length
+  await followUp(o.db, fake.deps, { now: t0 + (CANCEL_CONFIRM_DAYS * 24 + 1) * 3600_000 })
+  assert.equal(fake.calls.getDetails.length, before)
+  assert.ok(cancelPending(o.inv))
+  // a failed check leaves it as it is
+  const f = await cancelledAt(t0)
+  const broken = portalFake({ getDetails: () => { throw new EtaError(0, "Timeout", "x") } })
+  await followUp(f.db, broken.deps, { now: t0 + 60_000 })
+  assert.ok(cancelPending(f.inv))
+
+  // confirmCancelled (for correct-and-reissue): true only when the portal says cancelled
+  const c = await cancelledAt(t0)
+  details = { status: "Valid", cancelRequestDate: "x" }
+  assert.equal(await confirmCancelled(c.db, c.inv.doc_id, fake.deps), false)
+  assert.ok(cancelPending(c.inv))
+  details = { status: "Cancelled" }
+  assert.equal(await confirmCancelled(c.db, c.inv.doc_id, fake.deps), true)
+  assert.ok(cancelConfirmed(c.inv))
+  assert.equal(await confirmCancelled(c.db, c.inv.doc_id, fake.deps), true, "asked again, still cancelled")
+  assert.equal(await confirmCancelled(c.db, c.inv.doc_id, broken.deps), false, "portal unreachable")
+  const n = await cancelledAt(t0)
+  details = { status: "Valid" }
+  assert.equal(await confirmCancelled(n.db, n.inv.doc_id, fake.deps), false)
+  assert.equal(n.inv.status, "valid")
+  assert.equal(n.inv.errors[0].code, "CancelDeclined")
+  assert.equal(await confirmCancelled(n.db, n.inv.doc_id, fake.deps), false, "not cancelled")
+  assert.equal(await confirmCancelled(n.db, 999, fake.deps), false)
+
+  // the invoice window shows the pending cancellation
+  const p = await cancelledAt(t0)
+  assert.equal((await invoiceDocuments(p.db, p.id)).real[0].cancel_pending, true)
+
+  // the preview GET: follow-up and cancel-window read side by side, bounded by the follow-up budget
+  const hangDb = await validInvoice("real")
+  hangDb.db.tables.eta_documents.push({ doc_id: 600, invoice_id: hangDb.id, document_type: "I", environment: "real", version: 9, status: "submitted", submission_uuid: "HANG", document: hangDb.inv.document })
+  let windowAsked = 0
+  const slow = portalFake({ getSubmission: () => new Promise(() => {}), documentType: () => { windowAsked++; return new Promise((r) => setTimeout(() => r({ cancelPeriodHours: 72 }), 300)) } })
+  useDb(hangDb.db)
+  resetCancelWindowCache()
+  await withDefaults({ portalFor: slow.deps.portalFor, credentialsSet: yes, followUpBudgetMs: 400 }, async () => {
+    const t = Date.now()
+    const res = await previewRoute2.GET(rq("GET", `/api/eta/preview?invoiceId=${hangDb.id}`))
+    const took = Date.now() - t
+    assert.equal(res.status, 200)
+    assert.equal((await res.json()).cancelWindowHours, 72)
+    assert.equal(windowAsked, 1)
+    assert.ok(took < 650, `in parallel: took ${took} ms`)
+  })
 })
