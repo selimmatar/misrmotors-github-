@@ -488,6 +488,7 @@ function portalFake(opts: {
     async getDetails(uuid) { calls.getDetails.push(uuid); return opts.getDetails ? opts.getDetails(uuid) : {} },
     async cancel(uuid, reason) { calls.cancel.push([uuid, reason]); if (!opts.cancel) throw new Error("no"); await opts.cancel(uuid, reason) },
     async searchReceived() { throw new Error("no") },
+    async myCodes() { throw new Error("no") },
     async searchSent(p) { calls.searchSent.push(p); return opts.searchSent ? opts.searchSent(p) : { result: [] } },
     async printout(uuid) { calls.printout.push(uuid); if (!opts.printout) throw new Error("no"); return opts.printout(uuid) },
     async documentType(id) { calls.documentType.push(id); if (!opts.documentType) throw new Error("no"); return opts.documentType(id) },
@@ -2528,4 +2529,70 @@ test("F50. signer package: Pkcs bumped to a patched 8.x; CI fails the build on a
   assert.match(ci, /dotnet list [^\n]*package --vulnerable --include-transitive/)
   assert.match(ci, /has the following vulnerable packages[\s\S]*exit 1/)
   assert.ok(ci.indexOf("package --vulnerable") > ci.indexOf("dotnet restore"), "after restore")
+})
+
+// ---- F51: import item codes from the portal ----
+import { importCodesFromPortal, codeNameOf } from "../eta/import-codes"
+import * as importRoute from "../../app/api/eta/codes/import/route"
+
+function codesPortal(pages: any[][]) {
+  const urls: string[] = []
+  const f = (async (url: any, init: any) => {
+    const u = String(url)
+    if (u.endsWith("/connect/token")) return okHandler({ url: u, init })
+    urls.push(`${init.method || "GET"} ${u}`)
+    const n = Number(new URL(u).searchParams.get("Pn"))
+    return jres(200, { result: pages[n - 1] || [], metadata: { totalPages: pages.length, totalCount: pages.flat().length } })
+  }) as typeof fetch
+  return { portal: createPortal("test", { fetch: f, now: () => 0, sleep: async () => {} }), urls }
+}
+
+test("F51a. import codes: two pages, new ones inserted active EA, existing renamed only, nothing deleted, memory untouched", () => withCreds(async () => {
+  const db = new FakeDb({
+    eta_item_codes: [
+      { code_id: 1, item_code: "EG-1-A", code_type: "EGS", name: "old", keywords: ["k"], default_unit: "BX", active: false },
+      { code_id: 2, item_code: "EG-1-SAME", code_type: "EGS", name: "ثابت / Same", keywords: [], default_unit: "EA", active: true },
+      { code_id: 3, item_code: "EG-1-GONE", code_type: "EGS", name: "not on portal", keywords: [], default_unit: "EA", active: true },
+    ],
+    eta_code_memory: [{ memory_id: 1, normalized_name: "x", code_id: 3 }],
+  })
+  db.jitter = false
+  const memBefore = JSON.stringify(db.tables.eta_code_memory)
+  const { portal, urls } = codesPortal([
+    [{ itemCode: "EG-1-A", codeName: "Wrench", codeNameSecondaryLang: "مفتاح", codeTypeName: "EGS", active: true },
+     { itemCode: "EG-1-NEW", codeName: "Jack", codeTypeName: "EGS", active: true },
+     { itemCode: "EG-1-SAME", codeNamePrimaryLang: "Same", codeNameSecondaryLang: "ثابت", codeTypeName: "EGS", active: true }],
+    [{ itemCode: "1234567890123", codeName: "Oil", codeTypeName: "GS1", active: true }, { itemCode: "", codeName: "bad", codeTypeName: "EGS" }],
+  ])
+  const r = await importCodesFromPortal(db, portal, 7)
+  assert.deepEqual(r, { imported: 2, updated: 1, unchanged: 1, failed: 1, pages: 2 })
+  assert.equal(urls.length, 2)
+  assert.ok(urls.every((u) => u.startsWith("GET ") && u.includes("/api/v1.0/codetypes/requests/my?") && u.includes("Status=Approved") && u.includes("Active=true")))
+  const rows = db.tables.eta_item_codes
+  assert.equal(rows.length, 5)
+  assert.deepEqual([rows[0].name, rows[0].active, rows[0].default_unit, rows[0].keywords], ["مفتاح / Wrench", false, "BX", ["k"]])
+  assert.ok(rows.some((x) => x.item_code === "EG-1-GONE" && x.active === true), "not deleted")
+  const jack = rows.find((x) => x.item_code === "EG-1-NEW")!
+  assert.deepEqual([jack.name, jack.active, jack.default_unit, jack.code_type, jack.created_by], ["Jack", true, "EA", "EGS", 7])
+  assert.equal(rows.find((x) => x.item_code === "1234567890123")!.code_type, "GS1")
+  assert.equal(JSON.stringify(db.tables.eta_code_memory), memBefore)
+  assert.equal(codeNameOf({ codeName: "Oil" }), "Oil")
+}))
+
+test("F51b. import route: missing credentials give a readable error; permission is accountant / CEO / admin", async () => {
+  const keep = { i: process.env.ETA_TEST_CLIENT_ID, s: process.env.ETA_TEST_CLIENT_SECRET }
+  delete process.env.ETA_TEST_CLIENT_ID; delete process.env.ETA_TEST_CLIENT_SECRET
+  try {
+    useDb(sendDb("test"))
+    const res = await importRoute.POST(rq("POST", "/api/eta/codes/import"))
+    assert.equal(res.status, 400)
+    const b = await res.json()
+    assert.match(b.error, /ETA_TEST_CLIENT_ID and ETA_TEST_CLIENT_SECRET/)
+  } finally {
+    if (keep.i !== undefined) process.env.ETA_TEST_CLIENT_ID = keep.i
+    if (keep.s !== undefined) process.env.ETA_TEST_CLIENT_SECRET = keep.s
+  }
+  const rule = ruleFor("/api/eta/codes/import")!
+  for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, "POST", [role] as any), true, role)
+  for (const role of ["sales-rep", "warehouse-rep"]) assert.equal(allows(rule, "POST", [role] as any), false, role)
 })

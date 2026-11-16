@@ -213,6 +213,22 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
     }
   }
 
+  const importCodes = async () => {
+    if (!window.confirm(t("eta.import-codes-confirm"))) return
+    setSaving("import")
+    try {
+      const res = await fetch("/api/eta/codes/import", { method: "POST" })
+      if (!res.ok) throw new Error(await readError(res, t("message.error")))
+      const r = await res.json()
+      toast({ title: t("eta.import-codes"), description: fill(t("eta.import-codes-result"), { imported: r.imported, updated: r.updated, unchanged: r.unchanged, failed: r.failed, pages: r.pages }) })
+      await loadCodes()
+    } catch (e) {
+      failed(e)
+    } finally {
+      setSaving(null)
+    }
+  }
+
   const editCode = (c: EtaCodeRow) => {
     setEditingCode(c.code_id)
     setCodeForm({
@@ -520,6 +536,9 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
             <Button onClick={saveCode} disabled={saving !== null}>
               {editingCode == null && <Plus className="w-4 h-4 me-2" />}
               {editingCode == null ? t("eta.code-add") : t("eta.save")}
+            </Button>
+            <Button variant="outline" onClick={importCodes} disabled={saving !== null}>
+              {saving === "import" ? t("eta.import-codes-busy") : t("eta.import-codes")}
             </Button>
             {editingCode != null && (
               <Button
