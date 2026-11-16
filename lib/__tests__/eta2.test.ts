@@ -2640,7 +2640,7 @@ test("F52a. learn: two search pages + details -> memory written as imported; rea
     U3: [ln("Jack", "EG-1-B")],
   }, {})
   const r = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30" }, { portal, sleep: async () => {}, userId: 7 })
-  assert.deepEqual(r, { invoices: 3, lines: 4, learned: 2, alreadyKnown: 0, conflicts: 0, unknownCodes: [] })
+  assert.deepEqual(r, { invoices: 3, lines: 4, learned: 2, alreadyKnown: 0, conflicts: 0, unknownCodes: [], cursor: null })
   assert.ok(urls.every((u) => u.startsWith("GET ")))
   const s = urls.find((u) => u.includes("/documents/search"))!
   assert.match(s, /direction=Sent/); assert.match(s, /issueDateFrom=2026-10-01T00%3A00%3A00Z/); assert.match(s, /pageSize=100/)
@@ -2653,6 +2653,22 @@ test("F52a. learn: two search pages + details -> memory written as imported; rea
   // a second run changes nothing
   const again = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30" }, { portal, sleep: async () => {} })
   assert.equal(again.learned, 0); assert.equal(again.alreadyKnown, 2)
+}))
+
+test("F52f. learn: a busy month stops at the time budget and continues from the cursor without searching again", () => withCreds(async () => {
+  const db = learnDb()
+  const { portal, urls } = learnPortal([["U1", "U2", "U3"]], { U1: [ln("Jack", "EG-1-B")], U2: [ln("Jack", "EG-1-B")], U3: [ln("مفتاح ربط 10 مم", "EG-1-A")] }, {})
+  let clock = 0
+  const deps = { portal, sleep: async () => { clock += 30_000 }, now: () => clock, budgetMs: 20_000 }
+  const r1 = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30" }, deps)
+  assert.equal(r1.invoices, 2); assert.deepEqual(r1.cursor, { uuids: ["U1", "U2", "U3"], next: 2 })
+  const searches = urls.filter((u) => u.includes("/documents/search")).length
+  clock = 0
+  const r2 = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30", cursor: r1.cursor }, deps)
+  assert.equal(r2.invoices, 1); assert.equal(r2.cursor, null)
+  assert.equal(urls.filter((u) => u.includes("/documents/search")).length, searches)
+  assert.ok(db.tables.eta_code_memory.some((x) => x.normalized_name === "jack"))
+  assert.ok(db.tables.eta_code_memory.some((x) => x.normalized_name === normalizeName("مفتاح ربط 10 مم")))
 }))
 
 test("F52b. learn: a confirmed row is never overwritten; non-valid documents ignored", () => withCreds(async () => {
