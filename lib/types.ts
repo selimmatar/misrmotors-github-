@@ -358,6 +358,8 @@ export interface AccountsReceivableInvoice {
   paymentReceipts?: Array<{ month: number; url: string }>
   pdfUrl?: string
   vatInvoiceUrl?: string
+  /** the invoice that replaced this one (a corrected and reissued invoice); null while still being corrected */
+  replacedByInvoiceId?: string | null
 }
 
 export type CustomerInvoice = AccountsReceivableInvoice
@@ -478,6 +480,8 @@ export interface DeliveryPermit {
   updatedAt?: string
   items?: DeliveryPermitItem[]
   files?: DeliveryPermitFile[]
+  /** set while the permit's invoice is open for correction (Correct and reissue) */
+  openCorrection?: { invoiceNumber: string | null } | null
 }
 
 export interface DeliveryPermitItem {
@@ -490,6 +494,7 @@ export interface DeliveryPermitItem {
   quantity: number
   unitPrice?: number
   total?: number
+  returnedQuantity?: number
 }
 
 export interface DeliveryPermitFile {

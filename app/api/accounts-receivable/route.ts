@@ -74,6 +74,7 @@ export async function GET() {
         amount: invoice.amount,
         collectedAmount: invoice.collected_amount || 0,
         status: invoice.status,
+        replacedByInvoiceId: invoice.replaced_by_invoice_id?.toString() || null,
         // Single-payment invoices (cash / bank transfer / cheque) are always 1 payment; a stale stored 6 is
         // never exposed as an installment plan. Display-only: the stored value is not modified.
         installmentMonths: resolveInstallmentCount(invoice.payment_terms, invoice.installment_months) || 0,

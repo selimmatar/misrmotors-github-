@@ -2308,3 +2308,84 @@ test("F43. an invoice can be corrected more than once: settled return credits do
   assert.equal(partly.body.partialFailure, true)
   assert.match(partly.body.error, /only partly undone/)
 })
+
+import { invoiceBadge } from "../eta/badge"
+
+test("F44. screens wired: actions by document state, AR badge and reissue, permit correction, signer key shown once, EN + AR texts", () => {
+  const root = process.env.REPO_ROOT || process.cwd()
+  const read = (f: string) => readFileSync(join(root, f), "utf8")
+  const dialog = read("components/accounting/eta-preview-dialog.tsx")
+  const ar = read("components/modules/accounts-receivable-module.tsx")
+  const perm = read("components/modules/delivery-permits-module.tsx")
+  const card = read("components/accounting/eta-signer-card.tsx")
+  const settings = read("components/modules/e-invoice-settings-module.tsx")
+
+  // the dialog reads the preview's documents of the selected portal and offers each action by their state
+  assert.match(dialog, /preview\.documents\?\.\[env\]/)
+  for (const url of ["/api/eta/send", "/api/eta/send-again", "/api/eta/credit-note", "/api/eta/cancel", "/api/eta/printout"]) assert.ok(dialog.includes(url), url)
+  assert.match(dialog, /canSend = docs\.length === 0/)
+  assert.match(dialog, /canSendAgain = newest\?\.status === "invalid"/)
+  assert.match(dialog, /inv\?\.status === "valid" && !liveNote/)
+  assert.match(dialog, /eta\.portal-silent/)
+  assert.match(dialog, /eta\.old-confirm/)
+  assert.match(dialog, /eta\.test-banner/)
+  assert.match(dialog, /errorAr/)
+
+  // receivables: badge, Send all ready, Replaced by / Replaces, the reissue dialog; replaced invoices are listed
+  assert.match(ar, /<EtaBadge /)
+  assert.match(ar, /<EtaSendAll/)
+  assert.match(ar, /<EtaReissueDialog/)
+  assert.match(ar, /<ReplacementMarks/)
+  assert.match(ar, /filtered = allCustomerInvoices/)
+  const bits = read("components/accounting/eta-ar-bits.tsx")
+  assert.match(bits, /eta\.replaced-by/)
+  assert.match(bits, /eta\.replaces/)
+  assert.match(bits, /eta\.payments-waiting/)
+  assert.match(read("components/accounting/eta-reissue-dialog.tsx"), /\/api\/eta\/reissue/)
+
+  // the permit correction dialog only with an open correction
+  assert.match(perm, /permitToCorrect && permitToCorrect\.openCorrection && \(\s*<CorrectPermitDialog/)
+  assert.match(perm, /canApprove && permit\.openCorrection/)
+  assert.match(read("components/delivery-permit/correct-permit-dialog.tsx"), /\/api\/delivery-permits\/correct/)
+
+  // the signer key is read only in the response handler of the pair call, kept in memory, never in browser storage
+  assert.equal((card.match(/\(await res\.json\(\)\)\.key/g) || []).length, 1)
+  assert.ok(!/localStorage|sessionStorage/.test(card))
+  assert.match(card, /method: "POST"[\s\S]*\(await res\.json\(\)\)\.key[\s\S]*method: "DELETE"/)
+  // the portal and the signer are for the CEO / admin only
+  assert.match(settings, /disabled=\{!mayGoLive\}/)
+  assert.match(settings, /<EtaSignerCard mayManage=\{mayGoLive\}/)
+  assert.match(card, /mayManage \? \(/)
+
+  // the supplier e-invoice tab is not part of this step
+  assert.ok(!/SupplierEInvoices/.test(read("components/modules/accounts-payable-module.tsx")))
+
+  // every text the new screens ask for has English and Arabic
+  const used = new Set<string>()
+  for (const f of ["eta-preview-dialog", "eta-ar-bits", "eta-reissue-dialog", "eta-signer-card"]) {
+    for (const m of read(`components/accounting/${f}.tsx`).matchAll(/\bt\(\s*"([a-z0-9._-]+)"/g)) used.add(m[1])
+  }
+  for (const m of read("components/delivery-permit/correct-permit-dialog.tsx").matchAll(/\bt\(\s*"([a-z0-9._-]+)"/g)) used.add(m[1])
+  for (const m of perm.matchAll(/\bt\(\s*"(eta\.[a-z0-9._-]+)"/g)) used.add(m[1])
+  for (const m of ar.matchAll(/\bt\(\s*"(eta\.[a-z0-9._-]+)"/g)) used.add(m[1])
+  for (const m of settings.matchAll(/\bt\(\s*"(eta\.[a-z0-9._-]+)"/g)) used.add(m[1])
+  // keys built from a state: badge, document state, refusal reasons, missing reasons
+  for (const k of ["not_sent", "waiting", "sent", "valid", "invalid", "cancel_requested", "cancelled", "credit_waiting", "credited", "credit_invalid", "manual"]) used.add(`eta.badge-${k}`)
+  for (const k of ["pending_signature", "submitted", "valid", "invalid", "cancelled", "rejected"]) used.add(`eta.doc-${k}`)
+  for (const k of ["amount_mismatch", "already_live", "final", "not_found", "no_issue_date", "build_failed", "handled_manually", "other"]) used.add(`eta.refuse-${k}`)
+  const i18n = read("lib/i18n-context.tsx")
+  const arStart = i18n.indexOf("\n  ar: {")
+  assert.ok(arStart > 0)
+  const missing = [...used].filter((k) => !i18n.slice(0, arStart).includes(`"${k}":`) || !i18n.slice(arStart).includes(`"${k}":`))
+  assert.deepEqual(missing, [])
+
+  // the row badge, from the documents on the selected portal
+  assert.equal(invoiceBadge([]), "not_sent")
+  assert.equal(invoiceBadge([{ doc_id: 1, document_type: "I", status: "pending_signature" }]), "waiting")
+  assert.equal(invoiceBadge([{ doc_id: 1, document_type: "I", status: "valid" }]), "valid")
+  assert.equal(invoiceBadge([{ doc_id: 1, document_type: "I", status: "valid" }, { doc_id: 2, document_type: "C", status: "valid" }]), "credited")
+  assert.equal(invoiceBadge([{ doc_id: 1, document_type: "I", status: "invalid" }]), "invalid")
+  assert.equal(invoiceBadge([{ doc_id: 1, document_type: "I", status: "manual" }]), "manual")
+  assert.equal(allows(ruleFor("/api/eta/statuses")!, "GET", ["accountant"]), true)
+  assert.equal(allows(ruleFor("/api/eta/statuses")!, "GET", ["sales-rep"]), false)
+})

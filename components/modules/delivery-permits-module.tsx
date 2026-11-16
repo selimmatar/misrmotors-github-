@@ -1,5 +1,6 @@
 "use client"
 
+import { CorrectPermitDialog } from "@/components/delivery-permit/correct-permit-dialog"
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
   const [showDetails, setShowDetails] = useState(false)
   const [showReviewDialog, setShowReviewDialog] = useState(false)
   const [permitToReview, setPermitToReview] = useState<DeliveryPermit | null>(null)
+  const [permitToCorrect, setPermitToCorrect] = useState<DeliveryPermit | null>(null)
 
   const fetchPermits = async () => {
     setLoading(true)
@@ -155,6 +157,11 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
       <Button variant="outline" size="sm" onClick={() => handleViewDetails(permit)}>
         {t("action.view-details")}
       </Button>
+      {canApprove && permit.openCorrection && (
+        <Button variant="outline" size="sm" onClick={() => setPermitToCorrect(permit)}>
+          {t("eta.permit-action")}
+        </Button>
+      )}
       {permit.status === "SUBMITTED_SIGNED" && (
         <Button variant="outline" size="sm" onClick={() => handleOpenReviewDialog(permit)}>
           <Eye className="h-4 w-4 me-1" />
@@ -277,6 +284,17 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
           </Tabs>
         </CardContent>
       </Card>
+
+      {permitToCorrect && permitToCorrect.openCorrection && (
+        <CorrectPermitDialog
+          permit={permitToCorrect}
+          onClose={() => setPermitToCorrect(null)}
+          onDone={() => {
+            setPermitToCorrect(null)
+            fetchPermits()
+          }}
+        />
+      )}
 
       {/* Details Dialog */}
       <Dialog open={showDetails} onOpenChange={setShowDetails}>

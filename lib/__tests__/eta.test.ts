@@ -997,6 +997,8 @@ test("E25. every e-invoice screen text is in English and Arabic", () => {
     "eta.missing-": ["company_rin", "company_activity", "company_address", "customer_tax_number", "customer_address", "line_codes", "amount_mismatch"],
     "eta.unit-": ["EA", "SET", "KGM", "MTR", "LTR", "BOX"],
     "eta.env-": ["test", "real"],
+    "eta.refuse-": ["amount_mismatch", "already_live", "final", "not_found", "no_issue_date", "build_failed", "handled_manually", "other"],
+    "eta.doc-": ["pending_signature", "submitted", "valid", "invalid", "cancelled", "rejected"],
   }
   const all: string[] = []
   for (const k of keys) {

@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { ETA_UNITS, GOVERNORATES, toLatinDigits } from "@/lib/eta/egypt"
+import { EtaSignerCard } from "@/components/accounting/eta-signer-card"
 import { cairoTomorrow, canSetGoLive, goLiveDate, goLiveStarted } from "@/lib/eta/go-live"
 import { DEFAULT_BRANDS } from "@/lib/eta/normalize"
 import { chunk, prepareRowsToPost, PREPARE_BATCH, type CodeState } from "@/lib/eta/codes"
@@ -172,7 +173,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
     if (activity && !/^\d{4}$/.test(activity)) return failed(new Error(t("eta.activity-invalid")))
     // only what changed: an empty number that was never set is not sent (the server needs it complete when sent)
     const body: Record<string, string> = {}
-    for (const k of COMPANY_KEYS) if ((company[k] ?? "") !== (settings?.[k] ?? "")) body[k] = company[k] ?? ""
+    for (const k of COMPANY_KEYS) if ((company[k] ?? "") !== (settings?.[k] ?? "") && (k !== "eta_environment" || mayGoLive)) body[k] = company[k] ?? ""
     if (Object.keys(body).length === 0) return toast({ title: t("eta.saved") })
     put("company", body)
   }
@@ -406,7 +407,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
             )}
             <div className="space-y-1">
               <Label htmlFor="eta-environment">{t("eta.environment")}</Label>
-              <Select value={company.eta_environment || "test"} onValueChange={(v) => setCompany((c) => ({ ...c, eta_environment: v }))}>
+              <Select value={company.eta_environment || "test"} onValueChange={(v) => setCompany((c) => ({ ...c, eta_environment: v }))} disabled={!mayGoLive}>
                 <SelectTrigger id="eta-environment">
                   <SelectValue />
                 </SelectTrigger>
@@ -418,6 +419,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
                   ))}
                 </SelectContent>
               </Select>
+              {!mayGoLive && <p className="text-xs text-muted-foreground">{t("eta.environment-only-top")}</p>}
             </div>
           </div>
           <Button onClick={saveCompany} disabled={saving !== null}>
@@ -426,6 +428,8 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
           </Button>
         </CardContent>
       </Card>
+
+      <EtaSignerCard mayManage={mayGoLive} />
 
       {/* Go-live */}
       <Card>

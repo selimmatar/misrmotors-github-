@@ -238,3 +238,15 @@ export async function undoReissue(db: Db, newInvoiceId: number, movedPermitIds: 
   }
   return true
 }
+
+/** The open corrections of approved permits, permit id -> the old invoice's number (the permits list marks them). One cheap look first: usually nothing is open. */
+export async function openCorrectionsByPermit(db: Db, permitIds: number[]): Promise<Map<number, string | null>> {
+  const out = new Map<number, string | null>()
+  const open = must(await db.from("accounts_receivable").select("invoice_id").eq("status", REPLACED_AR_STATUS).is("replaced_by_invoice_id", null), "load open corrections") as any[]
+  if (open.length === 0) return out
+  for (const id of permitIds) {
+    const found = await openCorrectionForPermit(db, id)
+    if (found) out.set(id, found.invoiceNumber)
+  }
+  return out
+}
