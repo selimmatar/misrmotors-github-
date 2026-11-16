@@ -5,16 +5,18 @@
 // NULLS LAST for ASC, NULLS FIRST for DESC; ties keep primary-key order). SQL aggregate semantics are kept: SUM/AVG/MAX
 // ignore NULLs and are NULL over no values; COUNT(col) skips NULLs. Month buckets (DATE_TRUNC('month', ...)::date) are
 // ISO strings "YYYY-MM-01". CURRENT_DATE is today's UTC date.
+import { excludeReplaced } from "../ar-live"
+
 export type Row = Record<string, any>
 type Db = { from: (table: string) => any }
 
 export const PAGE_SIZE = 1000
 
 /** Reads every row of a table in pages of PAGE_SIZE (PostgREST caps a response at 1000 rows), ordered by its primary key. */
-export async function readAll(db: Db, table: string, columns: string, pk: string): Promise<Row[]> {
+export async function readAll(db: Db, table: string, columns: string, pk: string, narrow: (q: any) => any = (q) => q): Promise<Row[]> {
   const rows: Row[] = []
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await db.from(table).select(columns).order(pk, { ascending: true }).range(from, from + PAGE_SIZE - 1)
+    const { data, error } = await narrow(db.from(table).select(columns)).order(pk, { ascending: true }).range(from, from + PAGE_SIZE - 1)
     if (error) throw error
     const page: Row[] = data || []
     rows.push(...page)
@@ -125,6 +127,7 @@ const readAR = (db: Db) =>
     "accounts_receivable",
     "invoice_id, invoice_number, invoice_date, due_date, amount, collected_amount, status, payment_terms, installment_months, months_paid, customer_id",
     "invoice_id",
+    excludeReplaced, // a replaced invoice no longer counts in ageing, summaries or customer balances
   )
 const readAP = (db: Db) =>
   readAll(
@@ -466,7 +469,7 @@ export async function financialSummary(db: Db): Promise<Row> {
   const [sales, purchases, ar, ap, customers, suppliers, inventory] = await Promise.all([
     readAll(db, "sales_orders", "so_id, total, status", "so_id"),
     readAll(db, "purchase_orders", "po_id, total, status", "po_id"),
-    readAll(db, "accounts_receivable", "invoice_id, amount, collected_amount, status", "invoice_id"),
+    readAll(db, "accounts_receivable", "invoice_id, amount, collected_amount, status", "invoice_id", excludeReplaced),
     readAll(db, "accounts_payable", "invoice_id, amount, paid_amount, status", "invoice_id"),
     readAll(db, "customers", "customer_id", "customer_id"),
     readAll(db, "suppliers", "supplier_id", "supplier_id"),

@@ -6,6 +6,7 @@
 //   card; nothing is written until the person presses Confirm (app/api/ai/ceo-chat/confirm), which runs the same
 //   route the screens use.
 import { buildSoOverview, soProfit } from "../so-overview"
+import { excludeReplaced } from "../ar-live"
 import { loadSalesOrdersNeedingPo } from "../notifications/waiting"
 import { loadDismissed } from "../notifications/dismissed"
 
@@ -38,7 +39,7 @@ const OPEN_SO = ["pending", "pending_accountant", "pending_ceo", "accountant_app
 /** The short summary in front of every question. Amounts owed use what is still unpaid (balance). */
 export async function businessSummary(db: Db): Promise<string> {
   const [ar, ap, pos, sos, balance, inventory] = await Promise.all([
-    db.from("accounts_receivable").select("invoice_id, amount, balance, due_date, status"),
+    excludeReplaced(db.from("accounts_receivable").select("invoice_id, amount, balance, due_date, status")),
     db.from("accounts_payable").select("invoice_id, amount, balance, due_date, status"),
     db.from("purchase_orders").select("po_id, status"),
     db.from("sales_orders").select("so_id, status, fulfillment_status, total"),
@@ -184,10 +185,8 @@ async function partyBalance(db: Db, args: any, side: "customer" | "supplier") {
   const parties = must(await db.from(table).select(`${idCol}, ${nameCol}`), table).filter((p: any) => matches(p[nameCol], q))
   if (!parties.length) return { error: `No ${side} matching "${q}"` }
   const ids = parties.slice(0, 5).map((p: any) => p[idCol])
-  const invoices = must(
-    await db.from(side === "customer" ? "accounts_receivable" : "accounts_payable").select(`invoice_number, ${idCol}, amount, balance, due_date, status`).in(idCol, ids),
-    "invoices",
-  )
+  const invoiceQuery = db.from(side === "customer" ? "accounts_receivable" : "accounts_payable").select(`invoice_number, ${idCol}, amount, balance, due_date, status`).in(idCol, ids)
+  const invoices = must(await (side === "customer" ? excludeReplaced(invoiceQuery) : invoiceQuery), "invoices")
   return parties.slice(0, 5).map((p: any) => {
     const left = (i: any) => num(i.balance ?? i.amount)
     const mine = invoices.filter((i: any) => i[idCol] === p[idCol] && left(i) > 0.009)

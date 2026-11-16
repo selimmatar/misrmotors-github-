@@ -23,6 +23,7 @@
 // The credit payment methods ("customer_credit", "supplier_credit") are not cash and are refused here: a customer
 // credit is used through lib/customer-credit-apply.ts.
 import { computeArStatus } from "./ar-status"
+import { isReplacedInvoice, REPLACED_PAYMENT_MESSAGE } from "./ar-live"
 import { CUSTOMER_CREDIT_PAYMENT_METHOD } from "./credit-apply"
 
 export type ArPaymentResult = { status: number; body: Record<string, any> }
@@ -246,6 +247,7 @@ export async function recordArPayment(supabase: any, body: any, options: ArPayme
         return await reject(500, "Could not read the invoice. Nothing was recorded.")
       }
       if (!row) return await reject(404, "Invoice not found")
+      if (isReplacedInvoice(row)) return await reject(409, REPLACED_PAYMENT_MESSAGE, { code: "AR_REPLACED" })
 
       const invoiceAmount = round2(Number(row.amount) || 0)
       const oldCollected = row.collected_amount === null ? null : Number(row.collected_amount)

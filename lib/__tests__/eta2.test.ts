@@ -1416,3 +1416,189 @@ test("F27. a cancellation is a request until the portal confirms it: declined ->
     assert.ok(took < 650, `in parallel: took ${took} ms`)
   })
 })
+
+// ---- F28-F30: a replaced invoice stops counting everywhere (task 6, spec 6.5a) ----
+import { readdirSync, statSync } from "node:fs"
+import { call as callRoute } from "./route-harness"
+import { excludeReplaced, isReplacedInvoice, REPLACED_PAYMENT_MESSAGE } from "../ar-live"
+import { loadSoInvoicingState } from "../invoicing"
+import { arSummary, arAging, financialSummary } from "../reports/views"
+import * as arPayRoute6 from "../../app/api/accounts-receivable/payments/route"
+import * as applyCreditRoute6 from "../../app/api/accounts-receivable/apply-credit/route"
+import * as scheduleRoute6 from "../../app/api/payment-schedules/route"
+import * as arListRoute6 from "../../app/api/accounts-receivable/route"
+import * as analyticsRoute6 from "../../app/api/analytics/financial/route"
+
+const REPO6 = process.env.REPO_ROOT || process.cwd()
+
+// Files that read accounts_receivable and show or touch a replaced invoice ON PURPOSE. Every other non-test file that
+// names accounts_receivable in code must call excludeReplaced / isReplacedInvoice (lib/ar-live.ts).
+export const REPLACED_VISIBLE: Record<string, string> = {
+  "app/api/accounts-receivable/route.ts": "the receivables list shows a replaced invoice, labelled; PUT/DELETE address one invoice by id",
+  "app/api/invoices/ar/[id]/pdf/route.ts": "the invoice's own PDF still opens for a replaced invoice",
+  "app/api/invoices/ar/[id]/[invoiceId]/pdf/route.ts": "the invoice's own PDF still opens for a replaced invoice",
+  "app/api/sales-orders/route.ts": "inserts invoices; the delete guard keeps a sales order that any invoice (replaced too) still points at",
+  "app/api/customer-credits/route.ts": "only turns invoice ids into invoice numbers for display; a credit's source invoice may be a replaced one",
+  "app/api/eta/preview/route.ts": "looks one invoice up by id so its e-invoice window opens, replaced or not",
+  "app/api/maintenance/invoices/route.ts": "maintenance invoices have no sales order or permits so are never replaced; the number check is a uniqueness guard",
+  "app/api/maintenance/work-orders/ready-for-invoice/route.ts": "maintenance invoices are never replaced; matches a work order to the invoice number it already holds",
+  "app/api/pending-counts/route.ts": "counts maintenance work orders by the invoice number they hold; maintenance invoices are never replaced",
+  "app/api/system-health/route.ts": "integrity check of each row's amount, collected and balance: applies to replaced rows as well",
+  "lib/sales-orders/on-approved.ts": "the down-payment invoice number is unique: a replaced one still holds it (insert guard, not a total)",
+  "lib/supplier-credit-ap-apply.ts": "a failure label for the receivable ledger; reads nothing",
+  "lib/invoicing.ts": "numbering and insert/rollback must see replaced invoice numbers; loadSoInvoicingState itself uses excludeReplaced",
+}
+// the files above that also use excludeReplaced / isReplacedInvoice need no more than their reason
+
+const CODE_REF = /(["'`])accounts_receivable\1|\.from\(\s*["'`]accounts_receivable["'`]/
+
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/(^|[^:"'`\\])\/\/.*$/, "$1")).join("\n")
+}
+function walk(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(join(REPO6, dir))) {
+    if (name === "node_modules" || name === "__tests__" || name === ".next") continue
+    const rel = `${dir}/${name}`
+    if (statSync(join(REPO6, rel)).isDirectory()) walk(rel, out)
+    else if (/\.(ts|tsx)$/.test(name)) out.push(rel)
+  }
+  return out
+}
+/** the files (path -> source) that read accounts_receivable without excludeReplaced / isReplacedInvoice and without a reason */
+export function unguardedArReaders(files: Record<string, string>, allowed: Record<string, string> = REPLACED_VISIBLE): string[] {
+  const bad: string[] = []
+  for (const [path, text] of Object.entries(files)) {
+    if (path.startsWith("lib/eta/") || path === "lib/ar-live.ts") continue
+    const code = stripComments(text)
+    if (!CODE_REF.test(code)) continue
+    if (allowed[path]) continue
+    if (/\b(excludeReplaced|isReplacedInvoice)\b/.test(code)) continue
+    bad.push(path)
+  }
+  return bad
+}
+
+test("F28. guard: every reader of accounts_receivable excludes replaced invoices or says why it shows them", () => {
+  const files: Record<string, string> = {}
+  for (const f of [...walk("app"), ...walk("lib")]) files[f] = readFileSync(join(REPO6, f), "utf8")
+  assert.deepEqual(unguardedArReaders(files), [], "a new accounts_receivable reader needs excludeReplaced (lib/ar-live.ts) or a REPLACED_VISIBLE entry with a reason")
+  // the allowlist is honest: every entry still names the table, has a reason, and nothing is listed twice over
+  for (const [path, reason] of Object.entries(REPLACED_VISIBLE)) {
+    assert.ok(reason.length >= 20, `${path}: reason`)
+    assert.ok(files[path], `${path} does not exist (stale allowlist entry)`)
+    assert.match(files[path], /accounts_receivable/, `${path} no longer reads accounts_receivable (stale allowlist entry)`)
+  }
+  // the guard fails on a new reader, and passes once it filters or is listed with a reason
+  const fresh = { "app/api/new-report/route.ts": 'const { data } = await db.from("accounts_receivable").select("*")' }
+  assert.deepEqual(unguardedArReaders(fresh), ["app/api/new-report/route.ts"])
+  assert.deepEqual(unguardedArReaders({ "lib/x.ts": 'db.from(`accounts_receivable`).select("amount")' }), ["lib/x.ts"])
+  assert.deepEqual(unguardedArReaders({ "lib/x.ts": 'const q = excludeReplaced(db.from("accounts_receivable").select("*"))' }), [])
+  assert.deepEqual(unguardedArReaders({ "lib/x.ts": 'if (isReplacedInvoice(row)) return\nawait db.from("accounts_receivable").select("*")' }), [])
+  assert.deepEqual(unguardedArReaders(fresh, { "app/api/new-report/route.ts": "shows history" }), [])
+  assert.deepEqual(unguardedArReaders({ "lib/x.ts": '// reads accounts_receivable later\nconst a = 1' }), [], "a comment is not a reader")
+  assert.deepEqual(unguardedArReaders({ "lib/eta/y.ts": 'db.from("accounts_receivable")' }), [], "lib/eta is outside this guard")
+})
+
+const ar6 = (id: number, status: string | null, extra: Row = {}): Row => ({
+  invoice_id: id, invoice_number: `INV-6-${id}`, customer_id: 3, so_id: 1, amount: 100, collected_amount: 0, balance: 100, months_paid: 0,
+  installment_months: 1, due_date: "2026-01-01", invoice_date: "2026-01-01", status, created_at: "2026-01-01T00:00:00Z", ...extra,
+})
+
+test("F29. excludeReplaced keeps every live status and a missing status; only replaced drops out", async () => {
+  const db = new FakeDb({ accounts_receivable: [ar6(1, "pending"), ar6(2, "partially_paid"), ar6(3, "paid"), ar6(4, "overdue"), ar6(5, null), ar6(6, "replaced")] })
+  const { data } = await excludeReplaced(db.from("accounts_receivable").select("invoice_id"))
+  assert.deepEqual(data.map((r: any) => r.invoice_id), [1, 2, 3, 4, 5])
+  // composes with the other filters and the sums that follow
+  const some = await excludeReplaced(db.from("accounts_receivable").select("invoice_id").in("invoice_id", [5, 6]))
+  assert.deepEqual(some.data.map((r: any) => r.invoice_id), [5])
+  assert.equal(isReplacedInvoice({ status: "replaced" }), true)
+  assert.equal(isReplacedInvoice({ status: null }), false)
+  assert.equal(isReplacedInvoice(null), false)
+  // the real FakeDb check for the PostgREST text: a null status is kept
+  assert.equal(excludeReplaced({ or: (e: string) => e } as any), "status.is.null,status.neq.replaced")
+})
+
+function soDb6(arRows: Row[], links: Row[] = []) {
+  return new FakeDb({
+    sales_orders: [{ so_id: 1, so_number: "SO-6", customer_id: 3, total: 114, subtotal: 100, discount_amount: 0, payment_type: "cash" }],
+    customers: [{ customer_id: 3, customer_name: "C" }],
+    sales_order_items: [{ so_id: 1, product_id: 100, outsourced_name: null, quantity: 1, unit_price: 100, total: 100 }],
+    delivery_permits: [{ permit_id: 1, permit_no: "DP-6-1", sales_order_id: 1, status: "APPROVED" }],
+    delivery_permit_items: [{ permit_id: 1, product_id: 100, item_name_snapshot: "item", quantity: 1, unit_price: 100, total: 100 }],
+    invoice_delivery_permits: links,
+    accounts_receivable: arRows,
+  })
+}
+
+test("F29b. over-invoicing / already-invoiced: a replaced invoice is not counted, its permit is invoiceable again", async () => {
+  const live = await loadSoInvoicingState(soDb6([ar6(1, "pending")], [{ invoice_id: 1, permit_id: 1 }]), 1)
+  assert.deepEqual(live!.invoices.map((i) => i.invoice_id), [1])
+  const replaced = await loadSoInvoicingState(soDb6([ar6(1, "replaced")], [{ invoice_id: 1, permit_id: 1 }]), 1)
+  assert.deepEqual(replaced!.invoices, [], "by sales order and by permit link")
+  const noStatus = await loadSoInvoicingState(soDb6([ar6(1, null)], [{ invoice_id: 1, permit_id: 1 }]), 1)
+  assert.equal(noStatus!.invoices.length, 1)
+  // a whole-order invoice (no links) as well
+  const whole = await loadSoInvoicingState(soDb6([ar6(2, "replaced")]), 1)
+  assert.deepEqual(whole!.invoices, [])
+})
+
+test("F29c. reports, ageing, customer balance and analytics leave a replaced invoice out", async () => {
+  const rows = [ar6(1, "pending"), ar6(2, "replaced", { amount: 900, balance: 900 }), ar6(3, "paid", { amount: 50, collected_amount: 50, balance: 0 })]
+  const db = new FakeDb({ accounts_receivable: rows, customers: [{ customer_id: 3, customer_name: "C" }], sales_orders: [], purchase_orders: [], accounts_payable: [], suppliers: [], inventory: [] })
+  const summary = await arSummary(db as any)
+  assert.equal(summary.total_invoices, 2)
+  assert.equal(summary.total_invoiced, 150)
+  assert.equal(summary.total_outstanding, 100)
+  assert.deepEqual((await arAging(db as any)).map((r) => r.invoice_id), [1, 3])
+  assert.equal((await financialSummary(db as any)).ar_outstanding, 100)
+  useDb(db)
+  const analytics = await analyticsRoute6.GET()
+  const body = await analytics.json()
+  const total = (Object.values((body as any).arAging || {}) as number[]).reduce((s, v) => s + (Number(v) || 0), 0)
+  assert.ok(total <= 100, `analytics ageing counted a replaced invoice: ${total}`)
+  // the receivables list still returns it, with its status, so the screen can label it
+  const list = await arListRoute6.GET()
+  const listed = (await list.json()) as any[]
+  assert.equal(listed.length, 3)
+  assert.ok(listed.some((r) => r.status === "replaced"))
+})
+
+test("F30. no payment, credit or schedule payment can be recorded on a replaced invoice", async () => {
+  const mk = () => {
+    const db = new FakeDb({
+      accounts_receivable: [ar6(5, "replaced", { amount: 300 })],
+      payment_schedules: [{ schedule_id: 1, invoice_id: 5, installment_number: 1, amount: 100, paid_amount: 0, status: "pending", schedule_type: "receivable" }],
+      customer_payments: [], balance_entries: [], idempotency_log: [],
+      customer_credits: [{ credit_id: 1, customer_id: 3, amount: 80, status: "active", credit_type: "overpayment", invoice_id: 9, reference_type: "ar_payment", reference_id: 1, used_at: null, used_in_invoice_id: null }],
+    })
+    useDb(db)
+    return db
+  }
+  const untouched = (db: FakeDb) => {
+    assert.equal(db.tables.accounts_receivable[0].collected_amount, 0)
+    assert.equal(db.tables.accounts_receivable[0].status, "replaced")
+    assert.equal(db.tables.customer_payments.length, 0)
+    assert.equal(db.tables.balance_entries.length, 0)
+    assert.equal(db.tables.payment_schedules[0].paid_amount, 0)
+    assert.equal(db.tables.customer_credits[0].status, "active")
+  }
+  let db = mk()
+  const pay = await callRoute(arPayRoute6.POST, "POST", { invoiceId: 5, amount: 100, idempotencyKey: "f30-pay-1" })
+  assert.equal(pay.status, 409)
+  assert.equal(pay.body.error, REPLACED_PAYMENT_MESSAGE)
+  untouched(db)
+  db = mk()
+  const credit = await callRoute(applyCreditRoute6.POST, "POST", { invoiceId: 5, idempotencyKey: "f30-credit-1", credits: [{ creditId: 1, amount: 80 }] })
+  assert.equal(credit.status, 409)
+  assert.equal(credit.body.error, REPLACED_PAYMENT_MESSAGE)
+  untouched(db)
+  db = mk()
+  const sched = await callRoute(scheduleRoute6.PUT, "PUT", { scheduleId: "1", paidAmount: 100, invoiceId: 5, paymentDate: "2026-10-08" })
+  assert.equal(sched.status, 409)
+  assert.equal(sched.body.error, REPLACED_PAYMENT_MESSAGE)
+  untouched(db)
+  // a live invoice is unaffected
+  db = mk()
+  db.tables.accounts_receivable[0].status = "pending"
+  assert.equal((await callRoute(arPayRoute6.POST, "POST", { invoiceId: 5, amount: 100, idempotencyKey: "f30-pay-2" })).status, 200)
+})

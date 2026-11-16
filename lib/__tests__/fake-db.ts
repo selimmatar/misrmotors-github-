@@ -145,12 +145,13 @@ class Query {
   is(c: string, v: any) { this.filters.push((r) => (r[c] ?? null) === v); return this }
   /** PostgREST `not`: only `not(col, "is", null)` */
   not(c: string, op: string, v: any) { this.filters.push((r) => (op === "is" ? (r[c] ?? null) !== v : r[c] !== v)); return this }
-  /** PostgREST `or`: only the "col.is.null" / "col.eq.value" terms the routes use */
+  /** PostgREST `or`: only the "col.is.null" / "col.eq.value" / "col.neq.value" terms the routes use */
   or(expr: string) {
     const terms = expr.split(",").map((t) => {
       const [col, op, ...rest] = t.split(".")
       const val = rest.join(".")
-      return (r: Row) => (op === "is" ? (val === "null" ? (r[col] ?? null) === null : String(r[col]) === val) : String(r[col]) === val)
+      return (r: Row) =>
+        op === "is" ? (val === "null" ? (r[col] ?? null) === null : String(r[col]) === val) : op === "neq" ? String(r[col]) !== val : String(r[col]) === val
     })
     this.filters.push((r) => terms.some((f) => f(r)))
     return this

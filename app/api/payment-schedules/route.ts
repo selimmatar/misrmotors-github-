@@ -4,6 +4,7 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkIdempotency, completeIdempotency } from "@/lib/idempotency"
 import { arPaymentLogKey, recordArPayment } from "@/lib/ar-payments"
 import { actorOr } from "@/lib/auth/actor"
+import { isReplacedInvoice, REPLACED_PAYMENT_MESSAGE } from "@/lib/ar-live"
 
 export const dynamic = "force-dynamic"
 
@@ -291,7 +292,7 @@ async function readArInvoice(supabase: any, invoiceId: number): Promise<{ invoic
   const { data, error } = await withRetry(() =>
     supabase
       .from("accounts_receivable")
-      .select("invoice_id, collected_amount, months_paid, installment_months, amount")
+      .select("invoice_id, collected_amount, months_paid, installment_months, amount, status")
       .eq("invoice_id", invoiceId)
       .single(),
   )
@@ -307,6 +308,7 @@ async function checkInvoiceCap(supabase: any, invoiceId: number, amountToPay: nu
   const { invoice, error } = await readArInvoice(supabase, invoiceId)
   if (error) return { ok: false, kind: "db", error }
   if (!invoice) return { ok: true }
+  if (isReplacedInvoice(invoice)) return { ok: false, kind: "conflict", status: 409, error: REPLACED_PAYMENT_MESSAGE }
   if (cents(invoice.collected_amount) + cents(amountToPay) > cents(invoice.amount)) {
     return { ok: false, kind: "overpay", status: 400, error: overpayMessage(amountToPay, invoice) }
   }
@@ -328,6 +330,7 @@ async function applySchedulePaymentToInvoice(
     const { invoice: arInvoice, error: readError } = await readArInvoice(supabase, invoiceId)
     if (readError) return { ok: false, kind: "db", error: readError }
     if (!arInvoice) return { ok: true }
+    if (isReplacedInvoice(arInvoice)) return { ok: false, kind: "conflict", status: 409, error: REPLACED_PAYMENT_MESSAGE }
 
     if (cents(arInvoice.collected_amount) + cents(amountToPay) > cents(arInvoice.amount)) {
       return { ok: false, kind: "overpay", status: 400, error: overpayMessage(amountToPay, arInvoice) }

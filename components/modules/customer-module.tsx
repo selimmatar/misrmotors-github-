@@ -96,7 +96,8 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
           // Invoices are raised per delivery permit, so an order can have several: keep them all.
           const invoiceMap: Record<string, any[]> = {}
           invoices.forEach((inv: any) => {
-            (invoiceMap[inv.soId] ||= []).push(inv)
+            // a replaced invoice no longer counts (its replacement does)
+            if (inv.status !== "replaced") (invoiceMap[inv.soId] ||= []).push(inv)
           })
           setOrderInvoices(invoiceMap)
         }

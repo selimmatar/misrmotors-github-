@@ -12,6 +12,7 @@
 // LOWEST invoice_id survives; a higher-id invoice rolls itself back. See createSoInvoice/createDpInvoices.
 
 import { resolveInstallmentCount } from "./payment-type"
+import { excludeReplaced } from "./ar-live"
 import { numberTakenMessage } from "./doc-number"
 import {
   DELIVERED_PERMIT_STATUSES,
@@ -683,12 +684,12 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
   const returns = await loadReturnLines(db, permitIds)
 
   const bySo = must(
-    await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").eq("so_id", soId),
+    await excludeReplaced(db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").eq("so_id", soId)),
     "load invoices by sales order",
   ) as any[]
   const linkedIds = [...new Set(ownLinks.map((l) => l.invoice_id))]
   const byLink = linkedIds.length
-    ? (must(await db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").in("invoice_id", linkedIds), "load linked invoices") as any[])
+    ? (must(await excludeReplaced(db.from("accounts_receivable").select("invoice_id, invoice_number, so_id, amount, created_at").in("invoice_id", linkedIds)), "load linked invoices") as any[])
     : []
   const invoiceRows = new Map<number, any>()
   for (const row of [...bySo, ...byLink]) invoiceRows.set(row.invoice_id, row)

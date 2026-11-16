@@ -47,7 +47,10 @@ interface AppContextType {
   setSupplierInvoices: (invoices: SupplierInvoice[]) => void
   addSupplierInvoice: (invoice: SupplierInvoice) => Promise<void>
   updateSupplierInvoice: (invoiceId: string, updates: Partial<SupplierInvoice>) => Promise<void>
+  /** the invoices that count: a replaced invoice (corrected and reissued) is left out of every balance, report and total */
   customerInvoices: CustomerInvoice[]
+  /** every invoice including replaced ones, for the receivables list that shows them labelled */
+  allCustomerInvoices: CustomerInvoice[]
   setCustomerInvoices: (invoices: CustomerInvoice[]) => void
   addCustomerInvoice: (invoice: CustomerInvoice) => Promise<void>
   updateCustomerInvoice: (invoiceId: string, updates: Partial<CustomerInvoice>) => Promise<void>
@@ -340,7 +343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const salesOrders: SalesOrder[] = salesOrdersData || []
 
   // Process customer invoices
-  const customerInvoices: CustomerInvoice[] = (customerInvoicesData || []).map((inv: any) => ({
+  const allCustomerInvoices: CustomerInvoice[] = (customerInvoicesData || []).map((inv: any) => ({
     id: inv.id,
     invoiceNumber: inv.invoiceNumber,
     soId: inv.soId,
@@ -356,6 +359,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     monthsPaid: inv.monthsPaid || 0,
     items: inv.items || [],
   }))
+  const customerInvoices: CustomerInvoice[] = allCustomerInvoices.filter((inv) => (inv.status as string) !== "replaced")
 
   useEffect(() => {
     if (hasMountedRef.current) return
@@ -1055,6 +1059,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addSupplierInvoice,
         updateSupplierInvoice,
         customerInvoices,
+        allCustomerInvoices,
         setCustomerInvoices,
         addCustomerInvoice,
         updateCustomerInvoice,

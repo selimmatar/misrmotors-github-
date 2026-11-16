@@ -198,7 +198,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
             const rawInvoices = await invoicesResponse.json()
             wholeInvoicedSoIds = new Set(
               (rawInvoices || [])
-                .filter((inv: any) => inv.soId && !inv.isMaintenance && (inv.deliveryPermits || []).length === 0)
+                .filter((inv: any) => inv.status !== "replaced" && inv.soId && !inv.isMaintenance && (inv.deliveryPermits || []).length === 0)
                 .map((inv: any) => String(inv.soId)),
             )
           }

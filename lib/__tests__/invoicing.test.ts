@@ -42,6 +42,16 @@ class Query {
   eq(c: string, v: any) { this.filters.push((r) => r[c] === v); return this }
   neq(c: string, v: any) { this.filters.push((r) => r[c] !== v); return this }
   in(c: string, vs: any[]) { this.filters.push((r) => vs.includes(r[c])); return this }
+  /** PostgREST `or`: the "col.is.null" / "col.neq.value" terms of excludeReplaced (lib/ar-live.ts) */
+  or(expr: string) {
+    const terms = expr.split(",").map((t) => {
+      const [col, op, ...rest] = t.split(".")
+      const val = rest.join(".")
+      return (r: Row) => (op === "is" ? (r[col] ?? null) === null : op === "neq" ? String(r[col]) !== val : String(r[col]) === val)
+    })
+    this.filters.push((r) => terms.some((f) => f(r)))
+    return this
+  }
   like(c: string, pattern: string) {
     const re = new RegExp("^" + pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$")
     this.filters.push((r) => re.test(String(r[c] ?? "")))

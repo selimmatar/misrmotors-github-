@@ -9,6 +9,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { excludeReplaced } from "../ar-live"
 
 /** Sales order statuses that count as revenue (single definition used by every revenue KPI below). */
 export const REVENUE_STATUSES = ["accountant_approved", "ready_for_delivery", "shipped", "delivered"]
@@ -281,7 +282,7 @@ export async function getARMetrics(dateRange?: DateRange): Promise<ARMetrics> {
 async function calculateARMetricsFallback(dateRange?: DateRange): Promise<ARMetrics> {
   const supabase = createAdminClient()
 
-  let query = supabase.from("accounts_receivable").select("*")
+  let query = excludeReplaced(supabase.from("accounts_receivable").select("*"))
 
   if (dateRange?.from) {
     query = query.gte("invoice_date", dateRange.from.toISOString().split("T")[0])
@@ -601,7 +602,7 @@ export async function validateMetrics(): Promise<
 
   // Validate AR Outstanding
   const arMetrics = await getARMetrics()
-  const { data: rawAR } = await supabase.from("accounts_receivable").select("balance, status").neq("status", "paid")
+  const { data: rawAR } = await excludeReplaced(supabase.from("accounts_receivable").select("balance, status").neq("status", "paid"))
 
   const rawARBalance = (rawAR || []).reduce((sum, inv) => sum + (Number(inv.balance) || 0), 0)
 
