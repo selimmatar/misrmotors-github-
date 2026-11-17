@@ -13,6 +13,7 @@ import { installAuthFetch } from "@/lib/auth/client-fetch"
 import { isRole } from "@/lib/auth/roles"
 import { primaryRole } from "@/lib/auth/role-nav"
 import type { User, UserRole } from "@/lib/types"
+import { UnstickClicks } from "@/components/layout/unstick-clicks"
 
 type Mode = "off" | "test" | "on"
 
@@ -90,6 +91,7 @@ export function HomeClient() {
   return (
     <SWRProvider>
       <AppProvider>
+        <UnstickClicks />
         <Dashboard user={user} onLogout={handleLogout} />
       </AppProvider>
     </SWRProvider>
