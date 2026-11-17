@@ -2780,7 +2780,7 @@ test("F53b. predict: a misspelling finds the remembered name; stemming; confirme
 })
 
 test("F53c. thresholds are named and ordered; evaluate reports leave-one-out accuracy", () => {
-  assert.ok(GREEN_SIMILARITY === 0.75 && GREEN_CONFIDENCE === 0.75 && GREEN_AGREE === 2)
+  assert.ok(GREEN_SIMILARITY === 0.85 && GREEN_CONFIDENCE === 0.9 && GREEN_AGREE === 2)
   assert.ok(ORANGE_SIMILARITY === 0.45 && ORANGE_CONFIDENCE === 0.5)
   assert.ok(CONFIRMED_WEIGHT === 2 && CODE_NAME_WEIGHT === 0.5 && TOP_K === 5)
   const r = evaluatePrediction(MEMORY53)
@@ -2900,7 +2900,7 @@ test("F53f. permissions: the waiting list is accountant / CEO / admin; the evalu
   const res = await evaluateRoute.GET(rq("GET", "/api/eta/predict/evaluate", undefined, { "x-mm-roles": "ceo" }))
   assert.equal(res.status, 200)
   const r = await res.json()
-  assert.deepEqual(Object.keys(r).sort(), ["green", "orange", "red", "total"])
+  assert.deepEqual(Object.keys(r).sort(), ["calibration", "green", "orange", "red", "total"])
   assert.equal(r.total, r.green.n + r.orange.n + r.red)
 })
 

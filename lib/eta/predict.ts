@@ -8,9 +8,9 @@
 import { coreName, normalizeName, DEFAULT_BRANDS } from "./normalize"
 
 /** green only when the closest remembered name is at least this similar ... */
-export const GREEN_SIMILARITY = 0.75
+export const GREEN_SIMILARITY = 0.85
 /** ... and the winning code holds at least this share of all the votes ... */
-export const GREEN_CONFIDENCE = 0.75
+export const GREEN_CONFIDENCE = 0.9
 /** ... and this many distinct neighbours of the winning code agree (or one the accountant confirmed) */
 export const GREEN_AGREE = 2
 /** orange (a suggestion) when the closest name is at least this similar and the code holds this share */
@@ -59,6 +59,10 @@ export interface Prediction {
   confidence: number
   state: PredictState
   neighbours: Neighbour[]
+  /** the best neighbour similarity of the chosen code and how many near neighbours agree (for calibration) */
+  best?: number
+  agree?: number
+  confirmedAgree?: boolean
 }
 export interface Predictor {
   predict(name: string): Prediction
@@ -247,7 +251,17 @@ function predictWith(b: Built, name: string, exclude?: (e: Entry) => boolean, ex
       : best >= ORANGE_SIMILARITY && confidence >= ORANGE_CONFIDENCE
         ? "orange"
         : "red"
-  return { codeId: state === "red" ? null : codeId, confidence: Math.round(confidence * 1000) / 1000, state, neighbours }
+  return {
+    codeId: state === "red" ? null : codeId,
+    confidence: Math.round(confidence * 1000) / 1000,
+    state,
+    neighbours,
+    best: Math.round(best * 1000) / 1000,
+    agree: c.agree,
+    confirmedAgree: c.confirmedAgree,
+    // the chosen code before the red cut, so calibration can score it
+    ...(state === "red" ? { candidate: codeId } : {}),
+  } as Prediction
 }
 
 /**
@@ -265,6 +279,8 @@ export interface EvaluateReport {
   red: number
   /** distinct remembered names tried */
   total: number
+  /** what other green rules would give on the same data: n auto-filled and how many were right */
+  calibration?: { similarity: number; confidence: number; agree: number; n: number; correct: number; accuracy: number }[]
 }
 
 /**
@@ -282,6 +298,7 @@ export function evaluate(memory: readonly PredictMemoryRow[], codes: readonly Pr
     list.push(e)
     cores.set(e.core, list)
   }
+  const samples: { best: number; confidence: number; agree: number; confirmedAgree: boolean; right: boolean }[] = []
   for (const [core, held] of cores) {
     // the document frequencies without the held-out entries
     const excludedDf = new Map<string, number>([["__n", held.length]])
@@ -292,11 +309,21 @@ export function evaluate(memory: readonly PredictMemoryRow[], codes: readonly Pr
     for (const e of held) votes.set(e.codeId, (votes.get(e.codeId) || 0) + e.weight)
     const expected = [...votes.entries()].sort((x, y) => y[1] - x[1] || x[0] - y[0])[0][0]
     report.total++
+    const chosen = p.codeId ?? (p as any).candidate ?? null
+    if (chosen != null) samples.push({ best: p.best ?? 0, confidence: p.confidence, agree: p.agree ?? 0, confirmedAgree: !!p.confirmedAgree, right: chosen === expected })
     if (p.state === "red") report.red++
     else {
       report[p.state].n++
       if (p.codeId === expected) report[p.state].correct++
     }
   }
+  report.calibration = []
+  for (const similarity of [0.75, 0.8, 0.85, 0.9, 0.95])
+    for (const confidence of [0.75, 0.85, 0.9, 0.95])
+      for (const agree of [2, 3]) {
+        const hit = samples.filter((x) => x.best >= similarity && x.confidence >= confidence && (x.agree >= agree || x.confirmedAgree))
+        const correct = hit.filter((x) => x.right).length
+        report.calibration.push({ similarity, confidence, agree, n: hit.length, correct, accuracy: hit.length ? Math.round((correct / hit.length) * 1000) / 1000 : 0 })
+      }
   return report
 }
