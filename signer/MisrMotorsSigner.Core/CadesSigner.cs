@@ -12,13 +12,16 @@ namespace MisrMotorsSigner;
 public static class CadesSigner
 {
     public const string OidSigningCertificateV2 = "1.2.840.113549.1.9.16.2.47";
+    public const string OidEtaContentType = "1.2.840.113549.1.7.5";
 
     /// <summary>Signs the canonical text; returns the Base64 of the DER CMS.</summary>
     public static string Sign(string canonical, X509Certificate2 cert)
     {
         if (string.IsNullOrEmpty(canonical)) throw new ArgumentException("Nothing to sign.", nameof(canonical));
         var data = new UTF8Encoding(false).GetBytes(canonical);
-        var cms = new SignedCms(new ContentInfo(data), detached: true);
+        // The ETA portal accepts only the content type its own signer uses: 1.2.840.113549.1.7.5 (otherwise error 4062
+        // "Attached digital signature is not supported").
+        var cms = new SignedCms(new ContentInfo(new Oid(OidEtaContentType), data), detached: true);
         var signer = new CmsSigner(SubjectIdentifierType.IssuerAndSerialNumber, cert)
         {
             DigestAlgorithm = new Oid("2.16.840.1.101.3.4.2.1"), // SHA-256
