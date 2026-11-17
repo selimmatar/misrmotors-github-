@@ -5,6 +5,7 @@
 // total = netTotal + VAT, totalAmount = sum of line totals). Property names and order follow the portal SDK sample;
 // toEtaJson (./serialize) writes the body in exactly this order and the signed text is computed from that body.
 import type { EtaItemType, EtaPreview } from "./preview"
+import { toLatinDigits } from "./egypt"
 
 /** The e-invoice company settings as readEtaSettings returns them (setting_key -> value). */
 export type EtaSettings = Record<string, string>
@@ -69,6 +70,8 @@ export interface EtaDocument {
 
 const ETA_VAT_PERCENT = 14
 const text = (value: unknown) => (value == null ? "" : String(value).trim())
+/** numbers typed with Arabic-Indic digits ("٢١٢") are sent as Latin digits ("212"), as the portal prints them */
+const digits = (value: unknown) => toLatinDigits(text(value))
 const round5 = (value: number) => Number((Number(value) || 0).toFixed(5))
 
 /** `YYYY-MM-DDTHH:mm:ssZ` (UTC, no milliseconds), as the portal takes it. */
@@ -105,15 +108,15 @@ export function buildInvoiceDocument(preview: EtaPreview, settings: EtaSettings,
   return inPortalOrder({
     issuer: {
       address: {
-        branchID: text(settings.eta_branch_id) || "0",
+        branchID: digits(settings.eta_branch_id) || "0",
         country: "EG",
         governate: text(settings.eta_branch_governorate),
         regionCity: text(settings.eta_branch_region),
         street: text(settings.eta_branch_street),
-        buildingNumber: text(settings.eta_branch_building_number),
+        buildingNumber: digits(settings.eta_branch_building_number),
       },
       type: "B",
-      id: text(settings.eta_rin),
+      id: digits(settings.eta_rin),
       name: text(settings.eta_registered_name),
     },
     receiver: {
@@ -122,7 +125,7 @@ export function buildInvoiceDocument(preview: EtaPreview, settings: EtaSettings,
         governate: text(c.address?.governorate),
         regionCity: text(c.address?.regionCity),
         street: text(c.address?.street),
-        buildingNumber: text(c.address?.buildingNumber),
+        buildingNumber: digits(c.address?.buildingNumber),
       },
       type: receiverType,
       id: receiverId,
@@ -131,7 +134,7 @@ export function buildInvoiceDocument(preview: EtaPreview, settings: EtaSettings,
     documentType: "i",
     documentTypeVersion: "1.0",
     dateTimeIssued: etaDateTime(issuedAt),
-    taxpayerActivityCode: text(settings.eta_activity_code),
+    taxpayerActivityCode: digits(settings.eta_activity_code),
     internalID: text(preview.invoiceNumber),
     invoiceLines: lines,
     totalDiscountAmount: preview.totals.discount,

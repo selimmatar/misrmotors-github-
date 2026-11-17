@@ -3194,3 +3194,17 @@ test("F56. the server accepts the ETA portal's signature content type (1.2.840.1
   assert.deepEqual(await checkSignature(await signCms(text, RIN), text, RIN), { ok: true })
   assert.equal((await checkSignature(await signCms(text, RIN, "1.2.840.113549.1.7.3"), text, RIN)).ok, false)
 })
+
+test("F57. Arabic-Indic digits in building numbers and branch are sent as Latin digits", () => {
+  const settings = { eta_rin: "100060455", eta_registered_name: "X", eta_activity_code: "4610", eta_branch_id: "٠", eta_branch_governorate: "Giza", eta_branch_region: "R", eta_branch_street: "S", eta_branch_building_number: "٢١٢" }
+  const preview: any = {
+    invoiceId: 1, invoiceNumber: "10503", handledManually: false, manualEtaUuid: null, storedAmount: 228,
+    customer: { name: "C", receiverType: "B", taxRegistrationNumber: "331386623", nationalId: null, address: { governorate: "Cairo", regionCity: "A", street: "B", buildingNumber: "٥٤" } },
+    lines: [{ name: "x", quantity: 1, unitPrice: 200, discountRate: 0, discountAmount: 0, salesTotal: 200, netTotal: 200, vat: 28, total: 228, codeId: 1, itemCode: "EG-100060455-P47", itemType: "EGS", unit: "EA", state: "green" }],
+    totals: { salesTotal: 200, discount: 0, netTotal: 200, vat: 28, total: 228 }, missing: [],
+  }
+  const d: any = buildInvoiceDocument(preview, settings, "2026-11-17T13:00:00Z")
+  assert.equal(d.issuer.address.buildingNumber, "212")
+  assert.equal(d.issuer.address.branchID, "0")
+  assert.equal(d.receiver.address.buildingNumber, "54")
+})
