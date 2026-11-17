@@ -1,61 +1,93 @@
-// "Close PO & send to Accounts Payable" (owner request, 2026-11-11): makes the supplier bill from the FINAL PO.
-// Until then the PO is open: it can be edited, exchanged, returned against and paid an advance on (lib/po-bill.ts).
+// "Close PO & send to Accounts Payable" (owner request, 2026-11-11; several bills per PO 2026-11-17): makes the closing
+// bill for everything on the PO not billed yet ("bill received items" may have billed part of it already), except the
+// quantities marked "not coming", which are recorded on the PO lines. After it the PO is final (lib/po-bill.ts).
+//   body: { id, notComing?: [{ poItemId, quantity }], supplierInvoiceNumber?, invoiceDate? }
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { logPoEvent } from "@/lib/po-history"
-import { PO_CLOSABLE_STATUSES, billsOf, createPoBill, relinkCredits } from "@/lib/po-bill"
+import { PO_CLOSABLE_STATUSES, billDetails, createBill, isMissingRelation, loadPoBilling, relinkUnlinkedCredits } from "@/lib/po-bill"
 
 export const dynamic = "force-dynamic"
+
+const refuse = (status: number, code: string, error: string) => NextResponse.json({ error, code }, { status })
+const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null)
     const poId = parsePositiveId(body?.id)
-    if (poId === null) return NextResponse.json({ error: "A valid purchase order id is required", code: "BAD_INPUT" }, { status: 400 })
+    if (poId === null) return refuse(400, "BAD_INPUT", "A valid purchase order id is required")
+    const details = billDetails(body)
+    if ("error" in details) return refuse(400, "BAD_INPUT", details.error)
     const db = createAdminClient()
     const { data: po, error } = await db.from("purchase_orders").select("*").eq("po_id", poId).maybeSingle()
     if (error) throw error
-    if (!po) return NextResponse.json({ error: "Purchase order not found", code: "NOT_FOUND" }, { status: 404 })
+    if (!po) return refuse(404, "NOT_FOUND", "Purchase order not found")
     if (!PO_CLOSABLE_STATUSES.includes(String(po.status))) {
-      return NextResponse.json({ error: `A "${po.status}" purchase order cannot be closed; it must be approved first`, code: "PO_NOT_CLOSABLE" }, { status: 409 })
+      return refuse(409, "PO_NOT_CLOSABLE", `A "${po.status}" purchase order cannot be closed; it must be approved first`)
     }
-    if ((await billsOf(db, poId)).length > 0) {
-      return NextResponse.json({ error: "This purchase order is already closed (it has a supplier bill)", code: "PO_ALREADY_CLOSED" }, { status: 409 })
+    const billing = await loadPoBilling(db, po)
+    if (billing.closing) return refuse(409, "PO_ALREADY_CLOSED", "This purchase order is already closed (it has a supplier bill)")
+    if (billing.bills.length === 0 && !(Number(po.total) > 0)) return refuse(409, "PO_TOTAL_ZERO", "The purchase order total is 0, so there is nothing to bill")
+
+    // "Not coming": only what was neither received nor billed can be left out of the bill.
+    const notComing = new Map<number, number>()
+    const sent = Array.isArray(body?.notComing) ? body.notComing : []
+    for (const row of sent) {
+      const id = parsePositiveId(row?.poItemId)
+      const qty = Number(row?.quantity)
+      if (id === null || !Number.isFinite(qty) || qty < 0) return refuse(400, "BAD_INPUT", "Each \"not coming\" row needs a line and a quantity of 0 or more")
+      const line = billing.lines.find((l) => l.poItemId === id)
+      if (!line) return refuse(404, "NOT_FOUND", "A \"not coming\" line is not on this purchase order")
+      const most = money(Math.max(0, line.ordered - Math.max(line.received, line.billed)))
+      if (qty > most + 1e-9) return refuse(409, "NOT_COMING_TOO_MANY", `Only ${most} of "${line.name}" were neither received nor billed, so only ${most} can be marked as not coming`)
+      notComing.set(id, money(qty))
     }
-    if (!(Number(po.total) > 0)) {
-      return NextResponse.json({ error: "The purchase order total is 0, so there is nothing to bill", code: "PO_TOTAL_ZERO" }, { status: 409 })
+    const marking = [...notComing.values()].some((q) => q > 0)
+    if ((marking || billing.bills.length > 0) && !billing.ready) {
+      return refuse(409, "MIGRATION_PENDING", "Bills for part of a purchase order need a database update that is not applied yet. Close it without \"not coming\" quantities, or ask the administrator.")
     }
-    const billError = await createPoBill(db, po)
-    if (billError) {
-      console.error("Close PO: the supplier bill could not be made", billError)
-      return NextResponse.json({ error: "The supplier bill could not be made. The purchase order stays open; please try again.", code: "BILL_FAILED" }, { status: 500 })
-    }
-    // supplier credits a reopen unlinked from the old bill point at this one again
-    const { data: reopenings } = await db
-      .from("workflow_events")
-      .select("new_value")
-      .eq("entity_type", "PURCHASE_ORDER")
-      .eq("entity_id", poId)
-      .eq("event_type", "PO_REOPENED")
-    const ids = new Set<number>()
-    for (const e of reopenings || []) {
-      try {
-        for (const id of JSON.parse(e.new_value || "{}").unlinkedCreditIds || []) ids.add(Number(id))
-      } catch {
-        // an older reopen without the list
+
+    // record "not coming" on the lines (every line: what is not sent is 0); put back if the bill cannot be made
+    const restore: { id: number; was: number }[] = []
+    if (billing.ready) {
+      for (const item of billing.items) {
+        const want = notComing.get(Number(item.po_item_id)) || 0
+        const was = Number(item.quantity_not_coming) || 0
+        if (Math.abs(want - was) < 1e-9) continue
+        const { error: e } = await db.from("purchase_order_items").update({ quantity_not_coming: want }).eq("po_item_id", item.po_item_id)
+        if (e) {
+          for (const r of restore) await db.from("purchase_order_items").update({ quantity_not_coming: r.was }).eq("po_item_id", r.id)
+          if (isMissingRelation(e)) return refuse(409, "MIGRATION_PENDING", "The \"not coming\" quantity needs a database update that is not applied yet.")
+          throw e
+        }
+        restore.push({ id: Number(item.po_item_id), was })
+        item.quantity_not_coming = want
       }
     }
-    await relinkCredits(db, poId, [...ids])
+    const fresh = await loadPoBilling(db, po)
+    const { error: billError, invoice } = await createBill(db, fresh, new Map(fresh.lines.map((l) => [l.poItemId, l.rest])), { final: true, ...details })
+    if (billError) {
+      for (const r of restore) await db.from("purchase_order_items").update({ quantity_not_coming: r.was }).eq("po_item_id", r.id)
+      console.error("Close PO: the supplier bill could not be made", billError)
+      return refuse(500, "BILL_FAILED", "The supplier bill could not be made. The purchase order stays open; please try again.")
+    }
+    // supplier credits a reopen unlinked from the old bill point at this one again
+    await relinkUnlinkedCredits(db, poId)
+    const left = [...notComing].filter(([, q]) => q > 0)
     await logPoEvent(db, poId, {
       event_type: "PO_CLOSED",
-      new_value: `APINV-${po.po_number}`,
+      new_value: invoice.invoice_number,
       userId: body?.userId,
-      notes: `${po.po_number} closed and sent to Accounts Payable (${po.total})`,
+      notes:
+        `${po.po_number} closed and sent to Accounts Payable (final bill ${invoice.amount}` +
+        `${fresh.bills.length > 0 ? `, bill ${fresh.bills.length + 1} of ${fresh.bills.length + 1}` : ""})` +
+        `${left.length ? `; not coming: ${left.map(([id, q]) => `${fresh.lines.find((l) => l.poItemId === id)?.name || id} x ${q}`).join(", ")}` : ""}`,
     })
-    return NextResponse.json({ ok: true, invoiceNumber: `APINV-${po.po_number}` })
+    return NextResponse.json({ ok: true, invoiceNumber: invoice.invoice_number, amount: invoice.amount })
   } catch (error) {
     console.error("Close PO: failed", error)
-    return NextResponse.json({ error: "The purchase order could not be closed. Please try again.", code: "CLOSE_FAILED" }, { status: 500 })
+    return refuse(500, "CLOSE_FAILED", "The purchase order could not be closed. Please try again.")
   }
 }

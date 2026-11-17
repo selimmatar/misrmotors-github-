@@ -43,7 +43,17 @@ export async function GET(request: Request) {
       return NextResponse.json([], { status: 200 })
     }
 
+    // Several bills per PO (2026-11-17): "PO-xxx · bill 1 of 2" — each bill's place among its PO's bills (oldest first).
+    const billsByPo = new Map<string, number[]>()
+    for (const inv of result as any[]) {
+      if (inv.po_id == null) continue
+      const key = String(inv.po_id)
+      billsByPo.set(key, [...(billsByPo.get(key) || []), Number(inv.invoice_id)])
+    }
+    for (const ids of billsByPo.values()) ids.sort((a, b) => a - b)
+
     const transformed = result.map((inv: any) => {
+      const poBills = inv.po_id == null ? [] : billsByPo.get(String(inv.po_id)) || []
       const amount = Number.parseFloat(inv.amount) || 0
       const paidAmount = Number.parseFloat(inv.paid_amount) || 0
       const balance = Number.parseFloat(inv.balance) || amount - paidAmount
@@ -85,6 +95,9 @@ export async function GET(request: Request) {
         invoiceFileUrl: inv.invoice_file_url,
         pdfUrl: inv.pdf_url,
         paymentReceiptUrl: inv.payment_receipt_url || null,
+        supplierInvoiceNumber: inv.supplier_invoice_number ?? null,
+        poBillNo: poBills.indexOf(Number(inv.invoice_id)) + 1 || null,
+        poBillCount: poBills.length || null,
         items: [],
       }
     })

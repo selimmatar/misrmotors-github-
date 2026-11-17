@@ -242,6 +242,11 @@ export interface AccountsPayableInvoice {
   monthlyAmount?: number
   paymentStartDate?: string
   downPaymentDueDate?: string
+  /** the supplier's own invoice number typed on the bill */
+  supplierInvoiceNumber?: string | null
+  /** several bills per PO (2026-11-17): this bill's place among its PO's bills, and how many there are */
+  poBillNo?: number | null
+  poBillCount?: number | null
 }
 
 export type SupplierInvoice = AccountsPayableInvoice

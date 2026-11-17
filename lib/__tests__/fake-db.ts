@@ -26,6 +26,7 @@ const PK: Record<string, string> = {
   products: "product_id",
   sales_orders: "so_id",
   accounts_payable: "invoice_id",
+  ap_invoice_lines: "line_id",
   payment_schedules: "schedule_id",
   supplier_payments: "payment_id",
   customer_payments: "payment_id",

@@ -105,6 +105,12 @@ export function AccountsPayableModule() {
     return po?.poNumber || t("field.unknown")
   }
 
+  // Several bills per PO (2026-11-17): "PO-xxx · bill 1 of 2"; a PO with one bill shows just its number.
+  const poBillLabel = (invoice: SupplierInvoice) =>
+    (invoice.poBillCount || 0) > 1
+      ? fill(t("ap.po-bill-of"), { po: getPONumber(invoice.poId), n: invoice.poBillNo || 1, count: invoice.poBillCount || 1 })
+      : getPONumber(invoice.poId)
+
   const getPOPaymentType = (poId: string) => {
     const po = purchaseOrders.find((p) => String(p.id) === String(poId))
     return po?.paymentType || po?.paymentTerms || "cash"
@@ -897,8 +903,11 @@ export function AccountsPayableModule() {
                         <span className="block text-xs text-muted-foreground">{t(`payment.${paymentType}`)}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="font-medium whitespace-nowrap">{getPONumber(invoice.poId)}</span>
-                        <span className="block text-xs text-muted-foreground whitespace-nowrap">{invoice.invoiceNumber}</span>
+                        <span className="font-medium whitespace-nowrap">{poBillLabel(invoice)}</span>
+                        <span className="block text-xs text-muted-foreground whitespace-nowrap">
+                          {invoice.invoiceNumber}
+                          {invoice.supplierInvoiceNumber ? ` · ${invoice.supplierInvoiceNumber}` : ""}
+                        </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{formatDate(invoice.dueDate, language)}</TableCell>
                       <NumCell>{formatMoney(invoice.amount || 0, language)}</NumCell>
@@ -918,7 +927,7 @@ export function AccountsPayableModule() {
             const status = getInvoiceStatus(invoice)
             return (
               <ListCard
-                id={getPONumber(invoice.poId) || invoice.invoiceNumber}
+                id={poBillLabel(invoice) || invoice.invoiceNumber}
                 amount={formatMoney((invoice.amount || 0) - (invoice.paidAmount || 0), language)}
                 party={getSupplierName(invoice.supplierId)}
                 status={<StatusBadge status={status} label={t(`status.${status}`)} />}

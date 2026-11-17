@@ -49,6 +49,8 @@ import { fill } from "@/lib/i18n-format"
 import { describeOverOrderLines, type OverOrderLine } from "@/lib/po-over-order"
 import { ChainLine } from "@/components/shared/chain-line"
 import { PO_EDITABLE_STATUSES } from "@/lib/po-edit"
+import { closingBillOf, sortBills } from "@/lib/po-bill-number"
+import { PoBilledNote } from "@/components/purchase-order/po-bill-dialog"
 import { PoHistory, PoOpenBadge, PoOpenMenu } from "@/components/purchase-order/po-open-actions"
 import { NotesButton, useNoteCounts } from "@/components/notes/notes-button"
 import { SupplierCreditPicker, appliedCreditTotal, creditSelections, type CreditAmounts } from "@/components/supplier/supplier-credit-picker"
@@ -1285,8 +1287,11 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   }
 
   // Open POs (owner request, 2026-11-11): a PO is open (work in progress) until it is closed and sent to Accounts
-  // Payable; closed = it has a supplier bill. An open PO can be edited in any status, even after receiving.
-  const isClosedPO = (order: PurchaseOrder) => (supplierInvoices || []).some((inv: any) => String(inv.poId ?? inv.po_id ?? "") === String(order.id))
+  // Payable; closed = it has its closing bill. An open PO can be edited in any status, even after receiving.
+  // Several bills per PO (2026-11-17): bills for received items (APINV-<po>-B<n>) leave the PO open.
+  const poBills = (order: PurchaseOrder) =>
+    sortBills((supplierInvoices || []).filter((inv: any) => String(inv.poId ?? inv.po_id ?? "") === String(order.id)) as any[])
+  const isClosedPO = (order: PurchaseOrder) => !!closingBillOf(poBills(order), order.poNumber)
   const canEditPO = (order: PurchaseOrder) =>
     PO_EDITABLE_STATUSES.includes(order.status) && !isClosedPO(order) && !(order as any).costFinalized && canCreatePO
   const startEdit = (order: PurchaseOrder) => {
@@ -1435,6 +1440,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
       <PoOpenMenu
         order={order}
         closed={isClosedPO(order)}
+        bills={poBills(order)}
         canEdit={canEditPO(order)}
         role={userRole}
         userId={(user as any)?.id ?? null}
@@ -1603,7 +1609,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                         <NumCell>{formatNumber(order.items?.length || 0)}</NumCell>
                         <NumCell>{formatMoney(order.total, language)}</NumCell>
                         <TableCell>
-                          <span className="inline-flex flex-wrap items-center gap-1"><StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />{order.status !== "rejected" && <PoOpenBadge closed={isClosedPO(order)} />}</span>
+                          <span className="inline-flex flex-wrap items-center gap-1"><StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />{order.status !== "rejected" && <PoOpenBadge closed={isClosedPO(order)} />}<PoBilledNote order={order} bills={poBills(order)} closed={isClosedPO(order)} /></span>
                         </TableCell>
                         <ActionsCell>{renderRowActions(order)}</ActionsCell>
                       </TableRow>
@@ -1624,7 +1630,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                 id={order.poRequestNumber ? `${order.poNumber} · ${order.poRequestNumber}` : order.poNumber}
                 party={[getSupplierName(order.supplierId), getLinkedSalesOrders(order)].filter(Boolean).join(" — ")}
                 amount={formatMoney(order.total, language)}
-                status={<span className="inline-flex flex-wrap items-center gap-1"><StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />{order.status !== "rejected" && <PoOpenBadge closed={isClosedPO(order)} />}</span>}
+                status={<span className="inline-flex flex-wrap items-center gap-1"><StatusBadge status={order.status} label={t(`po.status.${order.status}`)} />{order.status !== "rejected" && <PoOpenBadge closed={isClosedPO(order)} />}<PoBilledNote order={order} bills={poBills(order)} closed={isClosedPO(order)} /></span>}
                 note={order.status === "rejected" && order.rejectionReason ? renderRejectionReason(order) : undefined}
                 actions={renderRowActions(order)}
               />
@@ -2228,6 +2234,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                   labelled
                   order={viewDetailsOrder}
                   closed={isClosedPO(viewDetailsOrder)}
+                  bills={poBills(viewDetailsOrder)}
                   canEdit={canEditPO(viewDetailsOrder)}
                   role={userRole}
                   userId={(user as any)?.id ?? null}
@@ -2257,6 +2264,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
                       <span className="inline-flex flex-wrap items-center gap-1">
                         <StatusBadge status={viewDetailsOrder.status} label={t(`po.status.${viewDetailsOrder.status}`)} />
                         {viewDetailsOrder.status !== "rejected" && <PoOpenBadge closed={isClosedPO(viewDetailsOrder)} />}
+                        <PoBilledNote order={viewDetailsOrder} bills={poBills(viewDetailsOrder)} closed={isClosedPO(viewDetailsOrder)} />
                       </span>
                     </div>
                     <div className="flex justify-between">
