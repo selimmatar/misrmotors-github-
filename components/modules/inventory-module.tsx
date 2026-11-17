@@ -18,6 +18,7 @@ import { formatDate, formatMoney } from "@/lib/format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAppContext } from "@/lib/app-context"
 import { analyzeInventory } from "@/lib/ai-utils"
+import { matchesStockFilter, type StockFilter } from "@/lib/inventory-stock-filter"
 import { ReportGenerator } from "@/components/report-generator"
 import type { UserRole, DeliveryPermit, SalesOrder } from "@/lib/types"
 import {
@@ -82,6 +83,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const [showAiInsights, setShowAiInsights] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [warehouseFilter, setWarehouseFilter] = useState<string>("all")
+  const [stockFilter, setStockFilter] = useState<StockFilter>("all")
   const [showPhotoDialog, setShowPhotoDialog] = useState(false)
   const [selectedProductForPhoto, setSelectedProductForPhoto] = useState<any>(null)
   const [productImages, setProductImages] = useState<any[]>([])
@@ -307,12 +309,16 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         if (!isUniqueRow && aggregatedMap.has(productKey)) {
           const existing = aggregatedMap.get(productKey)
           existing.quantity += item.quantity || 0
+          existing.stockValue += (item.quantity || 0) * (item.unitCost || 0)
+          // unit cost of the summed row = stock value / quantity (warehouses can hold the product at different costs)
+          if (existing.quantity > 0) existing.unitCost = existing.stockValue / existing.quantity
           existing.reorderPoint = Math.max(existing.reorderPoint || 0, item.reorderPoint || 0)
         } else {
           aggregatedMap.set(productKey, {
             ...item,
             id: isUniqueRow ? item.id : `aggregated-${productKey}`,
             quantity: item.quantity || 0,
+            stockValue: (item.quantity || 0) * (item.unitCost || 0),
             warehouseName: isUniqueRow ? (item.warehouseName || "Main Warehouse") : "All Warehouses",
             location: isUniqueRow ? (item.location || "Warehouse") : "All Warehouses",
           })
@@ -325,8 +331,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     // Exclude returned items from On Hand — they go into the Returns tab
     filtered = filtered.filter((item) => !item.isReturned)
 
+    // Stock filter last, so with "All Warehouses" it looks at the product's summed quantity
+    if (stockFilter !== "all") filtered = filtered.filter((item) => matchesStockFilter(item.quantity, stockFilter))
+
     return filtered
-  }, [inventory, categoryFilter, warehouseFilter, products, searchQuery])
+  }, [inventory, categoryFilter, warehouseFilter, stockFilter, products, searchQuery])
 
   const returnedItems = useMemo(() => {
     if (!inventory) return []
@@ -746,6 +755,18 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                   {wh.name}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={stockFilter} onValueChange={(v) => setStockFilter(v as StockFilter)}>
+            <SelectTrigger className="w-[180px]" aria-label={t("inventory.stock-filter")}>
+              <SelectValue placeholder={t("inventory.stock-filter")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("inventory.stock-all")}</SelectItem>
+              <SelectItem value="in-stock">{t("inventory.stock-in")}</SelectItem>
+              <SelectItem value="out-of-stock">{t("inventory.stock-out")}</SelectItem>
             </SelectContent>
           </Select>
         </div>

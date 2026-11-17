@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { checkIdempotency, completeIdempotency } from "@/lib/idempotency"
-import { acquirePoLock, releasePoLock, landedOverheadPerUnitByProduct, landedUnitCost } from "@/lib/goods-receiving"
+import { acquirePoLock, releasePoLock, landedOverheadPerUnitByProduct, landedUnitCost, applyLandedCostToOutsourced } from "@/lib/goods-receiving"
 
 // Batch 4E: costs can only be finalized for a PO that has been received (at least partly), once.
 const RECEIVED_STATUSES = ["received", "partially_received", "received_with_issues"]
@@ -304,6 +304,15 @@ export async function POST(request: Request) {
         landedOverheadPerUnitByProduct(
           itemUpdates.map((u) => ({ product_id: u.product_id, quantity: u.quantity, allocated_overhead: u.allocated_overhead })),
         ),
+        restoreStock,
+      )
+
+      // Outsourced items this PO stored in a warehouse take the landed cost per unit too (owner, 2026-11-17)
+      const landedById = new Map(itemUpdates.map((u) => [u.po_item_id, u.landed_cost]))
+      await applyLandedCostToOutsourced(
+        supabase,
+        po,
+        items.map((i: any) => ({ ...i, landed_cost: landedById.get(i.po_item_id) ?? i.landed_cost })),
         restoreStock,
       )
 

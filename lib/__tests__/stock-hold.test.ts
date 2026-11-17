@@ -423,6 +423,20 @@ test("GET /api/inventory: a stored outsourced item is on hold for its open order
   assert.equal(rows.find((r) => r.inventoryId === 11).onHold, 0)
 })
 
+test("GET /api/inventory: a stored outsourced item shows its cost and stock value (owner, 2026-11-17)", async () => {
+  mk({
+    sales_orders: [so(1, "accountant_approved")],
+    inventory: [{ ...held(9, 3, 4, "SO-T-1"), unit_cost: 880 }, { ...held(10, 3, 2, "SO-T-1"), unit_cost: "12.5" }, inv(4, 9, 1, 3)],
+  })
+  const rows = (await (await inventoryRoute.GET()).json()) as any[]
+  const r9 = rows.find((r) => r.inventoryId === 9)
+  assert.equal(r9.isOutsourced, true)
+  assert.equal(r9.unitCost, 880)
+  assert.equal(r9.totalValue, 3520)
+  assert.equal(rows.find((r) => r.inventoryId === 10).unitCost, 12.5, "a numeric string from the database is a number")
+  assert.equal(rows.find((r) => r.inventoryId === 10).totalValue, 25)
+})
+
 test("Sold tab: returned quantity is not sold; a line returned in full is not listed", () => {
   const src = require("node:fs").readFileSync(require("node:path").join(process.env.REPO_ROOT || process.cwd(), "components/modules/inventory-module.tsx"), "utf8")
   assert.match(src, /const sold = \(Number\(item\.quantity\) \|\| 0\) - returned\s+if \(sold <= 0\) return/)

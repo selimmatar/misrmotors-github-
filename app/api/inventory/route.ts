@@ -83,7 +83,9 @@ export async function GET() {
         available,
         // the open sales order a stored outsourced item is held for (null = not held)
         heldFor: storedFor,
-        unitCost: item.unit_cost ?? 0,
+        // outsourced rows too: the PO line's cost, the landed cost once the PO's cost is finalized (lib/goods-receiving.ts)
+        unitCost: Number(item.unit_cost) || 0,
+        totalValue: Math.round((Number(item.quantity) || 0) * (Number(item.unit_cost) || 0) * 100) / 100,
         reorderPoint: item.reorder_point || 5,
         location: item.location || "Warehouse - Main",
         lastUpdated: item.last_updated,
