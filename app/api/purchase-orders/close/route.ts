@@ -1,12 +1,15 @@
 // "Close PO & send to Accounts Payable" (owner request, 2026-11-11; several bills per PO 2026-11-17): makes the closing
 // bill for everything on the PO not billed yet ("bill received items" may have billed part of it already), except the
 // quantities marked "not coming", which are recorded on the PO lines. After it the PO is final (lib/po-bill.ts).
+// When nothing is left to bill (its bills for received items took everything) NO 0 EGP bill is made: the PO is only
+// marked closed in its history (owner request, 2026-11-18; lib/po-closed-marker.ts).
 //   body: { id, notComing?: [{ poItemId, quantity }], supplierInvoiceNumber?, invoiceDate? }
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { logPoEvent } from "@/lib/po-history"
-import { PO_CLOSABLE_STATUSES, billDetails, createBill, isMissingRelation, loadPoBilling, relinkUnlinkedCredits } from "@/lib/po-bill"
+import { PO_CLOSABLE_STATUSES, billDetails, closesWithoutBill, createBill, isMissingRelation, loadPoBilling, relinkUnlinkedCredits } from "@/lib/po-bill"
+import { PO_CLOSED_NO_BILL, writeCloseMarker } from "@/lib/po-closed-marker"
 
 export const dynamic = "force-dynamic"
 
@@ -29,6 +32,7 @@ export async function POST(request: Request) {
     }
     const billing = await loadPoBilling(db, po)
     if (billing.closing) return refuse(409, "PO_ALREADY_CLOSED", "This purchase order is already closed (it has a supplier bill)")
+    if (billing.closedWithoutBill) return refuse(409, "PO_ALREADY_CLOSED", "This purchase order is already closed")
     if (billing.bills.length === 0 && !(Number(po.total) > 0)) return refuse(409, "PO_TOTAL_ZERO", "The purchase order total is 0, so there is nothing to bill")
 
     // "Not coming": only what was neither received nor billed can be left out of the bill.
@@ -67,7 +71,29 @@ export async function POST(request: Request) {
       }
     }
     const fresh = await loadPoBilling(db, po)
-    const { error: billError, invoice } = await createBill(db, fresh, new Map(fresh.lines.map((l) => [l.poItemId, l.rest])), { final: true, ...details })
+    const rest = new Map(fresh.lines.map((l) => [l.poItemId, l.rest]))
+    const left = [...notComing].filter(([, q]) => q > 0)
+    const notComingNote = left.length ? `; not coming: ${left.map(([id, q]) => `${fresh.lines.find((l) => l.poItemId === id)?.name || id} x ${q}`).join(", ")}` : ""
+
+    // nothing left to bill: closed without a 0 bill; the marker event is what makes it closed, so it must be written
+    if (closesWithoutBill(fresh, rest)) {
+      try {
+        await writeCloseMarker(db, poId, {
+          event_type: "PO_CLOSED",
+          new_value: PO_CLOSED_NO_BILL,
+          userId: body?.userId,
+          notes: `${po.po_number} closed; nothing was left to bill (${fresh.bills.length} earlier bill${fresh.bills.length === 1 ? "" : "s"}), so no closing bill${notComingNote}`,
+        })
+      } catch (markError) {
+        for (const r of restore) await db.from("purchase_order_items").update({ quantity_not_coming: r.was }).eq("po_item_id", r.id)
+        console.error("Close PO: the closed marker could not be recorded", markError)
+        return refuse(500, "CLOSE_FAILED", "The purchase order could not be closed. It stays open; please try again.")
+      }
+      await relinkUnlinkedCredits(db, poId)
+      return NextResponse.json({ ok: true, noBill: true, invoiceNumber: null, amount: 0 })
+    }
+
+    const { error: billError, invoice } = await createBill(db, fresh, rest, { final: true, ...details })
     if (billError) {
       for (const r of restore) await db.from("purchase_order_items").update({ quantity_not_coming: r.was }).eq("po_item_id", r.id)
       console.error("Close PO: the supplier bill could not be made", billError)
@@ -75,7 +101,6 @@ export async function POST(request: Request) {
     }
     // supplier credits a reopen unlinked from the old bill point at this one again
     await relinkUnlinkedCredits(db, poId)
-    const left = [...notComing].filter(([, q]) => q > 0)
     await logPoEvent(db, poId, {
       event_type: "PO_CLOSED",
       new_value: invoice.invoice_number,
@@ -83,7 +108,7 @@ export async function POST(request: Request) {
       notes:
         `${po.po_number} closed and sent to Accounts Payable (final bill ${invoice.amount}` +
         `${fresh.bills.length > 0 ? `, bill ${fresh.bills.length + 1} of ${fresh.bills.length + 1}` : ""})` +
-        `${left.length ? `; not coming: ${left.map(([id, q]) => `${fresh.lines.find((l) => l.poItemId === id)?.name || id} x ${q}`).join(", ")}` : ""}`,
+        notComingNote,
     })
     return NextResponse.json({ ok: true, invoiceNumber: invoice.invoice_number, amount: invoice.amount })
   } catch (error) {

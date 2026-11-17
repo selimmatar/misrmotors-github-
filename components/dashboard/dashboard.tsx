@@ -47,6 +47,7 @@ import { WarehouseTransfersModule } from "@/components/modules/warehouse-transfe
 import { GoodsReceiptTrackingModule } from "@/components/modules/goods-receipt-tracking-module"
 import { MaintenanceInvoicesModule } from "@/components/modules/maintenance-invoices-module"
 import { OperationsManagementModule } from "@/components/modules/operations-management-module"
+import { MaintenanceQuickInvoiceModule } from "@/components/modules/maintenance-quick-invoice-module"
 import type { User } from "@/lib/types"
 
 interface DashboardProps {
@@ -94,6 +95,7 @@ type ModuleType =
   | "maintenance-invoices" // Added maintenance-invoices module type
   | "operations-management" // Added operations-management module type
   | "e-invoice-settings"
+  | "maintenance-quick-invoice"
 
 export function Dashboard({ user: account, onLogout }: DashboardProps) {
   // A person can hold several roles: the menu shows all their screens, and each screen opens with the role that owns it.
@@ -102,6 +104,7 @@ export function Dashboard({ user: account, onLogout }: DashboardProps) {
   // A person without the Dashboard screen (the accountant, since 2026-11-14) opens on their first screen instead.
   const [activeModule, setActiveModule] = useState<ModuleType>(() => {
     if (mainRole === "shipment") return "shipment"
+    if (mainRole === "maintenance") return "maintenance-quick-invoice"
     if (mainRole === "admin") return "user-management"
     const items = navItemsForRoles(roles)
     // approval screens hide themselves while nothing waits, so they are never the first screen
@@ -178,6 +181,8 @@ case "po-requests":
         return <AccountsReceivableModule userRole={user.role} />
       case "maintenance-invoices":
         return <MaintenanceInvoicesModule />
+      case "maintenance-quick-invoice":
+        return <MaintenanceQuickInvoiceModule />
       case "inventory":
         return <InventoryModule userRole={user.role} />
       case "inventory-audit":
@@ -239,6 +244,8 @@ case "po-requests":
         if (user.role === "shipment") {
           return <ShippingModule />
         }
+        // the maintenance role has one screen and no dashboard
+        if (user.role === "maintenance") return <MaintenanceQuickInvoiceModule />
         return <FinancialDashboard user={user} />
     }
   }

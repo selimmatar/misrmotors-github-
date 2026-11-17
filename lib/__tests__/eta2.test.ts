@@ -1516,6 +1516,7 @@ export const UNFILTERED_READERS: Record<string, string[]> = {
     "insert with the generated number",
     "rollback delete of an invoice just inserted, by id",
   ],
+  "lib/maintenance-quick-invoice.ts": ["sets the maintenance flag on the invoice it just created, by id"],
   "lib/sales-orders/on-approved.ts": [
     "down-payment invoice number is unique: a replaced one still holds it",
     "inserts the down-payment invoice",
