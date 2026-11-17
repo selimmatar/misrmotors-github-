@@ -17,6 +17,7 @@
 import { SUPPLIER_CREDIT_PAYMENT_METHOD, creditedInvoiceFields } from "./supplier-credit-apply"
 import { receivedByItem } from "./po-edit"
 import { closingBillNumber, closingBillOf, partialBillNo, partialBillNumber, sortBills } from "./po-bill-number"
+import { PO_CLOSED_NO_BILL, isClosedWithoutBill, writeCloseMarker } from "./po-closed-marker"
 
 type Db = any
 
@@ -43,9 +44,12 @@ export async function billsOf(db: Db, poId: number): Promise<any[]> {
   return data || []
 }
 
-/** True when the PO has its closing bill (it is final). Partial bills alone leave it open. */
+/**
+ * True when the PO is closed (final): it has its closing bill, or it was closed without one because its bills for
+ * received items already took everything (lib/po-closed-marker.ts). Partial bills alone leave it open.
+ */
 export async function isPoClosed(db: Db, po: { po_id: number; po_number?: string | null }): Promise<boolean> {
-  return !!closingBillOf(await billsOf(db, po.po_id), po.po_number)
+  return !!closingBillOf(await billsOf(db, po.po_id), po.po_number) || (await isClosedWithoutBill(db, po.po_id))
 }
 
 /** True when money has been paid on any of these bills (not counting what the bill itself took off). */
@@ -89,6 +93,10 @@ export interface PoBilling {
   /** oldest first */
   bills: any[]
   closing: any | null
+  /** closed with no closing bill: nothing was left to bill (lib/po-closed-marker.ts) */
+  closedWithoutBill: boolean
+  /** closed = the closing bill, or the no-bill close marker */
+  closed: boolean
   /** ap_invoice_lines exists (the 2026-11-17 migration is applied) */
   ready: boolean
   linesByBill: Map<number, any[]>
@@ -154,7 +162,8 @@ export async function loadPoBilling(db: Db, po: any): Promise<PoBilling> {
   const factor = subtotal > 0 ? num(po.total) / subtotal : 1
   const billedAmount = money(bills.reduce((s, b) => s + num(b.amount), 0))
   const billedPercent = closing ? 100 : num(po.total) > 0 ? Math.min(100, Math.round((billedAmount / num(po.total)) * 100)) : 0
-  return { po, items, bills, closing, ready, linesByBill, lines, factor, billedAmount, billedPercent }
+  const closedWithoutBill = !closing && (await isClosedWithoutBill(db, po.po_id))
+  return { po, items, bills, closing, closedWithoutBill, closed: !!closing || closedWithoutBill, ready, linesByBill, lines, factor, billedAmount, billedPercent }
 }
 
 /** Quantity billed so far per PO line (only lines with something billed). */
@@ -216,6 +225,28 @@ export interface BillOptions {
 }
 
 /**
+ * What a bill of these quantities (po_item_id -> quantity) comes to: the quantities x PO prices with the VAT pro-rated
+ * (billing.factor); a closing bill that takes everything left is the PO total less the earlier bills.
+ */
+export function billAmount(billing: PoBilling, qtyById: Map<number, number>, final: boolean): { amount: number; coversAll: boolean } {
+  const value = money(
+    billing.lines.reduce((s, line) => s + money(money(Math.max(0, qtyById.get(line.poItemId) || 0)) * line.unitPrice), 0),
+  )
+  // every line fully billed once this bill is made (nothing left out as "not coming")
+  const coversAll = billing.lines.every((l) => l.billed + (qtyById.get(l.poItemId) || 0) >= l.ordered - EPS)
+  const earlier = money(billing.bills.reduce((s, b) => s + num(b.amount), 0))
+  const amount = final && coversAll ? money(Math.max(0, num(billing.po.total) - earlier)) : money(value * billing.factor)
+  return { amount, coversAll }
+}
+
+/**
+ * True when closing with these quantities would make a 0 bill (everything was billed already, or what is left is all
+ * "not coming"): then no closing bill is made and the PO is only marked closed (lib/po-closed-marker.ts). The owner
+ * wants no 0-amount bills (2026-11-18).
+ */
+export const closesWithoutBill = (billing: PoBilling, qtyById: Map<number, number>) => billAmount(billing, qtyById, true).amount <= 0
+
+/**
  * Makes one bill of the PO for these quantities (po_item_id -> quantity) at the PO unit prices; the PO's VAT is
  * pro-rated by line value (billing.factor). A closing bill that takes everything left is the PO total less the earlier
  * bills, so the bills add up to the PO total exactly. Reserved credits / advances not used by earlier bills come off it.
@@ -239,11 +270,7 @@ export async function createBill(
       unit_price: line.unitPrice,
       total: money(qty * line.unitPrice),
     }))
-  const value = money(billRows.reduce((s, r) => s + r.total, 0))
-  // every line fully billed once this bill is made (nothing left out as "not coming")
-  const coversAll = billing.lines.every((l) => l.billed + (qtyById.get(l.poItemId) || 0) >= l.ordered - EPS)
-  const earlier = money(billing.bills.reduce((s, b) => s + num(b.amount), 0))
-  const amount = opts.final && coversAll ? money(Math.max(0, num(po.total) - earlier)) : money(value * billing.factor)
+  const { amount, coversAll } = billAmount(billing, qtyById, opts.final)
   // the one bill of the whole PO, as before 2026-11-17: possible without the bill-lines table
   const single = opts.final && billing.bills.length === 0 && coversAll
   if (!billing.ready && !single) {
@@ -371,8 +398,18 @@ export async function createPoBill(db: Db, po: any, opts: Omit<BillOptions, "fin
   } catch (e: any) {
     return { message: e.message }
   }
-  if (billing.closing) return null
-  const { error } = await createBill(db, billing, new Map(billing.lines.map((l) => [l.poItemId, l.rest])), { ...opts, final: true })
+  if (billing.closed) return null
+  const rest = new Map(billing.lines.map((l) => [l.poItemId, l.rest]))
+  // nothing left to bill after its bills for received items: closed without a 0 bill (owner request, 2026-11-18)
+  if (closesWithoutBill(billing, rest)) {
+    try {
+      await writeCloseMarker(db, po.po_id, { event_type: "PO_CLOSED", new_value: PO_CLOSED_NO_BILL, notes: `${po.po_number} closed; everything was already billed, so no closing bill` })
+      return null
+    } catch (e: any) {
+      return { message: e.message }
+    }
+  }
+  const { error } = await createBill(db, billing, rest, { ...opts, final: true })
   return error
 }
 

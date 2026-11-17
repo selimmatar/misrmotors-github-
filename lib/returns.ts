@@ -28,6 +28,7 @@ import { syncPoStatus } from "./po-edit"
 import { exchangeOnPo, type Pair, type Undo as PoUndo } from "./po-exchange"
 import { billHasPayments, billedByItem, billsOf, createPoBill, relinkCredits, removePoBills } from "./po-bill"
 import { closingBillOf } from "./po-bill-number"
+import { PO_CLOSED_NO_BILL, isClosedWithoutBill, writeCloseMarker } from "./po-closed-marker"
 import { undoMoves, type StockMove } from "./dp-stock"
 import { computeTotals } from "./print-totals"
 import { logPoEvent } from "./po-history"
@@ -1048,7 +1049,11 @@ async function decideReturnCredit(db: Db, inventoryId: number, input: any): Prom
     const line = must(await db.from("purchase_order_items").select("quantity").eq("po_item_id", receipt.poItemId).maybeSingle(), "purchase order line of the returned item")
     const billed = po && receipt.apInvoiceIds.length > 0 ? (await billedByItem(db, po)).get(receipt.poItemId) || 0 : 0
     const unbilled = Math.max(0, (Number(line?.quantity) || 0) - billed)
-    if (po && line && po.status !== "rejected" && !po.cost_finalized && unbilled > 0 && (billed === 0 || unbilled >= quantity)) {
+    // a PO closed without a closing bill (nothing was left to bill, 2026-11-18) is closed too: the credit stays
+    if (
+      po && line && po.status !== "rejected" && !po.cost_finalized && unbilled > 0 && (billed === 0 || unbilled >= quantity) &&
+      !(await isClosedWithoutBill(db, po.po_id))
+    ) {
       lowersPo = true
       lowerBy = Math.min(quantity, unbilled)
       amount = round2(lowerBy * unitCost)
@@ -1265,11 +1270,13 @@ async function exchangeFacts(db: Db, inventoryId: number) {
   // only the closing bill is taken off to reopen the PO; bills for received items stay (several bills, 2026-11-17)
   const closing = closingBillOf(await billsOf(db, po.po_id), po.po_number)
   const bills = closing ? [closing] : []
+  // closed without a closing bill (nothing was left to bill, 2026-11-18): reopened by clearing the marker only
+  const closedNoBill = !closing && (await isClosedWithoutBill(db, po.po_id))
   const paid = bills.length > 0 && (await billHasPayments(db, bills))
   const soItem = line.source_so_item_id
     ? must(await db.from("sales_order_items").select("so_item_id, so_id, product_id, outsourced_name, quantity, unit_price, item_type").eq("so_item_id", line.source_so_item_id).maybeSingle(), "load order line")
     : null
-  return { row, po, line, name, bills, paid, soItem, quantity: Math.min(Number(row.quantity) || 0, Number(line.quantity) || 0) }
+  return { row, po, line, name, bills, closedNoBill, paid, soItem, quantity: Math.min(Number(row.quantity) || 0, Number(line.quantity) || 0) }
 }
 
 /** What the exchange window shows (read-only). */
@@ -1288,7 +1295,7 @@ export async function previewReturnedExchange(db: Db, input: any): Promise<Workf
         unitCost: Number(f.line.unit_price) || 0,
         poId: f.po.po_id,
         poNumber: f.po.po_number,
-        closed: f.bills.length > 0,
+        closed: f.bills.length > 0 || f.closedNoBill,
         paid: f.paid,
         soItemId: f.soItem?.so_item_id ?? null,
         soLineName: f.soItem ? f.soItem.outsourced_name || f.name : null,
@@ -1317,7 +1324,7 @@ export async function exchangeReturnedItem(db: Db, input: any): Promise<Workflow
   const undo: PoUndo[] = []
   const moves: StockMove[] = []
   let claimedRow: any = null
-  let reopened: { po: any; unlinked: number[]; bill: any } | null = null
+  let reopened: { po: any; unlinked: number[]; bill: any; noBill?: boolean } | null = null
   try {
     const f: any = await exchangeFacts(db, inventoryId)
     if (f.error) return f.error
@@ -1344,6 +1351,15 @@ export async function exchangeReturnedItem(db: Db, input: any): Promise<Workflow
         notes: `${f.po.po_number} reopened to exchange a returned item`,
         userId: input?.userId,
       })
+    } else if (f.closedNoBill) {
+      await writeCloseMarker(db, f.po.po_id, {
+        event_type: "PO_REOPENED",
+        old_value: PO_CLOSED_NO_BILL,
+        new_value: JSON.stringify({ unlinkedCreditIds: [] }),
+        notes: `${f.po.po_number} reopened to exchange a returned item`,
+        userId: input?.userId,
+      })
+      reopened = { po: f.po, unlinked: [], bill: null, noBill: true }
     }
 
     // 3. The exchange on the PO, exactly as the PO's own "Exchange item" does it.
@@ -1398,7 +1414,13 @@ export async function exchangeReturnedItem(db: Db, input: any): Promise<Workflow
       }
     }
     if (moves.length > 0) await undoMoves(db, moves)
-    if (reopened) {
+    if (reopened?.noBill) {
+      try {
+        await writeCloseMarker(db, reopened.po.po_id, { event_type: "PO_CLOSED", new_value: PO_CLOSED_NO_BILL, notes: `${reopened.po.po_number} closed again after a failed exchange (no closing bill)` })
+      } catch (e) {
+        console.error("[returns] exchange: could not mark the PO closed again after a failure", errText(e))
+      }
+    } else if (reopened) {
       const billError = await createPoBill(db, reopened.po, { supplierInvoiceNumber: reopened.bill?.supplier_invoice_number ?? null, invoiceDate: reopened.bill?.invoice_date ?? null })
       if (billError) console.error("[returns] exchange: could not make the bill again after a failure", billError)
       else await relinkCredits(db, reopened.po.po_id, reopened.unlinked)

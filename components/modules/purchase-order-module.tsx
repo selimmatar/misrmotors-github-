@@ -1291,7 +1291,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   // Several bills per PO (2026-11-17): bills for received items (APINV-<po>-B<n>) leave the PO open.
   const poBills = (order: PurchaseOrder) =>
     sortBills((supplierInvoices || []).filter((inv: any) => String(inv.poId ?? inv.po_id ?? "") === String(order.id)) as any[])
-  const isClosedPO = (order: PurchaseOrder) => !!closingBillOf(poBills(order), order.poNumber)
+  // or closed without a closing bill because nothing was left to bill (no 0 bills, 2026-11-18)
+  const isClosedPO = (order: PurchaseOrder) => !!closingBillOf(poBills(order), order.poNumber) || !!order.closedWithoutBill
   const canEditPO = (order: PurchaseOrder) =>
     PO_EDITABLE_STATUSES.includes(order.status) && !isClosedPO(order) && !(order as any).costFinalized && canCreatePO
   const startEdit = (order: PurchaseOrder) => {

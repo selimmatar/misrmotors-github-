@@ -29,7 +29,7 @@ export async function GET(request: Request) {
       poId: po.po_id,
       poNumber: po.po_number,
       total: Number(po.total) || 0,
-      closed: !!b.closing,
+      closed: b.closed,
       ready: b.ready,
       factor: b.factor,
       billedAmount: b.billedAmount,
@@ -69,6 +69,7 @@ export async function POST(request: Request) {
     if (!PO_CLOSABLE_STATUSES.includes(String(po.status))) return refuse(409, "PO_NOT_BILLABLE", `A "${po.status}" purchase order cannot be billed`)
     const billing = await loadPoBilling(db, po)
     if (billing.closing) return refuse(409, "PO_CLOSED", "This purchase order is closed: it has its final supplier bill")
+    if (billing.closedWithoutBill) return refuse(409, "PO_CLOSED", "This purchase order is closed: reopen it to bill more")
     if (!billing.ready) {
       return refuse(409, "MIGRATION_PENDING", "Bills for part of a purchase order need a database update that is not applied yet. Close the PO to bill all of it, or ask the administrator.")
     }
