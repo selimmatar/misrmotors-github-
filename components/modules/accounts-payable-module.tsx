@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { PageHeader } from "@/components/erp/page-header"
-import { SupplierEInvoices } from "@/components/accounting/supplier-einvoices"
+import { ApPortalComparison } from "@/components/accounting/ap-portal-comparison"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { Money } from "@/components/erp/money"
 import { StatusBadge } from "@/components/erp/status-badge"
@@ -136,6 +136,8 @@ export function AccountsPayableModule() {
   // Late / due-soon from the invoice's due dates (same calculation as the Reports page): late from the day after.
   const dueSummary = (invoice: SupplierInvoice) => summarizeDue(apDueSchedule(invoice as any, getPO(invoice.poId) as any), todayYmd())
 
+  // "Invoices" (payments) or "Portal comparison" (the ERP invoices against the tax portal)
+  const [view, setView] = useState<"invoices" | "portal">("invoices")
   const [listFilter, setListFilter] = useState<"unpaid" | "overdue" | "paid" | "all">("unpaid")
   const [listSearch, setListSearch] = useState("")
   const inFilter = (invoice: SupplierInvoice, f: "unpaid" | "overdue" | "paid" | "all") => {
@@ -777,6 +779,25 @@ export function AccountsPayableModule() {
     <div className="space-y-6">
       <PageHeader group={t("group.finance")} title={t("ap.title")} />
 
+      <div className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label={t("ap.title")}>
+        {(["invoices", "portal"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            onClick={() => setView(v)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${view === v ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {t(v === "invoices" ? "eta.apl-tab-invoices" : "eta.apl-tab-portal")}
+          </button>
+        ))}
+      </div>
+
+      {view === "portal" && <ApPortalComparison />}
+
+      {view === "invoices" && (
+      <>
       {/* Summary tiles */}
       <KpiGrid>
         <KpiTile
@@ -908,6 +929,8 @@ export function AccountsPayableModule() {
         />
         </div>
       </section>
+      </>
+      )}
 
       {/* Payment Schedule Dialog */}
       <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
@@ -1654,8 +1677,6 @@ export function AccountsPayableModule() {
         </DialogContent>
       </Dialog>
 
-      {/* Supplier e-invoices from the tax portal, compared with these invoices (read-only) */}
-      <SupplierEInvoices />
     </div>
   )
 }
