@@ -3149,3 +3149,41 @@ test("F54g. screen wired: Accounts Payable shows Supplier e-invoices; texts in E
   for (const k of ["matched", "amount_differs", "missing_in_erp", "unknown_supplier"]) keys.push(`eta.sup-status-${k}`)
   for (const k of keys) assert.equal(i18n.split(`"${k}":`).length - 1, 2, `${k} in EN and AR`)
 })
+
+// ---- F55: "Not on the portal - make it sendable" ----
+import { makeSendable } from "../eta/make-sendable"
+
+test("F55. make sendable: moves an old invoice's creation to now, removes the manual mark, records it; refusals", async () => {
+  const goLive = "2026-11-16T18:01:15+02:00"
+  const db = new FakeDb({
+    company_settings: [{ setting_key: "eta_go_live_at", setting_value: goLive }],
+    accounts_receivable: [
+      { invoice_id: 4, invoice_number: "10524", status: "pending", created_at: "2026-11-15T15:05:30.655" },
+      { invoice_id: 5, invoice_number: "10523", status: "pending", created_at: "2026-11-15T15:23:47.636" },
+      { invoice_id: 6, invoice_number: "R1", status: "replaced", created_at: "2026-11-15T10:00:00" },
+      { invoice_id: 7, invoice_number: "S1", status: "pending", created_at: "2026-11-15T10:00:00" },
+    ],
+    eta_documents: [
+      { doc_id: 1, invoice_id: 5, document_type: "I", environment: "real", status: "manual", version: 1 },
+      { doc_id: 2, invoice_id: 7, document_type: "I", environment: "real", status: "valid", version: 1 },
+    ],
+    workflow_events: [],
+    users: [{ user_id: 6 }],
+  } as any)
+  const now = new Date("2026-11-17T09:00:00Z")
+  assert.deepEqual(await makeSendable(db, 4, 6, now), { ok: true })
+  assert.equal(db.tables.accounts_receivable.find((r: any) => r.invoice_id === 4)?.created_at, now.toISOString())
+  assert.deepEqual(await makeSendable(db, 5, 6, now), { ok: true })
+  assert.equal(db.tables.eta_documents.some((d: any) => d.invoice_id === 5), false, "manual mark removed")
+  assert.equal(db.tables.workflow_events.filter((e: any) => e.event_type === "ETA_MADE_SENDABLE").length, 2)
+  assert.equal(db.tables.workflow_events[0].performed_by, 6)
+  assert.equal(((await makeSendable(db, 6, 6, now)) as any).code, "REPLACED")
+  assert.equal(((await makeSendable(db, 7, 6, now)) as any).code, "ETA_LIVE")
+  assert.equal(((await makeSendable(db, 99, 6, now)) as any).code, "NOT_FOUND")
+  const noGoLive = new FakeDb({ company_settings: [], accounts_receivable: [{ invoice_id: 1, created_at: "2026-11-15T10:00:00" }] } as any)
+  assert.equal(((await makeSendable(noGoLive, 1, 6, now)) as any).code, "NO_GO_LIVE")
+  const rule = ruleFor("/api/eta/make-sendable")!
+  for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, "POST", [role] as any), true, role)
+  assert.equal(allows(rule, "POST", ["sales-rep"] as any), false)
+  assert.match(readFileSync(join(process.env.REPO_ROOT || process.cwd(), "components/accounting/eta-preview-dialog.tsx"), "utf8"), /\/api\/eta\/make-sendable/)
+})

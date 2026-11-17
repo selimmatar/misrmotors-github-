@@ -370,6 +370,7 @@ export function EtaPreviewDialog({
   const [loading, setLoading] = useState(true)
   const [etaUuid, setEtaUuid] = useState("")
   const [marking, setMarking] = useState(false)
+  const [makingSendable, setMakingSendable] = useState(false)
 
   const load = useCallback(async () => {
     setError(null)
@@ -499,6 +500,32 @@ export function EtaPreviewDialog({
                     <bdi className="font-mono break-all">{preview.manualEtaUuid}</bdi>
                   </p>
                 )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={makingSendable}
+                  onClick={async () => {
+                    if (!window.confirm(t("eta.make-sendable-confirm"))) return
+                    setMakingSendable(true)
+                    try {
+                      const res = await fetch("/api/eta/make-sendable", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ invoiceId: Number(invoiceId) }),
+                      })
+                      if (!res.ok) throw new Error(await readError(res, t("message.error")))
+                      toast({ title: t("eta.make-sendable-done") })
+                      await load()
+                      onChanged?.()
+                    } catch (e) {
+                      toast({ title: t("message.error"), description: e instanceof Error ? e.message : String(e), variant: "destructive" })
+                    } finally {
+                      setMakingSendable(false)
+                    }
+                  }}
+                >
+                  {t("eta.make-sendable")}
+                </Button>
               </div>
             )}
 
