@@ -55,6 +55,8 @@ interface EditItem {
   returnedQuantity?: number
   /** lowest quantity the order may be edited to: what the customer keeps (delivered - returned) */
   minQuantity?: number
+  /** a new line taken from free stored stock (lib/outsourced-hold.ts): the inventory row picked */
+  fromInventoryId?: string
 }
 
 interface EditApprovedOrderDialogProps {
@@ -225,10 +227,28 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     setItems((prev) => prev.filter((item) => item.key !== row.key))
   }
 
+  // Free stored outsourced items in any warehouse (not held by an order line) can be taken like catalogue stock
+  const freeStored = useMemo(
+    () => (inventory || []).filter((inv: any) => inv.isOutsourced && !inv.productId && (Number(inv.available) || 0) > 0),
+    [inventory],
+  )
+  const storedById = (id: string | undefined) => freeStored.find((inv: any) => String(inv.inventoryId ?? inv.id) === String(id))
+
   const handleSelectStockProduct = (key: string, productId: string) => {
+    if (productId.startsWith("stored-")) {
+      const stored: any = storedById(productId.slice("stored-".length))
+      updateItem(key, {
+        productId: "",
+        fromInventoryId: productId.slice("stored-".length),
+        productName: stored?.productName || "",
+        unitPrice: Number(stored?.unitCost) || 0,
+      })
+      return
+    }
     const product = products.find((p) => p.id === productId)
     updateItem(key, {
       productId,
+      fromInventoryId: undefined,
       productName: product?.productName || "",
       unitPrice: product?.unitPrice || 0,
     })
@@ -262,7 +282,10 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     const invalidItem = items.find((item) => {
       // a delivered line whose goods were all returned may drop to 0 (it stays on the order as history)
       const minQty = item.onDeliveryPermit ? item.minQuantity || 0 : 1
-      if (item.itemType === "stock") return !item.productId || item.quantity < minQty || item.unitPrice < 0
+      if (item.itemType === "stock") {
+        const storedLimit = item.fromInventoryId ? Number((storedById(item.fromInventoryId) as any)?.available) || 0 : null
+        return (!item.productId && !item.fromInventoryId) || item.quantity < minQty || item.unitPrice < 0 || (storedLimit !== null && item.quantity > storedLimit)
+      }
       return !item.productName.trim() || item.quantity < minQty || item.unitPrice < 0
     })
     if (invalidItem) {
@@ -296,6 +319,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       outsourced_unit: item.outsourcedUnit,
       supplierId: item.itemType === "outsourced" ? item.supplierId : "",
       supplierName: item.itemType === "outsourced" ? item.supplierName : "",
+      // taken from stored stock: reserved by the server (app/api/sales-orders PUT)
+      ...(item.itemType === "stock" && item.fromInventoryId ? { fromInventoryId: item.fromInventoryId, itemCategory: item.itemCategory } : {}),
     }))
 
     setSaving(true)
@@ -663,7 +688,12 @@ ${renderTotalsBlock(printTotals)}
               <div className="space-y-3">
                 {items.map((item) => {
                   const poStatus = item.id ? itemPoStatus[item.id] : undefined
-                  const stockLimit = item.itemType === "stock" ? getAvailableStock(item.productId) : null
+                  const stockLimit =
+                    item.itemType !== "stock"
+                      ? null
+                      : item.fromInventoryId
+                      ? Number((storedById(item.fromInventoryId) as any)?.available) || 0
+                      : getAvailableStock(item.productId)
                   // On a delivery permit (and no return): the line is locked; extra quantity goes on a new line.
                   const locked = isLineLocked(item)
                   // Everything that went out on a permit came back (returned / refused): the line is free again,
@@ -684,10 +714,20 @@ ${renderTotalsBlock(printTotals)}
                         <div className="col-span-2 lg:col-span-6 space-y-1">
                           <Label className="text-xs">{t("field.product")}</Label>
                           <ProductSearchCombobox
-                            products={products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku }))}
-                            inventory={aggregatedInventory}
+                            products={[
+                              ...products.map((p) => ({ id: p.id, productName: p.productName, sku: p.sku })),
+                              ...freeStored.map((inv: any) => ({
+                                id: `stored-${inv.inventoryId ?? inv.id}`,
+                                productName: fill(t("so.stored-item-label"), { name: inv.productName, cost: formatCurrency(Number(inv.unitCost) || 0) }),
+                                sku: "",
+                              })),
+                            ]}
+                            inventory={[
+                              ...aggregatedInventory,
+                              ...freeStored.map((inv: any) => ({ productId: `stored-${inv.inventoryId ?? inv.id}`, quantity: Number(inv.available) || 0 })),
+                            ]}
                             warehouseId="all"
-                            value={item.productId || undefined}
+                            value={item.fromInventoryId ? `stored-${item.fromInventoryId}` : item.productId || undefined}
                             onSelect={(productId) => handleSelectStockProduct(item.key, productId)}
                           />
                           {stockLimit !== null && (

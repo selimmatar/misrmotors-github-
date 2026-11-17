@@ -758,9 +758,9 @@ export async function outsourcedLabels(db: Db, poNumber: string, items: PoItem[]
 }
 
 /**
- * An outsourced line received into a chosen warehouse gets its own inventory row there, on hold for its sales order
- * (so_number; the hold is shown by app/api/inventory and ends when the order's delivery permit is approved, see
- * lib/outsourced-stock.ts). Its unit_cost is the PO line's cost (outsourcedUnitCost: the landed cost when the PO's cost
+ * An outsourced line received into a chosen warehouse gets its own inventory row there. It is free stock (owner,
+ * 2026-11-17, lib/outsourced-hold.ts): any sales order can take it; its own order (so_number) still delivers it by name
+ * (lib/dp-stock.ts). Without a warehouse nothing is stored: it is Pending for the order (lib/outsourced-pending.ts). Its unit_cost is the PO line's cost (outsourcedUnitCost: the landed cost when the PO's cost
  * is already finalized, else the unit price; a later finalize updates it, see applyLandedCostToOutsourced).
  * The row is named like the sales-order line so the delivery permit (which copies the SO line name) finds it.
  */

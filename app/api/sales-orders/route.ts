@@ -5,7 +5,8 @@ import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { checkSoStock, loadAvailability } from "@/lib/stock-hold"
-import { checkStoredPicks, reserveStoredPicks, type StoredPick } from "@/lib/outsourced-hold"
+import { checkStoredPicks, fromStockLineFields, loadStoredRows, planEditPicks, reserveStoredPicks, type Reservation, type StoredPick } from "@/lib/outsourced-hold"
+import { parseFromStock } from "@/lib/from-stock-line"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
 import { correctionPermitUpdates, markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit, type PermitLineUpdate } from "@/lib/so-edit"
 import { refreshSoFulfilment } from "@/lib/goods-receiving"
@@ -478,6 +479,21 @@ export async function POST(request: Request) {
 
 
     if (items && items.length > 0) {
+      // Reserve the stored items first (a whole row moves to the order, a part is split off), so each line can name
+      // the row reserved for it; undone (with the order) when the reservation or the lines fail.
+      let reservation: Reservation | null = null
+      if (storedPicks.length > 0) {
+        try {
+          reservation = await reserveStoredPicks(supabase, order.so_number, storedPicks, storedCheck.rows)
+        } catch (reserveError: any) {
+          console.error("Sales Orders POST: could not reserve stored items", reserveError?.message || reserveError)
+          await supabase.from("sales_orders").delete().eq("so_id", order.so_id)
+          return Response.json(
+            { error: "A stored item on this order was changed by someone else. Nothing was saved; please try again.", code: "STORED_ITEM_CHANGED" },
+            { status: 409 },
+          )
+        }
+      }
       const itemsWithSoId = items.map((item: any) => {
         const hasProductId = item.productId && item.productId !== ""
         const isOutsourced = item.itemCategory === "OUTSOURCED" || !hasProductId
@@ -509,16 +525,12 @@ export async function POST(request: Request) {
           supplier_id: item.supplierId ? Number(item.supplierId) : null,
           cost_estimate: isOutsourced ? item.costEstimate ?? null : null,
         }
-        const stored = storedCheck.rows.get(Number(item.fromInventoryId))
-        if (stored && item.fromInventoryId !== undefined && item.fromInventoryId !== null && item.fromInventoryId !== "") {
-          // Taken from a stored outsourced item: named exactly like it (the hold and the delivery permit match by name),
-          // already in hand (received), costed at the item's cost.
-          row.product_id = null
-          row.item_type = "outsourced"
-          row.outsourced_name = stored.outsourced_name
-          row.outsourced_description = `From stock (inventory #${stored.inventory_id})`
-          row.cost_estimate = Number(stored.unit_cost) || 0
-          row.fulfilled_at = new Date().toISOString()
+        const picked = item.fromInventoryId !== undefined && item.fromInventoryId !== null && item.fromInventoryId !== "" ? Number(item.fromInventoryId) : null
+        const stored = picked !== null ? storedCheck.rows.get(picked) : undefined
+        if (stored && reservation) {
+          // Taken from stored stock: named like the item (the delivery permit matches by name), already in hand,
+          // costed at the item's cost, and pointing at the row reserved for it (lib/from-stock-line.ts).
+          Object.assign(row, fromStockLineFields(stored, reservation.reserved.get(picked!) ?? picked!))
         }
         return row
       })
@@ -527,21 +539,11 @@ export async function POST(request: Request) {
       const { error: itemsError } = await supabase.from("sales_order_items").insert(itemsWithSoId)
 
       if (itemsError) {
-        throw itemsError
-      }
-
-      if (storedPicks.length > 0) {
-        try {
-          await reserveStoredPicks(supabase, order.so_number, storedPicks, storedCheck.rows)
-        } catch (reserveError: any) {
-          console.error("Sales Orders POST: could not reserve stored items", reserveError?.message || reserveError)
-          await supabase.from("sales_order_items").delete().eq("so_id", order.so_id)
+        if (reservation) {
+          await reservation.undo()
           await supabase.from("sales_orders").delete().eq("so_id", order.so_id)
-          return Response.json(
-            { error: "A stored item on this order was changed by someone else. Nothing was saved; please try again.", code: "STORED_ITEM_CHANGED" },
-            { status: 409 },
-          )
         }
+        throw itemsError
       }
     }
 
@@ -763,6 +765,33 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: `Not enough stock. ${list}`, code: "INSUFFICIENT_STOCK", shortages }, { status: 409 })
     }
 
+    // Lines taken from stored stock on an edit (owner, 2026-11-17; lib/outsourced-hold.ts planEditPicks): checked here,
+    // before anything is written; reserved right before the order is saved and undone if it is not.
+    let savedLines: any[] = []
+    let editPicks: StoredPick[] = []
+    let editReuse = new Map<number, string>()
+    let editCheckRows = new Map<number, any>()
+    let pickedRows = new Map<number, any>()
+    if (items) {
+      const { data: savedRows, error: savedError } = await supabase
+        .from("sales_order_items")
+        .select("so_item_id, quantity, outsourced_name, outsourced_description")
+        .eq("so_id", numericId)
+      if (savedError) return NextResponse.json({ error: "Could not read the order lines. Nothing was changed." }, { status: 500 })
+      savedLines = savedRows || []
+      const plan = planEditPicks(savedLines, items)
+      if (!plan.ok) return NextResponse.json({ error: plan.error, code: plan.code }, { status: plan.status })
+      const check = await checkStoredPicks(supabase, plan.picks)
+      if (!check.ok) return NextResponse.json({ error: check.error, code: check.code }, { status: check.status })
+      editPicks = plan.picks
+      editReuse = plan.reuse
+      editCheckRows = check.rows
+      pickedRows = await loadStoredRows(
+        supabase,
+        items.map((i: any) => (i.fromInventoryId === undefined || i.fromInventoryId === null || i.fromInventoryId === "" ? 0 : Number(i.fromInventoryId))),
+      )
+    }
+
 
     // A customer corrected during an open correction (P15): the order's delivery permits follow it, so the records
     // agree. Written BEFORE the order: if the permits can't move, nothing is changed; if the order then fails, they move back.
@@ -806,12 +835,34 @@ export async function PUT(request: Request) {
       }
     }
 
+    let editReservation: Reservation | null = null
+    if (editPicks.length > 0) {
+      const { data: soRow } = await supabase.from("sales_orders").select("so_number").eq("so_id", numericId).maybeSingle()
+      try {
+        if (!soRow?.so_number) throw new Error("order not found")
+        editReservation = await reserveStoredPicks(supabase, soRow.so_number, editPicks, editCheckRows)
+      } catch (reserveError: any) {
+        console.error("Sales Orders PUT: could not reserve stored items", reserveError?.message || reserveError)
+        const notBack = await putPermitsBack()
+        return NextResponse.json(
+          {
+            error: notBack.length
+              ? "A stored item on this order was changed by someone else, and the delivery permits could not all be put back. Contact an administrator."
+              : "A stored item on this order was changed by someone else. Nothing was saved; please try again.",
+            code: "STORED_ITEM_CHANGED",
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     const { data: order, error: orderError } = await supabase
       .from("sales_orders")
       .update(dbUpdates)
       .eq("so_id", numericId)
       .select()
       .maybeSingle()
+    if ((orderError || !order || !order.so_id) && editReservation) await editReservation.undo()
 
     // the order was not saved: a permit that could not move back leaves the edit only partly undone - say so
     const partlyUndone = (failed: number[]) =>
@@ -864,7 +915,8 @@ export async function PUT(request: Request) {
         await supabase.from("sales_order_items").delete().in("so_item_id", idsToDelete)
       }
 
-      for (const item of items) {
+      for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+        const item = items[itemIndex]
         const hasProductId = (item.productId || item.product_id) && (item.productId || item.product_id) !== ""
         const isOutsourced =
           item.itemCategory === "OUTSOURCED" ||
@@ -901,6 +953,24 @@ export async function PUT(request: Request) {
         if (item.costEstimate !== undefined) itemRow.cost_estimate = isOutsourced ? item.costEstimate : null
 
         const existingId = item.id ?? item.so_item_id ?? item.soItemId
+        // A saved line taken from stock keeps its name and marker (the reservation follows the line); a new one names
+        // the row reserved for it now, or the one its re-sent twin had (lib/outsourced-hold.ts planEditPicks).
+        const savedLine = savedLines.find((l: any) => Number(l.so_item_id) === Number(existingId))
+        if (savedLine && parseFromStock(savedLine.outsourced_description)) {
+          Object.assign(itemRow, {
+            product_id: null,
+            item_type: "outsourced",
+            outsourced_name: savedLine.outsourced_name,
+            outsourced_description: savedLine.outsourced_description,
+          })
+          delete itemRow.cost_estimate
+        } else if (!savedLine && item.fromInventoryId !== undefined && item.fromInventoryId !== null && item.fromInventoryId !== "") {
+          const picked = Number(item.fromInventoryId)
+          const reusedMarker = editReuse.get(itemIndex)
+          const reservedId = reusedMarker ? parseFromStock(reusedMarker)!.reservedId : editReservation?.reserved.get(picked)
+          const row = pickedRows.get(picked) || editCheckRows.get(picked)
+          if (reservedId !== undefined && row) Object.assign(itemRow, fromStockLineFields(row, reservedId))
+        }
         if (existingId !== undefined && existingId !== null && existingId !== "" && existingIds.has(Number(existingId))) {
           await supabase.from("sales_order_items").update(itemRow).eq("so_item_id", Number(existingId))
         } else {

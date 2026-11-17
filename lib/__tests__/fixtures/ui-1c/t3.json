@@ -8,6 +8,7 @@
           "\"/api/categories",
           "\"/api/categories",
           "\"/api/delivery-permits",
+          "\"/api/inventory/pending",
           "\"/api/inventory/remove-returned",
           "\"/api/inventory/restock-returned",
           "\"/api/product-images",
@@ -34,7 +35,7 @@
           "id=\"warehouse-location\"",
           "id=\"warehouse-name\""
         ],
-        "fetch": 10,
+        "fetch": 11,
         "iso": 0,
         "t": 86,
         "onClick": 22

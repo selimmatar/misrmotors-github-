@@ -3,7 +3,7 @@ import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { loadHoldSplit } from "@/lib/stock-hold"
-import { loadOutsourcedHolds, isStoredOutsourced, type OutsourcedHold } from "@/lib/outsourced-hold"
+import { loadOutsourcedHolds, isStoredOutsourced, isWarehouseOutsourced, type OutsourcedHold } from "@/lib/outsourced-hold"
 
 export const dynamic = "force-dynamic"
 
@@ -54,9 +54,8 @@ export async function GET() {
       }
     }
 
-    // An outsourced item stored for a sales order (lib/goods-receiving.ts storeOutsourced) is on hold for that order
-    // up to what the order's matching outsourced lines still need (lib/outsourced-hold.ts, owner 2026-11-17); the rest,
-    // and everything once the order is cancelled, rejected or delivered, is free stock any sales order can take.
+    // An outsourced item in a warehouse (received into it, or an outsourced return put there) is free stock; only a
+    // sales order line that took it from stock holds it (lib/outsourced-hold.ts, owner 2026-11-17).
     let outsourcedHolds: Map<number, OutsourcedHold> | null = null
     try {
       outsourcedHolds = await loadOutsourcedHolds(createAdminClient(), result as any[])
@@ -67,13 +66,14 @@ export async function GET() {
     const transformed = result.map((item: any) => {
       const sellable = !!item.product_id && !item.is_returned
       const stored = isStoredOutsourced(item)
+      const inWarehouse = isWarehouseOutsourced(item)
       const storedHold = stored && outsourcedHolds ? outsourcedHolds.get(item.inventory_id) || null : null
       const storedFor = storedHold && storedHold.held > 0 && storedHold.soNumber ? { soNumber: storedHold.soNumber, customerName: storedHold.customerName } : null
       const onHold = stored
         ? outsourcedHolds ? storedHold?.held || 0 : null
         : heldByProduct && sellable ? heldByProduct.get(item.product_id) || 0 : heldByProduct ? 0 : null
       const available = stored
-        ? outsourcedHolds ? Math.max(0, (Number(item.quantity) || 0) - (storedHold?.held || 0)) : null
+        ? !inWarehouse ? 0 : outsourcedHolds ? Math.max(0, (Number(item.quantity) || 0) - (storedHold?.held || 0)) : null
         : heldByProduct && sellable ? Math.max(0, (onHandByProduct.get(item.product_id) || 0) - (onHold || 0)) : heldByProduct ? 0 : null
       const isOutsourced = item.is_outsourced || !item.product_id
       const productName = isOutsourced
@@ -94,7 +94,8 @@ export async function GET() {
         // outsourced rows too: the PO line's cost, the landed cost once the PO's cost is finalized (lib/goods-receiving.ts)
         unitCost: Number(item.unit_cost) || 0,
         totalValue: Math.round((Number(item.quantity) || 0) * (Number(item.unit_cost) || 0) * 100) / 100,
-        reorderPoint: item.reorder_point || 5,
+        // an outsourced item is not reordered: no reorder point (it is never "low stock")
+        reorderPoint: stored ? Number(item.reorder_point) || 0 : item.reorder_point || 5,
         location: item.location || "Warehouse - Main",
         lastUpdated: item.last_updated,
         warehouseId: item.warehouse_id,

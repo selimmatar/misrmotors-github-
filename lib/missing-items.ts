@@ -31,6 +31,7 @@
 //                     over the line's non-rejected PO lines and labelled "PO Price" on the report
 //                  5) null -> printed as n/a. The selling price is never used.
 import { DP_DELIVERED_STATUSES } from "./delivery-status"
+import { isFromStockLine } from "./from-stock-line"
 import { HOLDING_SO_STATUSES, loadHeldByProduct } from "./stock-hold"
 
 /** The one permit status that means "left the warehouse, not yet signed for". */
@@ -272,9 +273,12 @@ export function buildMissingItems(input: MissingItemsInput): MissingItemRow[] {
       stockLeft.set(line.product_id, have - inStock)
     }
     const onHold = Boolean(input.holding) && inStock > 0
-    const received = Math.max(receivedBySo.get(line.so_item_id) || 0, inStock)
+    // a line taken from a stored item (lib/from-stock-line.ts) is in hand: it never needs a purchase order
+    const fromStock = isOutsourced && isFromStockLine(line)
+    const received = fromStock ? ordered : Math.max(receivedBySo.get(line.so_item_id) || 0, inStock)
     let procurementStatus: string
-    if (!isOutsourced && allPoLines.length === 0) {
+    if (fromStock && allPoLines.length === 0) procurementStatus = "Taken from stock — No PO Needed"
+    else if (!isOutsourced && allPoLines.length === 0) {
       const short = toDeliver - inStock
       if (inStock > 0 && short <= 0) procurementStatus = onHold ? "On Hold — In Stock" : "In Stock — No PO Needed"
       else if (inStock > 0) procurementStatus = `${onHold ? "On Hold" : "In stock"} ${inStock}/${toDeliver} — Needs PO for ${short}`
