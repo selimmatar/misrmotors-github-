@@ -920,12 +920,16 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
   // Added state for searchTerm and setShowReportGenerator
   const [searchTerm, setSearchTerm] = useState("")
   const [showReportGenerator, setShowReportGenerator] = useState(false)
+  // Filter by the status the list shows (owner request, 2026-11-18): "ALL", or one of the statuses present
+  const [listStatusFilter, setListStatusFilter] = useState<string>("ALL")
+  const listStatuses = [...new Set(salesOrders.map((order) => String(getSODeliveryStatus(order))))]
 
-  // Filtered orders based on search term - this redeclares filteredOrders, fix this linting issue.
+  // Filtered orders based on search term and the status filter - this redeclares filteredOrders, fix this linting issue.
   const filteredOrdersBySearch = salesOrders.filter(
     (order) =>
-      order.soNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      getCustomerName(order.customerId).toLowerCase().includes(searchTerm.toLowerCase()),
+      (order.soNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        getCustomerName(order.customerId).toLowerCase().includes(searchTerm.toLowerCase())) &&
+      (listStatusFilter === "ALL" || String(getSODeliveryStatus(order)) === listStatusFilter),
   )
 
   // Helper function to get filtered orders, used for tabs
@@ -1867,15 +1871,30 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
               <CardTitle>{t("so.list")}</CardTitle>
               <CardDescription>{t("so.list-description")}</CardDescription>
             </div>
-            {/* Added search input and translated placeholder */}
-            <div className="relative w-64">
-              <Search className="absolute start-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t("action.search")}
-                className="ps-8"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+            {/* Added search input and translated placeholder; the status filter works together with it */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={listStatuses.includes(listStatusFilter) ? listStatusFilter : "ALL"} onValueChange={setListStatusFilter}>
+                <SelectTrigger className="w-48" aria-label={t("so.filter-status")}>
+                  <SelectValue placeholder={t("so.all-statuses")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">{t("so.all-statuses")}</SelectItem>
+                  {listStatuses.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {t(`so.status.${status}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="relative w-64">
+                <Search className="absolute start-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={t("action.search")}
+                  className="ps-8"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
             </div>
           </div>
         </CardHeader>

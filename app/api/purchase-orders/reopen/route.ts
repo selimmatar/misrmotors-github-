@@ -3,12 +3,15 @@
 // bill for received items (the PO is open already) only that bill goes ("Remove last bill").
 // The bill is removed with only the credit / advance rows it wrote, its lines and its unpaid schedule; the credits and
 // advances stay reserved on the PO and come off the next bill.
+// A PO closed WITHOUT a closing bill (nothing was left to bill, 2026-11-18; lib/po-closed-marker.ts) is reopened by
+// clearing that marker only: no bill is removed. "Remove last bill" on the open PO then works as before.
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { logPoEvent } from "@/lib/po-history"
 import { billHasPayments, billsOf, lastBillOf, removePoBills } from "@/lib/po-bill"
-import { isPartialBill } from "@/lib/po-bill-number"
+import { closingBillOf, isPartialBill } from "@/lib/po-bill-number"
+import { PO_CLOSED_NO_BILL, isClosedWithoutBill, writeCloseMarker } from "@/lib/po-closed-marker"
 
 export const dynamic = "force-dynamic"
 
@@ -21,7 +24,18 @@ export async function POST(request: Request) {
     const { data: po, error } = await db.from("purchase_orders").select("po_id, po_number, status").eq("po_id", poId).maybeSingle()
     if (error) throw error
     if (!po) return NextResponse.json({ error: "Purchase order not found", code: "NOT_FOUND" }, { status: 404 })
-    const last = lastBillOf(await billsOf(db, poId))
+    const all = await billsOf(db, poId)
+    if (!closingBillOf(all, po.po_number) && (await isClosedWithoutBill(db, poId))) {
+      await writeCloseMarker(db, poId, {
+        event_type: "PO_REOPENED",
+        old_value: PO_CLOSED_NO_BILL,
+        new_value: JSON.stringify({ unlinkedCreditIds: [] }),
+        userId: body?.userId,
+        notes: `${po.po_number} reopened (it was closed without a closing bill; no bill removed)`,
+      })
+      return NextResponse.json({ ok: true, removed: null, reopened: true })
+    }
+    const last = lastBillOf(all)
     if (!last) return NextResponse.json({ error: "This purchase order is already open", code: "PO_ALREADY_OPEN" }, { status: 409 })
     if (await billHasPayments(db, [last])) {
       return NextResponse.json(

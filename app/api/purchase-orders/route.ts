@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { isPoAutoApprove } from "@/lib/workflow-switch"
+import { closedWithoutBillIds } from "@/lib/po-closed-marker"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
@@ -97,6 +98,14 @@ export async function GET() {
         }
       }
 
+      // POs closed without a closing bill (nothing was left to bill, 2026-11-18): the list shows them closed
+      let closedNoBill = new Set<number>()
+      try {
+        closedNoBill = await closedWithoutBillIds(supabase)
+      } catch (e) {
+        console.error("Purchase Orders GET: Error reading closed POs", e)
+      }
+
       const ordersWithItems = orders.map((order) => {
         const items = itemsByPoId[order.po_id] || []
 
@@ -138,6 +147,7 @@ export async function GET() {
           costFinalized: order.cost_finalized,
           costFinalizedAt: order.cost_finalized_at,
           costFinalizedBy: order.cost_finalized_by,
+          closedWithoutBill: closedNoBill.has(order.po_id),
           poType: order.po_type || "local",
           paymentType: order.payment_type || order.payment_terms,
           downPaymentAmount: order.down_payment_amount,

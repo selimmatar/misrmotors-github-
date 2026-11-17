@@ -112,6 +112,8 @@ export interface PurchaseOrder {
   costFinalized?: boolean
   costFinalizedAt?: string
   costFinalizedBy?: number
+  /** closed without a closing bill: nothing was left to bill (lib/po-closed-marker.ts) */
+  closedWithoutBill?: boolean
   paymentType?: PaymentType
   paymentDetails?: PaymentDetails
   bankName?: string

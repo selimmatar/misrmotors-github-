@@ -282,14 +282,15 @@ export function ClosePoDialog({ order, userId, onClose, onDone }: { order: Purch
   const save = async () => {
     setSaving(true)
     try {
-      await post("/api/purchase-orders/close", {
+      const res = await post("/api/purchase-orders/close", {
         id: order.id,
         userId,
         supplierInvoiceNumber: number.trim(),
         invoiceDate: date,
         notComing: missing.map((l) => ({ poItemId: l.poItemId, quantity: out(l) })),
       })
-      alert(t("po.closed-done"))
+      // nothing was left to bill: the PO is closed without a 0 bill (2026-11-18)
+      alert(res?.noBill ? t("po.closed-done-no-bill") : t("po.closed-done"))
       onClose()
       await onDone()
     } catch (error) {
@@ -342,6 +343,7 @@ export function ClosePoDialog({ order, userId, onClose, onDone }: { order: Purch
             <p className="text-sm font-semibold" aria-live="polite">
               {t("po.bill-amount")} <Money value={amount} />
             </p>
+            {amount <= 0 && <p className="text-sm text-sky-800">{t("po.close-no-bill-note")}</p>}
             <p className="text-xs text-muted-foreground">{t("po.bill-credits-note")}</p>
             <EarlierBills info={info} />
           </div>

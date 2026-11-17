@@ -3,6 +3,7 @@
 // supplier. Closing it (lib/po-bill.ts) makes the bill and locks it; reopening (while unpaid) unlocks it again.
 // Editing a PO never moves stock: only receiving, delivering and returns do.
 import { closingBillOf } from "./po-bill-number"
+import { isClosedWithoutBill } from "./po-closed-marker"
 
 /** Statuses in which an OPEN purchase order can be edited (not rejected). */
 export const PO_EDITABLE_STATUSES: readonly string[] = ["draft", "pending", "approved", "partially_received", "received", "received_with_issues"]
@@ -23,7 +24,8 @@ export async function editBlocker(db: any, po: any): Promise<{ code: string; err
   // closed = it has its closing bill; bills for received items (several bills per PO, 2026-11-17) leave it open
   const { data: bills, error } = await db.from("accounts_payable").select("invoice_id, invoice_number").eq("po_id", po.po_id)
   if (error) throw error
-  if (closingBillOf(bills || [], po.po_number)) {
+  // or closed without a closing bill because nothing was left to bill (lib/po-closed-marker.ts, 2026-11-18)
+  if (closingBillOf(bills || [], po.po_number) || (await isClosedWithoutBill(db, po.po_id))) {
     return { code: "PO_CLOSED", error: "This purchase order is closed (sent to Accounts Payable). Reopen it first to change it." }
   }
   return null
