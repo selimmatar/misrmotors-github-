@@ -6,8 +6,9 @@ import { buildCreditNoteDocument, buildInvoiceDocument } from "./document"
 import { canonicalize, toEtaJson } from "./serialize"
 import { readEtaSettings } from "./store"
 import { checkSignature } from "./cms"
-import { createPortal, credentialsSet, resetPortalTokens, EtaBusyError, EtaCredentialsError, EtaError, type EtaEnv, type EtaPortal, type FetchFn } from "./portal"
+import { createPortal, credentialsSet, resetPortalTokens, EtaBusyError, EtaCredentialsError, EtaError, REQUEST_TIMEOUT_MS, type EtaEnv, type EtaPortal, type FetchFn } from "./portal"
 import { plainError } from "./portal-errors"
+import { rememberPortalLines, SEARCH_GAP_MS } from "./learn"
 
 export { ETA_LIVE_MESSAGE, clearRemovableDocuments, liveRealDocument } from "./live"
 
@@ -79,23 +80,118 @@ function issueTime(createdAt: unknown, now: Date): string | null {
   return new Date(Math.min(ms, now.getTime())).toISOString()
 }
 
+export interface QueueRefusal {
+  invoiceId: number
+  reasons: string[]
+  /** plain words for the new portal-check reasons (EN / AR) */
+  message?: string
+  messageAr?: string
+  /** pressing Send again later may succeed (the portal could not be asked, or this request ran out of time) */
+  retryable?: boolean
+  /** already_on_portal: the portal ID of the hand-typed document */
+  etaUuid?: string
+}
 export interface QueueResult {
   queued: number[]
-  refused: { invoiceId: number; reasons: string[] }[]
+  refused: QueueRefusal[]
+}
+
+/** The portal checks of one Send request stop starting after this long; the rest is refused "press Send again". */
+export const PORTAL_CHECK_BUDGET_MS = 20_000
+const DAY_MS = 86_400_000
+/** the portal's search covers at most about 30 days per call */
+const SEARCH_WINDOW_MS = 29 * DAY_MS
+
+export const PORTAL_CHECK_MESSAGES = {
+  already_on_portal: {
+    message: "This invoice is already on the portal (entered by hand). It was marked so and not sent again.",
+    messageAr: "هذه الفاتورة موجودة بالفعل على البوابة (أُدخلت يدويًا). تم تعليمها بذلك ولم تُرسل مرة أخرى.",
+  },
+  portal_check_failed: {
+    message: "The tax portal could not be checked for this invoice, so it was not sent. Press Send again in a minute.",
+    messageAr: "تعذّر التحقق من البوابة الضريبية لهذه الفاتورة، لذلك لم تُرسل. اضغط إرسال مرة أخرى بعد دقيقة.",
+  },
+  portal_check_later: {
+    message: "Still checking the portal for this invoice. Press Send again to continue.",
+    messageAr: "ما زال التحقق من البوابة جاريًا لهذه الفاتورة. اضغط إرسال مرة أخرى للمتابعة.",
+  },
+} as const
+
+class CheckOutOfTime extends Error {}
+
+/** The search windows (each at most ~30 days) that cover the invoice's creation time and today. */
+export function portalSearchWindows(createdAt: unknown, now: Date): { from: string; to: string }[] {
+  const nowMs = now.getTime()
+  const end = nowMs + 3600_000
+  const created = Date.parse(text(createdAt))
+  const start = Number.isFinite(created) ? Math.min(created, nowMs) - DAY_MS : nowMs - SEARCH_WINDOW_MS
+  const out: { from: number; to: number }[] = [{ from: start, to: Math.min(start + SEARCH_WINDOW_MS, end) }]
+  if (out[0].to < end) out.push({ from: Math.max(out[0].to, end - SEARCH_WINDOW_MS), to: end })
+  return out.map((w) => ({ from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString() }))
+}
+
+/** A search result that is our own invoice with this internal number, valid or still being validated. */
+function onPortal(x: any, internalId: string, rin: string): boolean {
+  if (text(x?.internalId ?? x?.internalID) !== internalId || !text(x?.uuid)) return false
+  const issuer = text(x?.issuerId ?? x?.issuerID)
+  if (issuer && rin && issuer !== rin) return false
+  const t = searchType(x)
+  if (t && t !== "i") return false
+  return ["valid", "submitted"].includes(text(x?.status).toLowerCase())
 }
 
 /**
  * "Send to portal": builds each invoice's document from its preview and puts it in the waiting-to-be-signed list.
  * Refused: anything missing, amount mismatch, handled manually (real portal only), or a document already live.
  */
-export async function queueSend(db: Db, invoiceIds: number[], env: EtaEnv, userId: number | null, deps: { now?: () => Date } = {}): Promise<QueueResult> {
-  const now = deps.now || (() => new Date())
+export async function queueSend(db: Db, invoiceIds: number[], env: EtaEnv, userId: number | null, deps: SendDeps = {}): Promise<QueueResult> {
+  const d = { ...etaSendDefaults, ...deps }
+  const now = d.now || (() => new Date())
   const out: QueueResult = { queued: [], refused: [] }
   const settings = await readEtaSettings(db)
+
+  // the real portal is asked before every send whether the invoice is already there (typed by hand), within a time budget
+  const clock = d.clock || (() => Date.now())
+  const sleep = d.sleep || ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const started = clock()
+  const budget = d.portalCheckBudgetMs ?? PORTAL_CHECK_BUDGET_MS
+  let searched = false
+  let portal: EtaPortal | null = null
+  const call = async <T>(fn: (p: EtaPortal) => Promise<T>): Promise<T> => {
+    const left = budget - (clock() - started)
+    if (left <= 0) throw new CheckOutOfTime()
+    if (!portal) portal = portalOf(d, env, Math.min(left, REQUEST_TIMEOUT_MS))
+    const p = portal
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([fn(p), new Promise<T>((_r, reject) => { timer = setTimeout(() => reject(new CheckOutOfTime()), left) })])
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+  /** the portal's own valid / submitted document with this internal number, or null; throws when it can't be asked */
+  const findOnPortal = async (internalId: string, createdAt: unknown): Promise<any | null> => {
+    if (!credsOf(d)(env)) throw new EtaCredentialsError(env)
+    for (const w of portalSearchWindows(createdAt, now())) {
+      // the portal allows about one search every 2 s
+      if (searched) {
+        if (clock() - started + SEARCH_GAP_MS >= budget) throw new CheckOutOfTime()
+        await sleep(SEARCH_GAP_MS)
+      }
+      searched = true
+      const res: any = await call((p) => p.searchSent({ internalId, ...w }))
+      const hit = (Array.isArray(res?.result) ? res.result : []).find((x: any) => onPortal(x, internalId, text(settings.eta_rin)))
+      if (hit) return hit
+    }
+    return null
+  }
+
   for (const invoiceId of [...new Set(invoiceIds)]) {
     const refuse = (...reasons: string[]) => out.refused.push({ invoiceId, reasons })
+    const refuseCheck = (reason: keyof typeof PORTAL_CHECK_MESSAGES, extra: Partial<QueueRefusal> = {}) =>
+      out.refused.push({ invoiceId, reasons: [reason], ...PORTAL_CHECK_MESSAGES[reason], ...extra })
     if (!Number.isInteger(invoiceId) || invoiceId < 1) { refuse("not_found"); continue }
-    const invoice = must(await db.from("accounts_receivable").select("invoice_id, created_at").eq("invoice_id", invoiceId).maybeSingle(), "load invoice")
+    const invoice = must(await db.from("accounts_receivable").select("invoice_id, invoice_number, created_at").eq("invoice_id", invoiceId).maybeSingle(), "load invoice")
     const preview = invoice ? await buildEtaPreview(db, invoiceId) : null
     if (!invoice || !preview) { refuse("not_found"); continue }
 
@@ -104,6 +200,38 @@ export async function queueSend(db: Db, invoiceIds: number[], env: EtaEnv, userI
     if (mine.some((r) => LIVE_STATUSES.includes(r.status) && (r.document_type === "I" || env === "real"))) { refuse("already_live"); continue }
     // a cancelled / rejected real document or a credit note is final: correct and reissue instead (spec §6.5a)
     if (env === "real" && mine.some((r) => r.document_type === "C" || (r.document_type === "I" && ["cancelled", "rejected"].includes(r.status)))) { refuse("final"); continue }
+
+    if (env === "real" && !preview.handledManually) {
+      // never send blind: an invoice the accountant already typed on the portal is marked, not sent a second time
+      const internalId = text(invoice.invoice_number) || preview.invoiceNumber
+      let found: any
+      try {
+        found = await findOnPortal(internalId, invoice.created_at)
+      } catch (e: any) {
+        if (e instanceof CheckOutOfTime) { refuseCheck("portal_check_later", { retryable: true }); continue }
+        console.error(`[eta] portal check of invoice ${invoiceId} failed: ${e?.code || ""} ${e?.message || e}`)
+        refuseCheck("portal_check_failed", { retryable: true })
+        continue
+      }
+      if (found) {
+        const uuid = text(found.uuid)
+        const at = now().toISOString()
+        const version = Math.max(0, ...mine.filter((r) => r.document_type === "I").map((r) => Number(r.version) || 0)) + 1
+        const { error } = await db.from("eta_documents").insert({
+          invoice_id: invoiceId, document_type: "I", environment: "real", version, status: "manual", eta_uuid: uuid || null,
+          eta_long_id: text(found.longId) || null, created_by: userId, created_at: at, updated_at: at,
+        })
+        if (error && error.code !== "23505") throw new Error(`mark the invoice as already on the portal: ${error.message || error}`)
+        refuseCheck("already_on_portal", { etaUuid: uuid })
+        // the accountant's codes on that document teach the memory (a differing learned row is replaced; confirmed rows stay)
+        try {
+          await rememberPortalLines(db, await call((p) => p.getDetails(uuid)), userId)
+        } catch (e: any) {
+          console.error(`[eta] reading the codes of portal document ${uuid} failed: ${e?.message || e}`)
+        }
+        continue
+      }
+    }
 
     const reasons = previewReasons(preview, env)
     if (reasons.length) { refuse(...reasons); continue }
@@ -373,6 +501,11 @@ export interface SendDeps {
   credentialsSet?: (env: EtaEnv) => boolean
   /** follow-up time budget in ms (default FOLLOW_UP_BUDGET_MS) */
   followUpBudgetMs?: number
+  /** time budget of the portal checks of one Send request in ms (default PORTAL_CHECK_BUDGET_MS) */
+  portalCheckBudgetMs?: number
+  /** ms clock and pause between portal searches (tests) */
+  clock?: () => number
+  sleep?: (ms: number) => Promise<void>
 }
 /** Defaults the route handlers use (tests set a fake portal here; the app leaves it empty). */
 export const etaSendDefaults: SendDeps = {}

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { codeChangeRefusal } from "@/lib/eta/code-roles"
 import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { normalizeName } from "@/lib/eta/normalize"
@@ -52,6 +53,9 @@ export async function GET(_request: Request) {
 
 export async function POST(request: Request) {
   try {
+    // only the accountant (CEO, admin) decides codes - checked here as well as by the /api/eta rule
+    const refused = codeChangeRefusal(request)
+    if (refused) return NextResponse.json(refused, { status: 403 })
     const db = createAdminClient()
     const body = await request.json().catch(() => null)
     if (!body || !Array.isArray(body.items)) return NextResponse.json({ error: "items is required" }, { status: 400 })

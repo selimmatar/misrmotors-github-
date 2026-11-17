@@ -60,6 +60,12 @@ export function EtaBadge({ state, environment }: { state: EtaBadgeKey | undefine
   )
 }
 
+/** The refusal reason "Send all ready" shows: one that asks to press Send again comes first. */
+export function sendAllReason(refused: { reasons?: string[] }[]): string {
+  const all = refused.map((r) => r.reasons?.[0] || "")
+  return all.find((r) => r === "portal_check_later") || all.find((r) => r === "portal_check_failed") || all[0] || ""
+}
+
 /** "Send all ready": queues the given (not yet sent) invoices; the server refuses the ones that are not ready. */
 export function EtaSendAll({ invoiceIds, onDone }: { invoiceIds: number[]; onDone: () => void }) {
   const { t, language } = useI18n()
@@ -79,7 +85,8 @@ export function EtaSendAll({ invoiceIds, onDone }: { invoiceIds: number[]; onDon
       const refused = Array.isArray(body.refused) ? body.refused : []
       toast({
         title: fill(t("eta.send-all-done"), { queued, skipped: refused.length }),
-        description: refused.length ? reasonText(refused[0].reasons?.[0] || "", t) : undefined,
+        // "checking the portal, press Send again" first: it tells what to do next
+        description: refused.length ? reasonText(sendAllReason(refused), t) : undefined,
       })
       onDone()
     } catch (e) {

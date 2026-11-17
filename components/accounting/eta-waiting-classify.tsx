@@ -22,7 +22,7 @@ interface Row extends WaitingItem {
   pick: number | null
 }
 
-export function EtaWaitingClassify({ codes, onSaved }: { codes: PickerCode[]; onSaved?: () => void }) {
+export function EtaWaitingClassify({ codes, onSaved, readOnly }: { codes: PickerCode[]; onSaved?: () => void; readOnly?: boolean }) {
   const { t } = useI18n()
   const { toast } = useToast()
   const [rows, setRows] = useState<Row[] | null>(null)
@@ -120,7 +120,7 @@ export function EtaWaitingClassify({ codes, onSaved }: { codes: PickerCode[]; on
             {loading ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <RefreshCw className="w-4 h-4 me-2" />}
             {t("eta.waiting-start")}
           </Button>
-          {rows && rows.length > 0 && (
+          {rows && rows.length > 0 && !readOnly && (
             <Button onClick={confirmAll} disabled={loading || saving !== null || toConfirm.length === 0}>
               {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
               {fill(t("eta.waiting-confirm-all"), { n: toConfirm.length })}
@@ -160,6 +160,7 @@ export function EtaWaitingClassify({ codes, onSaved }: { codes: PickerCode[]; on
                     onChange={(id) => setPick(r.normalizedName, id)}
                     ariaLabel={`${t("eta.item-code")} ${r.name}`}
                     noneLabel={t("eta.choose-code")}
+                    disabled={readOnly}
                   />
                 </div>
               </li>

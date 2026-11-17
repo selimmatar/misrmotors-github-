@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { codeChangeRefusal } from "@/lib/eta/code-roles"
 import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { normalizeName } from "@/lib/eta/normalize"
@@ -28,6 +29,9 @@ export async function GET(request: Request) {
 // whose card has no code yet also gives the card that code. -> { success, saved, failed, productsSet }
 export async function POST(request: Request) {
   try {
+    // only the accountant (CEO, admin) decides codes - checked here as well as by the /api/eta rule
+    const refused = codeChangeRefusal(request)
+    if (refused) return NextResponse.json(refused, { status: 403 })
     const db = createAdminClient()
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid body" }, { status: 400 })
@@ -60,6 +64,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    // only the accountant (CEO, admin) decides codes - checked here as well as by the /api/eta rule
+    const refused = codeChangeRefusal(request)
+    if (refused) return NextResponse.json(refused, { status: 403 })
     const db = createAdminClient()
     const id = Number(new URL(request.url).searchParams.get("id"))
     if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "id is required" }, { status: 400 })

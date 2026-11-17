@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { codeChangeRefusal } from "@/lib/eta/code-roles"
 import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { normalizeName } from "@/lib/eta/normalize"
@@ -50,6 +51,9 @@ export async function GET(_request: Request) {
 
 export async function POST(request: Request) {
   try {
+    // only the accountant (CEO, admin) decides codes - checked here as well as by the /api/eta rule
+    const refused = codeChangeRefusal(request)
+    if (refused) return NextResponse.json(refused, { status: 403 })
     const db = createAdminClient()
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid body" }, { status: 400 })
@@ -70,6 +74,9 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    // only the accountant (CEO, admin) decides codes - checked here as well as by the /api/eta rule
+    const refused = codeChangeRefusal(request)
+    if (refused) return NextResponse.json(refused, { status: 403 })
     const db = createAdminClient()
     const body = await request.json().catch(() => null)
     const codeId = Number(body?.code_id)

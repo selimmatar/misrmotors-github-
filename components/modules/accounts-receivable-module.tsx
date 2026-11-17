@@ -40,6 +40,7 @@ import { OrdersToInvoice, useOrdersToInvoice } from "@/components/accounting/ord
 import type { OrderToInvoice } from "@/lib/ready-to-invoice"
 import { OrderOverviewDialog } from "@/components/sales-order/order-overview-dialog"
 import { EtaPreviewDialog } from "@/components/accounting/eta-preview-dialog"
+import { canDecideCodes } from "@/lib/eta/code-roles"
 import { EtaReissueDialog } from "@/components/accounting/eta-reissue-dialog"
 import { EtaBadge, EtaSendAll, ReplacementMarks, useEtaBadges } from "@/components/accounting/eta-ar-bits"
 
@@ -1347,6 +1348,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           invoiceDate={etaInvoice.date}
           onClose={() => setEtaInvoice(null)}
           onChanged={etaBadges.reload}
+          canEditCodes={canDecideCodes([userRole || ""])}
           onReissue={() => {
             setReissueInvoice(etaInvoice)
             setEtaInvoice(null)
