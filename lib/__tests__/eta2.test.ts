@@ -2359,8 +2359,8 @@ test("F44. screens wired: actions by document state, AR badge and reissue, permi
   assert.match(settings, /<EtaSignerCard mayManage=\{mayGoLive\}/)
   assert.match(card, /mayManage \? \(/)
 
-  // the supplier e-invoice section came later (F54g)
-  assert.ok(/<SupplierEInvoices \/>/.test(read("components/modules/accounts-payable-module.tsx")))
+  // the supplier e-invoice section came later (F54g), now the AP "Portal comparison" view (F57)
+  assert.ok(/<ApPortalComparison \/>/.test(read("components/modules/accounts-payable-module.tsx")))
 
   // every text the new screens ask for has English and Arabic
   const used = new Set<string>()
@@ -3138,15 +3138,16 @@ test("F54f. /api/eta-sync: 401 without or with a wrong bearer (or no CRON_SECRET
   assert.match(vercel.buildCommand, /bun run build/)
 })
 
-test("F54g. screen wired: Accounts Payable shows Supplier e-invoices; texts in EN and AR", () => {
+test("F54g. screen wired: Accounts Payable shows the portal comparison (which reads and checks the portal); texts in EN and AR", () => {
   const root = process.env.REPO_ROOT || process.cwd()
   const ap = readFileSync(join(root, "components/modules/accounts-payable-module.tsx"), "utf8")
-  assert.match(ap, /<SupplierEInvoices \/>/)
-  const ui = readFileSync(join(root, "components/accounting/supplier-einvoices.tsx"), "utf8")
-  for (const s of ["/api/eta/received/sync", "/api/eta/received?from=", "/pdf", "cursor"]) assert.ok(ui.includes(s), s)
+  assert.match(ap, /<ApPortalComparison \/>/)
+  const ui = readFileSync(join(root, "components/accounting/ap-portal-comparison.tsx"), "utf8")
+  for (const s of ["/api/eta/received/sync", "/api/eta/ap-portal?from=", "/pdf", "cursor"]) assert.ok(ui.includes(s), s)
   const i18n = readFileSync(join(root, "lib/i18n-context.tsx"), "utf8")
-  const keys = [...new Set([...ui.matchAll(/t\(\s*[`"](eta\.sup-[a-z_-]+)/g)].map((m) => m[1]).filter((k) => !k.endsWith("-")))]
-  for (const k of ["matched", "amount_differs", "missing_in_erp", "unknown_supplier"]) keys.push(`eta.sup-status-${k}`)
+  const keys = [...new Set([...ui.matchAll(/t\(\s*[`"](eta\.(?:sup|apl)-[a-z_-]+)/g)].map((m) => m[1]).filter((k) => !k.endsWith("-")))]
+  for (const k of ["matched", "differs", "no_portal", "no_erp", "unknown_supplier"]) keys.push(`eta.apl-status-${k}`)
+  for (const k of ["all", "not_linked", "linked", "unknown"]) keys.push(`eta.apl-portal-${k}`)
   for (const k of keys) assert.equal(i18n.split(`"${k}":`).length - 1, 2, `${k} in EN and AR`)
 })
 
@@ -3193,4 +3194,224 @@ test("F56. the server accepts the ETA portal's signature content type (1.2.840.1
   assert.deepEqual(await checkSignature(await signCms(text, RIN, "1.2.840.113549.1.7.5"), text, RIN), { ok: true })
   assert.deepEqual(await checkSignature(await signCms(text, RIN), text, RIN), { ok: true })
   assert.equal((await checkSignature(await signCms(text, RIN, "1.2.840.113549.1.7.3"), text, RIN)).ok, false)
+})
+
+// ---- F57: Accounts Payable <-> portal comparison with many-to-many links ----
+import { buildGroups, effectiveLinks, suggestMatches, portalAmount, totalsOf } from "../eta/ap-links"
+import * as apPortalRoute from "../../app/api/eta/ap-portal/route"
+import * as apPortalLinkRoute from "../../app/api/eta/ap-portal/link/route"
+
+test("F57a. ap_portal_links migration: additive only; table, kinds, unique pair, cascades, RLS without policies", () => {
+  const raw = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "scripts/sql/2026-11-17-ap-portal-links.sql"), "utf8")
+  const sql = raw.split("\n").map((l) => l.replace(/--.*$/, "")).join("\n")
+  const statements = sql.split(";").map((s) => s.trim().toLowerCase().replace(/\s+/g, " ")).filter(Boolean)
+  assert.ok(statements.length >= 2)
+  for (const s of statements) {
+    assert.ok(!/^(drop|update|delete|truncate|insert|grant|revoke)\b/.test(s), `not additive: ${s.slice(0, 60)}`)
+    assert.ok(!/^alter table\b.*\b(drop|rename|add column|alter column)\b/.test(s), `alter on an existing table: ${s.slice(0, 60)}`)
+    assert.ok(/^(create table if not exists public\.ap_portal_links|create index if not exists \w+ on public\.ap_portal_links|alter table public\.ap_portal_links enable row level security)\b/.test(s), `unexpected: ${s.slice(0, 80)}`)
+  }
+  const flat = statements.join(";")
+  assert.ok(!/create policy|\$\$/.test(flat), "no policies, no code")
+  assert.match(flat, /link_id serial primary key/)
+  assert.match(flat, /received_id int not null references public\.eta_received_documents\(received_id\) on delete cascade/)
+  assert.match(flat, /ap_invoice_id int not null references public\.accounts_payable\(invoice_id\) on delete cascade/)
+  assert.match(flat, /kind text not null check \(kind in \('manual','rejected'\)\)/)
+  assert.match(flat, /created_by int references public\.users\(user_id\) on delete set null/)
+  assert.match(flat, /created_at timestamptz default now\(\)/)
+  assert.match(flat, /unique \(received_id, ap_invoice_id\)/)
+  assert.match(flat, /alter table public\.ap_portal_links enable row level security/)
+})
+
+const doc57 = (id: number, o: Partial<Record<string, any>> = {}) => rec54(id, { internal_id: `P-${id}`, ...o })
+const man = (r: number, a: number) => ({ received_id: r, ap_invoice_id: a, kind: "manual" })
+const rej = (r: number, a: number) => ({ received_id: r, ap_invoice_id: a, kind: "rejected" })
+
+test("F57b. many-to-many: two portal invoices -> one ERP invoice; two ERP invoices <-> two portal invoices form one group", () => {
+  // A10 = 300 paid by R1 (100) + R2 (200); A11 (150) + A12 (250) against R3 (120) + R4 (280)
+  const ap = [ap54(10, { amount: 300 }), ap54(11, { amount: 150 }), ap54(12, { amount: 250 })]
+  const received = [doc57(1, { total: 100 }), doc57(2, { total: 200 }), doc57(3, { total: 120 }), doc57(4, { total: 280 })]
+  const links = [man(1, 10), man(2, 10), man(3, 11), man(3, 12), man(4, 12)]
+  const r = buildGroups(ap, received, sup54, links, [])
+  assert.equal(r.groups.length, 2)
+  const g1 = r.groups.find((g) => g.apInvoiceIds.includes(10))!
+  assert.deepEqual([g1.apInvoiceIds, g1.receivedIds, g1.erpTotal, g1.portalTotal, g1.difference, g1.status], [[10], [1, 2], 300, 300, 0, "matched"])
+  const g2 = r.groups.find((g) => g.apInvoiceIds.includes(11))!
+  assert.deepEqual([g2.apInvoiceIds, g2.receivedIds, g2.erpTotal, g2.portalTotal, g2.status], [[11, 12], [3, 4], 400, 400, "matched"])
+  assert.equal(g2.links.length, 3)
+  assert.ok(g2.links.every((l) => l.source === "manual"))
+  assert.equal(g2.supplierId, 1)
+})
+
+test("F57c. a manual link overrides the automatic match; a removed automatic match is never suggested again", () => {
+  const ap = [ap54(10, { invoice_number: "12", amount: 100 }), ap54(11, { invoice_number: "13", amount: 100 })]
+  const received = [doc57(1, { internal_id: "12" }), doc57(2, { internal_id: "13" })]
+  const auto = suggestMatches(received, ap, sup54)
+  assert.deepEqual(auto, [{ receivedId: 1, apInvoiceId: 10 }, { receivedId: 2, apInvoiceId: 11 }], "matchReceived still suggests")
+  // nothing stored: the automatic matches
+  const plain = buildGroups(ap, received, sup54, [], auto)
+  assert.deepEqual(plain.links.map((l) => [l.receivedId, l.apInvoiceId, l.source]), [[1, 10, "auto"], [2, 11, "auto"]])
+  // the person links R2 to A10 by hand: A10's and R2's automatic links stop; R1 and A11 stand alone
+  const over = buildGroups(ap, received, sup54, [man(2, 10)], auto)
+  assert.deepEqual(over.links.map((l) => [l.receivedId, l.apInvoiceId, l.source]), [[2, 10, "manual"]])
+  assert.deepEqual(over.groups.map((g) => [g.apInvoiceIds, g.receivedIds, g.status]).sort(), [[[], [1], "no_erp"], [[10], [2], "matched"], [[11], [], "no_portal"]].sort())
+  // the person removed R1 <-> A10: rejected, the other automatic match stays
+  const rejected = buildGroups(ap, received, sup54, [rej(1, 10)], auto)
+  assert.deepEqual(rejected.links.map((l) => [l.receivedId, l.apInvoiceId]), [[2, 11]])
+  assert.deepEqual(rejected.totals.counts, { matched: 1, differs: 0, no_portal: 1, no_erp: 1, unknown_supplier: 0 })
+  // a rejected row never hides a manual link the person made later for the same pair (POST flips the row)
+  assert.deepEqual(effectiveLinks([man(1, 10)], auto).map((l) => l.source), ["manual", "auto"])
+  // links to rows that are not loaded are left out
+  assert.deepEqual(buildGroups(ap, received, sup54, [man(99, 10)], []).links, [])
+})
+
+test("F57d. totals, difference and status: tolerance 1.00, credit notes negative, cancelled not counted, unknown supplier", () => {
+  assert.equal(portalAmount(doc57(1, { document_type: "C", total: 40 })), -40)
+  assert.equal(portalAmount(doc57(1, { status: "Cancelled", total: 40 })), 0)
+  const ap = [ap54(10, { amount: 100 }), ap54(11, { amount: 100 }), ap54(12, { amount: 60 }), ap54(13, { amount: 500, invoice_date: "2026-11-01" })]
+  const received = [
+    doc57(1, { total: 101 }), // within 1.00 -> matched
+    doc57(2, { total: 101.01 }), // differs
+    doc57(3, { total: 100 }), doc57(4, { document_type: "C", total: 40 }), // 100 - 40 = 60 against A12 -> matched
+    doc57(5, { issuer_id: "999888777", supplier_id: null, total: 10 }), // unknown supplier
+    doc57(6, { total: 70 }), // no ERP
+    doc57(7, { status: "Cancelled", total: 999 }), // withdrawn: counts nothing
+  ]
+  const r = buildGroups(ap, received, sup54, [man(1, 10), man(2, 11), man(3, 12), man(4, 12), man(7, 13)], [])
+  const of = (a: number) => r.groups.find((g) => g.apInvoiceIds.includes(a))!
+  assert.deepEqual([of(10).status, of(10).difference], ["matched", 1])
+  assert.deepEqual([of(11).status, of(11).difference], ["differs", 1.01])
+  assert.deepEqual([of(12).portalTotal, of(12).status], [60, "matched"])
+  assert.deepEqual([of(13).portalTotal, of(13).difference, of(13).status], [0, -500, "differs"])
+  assert.equal(r.groups.find((g) => g.receivedIds.includes(5))!.status, "unknown_supplier")
+  assert.equal(r.groups.find((g) => g.receivedIds.includes(6))!.status, "no_erp")
+  assert.deepEqual(r.totals, {
+    erpTotal: 760,
+    portalTotal: round54(101 + 101.01 + 100 - 40 + 10 + 70),
+    difference: round54(101 + 101.01 + 100 - 40 + 10 + 70 - 760),
+    counts: { matched: 2, differs: 2, no_portal: 0, no_erp: 1, unknown_supplier: 1 },
+  })
+  assert.deepEqual(totalsOf(r.groups), r.totals)
+})
+
+const apDb57 = () => {
+  const db = recvDb({
+    eta_received_documents: [
+      { received_id: 1, uuid: "R1", environment: "test", document_type: "I", issuer_id: "111222333", supplier_id: 1, internal_id: "12", date_issued: "2026-11-10T08:00:00Z", total: 100, status: "Valid" },
+      { received_id: 2, uuid: "R2", environment: "test", document_type: "I", issuer_id: "111222333", supplier_id: 1, internal_id: "55", date_issued: "2026-11-11T08:00:00Z", total: 50, status: "Valid" },
+      { received_id: 3, uuid: "R3", environment: "test", document_type: "I", issuer_id: "444555666", supplier_id: 2, internal_id: "9", date_issued: "2026-11-11T08:00:00Z", total: 80, status: "Valid" },
+      { received_id: 4, uuid: "R4", environment: "test", document_type: "I", issuer_id: "999888777", supplier_id: null, internal_id: "4", date_issued: "2026-11-12T08:00:00Z", total: 10, status: "Valid" },
+      { received_id: 5, uuid: "R5", environment: "real", document_type: "I", issuer_id: "111222333", supplier_id: 1, internal_id: "12", date_issued: "2026-11-10T08:00:00Z", total: 100, status: "Valid" },
+    ],
+    accounts_payable: [ap54(10, { invoice_number: "12", amount: 150, po_id: 70 }), ap54(11, { supplier_id: 2, invoice_number: "X", amount: 300 })],
+    purchase_orders: [{ po_id: 70, po_number: "PO-70" }],
+    ap_portal_links: [],
+    workflow_events: [],
+    users: [{ user_id: 7 }],
+  })
+  useDb(db)
+  return db
+}
+const getAp = async (qs = "from=2026-11-01&to=2026-11-30") => {
+  const res = await apPortalRoute.GET(rq("GET", `/api/eta/ap-portal?${qs}`))
+  return { status: res.status, body: await res.json() }
+}
+const linkCall = (method: "POST" | "DELETE", body: unknown, roles = "accountant") =>
+  (method === "POST" ? apPortalLinkRoute.POST : apPortalLinkRoute.DELETE)(rq(method, "/api/eta/ap-portal/link", body, { "x-mm-roles": roles }))
+
+test("F57e. GET /api/eta/ap-portal: groups, AP invoices and portal documents with their links, linkable flag, totals; filters", async () => {
+  const db = apDb57()
+  const { status, body } = await getAp()
+  assert.equal(status, 200)
+  assert.equal(body.environment, "test")
+  const a10 = body.apInvoices.find((a: any) => a.invoiceId === 10)
+  assert.deepEqual([a10.poNumber, a10.supplierName, a10.links], ["PO-70", "Oil Co", [{ receivedId: 1, source: "auto" }]])
+  assert.deepEqual(body.portalDocs.map((d: any) => d.receivedId).sort(), [1, 2, 3, 4], "only the selected environment")
+  assert.equal(body.portalDocs.find((d: any) => d.receivedId === 4).linkable, false)
+  assert.equal(body.portalDocs.find((d: any) => d.receivedId === 2).linkable, true)
+  assert.equal(body.groups.find((g: any) => g.apInvoiceIds.includes(10)).status, "differs")
+  assert.deepEqual(body.totals.counts, { matched: 0, differs: 1, no_portal: 1, no_erp: 2, unknown_supplier: 1 })
+  assert.deepEqual([body.totals.erpTotal, body.totals.portalTotal], [450, 240])
+  const only2 = (await getAp("from=2026-11-01&to=2026-11-30&supplierId=2")).body
+  assert.deepEqual([only2.apInvoices.map((a: any) => a.invoiceId), only2.portalDocs.map((d: any) => d.receivedId)], [[11], [3]])
+  assert.equal((await getAp("from=bad&to=2026-11-30")).status, 400)
+  assert.equal((await getAp("from=2026-11-01&to=2026-11-30&supplierId=x")).status, 400)
+  assert.equal(db.tables.ap_portal_links.length, 0, "a read writes nothing")
+})
+
+test("F57f. link / unlink: manual link kept with the automatic one; removal stored as rejected and not suggested again; workflow events", async () => {
+  const db = apDb57()
+  // A10 (150) = R1 (100, automatic) + R2 (50, by hand); the automatic R1 link is kept as manual
+  const res = await linkCall("POST", { receivedId: 2, apInvoiceId: 10, keep: [{ receivedId: 1, apInvoiceId: 10 }] })
+  assert.equal(res.status, 200)
+  assert.deepEqual(db.tables.ap_portal_links.map((l) => [l.received_id, l.ap_invoice_id, l.kind, l.created_by]), [[2, 10, "manual", 7], [1, 10, "manual", 7]])
+  let g = (await getAp()).body
+  const grp = g.groups.find((x: any) => x.apInvoiceIds.includes(10))
+  assert.deepEqual([grp.receivedIds, grp.status, grp.difference], [[1, 2], "matched", 0])
+  assert.deepEqual(g.apInvoices.find((a: any) => a.invoiceId === 10).links.map((l: any) => l.source), ["manual", "manual"])
+  const ev = db.tables.workflow_events
+  assert.equal(ev.length, 2)
+  assert.ok(ev.every((e) => e.entity_type === "AP_INVOICE" && e.entity_id === 10 && e.event_type === "AP_PORTAL_LINKED" && e.performed_by === 7))
+  // linking again changes nothing and records nothing
+  assert.deepEqual(await (await linkCall("POST", { receivedId: 2, apInvoiceId: 10 })).json(), { ok: true, changed: 0 })
+  assert.equal(db.tables.workflow_events.length, 2)
+
+  // unlink a manual link: stored as rejected (one row per pair), event written
+  assert.equal((await linkCall("DELETE", { receivedId: 2, apInvoiceId: 10 })).status, 200)
+  assert.deepEqual(db.tables.ap_portal_links.filter((l) => l.received_id === 2).map((l) => l.kind), ["rejected"])
+  assert.equal(db.tables.workflow_events.slice(-1)[0].event_type, "AP_PORTAL_UNLINKED")
+  assert.equal(db.tables.workflow_events.slice(-1)[0].old_value, "manual")
+
+  // unlink an automatic link on a fresh database: a 'rejected' row; the pair is not suggested again
+  const db2 = apDb57()
+  assert.equal((await linkCall("DELETE", { receivedId: 1, apInvoiceId: 10 })).status, 200)
+  assert.deepEqual(db2.tables.ap_portal_links.map((l) => [l.received_id, l.ap_invoice_id, l.kind]), [[1, 10, "rejected"]])
+  g = (await getAp()).body
+  assert.deepEqual(g.apInvoices.find((a: any) => a.invoiceId === 10).links, [])
+  assert.equal(g.groups.find((x: any) => x.apInvoiceIds.includes(10)).status, "no_portal")
+  // linking the pair by hand again turns the rejected row into a manual one (still one row)
+  assert.equal((await linkCall("POST", { receivedId: 1, apInvoiceId: 10 })).status, 200)
+  assert.deepEqual(db2.tables.ap_portal_links.map((l) => [l.received_id, l.ap_invoice_id, l.kind]), [[1, 10, "manual"]])
+  assert.equal(db2.tables.workflow_events.slice(-1)[0].old_value, "rejected")
+  assert.deepEqual(db2.tables.accounts_payable.map((a) => a.amount), [150, 300], "Accounts Payable untouched")
+})
+
+test("F57g. same supplier only: another supplier's or an unknown supplier's portal invoice is refused (409); bad input; nothing written", async () => {
+  const db = apDb57()
+  const other = await linkCall("POST", { receivedId: 3, apInvoiceId: 10 })
+  assert.equal(other.status, 409)
+  const ob = await other.json()
+  assert.deepEqual([ob.code, ob.error], ["OTHER_SUPPLIER", "The portal invoice and the ERP invoice are from different suppliers."])
+  assert.ok(ob.errorAr)
+  const unknown = await linkCall("POST", { receivedId: 4, apInvoiceId: 10 })
+  assert.equal(unknown.status, 409)
+  assert.match((await unknown.json()).error, /tax number 999888777/)
+  // a bad pair in keep refuses the whole request
+  assert.equal((await linkCall("POST", { receivedId: 2, apInvoiceId: 10, keep: [{ receivedId: 3, apInvoiceId: 10 }] })).status, 409)
+  // a supplier card found by the tax number counts (supplier_id not filled in yet)
+  db.tables.eta_received_documents.find((d) => d.received_id === 3)!.supplier_id = null
+  assert.equal((await linkCall("POST", { receivedId: 3, apInvoiceId: 11 })).status, 200)
+  assert.equal((await linkCall("POST", { receivedId: 99, apInvoiceId: 10 })).status, 404)
+  assert.equal((await linkCall("POST", { receivedId: 1, apInvoiceId: 99 })).status, 404)
+  for (const bad of [{}, { receivedId: "x", apInvoiceId: 1 }, { receivedId: 1, apInvoiceId: 0 }, { receivedId: 1, apInvoiceId: 10, keep: [{}] }])
+    assert.equal((await linkCall("POST", bad)).status, 400, JSON.stringify(bad))
+  assert.equal((await linkCall("DELETE", {})).status, 400)
+  assert.deepEqual(db.tables.ap_portal_links.map((l) => [l.received_id, l.ap_invoice_id]), [[3, 11]])
+  assert.equal(db.tables.workflow_events.length, 1)
+})
+
+test("F57h. permissions: comparison and links are accountant / CEO / admin; screen wired with Show / Hide and a light picker", () => {
+  for (const [path, methods] of [["/api/eta/ap-portal", ["GET"]], ["/api/eta/ap-portal/link", ["POST", "DELETE"]]] as const) {
+    const rule = ruleFor(path)!
+    for (const m of methods) {
+      for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, m, [role] as any), true, `${path} ${m} ${role}`)
+      for (const role of ["sales-rep", "po-rep", "warehouse-rep"]) assert.equal(allows(rule, m, [role] as any), false, `${path} ${m} ${role}`)
+    }
+  }
+  const root = process.env.REPO_ROOT || process.cwd()
+  const ui = readFileSync(join(root, "components/accounting/ap-portal-comparison.tsx"), "utf8")
+  assert.match(ui, /aria-expanded=\{showPortal\}/)
+  assert.ok(ui.includes("/api/eta/ap-portal/link"))
+  assert.equal((ui.match(/<Select\b/g) || []).length, 2, "only the supplier and status filters are Radix Selects")
+  assert.ok(!readFileSync(join(root, "components/modules/accounts-payable-module.tsx"), "utf8").includes("SupplierEInvoices"))
 })
