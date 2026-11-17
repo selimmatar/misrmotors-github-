@@ -21,6 +21,7 @@ import { EtaSignerCard } from "@/components/accounting/eta-signer-card"
 import { EtaCodePicker } from "@/components/accounting/eta-code-picker"
 import { EtaWaitingClassify } from "@/components/accounting/eta-waiting-classify"
 import { cairoTomorrow, canSetGoLive, goLiveDate, goLiveStarted } from "@/lib/eta/go-live"
+import { canDecideCodes } from "@/lib/eta/code-roles"
 import { DEFAULT_BRANDS } from "@/lib/eta/normalize"
 import { chunk, prepareRowsToPost, PREPARE_BATCH, type CodeState } from "@/lib/eta/codes"
 
@@ -68,6 +69,8 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
   const { t, language } = useI18n()
   const { toast } = useToast()
   const mayGoLive = canSetGoLive(roles)
+  // only the accountant (CEO, admin) confirms or changes codes; anyone else sees them read-only
+  const mayCodes = canDecideCodes(roles)
 
   const [settings, setSettings] = useState<Record<string, string> | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -541,6 +544,8 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">{t("eta.codes-help")}</p>
+          {!mayCodes && <p className="text-sm font-medium">{t("eta.codes-by-accountant")}</p>}
+          {mayCodes && (<>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
             <div className="space-y-1">
               <Label htmlFor="eta-code-item-code">{t("eta.code")}</Label>
@@ -602,6 +607,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
               </Button>
             )}
           </div>
+          </>)}
           {codes.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("eta.no-codes")}</p>
           ) : !showCodes ? (
@@ -638,14 +644,14 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
                       {c.keywords && c.keywords.length > 0 ? ` · ${t("eta.keywords-short")}: ${c.keywords.join(", ")}` : ""}
                     </p>
                   </div>
-                  <div className="flex shrink-0 gap-2">
+                  {mayCodes && <div className="flex shrink-0 gap-2">
                     <Button size="sm" variant="outline" aria-label={`${t("eta.code-edit")} ${c.item_code}`} onClick={() => editCode(c)}>
                       <Pencil className="w-4 h-4" />
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => toggleCode(c)}>
                       {c.active === false ? t("eta.code-switch-on") : t("eta.code-switch-off")}
                     </Button>
-                  </div>
+                  </div>}
                 </li>
               ))}
             </ul>
@@ -661,12 +667,13 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">{t("eta.prepare-help")}</p>
+          {!mayCodes && <p className="text-sm font-medium">{t("eta.codes-by-accountant")}</p>}
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={startPrepare} disabled={preparing || saving !== null}>
               {preparing ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <RefreshCw className="w-4 h-4 me-2" />}
               {t("eta.prepare-start")}
             </Button>
-            {prepare && prepare.length > 0 && (
+            {prepare && prepare.length > 0 && mayCodes && (
               <Button onClick={confirmAll} disabled={saving !== null || toConfirm.length === 0}>
                 {saving === "prepare" && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
                 {fill(t("eta.prepare-confirm-all"), { n: toConfirm.length })}
@@ -697,12 +704,14 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
                       onChange={(id) => setPrepareRow(r.normalizedName, { pick: id == null ? NONE : String(id), state: id == null ? "red" : "green" })}
                       ariaLabel={`${t("eta.item-code")} ${r.name}`}
                       noneLabel={t("eta.choose-code")}
+                      disabled={!mayCodes}
                     />
                   </div>
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id={`eta-skip-${r.normalizedName}`}
                       checked={r.skip}
+                      disabled={!mayCodes}
                       onCheckedChange={(v) => setPrepareRow(r.normalizedName, { skip: v === true })}
                     />
                     <Label htmlFor={`eta-skip-${r.normalizedName}`}>{t("eta.prepare-skip")}</Label>
@@ -720,7 +729,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
       </Card>
 
       {/* Classify waiting invoices */}
-      <EtaWaitingClassify codes={codes} onSaved={() => loadMemory(memoryQuery)} />
+      <EtaWaitingClassify codes={codes} onSaved={() => loadMemory(memoryQuery)} readOnly={!mayCodes} />
 
       {/* Remembered names */}
       <Card>
@@ -729,7 +738,8 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">{t("eta.memory-help")}</p>
-          <div className="flex flex-wrap items-end gap-2">
+          {!mayCodes && <p className="text-sm font-medium">{t("eta.codes-by-accountant")}</p>}
+          {mayCodes && <div className="flex flex-wrap items-end gap-2">
             <div className="space-y-1">
               <Label htmlFor="eta-learn-months">{t("eta.learn-months")}</Label>
               <Select value={learnMonths} onValueChange={setLearnMonths} disabled={saving !== null}>
@@ -746,7 +756,7 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
             <Button variant="outline" onClick={learnFromPortal} disabled={saving !== null}>
               {saving === "learn" ? t("eta.learn-busy") : t("eta.learn")}
             </Button>
-          </div>
+          </div>}
           {learnProgress && (
             <p className="text-sm text-muted-foreground" aria-live="polite">
               {fill(t("eta.learn-progress"), { month: Math.min(learnProgress.done + 1, learnProgress.total), total: learnProgress.total })}
@@ -787,16 +797,19 @@ export function EInvoiceSettingsModule({ roles }: { roles: readonly string[] }) 
                         onChange={(id) => changeMemory(m, id == null ? NONE : String(id))}
                         ariaLabel={`${t("eta.item-code")} ${m.sample_name || m.normalized_name}`}
                         noneLabel={t("eta.choose-code")}
+                        disabled={!mayCodes}
                       />
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      aria-label={`${t("eta.memory-remove")} ${m.sample_name || m.normalized_name}`}
-                      onClick={() => removeMemory(m)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    {mayCodes && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`${t("eta.memory-remove")} ${m.sample_name || m.normalized_name}`}
+                        onClick={() => removeMemory(m)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
                   </li>
                 )
               })}

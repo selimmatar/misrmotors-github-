@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { codeChangeRefusal } from "@/lib/eta/code-roles"
 import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { readEtaSettings } from "@/lib/eta/store"
@@ -16,6 +17,9 @@ export const maxDuration = 60
 // -> { imported, updated, unchanged, failed, pages }
 export async function POST(request: Request) {
   try {
+    // only the accountant (CEO, admin) decides codes - checked here as well as by the /api/eta rule
+    const refused = codeChangeRefusal(request)
+    if (refused) return NextResponse.json(refused, { status: 403 })
     const db = createAdminClient()
     const env = etaEnvironment(await readEtaSettings(db))
     if (!credentialsSet(env)) return NextResponse.json({ error: new EtaCredentialsError(env).message }, { status: 400 })

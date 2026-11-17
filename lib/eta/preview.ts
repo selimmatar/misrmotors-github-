@@ -17,6 +17,7 @@ export type EtaMissing =
   | "customer_tax_number"
   | "customer_address"
   | "line_codes"
+  | "portal_codes"
   | "amount_mismatch"
 
 export type EtaItemType = "EGS" | "GS1"
@@ -41,6 +42,8 @@ export interface EtaPreviewLine extends EtaLineOut {
   state: CodeState
   /** the stock product the line bills (null for an outsourced / free-text line): confirming sets its card code when empty */
   productId?: number | null
+  /** the item code the accountant used on the portal for this name, when it differs from the product card's (orange) */
+  portalItemCode?: string | null
 }
 
 export interface EtaPreview {
@@ -153,7 +156,10 @@ export async function buildEtaPreview(
       const code = match.codeId != null ? codeById.get(match.codeId) : undefined
       const itemCode = code?.itemCode ?? null
       const productId = group.lines[idx].productId ?? null
-      lines.push({ ...line, codeId: match.codeId, itemCode, itemType: etaItemType(itemCode, code?.codeType), discountRate: rate, unit: match.unit, state: match.state, productId })
+      lines.push({
+        ...line, codeId: match.codeId, itemCode, itemType: etaItemType(itemCode, code?.codeType), discountRate: rate, unit: match.unit, state: match.state, productId,
+        ...(match.portalCodeId != null ? { portalItemCode: itemCode } : {}),
+      })
     })
     for (const key of Object.keys(sums) as (keyof EtaTotals)[]) sums[key] += priced.totals[key]
   }
@@ -201,6 +207,8 @@ export async function buildEtaPreview(
     if (!/^\d{14}$/.test(text(receiver.nationalId))) missing.push("customer_tax_number")
   }
   if (lines.some((l) => l.state === "red" || l.codeId == null)) missing.push("line_codes")
+  // the accountant used another code on the portal for a line's name: nothing is sent until the line is confirmed
+  if (lines.some((l) => l.portalItemCode)) missing.push("portal_codes")
   // The preview is recomputed from today's data; a return rejected or an order edited after invoicing moves it away
   // from what the invoice stored. Such an invoice must not be sent as is.
   const storedAmount = round2(Number(invoice.amount) || 0)

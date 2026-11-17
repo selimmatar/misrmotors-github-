@@ -48,8 +48,11 @@ export async function readError(res: Response, fallback: string): Promise<string
   return body && typeof body.error === "string" && body.error.trim() ? body.error : fallback
 }
 
-const REFUSAL_REASONS = ["amount_mismatch", "already_live", "final", "not_found", "no_issue_date", "build_failed", "handled_manually"]
-const MISSING_REASONS = ["company_rin", "company_activity", "company_address", "receiver_identity", "customer_tax_number", "customer_address", "line_codes"]
+const REFUSAL_REASONS = [
+  "amount_mismatch", "already_live", "final", "not_found", "no_issue_date", "build_failed", "handled_manually",
+  "already_on_portal", "portal_check_failed", "portal_check_later",
+]
+const MISSING_REASONS = ["company_rin", "company_activity", "company_address", "receiver_identity", "customer_tax_number", "customer_address", "line_codes", "portal_codes"]
 
 /** A refusal reason code of the send routes in plain words. */
 export function reasonText(code: string, t: (key: string) => string): string {
@@ -88,7 +91,7 @@ export function StatePill({ state }: { state: CodeState }) {
 
 const NONE = "none"
 
-function LineRow({ line, codes, onSaved }: { line: EtaPreviewLine; codes: EtaCodeRow[]; onSaved: () => Promise<void> }) {
+function LineRow({ line, codes, onSaved, readOnly }: { line: EtaPreviewLine; codes: EtaCodeRow[]; onSaved: () => Promise<void>; readOnly?: boolean }) {
   const { t } = useI18n()
   const { toast } = useToast()
   const [codeId, setCodeId] = useState(line.codeId != null ? String(line.codeId) : NONE)
@@ -129,6 +132,11 @@ function LineRow({ line, codes, onSaved }: { line: EtaPreviewLine; codes: EtaCod
         <p className="font-medium break-words min-w-0">{line.name}</p>
         <StatePill state={line.state} />
       </div>
+      {line.portalItemCode && (
+        <p className="text-sm text-amber-800 dark:text-amber-300">
+          {fill(t("eta.portal-code-note"), { code: line.portalItemCode })}
+        </p>
+      )}
       <div className="grid grid-cols-3 gap-2 text-sm">
         <div>
           <p className="text-xs text-muted-foreground">{t("eta.quantity")}</p>
@@ -152,11 +160,12 @@ function LineRow({ line, codes, onSaved }: { line: EtaPreviewLine; codes: EtaCod
             onChange={(id) => setCodeId(id == null ? NONE : String(id))}
             ariaLabel={`${t("eta.item-code")} ${line.name}`}
             noneLabel={t("eta.choose-code")}
+            disabled={readOnly}
           />
         </div>
         <div className="sm:w-40 space-y-1">
           <p className="text-xs text-muted-foreground">{t("eta.unit")}</p>
-          <Select value={unit} onValueChange={setUnit}>
+          <Select value={unit} onValueChange={setUnit} disabled={readOnly}>
             <SelectTrigger aria-label={`${t("eta.unit")} ${line.name}`}>
               <SelectValue />
             </SelectTrigger>
@@ -170,10 +179,12 @@ function LineRow({ line, codes, onSaved }: { line: EtaPreviewLine; codes: EtaCod
             </SelectContent>
           </Select>
         </div>
-        <Button size="sm" onClick={confirm} disabled={saving || codeId === NONE}>
-          {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
-          {t("eta.confirm")}
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={confirm} disabled={saving || codeId === NONE}>
+            {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+            {t("eta.confirm")}
+          </Button>
+        )}
       </div>
     </li>
   )
@@ -216,6 +227,13 @@ function EtaActions({
       const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       if (!res.ok) throw new Error(await readApiError(res, t("message.error"), language, t))
       const answer = await res.json().catch(() => ({}))
+      if (Array.isArray(answer.refused) && answer.refused[0]?.reasons?.[0] === "already_on_portal") {
+        // found on the portal (typed by hand): marked as such, nothing sent - the window shows the mark
+        toast({ title: reasonText("already_on_portal", t) })
+        await reload()
+        onChanged?.()
+        return
+      }
       if (Array.isArray(answer.refused) && answer.refused.length > 0) {
         throw new Error(answer.refused[0].reasons.map((r: string) => reasonText(r, t)).filter(Boolean).join("; ") || t("message.error"))
       }
@@ -353,7 +371,7 @@ function EtaActions({
 }
 
 export function EtaPreviewDialog({
-  invoiceId, invoiceNumber, invoiceDate, onClose, onChanged, onReissue,
+  invoiceId, invoiceNumber, invoiceDate, onClose, onChanged, onReissue, canEditCodes = true,
 }: {
   invoiceId: string
   invoiceNumber: string
@@ -363,6 +381,8 @@ export function EtaPreviewDialog({
   onChanged?: () => void
   /** opens "Correct and reissue" for this invoice */
   onReissue?: () => void
+  /** false: the viewer sees the codes read-only (only the accountant, CEO or admin confirms codes) */
+  canEditCodes?: boolean
 }) {
   const { t, language } = useI18n()
   const { toast } = useToast()
@@ -577,12 +597,13 @@ export function EtaPreviewDialog({
 
             <section className="space-y-2">
               <h3 className="font-semibold">{t("eta.lines")}</h3>
+              {!canEditCodes && <p className="text-sm text-muted-foreground">{t("eta.codes-by-accountant")}</p>}
               {preview.lines.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t("eta.no-lines")}</p>
               ) : (
                 <ul className="space-y-2">
                   {preview.lines.map((line, i) => (
-                    <LineRow key={`${i}-${line.name}`} line={line} codes={codes} onSaved={load} />
+                    <LineRow key={`${i}-${line.name}`} line={line} codes={codes} onSaved={load} readOnly={!canEditCodes} />
                   ))}
                 </ul>
               )}

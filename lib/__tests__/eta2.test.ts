@@ -494,9 +494,11 @@ function portalFake(opts: {
     async printout(uuid) { calls.printout.push(uuid); if (!opts.printout) throw new Error("no"); return opts.printout(uuid) },
     async documentType(id) { calls.documentType.push(id); if (!opts.documentType) throw new Error("no"); return opts.documentType(id) },
   }
-  const deps: SendDeps = { now: NOW, portalFor: () => portal, credentialsSet: yes }
+  const deps: SendDeps = { now: NOW, portalFor: () => portal, credentialsSet: yes, sleep: async () => {} }
   return { portal, calls, deps }
 }
+// queueSend asks the real portal first (H1): the earlier tests use a portal that has nothing with the invoice's number
+const QS: SendDeps = { now: NOW, portalFor: () => portalFake().portal, credentialsSet: yes }
 
 // ---- a test e-seal: self-signed certificate + detached CAdES-style CMS, made with node:crypto + pkijs ----
 pkijs.setEngine("test", new pkijs.CryptoEngine({ name: "test", crypto: webcrypto as unknown as Crypto }))
@@ -544,7 +546,7 @@ async function signCms(text: string, rin = RIN, contentType = "1.2.840.113549.1.
 test("F14. queueSend: missing data and handled-manually refused, a ready invoice queued once", async () => {
   // ready
   const { db, id } = await withInvoice("real")
-  const r = await queueSend(db, [id], "real", 7, { now: NOW })
+  const r = await queueSend(db, [id], "real", 7, QS)
   assert.deepEqual(r, { queued: [id], refused: [] })
   const row = db.tables.eta_documents[0]
   assert.equal(row.status, "pending_signature")
@@ -560,13 +562,13 @@ test("F14. queueSend: missing data and handled-manually refused, a ready invoice
   assert.equal(body.issuer.id, RIN)
   assert.equal(body.dateTimeIssued, etaIso(db.tables.accounts_receivable[0].created_at), "P6: the invoice's creation time")
   // a second Send of the same invoice is refused as already live
-  assert.deepEqual((await queueSend(db, [id], "real", 7, { now: NOW })).refused, [{ invoiceId: id, reasons: ["already_live"] }])
+  assert.deepEqual((await queueSend(db, [id], "real", 7, QS)).refused, [{ invoiceId: id, reasons: ["already_live"] }])
   assert.equal(db.tables.eta_documents.length, 1)
 
   // missing customer tax number and address
   const m = await withInvoice("real")
   Object.assign(m.db.tables.customers[0], { tax_registration_number: null, address_street: "" })
-  const mr = await queueSend(m.db, [m.id], "real", 7, { now: NOW })
+  const mr = await queueSend(m.db, [m.id], "real", 7, QS)
   assert.deepEqual(mr.queued, [])
   assert.deepEqual([...mr.refused[0].reasons].sort(), ["customer_address", "customer_tax_number"])
   assert.equal(m.db.tables.eta_documents.length, 0)
@@ -574,7 +576,7 @@ test("F14. queueSend: missing data and handled-manually refused, a ready invoice
   // handled manually (created before go-live): refused on the real portal, allowed on the test portal (labelled test)
   const h = await withInvoice("real")
   h.db.tables.accounts_receivable[0].created_at = "2025-12-01T00:00:00Z"
-  assert.deepEqual((await queueSend(h.db, [h.id], "real", 7, { now: NOW })).refused, [{ invoiceId: h.id, reasons: ["handled_manually"] }])
+  assert.deepEqual((await queueSend(h.db, [h.id], "real", 7, QS)).refused, [{ invoiceId: h.id, reasons: ["handled_manually"] }])
   assert.deepEqual((await queueSend(h.db, [h.id], "test", 7, { now: NOW })).queued, [h.id])
   assert.equal(h.db.tables.eta_documents[0].environment, "test")
   // a test send still refuses an amount that differs from what the ERP billed
@@ -585,20 +587,26 @@ test("F14. queueSend: missing data and handled-manually refused, a ready invoice
   // a future creation time (clock skew) is clamped to now; unknown invoice refused
   const f = await withInvoice("real")
   f.db.tables.accounts_receivable[0].created_at = "2026-12-01T00:00:00Z"
-  await queueSend(f.db, [f.id, 999], "real", 7, { now: NOW }).then((x) => assert.deepEqual(x.refused, [{ invoiceId: 999, reasons: ["not_found"] }]))
+  await queueSend(f.db, [f.id, 999], "real", 7, QS).then((x) => assert.deepEqual(x.refused, [{ invoiceId: 999, reasons: ["not_found"] }]))
   assert.equal(JSON.parse(f.db.tables.eta_documents[0].document).dateTimeIssued, "2026-11-15T10:00:00Z")
   // a needs-review or invalid document can be sent again: a new version
   f.db.tables.eta_documents[0].status = "invalid"
-  assert.deepEqual((await queueSend(f.db, [f.id], "real", 7, { now: NOW })).queued, [f.id])
+  assert.deepEqual((await queueSend(f.db, [f.id], "real", 7, QS)).queued, [f.id])
   assert.deepEqual(f.db.tables.eta_documents.map((d) => [d.version, d.status]), [[1, "invalid"], [2, "pending_signature"]])
   // a cancelled real document is final
   f.db.tables.eta_documents[1].status = "cancelled"
-  assert.deepEqual((await queueSend(f.db, [f.id], "real", 7, { now: NOW })).refused[0].reasons, ["final"])
+  assert.deepEqual((await queueSend(f.db, [f.id], "real", 7, QS)).refused[0].reasons, ["final"])
 
   // the route: the portal from settings, ids checked
   useDb(db)
   db.tables.eta_documents = []
-  const res = await sendRoute.POST(rq("POST", "/api/eta/send", { invoiceIds: [id] }))
+  Object.assign(etaSendDefaults, { portalFor: QS.portalFor, credentialsSet: yes })
+  let res: Response
+  try {
+    res = await sendRoute.POST(rq("POST", "/api/eta/send", { invoiceIds: [id] }))
+  } finally {
+    for (const k of Object.keys(etaSendDefaults)) delete (etaSendDefaults as any)[k]
+  }
   assert.equal(res.status, 200)
   assert.deepEqual(await res.json(), { environment: "real", queued: [id], refused: [] })
   assert.equal((await sendRoute.POST(rq("POST", "/api/eta/send", { invoiceIds: ["x"] }))).status, 400)
@@ -681,7 +689,7 @@ test("F15. signer access: key checks on every signer route; only four new public
 
 test("F16. invoice changed after Send: not handed to the signer, row needs review", async () => {
   const { db, id } = await withInvoice("real")
-  await queueSend(db, [id], "real", 7, { now: NOW })
+  await queueSend(db, [id], "real", 7, QS)
   db.tables.accounts_receivable[0].amount = 400 // the amount changed after Send
   assert.deepEqual(await nextForSigner(db, 1, 20, { credentialsSet: yes, now: NOW }), [])
   assert.equal(db.tables.eta_documents[0].status, "needs_review")
@@ -689,14 +697,14 @@ test("F16. invoice changed after Send: not handed to the signer, row needs revie
 
   // the customer's name changed: the rebuilt text differs
   const b = await withInvoice("real")
-  await queueSend(b.db, [b.id], "real", 7, { now: NOW })
+  await queueSend(b.db, [b.id], "real", 7, QS)
   b.db.tables.customers[0].customer_name = "Acme Trading Co"
   assert.deepEqual(await nextForSigner(b.db, 1, 20, { credentialsSet: yes }), [])
   assert.equal(b.db.tables.eta_documents[0].status, "needs_review")
 
   // unchanged: handed out; nothing handed out on the other portal or without its login
   const c = await withInvoice("real")
-  await queueSend(c.db, [c.id], "real", 7, { now: NOW })
+  await queueSend(c.db, [c.id], "real", 7, QS)
   assert.deepEqual(await nextForSigner(c.db, 1, 20, { credentialsSet: () => false }), [])
   assert.equal((await nextForSigner(c.db, 1, 20, { credentialsSet: yes })).length, 1)
   c.db.tables.company_settings.find((s) => s.setting_key === "eta_environment")!.setting_value = "test"
@@ -706,7 +714,7 @@ test("F16. invoice changed after Send: not handed to the signer, row needs revie
 
 test("F17. signature checked against the stored text before one submit", async () => {
   const { db, id } = await withInvoice("real")
-  await queueSend(db, [id], "real", 7, { now: NOW })
+  await queueSend(db, [id], "real", 7, QS)
   const row = db.tables.eta_documents[0]
   const fake = portalFake()
 
@@ -746,7 +754,7 @@ test("F17. signature checked against the stored text before one submit", async (
 
   // a document the portal rejects in the submission -> invalid with its reasons
   const r = await withInvoice("real")
-  await queueSend(r.db, [r.id], "real", 7, { now: NOW })
+  await queueSend(r.db, [r.id], "real", 7, QS)
   const rr = r.db.tables.eta_documents[0]
   const rej = portalFake({ submit: (docs) => ({ submissionUUID: "SUB2", acceptedDocuments: [], rejectedDocuments: [{ internalId: JSON.parse(docs[0]).internalID, error: { code: "BadStructure", message: "bad", details: [{ code: "x1", message: "Receiver id is wrong", target: "receiver.id" }] } }] }) })
   const out2 = await acceptSignatures(r.db, [{ docId: rr.doc_id, signature: await signCms(rr.canonical) }], rej.deps)
@@ -762,7 +770,7 @@ test("F17. signature checked against the stored text before one submit", async (
 
 test("F18. follow-up never resubmits; 422 duplicate is 'already submitted - check status'", async () => {
   const { db, id } = await withInvoice("real")
-  await queueSend(db, [id], "real", 7, { now: NOW })
+  await queueSend(db, [id], "real", 7, QS)
   const row = db.tables.eta_documents[0]
   let mode: "throw" | "valid" | "invalid" = "throw"
   const fake = portalFake({
@@ -798,7 +806,7 @@ test("F18. follow-up never resubmits; 422 duplicate is 'already submitted - chec
 
   // invalid: the portal's reasons from the document details
   const iv = await withInvoice("real")
-  await queueSend(iv.db, [iv.id], "real", 7, { now: NOW })
+  await queueSend(iv.db, [iv.id], "real", 7, QS)
   const ir = iv.db.tables.eta_documents[0]
   mode = "invalid"
   await acceptSignatures(iv.db, [{ docId: ir.doc_id, signature: await signCms(ir.canonical) }], fake.deps)
@@ -808,7 +816,7 @@ test("F18. follow-up never resubmits; 422 duplicate is 'already submitted - chec
 
   // 422 DuplicateSubmission on submit: kept as submitted with the plain message, never handed out or submitted again
   const d = await withInvoice("real")
-  await queueSend(d.db, [d.id], "real", 7, { now: NOW })
+  await queueSend(d.db, [d.id], "real", 7, QS)
   const dr = d.db.tables.eta_documents[0]
   const dup = portalFake({ submit: () => { throw new EtaError(422, "DuplicateSubmission", plainError("DuplicateSubmission")) } })
   const sig = await signCms(dr.canonical)
@@ -821,7 +829,7 @@ test("F18. follow-up never resubmits; 422 duplicate is 'already submitted - chec
   assert.equal(dup.calls.submit.length, 1)
   // a timeout on submit: unknown outcome, kept as submitted (never sent again by itself)
   const to = await withInvoice("real")
-  await queueSend(to.db, [to.id], "real", 7, { now: NOW })
+  await queueSend(to.db, [to.id], "real", 7, QS)
   const tr = to.db.tables.eta_documents[0]
   const slow = portalFake({ submit: () => { throw new EtaError(0, "Timeout", "x") } })
   assert.deepEqual((await acceptSignatures(to.db, [{ docId: tr.doc_id, signature: await signCms(tr.canonical) }], slow.deps)).unconfirmed, [tr.doc_id])
@@ -829,7 +837,7 @@ test("F18. follow-up never resubmits; 422 duplicate is 'already submitted - chec
   assert.equal(to.db.tables.eta_documents[0].errors[0].code, "Unconfirmed")
   // the portal busy (429): nothing was taken, back to the waiting list
   const bz = await withInvoice("real")
-  await queueSend(bz.db, [bz.id], "real", 7, { now: NOW })
+  await queueSend(bz.db, [bz.id], "real", 7, QS)
   const br = bz.db.tables.eta_documents[0]
   const busy = portalFake({ submit: () => { throw new EtaBusyError(30) } })
   await acceptSignatures(bz.db, [{ docId: br.doc_id, signature: await signCms(br.canonical) }], busy.deps)
@@ -901,7 +909,7 @@ test("F20. portal searchSent: the company's sent documents by internal number", 
 // an invoice sent, whose portal answer was lost (no submission id)
 async function lostSend(failure: () => never) {
   const { db, id } = await withInvoice("real")
-  await queueSend(db, [id], "real", 7, { now: NOW })
+  await queueSend(db, [id], "real", 7, QS)
   const row = db.tables.eta_documents[0]
   const lost = portalFake({ submit: failure })
   await acceptSignatures(db, [{ docId: row.doc_id, signature: await signCms(row.canonical) }], lost.deps)
@@ -941,7 +949,7 @@ test("F21. lost sends: found on the portal -> adopted; not found -> left for 30 
   await followUp(n.db, none.deps, { now: t0 + 10 * 60_000 })
   assert.equal(n.db.tables.eta_documents[0].status, "submitted")
   assert.equal(await liveRealDocument(n.db, n.id), true)
-  assert.deepEqual((await queueSend(n.db, [n.id], "real", 7, { now: NOW })).refused[0].reasons, ["already_live"])
+  assert.deepEqual((await queueSend(n.db, [n.id], "real", 7, QS)).refused[0].reasons, ["already_live"])
   // throttled like any check: not searched again within 30 s
   await followUp(n.db, none.deps, { now: t0 + 10 * 60_000 + 5_000 })
   assert.equal(none.calls.searchSent.length, 1)
@@ -951,7 +959,7 @@ test("F21. lost sends: found on the portal -> adopted; not found -> left for 30 
   assert.equal(nr.status, "invalid")
   assert.deepEqual(nr.errors.map((e: any) => [e.code, e.message]), [["NotReceived", "The portal never received it — send again"]])
   assert.equal(await liveRealDocument(n.db, n.id), false)
-  assert.deepEqual((await queueSend(n.db, [n.id], "real", 7, { now: NOW })).queued, [n.id])
+  assert.deepEqual((await queueSend(n.db, [n.id], "real", 7, QS)).queued, [n.id])
   assert.deepEqual(n.db.tables.eta_documents.map((r) => [r.version, r.status]), [[1, "invalid"], [2, "pending_signature"]])
   n.db.tables.eta_documents.pop()
   useDb(n.db)
@@ -966,7 +974,7 @@ test("F21. lost sends: found on the portal -> adopted; not found -> left for 30 
 
 test("F22. follow-up is bounded: a slow portal never holds the signer's answer beyond the budget", async () => {
   const { db, id } = await withInvoice("real")
-  await queueSend(db, [id], "real", 7, { now: NOW })
+  await queueSend(db, [id], "real", 7, QS)
   // another document of this portal already sent, whose check hangs
   db.tables.eta_documents.push({ doc_id: 500, invoice_id: id, document_type: "I", environment: "real", version: 5, status: "submitted", submission_uuid: "HANG", document: db.tables.eta_documents[0].document })
   db.tables.eta_documents.push({ doc_id: 501, invoice_id: id, document_type: "I", environment: "real", version: 6, status: "submitted", submission_uuid: "HANG2", document: db.tables.eta_documents[0].document })
@@ -1018,7 +1026,7 @@ import { confirmCancelled } from "../eta/after-send"
 // an invoice whose document is valid on the given portal
 async function validInvoice(env: "test" | "real" = "real") {
   const { db, id } = await withInvoice(env)
-  await queueSend(db, [id], env, 7, { now: NOW })
+  await queueSend(db, [id], env, 7, QS)
   Object.assign(db.tables.eta_documents[0], { status: "valid", eta_uuid: "INV-UUID", eta_long_id: "INV-LONG", submission_uuid: "SUB1", submitted_at: "2026-11-15T10:00:00Z", validated_at: "2026-11-15T10:01:00Z" })
   return { db, id, inv: db.tables.eta_documents[0] }
 }
@@ -1031,7 +1039,7 @@ const withDefaults = async (deps: SendDeps, fn: () => Promise<void>) => {
 test("F23. credit note: only after valid, references the uuid, built from the sent snapshot; one active at a time", async () => {
   // not valid yet (waiting to be signed): refused, nothing saved
   const w = await withInvoice("real")
-  await queueSend(w.db, [w.id], "real", 7, { now: NOW })
+  await queueSend(w.db, [w.id], "real", 7, QS)
   const nv = await queueCreditNote(w.db, w.id, "real", 7, { now: NOW })
   assert.equal(nv.ok, false)
   assert.equal(!nv.ok && nv.code, "not_valid")
@@ -1181,23 +1189,23 @@ test("F24. cancel: refused with an active credit note; portal refusals in plain 
 
 test("F25. send again: after invalid a new version; refused while the earlier version is still live", async () => {
   const { db, id } = await withInvoice("real")
-  assert.equal((await sendAgain(db, id, "real", 7, { now: NOW }) as any).code, "not_sent")
-  await queueSend(db, [id], "real", 7, { now: NOW })
+  assert.equal((await sendAgain(db, id, "real", 7, QS) as any).code, "not_sent")
+  await queueSend(db, [id], "real", 7, QS)
   const v1 = db.tables.eta_documents[0]
   for (const status of LIVE_STATUSES) {
     v1.status = status
-    const r = await sendAgain(db, id, "real", 7, { now: NOW })
+    const r = await sendAgain(db, id, "real", 7, QS)
     assert.equal(!r.ok && r.code, "still_live", status)
     assert.equal(db.tables.eta_documents.length, 1)
   }
   for (const status of ["needs_review", "cancelled"]) {
     v1.status = status
-    assert.equal((await sendAgain(db, id, "real", 7, { now: NOW }) as any).code, "not_invalid", status)
+    assert.equal((await sendAgain(db, id, "real", 7, QS) as any).code, "not_invalid", status)
   }
   // invalid (e.g. the customer's address was wrong; fixed now): version 2, rebuilt from the invoice as it is now
   v1.status = "invalid"
   db.tables.customers[0].address_street = "Tahrir Sq"
-  const r = await sendAgain(db, id, "real", 7, { now: NOW })
+  const r = await sendAgain(db, id, "real", 7, QS)
   assert.ok(r.ok, JSON.stringify(r))
   assert.deepEqual([r.documentType, r.version], ["I", 2])
   assert.deepEqual(db.tables.eta_documents.map((d) => [d.version, d.status]), [[1, "invalid"], [2, "pending_signature"]])
@@ -1205,13 +1213,13 @@ test("F25. send again: after invalid a new version; refused while the earlier ve
   assert.equal(JSON.parse(db.tables.eta_documents[1].document).receiver.address.street, "Tahrir Sq")
   assert.equal(JSON.parse(db.tables.eta_documents[1].document).internalID, JSON.parse(v1.document).internalID, "same internal number")
   // version 2 is live: no third
-  assert.equal((await sendAgain(db, id, "real", 7, { now: NOW }) as any).code, "still_live")
+  assert.equal((await sendAgain(db, id, "real", 7, QS) as any).code, "still_live")
   // still something missing: refused with the reasons
   const m = await withInvoice("real")
-  await queueSend(m.db, [m.id], "real", 7, { now: NOW })
+  await queueSend(m.db, [m.id], "real", 7, QS)
   m.db.tables.eta_documents[0].status = "invalid"
   m.db.tables.customers[0].address_street = ""
-  const mr = await sendAgain(m.db, m.id, "real", 7, { now: NOW })
+  const mr = await sendAgain(m.db, m.id, "real", 7, QS)
   assert.ok(!mr.ok && mr.code === "customer_address" && mr.reasons?.includes("customer_address"))
   assert.equal(m.db.tables.eta_documents.length, 1)
 
@@ -1219,9 +1227,9 @@ test("F25. send again: after invalid a new version; refused while the earlier ve
   const c = await validInvoice("real")
   await queueCreditNote(c.db, c.id, "real", 7, { now: NOW })
   const [cn1] = creditNotes(c.db)
-  assert.equal((await sendAgain(c.db, c.id, "real", 7, { now: NOW }) as any).code, "still_live")
+  assert.equal((await sendAgain(c.db, c.id, "real", 7, QS) as any).code, "still_live")
   cn1.status = "invalid"
-  const cr = await sendAgain(c.db, c.id, "real", 7, { now: NOW })
+  const cr = await sendAgain(c.db, c.id, "real", 7, QS)
   assert.ok(cr.ok && cr.documentType === "C" && cr.version === 2, JSON.stringify(cr))
   const cn2 = creditNotes(c.db)[1]
   assert.deepEqual([cn2.status, cn2.references], ["pending_signature", ["INV-UUID"]])
@@ -2397,7 +2405,7 @@ import * as statusesRoute from "../../app/api/eta/statuses/route"
 
 test("F45. a signature for an invoice that changed while the signer waited is not submitted: needs review (I1)", async () => {
   const { db, id } = await withInvoice("real")
-  await queueSend(db, [id], "real", 7, { now: NOW })
+  await queueSend(db, [id], "real", 7, QS)
   const row = db.tables.eta_documents[0]
   const signature = await signCms(row.canonical) // handed out, signed (the PIN dialog stays open) ...
   db.tables.customers[0].customer_name = "Acme Trading Co" // ... and the ERP changes the invoice meanwhile
@@ -2442,7 +2450,9 @@ test("F46. lost send: a search result without dateTimeReceived is not filtered b
   const none = portalFake()
   const ok = await sendAgain(n.db, n.id, "real", 7, { ...none.deps, ...later })
   assert.ok(ok.ok, JSON.stringify(ok))
-  assert.equal(none.calls.searchSent.length, 1)
+  // the NotReceived search, then the portal check every send makes (H1): by the invoice number, around its date and today
+  assert.ok(none.calls.searchSent.length >= 2)
+  assert.equal(none.calls.searchSent[0].from, new Date(t0 - 60 * 60_000).toISOString())
   assert.deepEqual(n.db.tables.eta_documents.map((d) => [d.version, d.status]), [[1, "invalid"], [2, "pending_signature"]])
 
   // the search itself fails: nothing is queued (it might be there)
@@ -2463,9 +2473,9 @@ test("F47. a document the customer rejected counts as reversed for Correct and r
   assert.equal((await startReissue(t, 10, 7) as any).code, "not_reversed")
   // Send again is still refused for it
   const s = await withInvoice("real")
-  await queueSend(s.db, [s.id], "real", 7, { now: NOW })
+  await queueSend(s.db, [s.id], "real", 7, QS)
   s.db.tables.eta_documents[0].status = "rejected"
-  assert.equal((await sendAgain(s.db, s.id, "real", 7, { now: NOW }) as any).code, "not_invalid")
+  assert.equal((await sendAgain(s.db, s.id, "real", 7, QS) as any).code, "not_invalid")
   assert.equal(invoiceBadge([{ doc_id: 1, document_type: "I", status: "rejected" }]), "rejected")
   const i18n = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "lib/i18n-context.tsx"), "utf8")
   const arStart = i18n.indexOf("\n  ar: {")
@@ -3462,14 +3472,14 @@ test("G2. two identities: receiver_identity is missing (Send refused) until one 
   assert.equal(p.identityId, null)
   assert.deepEqual(p.identities, [{ identityId: 1, name: "Al Kasrawy Trading" }, { identityId: 2, name: "Al Kasrawy Motors" }])
   assert.ok(p.identities!.every((i) => Object.keys(i).sort().join() === "identityId,name"), "names only, never tax numbers")
-  assert.deepEqual((await queueSend(db, [id], "real", 7, { now: NOW })).refused, [{ invoiceId: id, reasons: ["receiver_identity"] }])
+  assert.deepEqual((await queueSend(db, [id], "real", 7, QS)).refused, [{ invoiceId: id, reasons: ["receiver_identity"] }])
 
   assert.deepEqual(await chooseInvoiceIdentity(db, id, 2), { ok: true, value: 2, warnings: [] })
   assert.equal(db.tables.accounts_receivable[0].eta_identity_id, 2)
   const chosen = (await buildPreviewG(db, id))!
   assert.deepEqual(chosen.missing, [])
   assert.equal(chosen.identityId, 2)
-  assert.deepEqual(await queueSend(db, [id], "real", 7, { now: NOW }), { queued: [id], refused: [] })
+  assert.deepEqual(await queueSend(db, [id], "real", 7, QS), { queued: [id], refused: [] })
   const body = JSON.parse(db.tables.eta_documents[0].document)
   assert.deepEqual(body.receiver, {
     address: { country: "EG", governate: "Alexandria", regionCity: "Smouha 2", street: "Fawzy Moaz", buildingNumber: "12" },
@@ -3637,4 +3647,258 @@ test("G7. screens wired: the customer card lists identities, the e-invoice windo
     assert.ok(i18n.slice(arAt).includes(`"${k}":`), `AR ${k}`)
   }
   assert.match(i18n.slice(arAt), /"eta\.missing-receiver_identity": "اختر الشركة التي تصدر لها هذه الفاتورة"/)
+})
+
+// ---------------------------------------------------------------------------------------------------------
+// H: portal check before every send, the portal teaches the codes, only the accountant confirms codes (2026-11-17)
+// ---------------------------------------------------------------------------------------------------------
+import { PORTAL_CHECK_BUDGET_MS, portalSearchWindows } from "../eta/send"
+import { rememberPortalLines } from "../eta/learn"
+import { buildEtaPreview as buildPreviewH } from "../eta/preview"
+import { canDecideCodes } from "../eta/code-roles"
+import { matchCode, type EtaCode, type MemoryRow } from "../eta/codes"
+import { DEFAULT_BRANDS } from "../eta/normalize"
+import * as codesRouteH from "../../app/api/eta/codes/route"
+import * as prepareRouteH from "../../app/api/eta/memory/prepare/route"
+
+const P2 = "EG-100060455-P2"
+/** the invoice of sendDb, plus a second code and the memory rows given */
+async function invoiceH(memory: Row[] = []) {
+  const r = await withInvoice("real")
+  r.db.tables.eta_item_codes.push({ code_id: 2, item_code: P2, name: "Garage", keywords: [], default_unit: "EA", active: true })
+  r.db.tables.eta_code_memory.push(...memory)
+  return { ...r, number: String(r.db.tables.accounts_receivable[0].invoice_number) }
+}
+const memH = (name: string, codeId: number, source: string, id: number): Row =>
+  ({ memory_id: id, normalized_name: normalizeName(name), core_name: normalizeName(name), code_id: codeId, unit_type: "EA", source })
+const handTyped = (internalId: string, extra: Row = {}) => ({ uuid: "HAND1", longId: "HL1", internalId, issuerId: RIN, typeName: "I", status: "Valid", ...extra })
+const handLines = { document: JSON.stringify({ invoiceLines: [{ description: "Wrench", itemCode: P2, unitType: "EA" }, { description: "Trolley", itemCode: P2, unitType: "EA" }] }) }
+
+test("H1. already on the portal (typed by hand): not queued, a manual row with the portal ID, the portal's codes teach the memory", async () => {
+  const { db, id, number } = await invoiceH([memH("Wrench", 1, "imported", 1), memH("Trolley", 1, "confirmed", 2)])
+  const fake = portalFake({ searchSent: (p) => ({ result: [handTyped(p.internalId)] }), getDetails: () => handLines })
+  const r = await queueSend(db, [id], "real", 7, fake.deps)
+  assert.deepEqual(r.queued, [])
+  assert.equal(r.refused.length, 1)
+  assert.deepEqual(r.refused[0].reasons, ["already_on_portal"])
+  assert.equal(r.refused[0].etaUuid, "HAND1")
+  assert.equal(r.refused[0].message, "This invoice is already on the portal (entered by hand). It was marked so and not sent again.")
+  assert.match(r.refused[0].messageAr || "", /البوابة/)
+  assert.equal(fake.calls.searchSent[0].internalId, number, "searched by the invoice number")
+  assert.equal(fake.calls.submit.length, 0)
+  assert.deepEqual(db.tables.eta_documents.map((d) => [d.status, d.environment, d.document_type, d.eta_uuid]), [["manual", "real", "I", "HAND1"]])
+  // the portal's code replaces the differing learned row; the accountant's confirmed row stays
+  const mem = (n: string) => db.tables.eta_code_memory.find((m) => m.normalized_name === normalizeName(n))!
+  assert.deepEqual([mem("Wrench").code_id, mem("Wrench").source], [2, "imported"])
+  assert.deepEqual([mem("Trolley").code_id, mem("Trolley").source], [1, "confirmed"])
+  // the window now shows it as already on the portal; a second Send is refused without asking the portal again
+  const preview = await buildPreviewH(db, id)
+  assert.deepEqual([preview!.handledManually, preview!.manualEtaUuid], [true, "HAND1"])
+  const n = fake.calls.searchSent.length
+  assert.ok((await queueSend(db, [id], "real", 7, fake.deps)).refused[0].reasons.includes("handled_manually"))
+  assert.equal(fake.calls.searchSent.length, n)
+  // a credit note or another company's document with the number, or an invalid one, is not "already on the portal"
+  for (const other of [{ typeName: "C" }, { issuerId: "999999999" }, { status: "Invalid" }]) {
+    const x = await invoiceH()
+    const f = portalFake({ searchSent: (p) => ({ result: [handTyped(p.internalId, other)] }) })
+    assert.deepEqual((await queueSend(x.db, [x.id], "real", 7, f.deps)).queued, [x.id], JSON.stringify(other))
+  }
+  // rememberPortalLines skips codes the ERP does not know
+  const u = await invoiceH()
+  assert.equal(await rememberPortalLines(u.db, { invoiceLines: [{ description: "X", itemCode: "UNKNOWN" }, { description: "Y", itemCode: P2 }] }), 1)
+})
+
+test("H2. the portal can't be asked: refused 'press Send again', nothing queued or sent; never sent blind", async () => {
+  const { db, id } = await invoiceH()
+  const broken = portalFake({ searchSent: () => { throw new EtaError(0, "Timeout", "x") } })
+  const r = await queueSend(db, [id], "real", 7, broken.deps)
+  assert.deepEqual(r.queued, [])
+  assert.deepEqual([r.refused[0].reasons, r.refused[0].retryable], [["portal_check_failed"], true])
+  assert.match(r.refused[0].message || "", /Press Send again/)
+  assert.equal(db.tables.eta_documents.length, 0)
+  assert.equal(broken.calls.submit.length, 0)
+  // busy portal, and no portal login: the same
+  const busy = portalFake({ searchSent: () => { throw new EtaBusyError(30) } })
+  assert.deepEqual((await queueSend(db, [id], "real", 7, busy.deps)).refused[0].reasons, ["portal_check_failed"])
+  const noLogin = portalFake()
+  assert.deepEqual((await queueSend(db, [id], "real", 7, { ...noLogin.deps, credentialsSet: () => false })).refused[0].reasons, ["portal_check_failed"])
+  assert.equal(noLogin.calls.searchSent.length, 0)
+  assert.equal(db.tables.eta_documents.length, 0)
+  // the test portal is not checked
+  const t = await withInvoice("test")
+  const tf = portalFake({ searchSent: () => { throw new Error("must not be called") } })
+  assert.deepEqual((await queueSend(t.db, [t.id], "test", 7, tf.deps)).queued, [t.id])
+  assert.equal(tf.calls.searchSent.length, 0)
+})
+
+test("H3. not on the portal: queued as before; the search covers the invoice's date and today in windows of at most 30 days", async () => {
+  const { db, id, number } = await invoiceH()
+  const fake = portalFake()
+  assert.deepEqual(await queueSend(db, [id], "real", 7, fake.deps), { queued: [id], refused: [] })
+  assert.equal(db.tables.eta_documents[0].status, "pending_signature")
+  assert.ok(fake.calls.searchSent.length >= 1 && fake.calls.searchSent.every((c) => c.internalId === number))
+  // an old invoice: one window around its date, one ending now
+  const w = portalSearchWindows("2026-08-01T10:00:00Z", new Date("2026-11-15T10:00:00Z"))
+  assert.equal(w.length, 2)
+  assert.equal(w[0].from, "2026-07-31T10:00:00.000Z")
+  assert.equal(w[1].to, "2026-11-15T11:00:00.000Z")
+  for (const x of w) assert.ok(Date.parse(x.to) - Date.parse(x.from) <= 30 * 86_400_000)
+  // a recent invoice: one window
+  assert.equal(portalSearchWindows("2026-11-10T10:00:00Z", new Date("2026-11-15T10:00:00Z")).length, 1)
+})
+
+test("H4. Send all ready: the portal checks stop at the time budget; the rest is refused 'press Send again' (nothing sent)", async () => {
+  const db = sendDb("real")
+  db.tables.sales_orders.push({ so_id: 2, so_number: "SO-2", customer_id: 5, total: 342, subtotal: 300, discount_amount: 0, payment_type: "cash" })
+  db.tables.sales_order_items.push(
+    { so_id: 2, product_id: 100, outsourced_name: null, quantity: 2, unit_price: 100, total: 200 },
+    { so_id: 2, product_id: 101, outsourced_name: null, quantity: 1, unit_price: 100, total: 100 },
+  )
+  db.tables.delivery_permits.push({ permit_id: 2, permit_no: "DP-2", sales_order_id: 2, status: "APPROVED" })
+  db.tables.delivery_permit_items.push(
+    { permit_id: 2, product_id: 100, item_name_snapshot: "Wrench", quantity: 2, unit_price: 100, total: 200 },
+    { permit_id: 2, product_id: 101, item_name_snapshot: "Trolley", quantity: 1, unit_price: 100, total: 100 },
+  )
+  assert.equal((await createDpInvoices(db, [1])).status, 200)
+  assert.equal((await createDpInvoices(db, [2])).status, 200)
+  const ids = db.tables.accounts_receivable.map((a) => a.invoice_id as number)
+  assert.equal(ids.length, 2)
+  for (const a of db.tables.accounts_receivable) a.created_at = "2026-11-14T10:00:00Z" // one search window each
+  let clock = 0
+  // each portal search takes 19 s of a 20 s budget
+  const slow = portalFake({ searchSent: () => { clock += 19_000; return { result: [] } } })
+  const r = await queueSend(db, ids, "real", 7, { ...slow.deps, clock: () => clock, portalCheckBudgetMs: 20_000 })
+  assert.deepEqual(r.queued, [ids[0]], JSON.stringify(r))
+  assert.deepEqual(r.refused.map((x) => [x.invoiceId, x.reasons[0], x.retryable]), [[ids[1], "portal_check_later", true]])
+  assert.match(r.refused[0].message || "", /Press Send again/)
+  assert.equal(db.tables.eta_documents.length, 1)
+  // pressing Send again continues with the rest
+  clock = 0
+  assert.deepEqual((await queueSend(db, ids, "real", 7, { ...slow.deps, clock: () => clock, portalCheckBudgetMs: 20_000 })).queued, [ids[1]])
+  assert.ok(PORTAL_CHECK_BUDGET_MS > 0 && PORTAL_CHECK_BUDGET_MS < 60_000)
+  // the screens: the reason in plain words (EN + AR) and "Send all ready" shows "press Send again" first
+  const repo = process.env.REPO_ROOT || process.cwd()
+  const bits = readFileSync(join(repo, "components/accounting/eta-ar-bits.tsx"), "utf8")
+  assert.match(bits, /sendAllReason\(refused\)/)
+  const i18n = readFileSync(join(repo, "lib/i18n-context.tsx"), "utf8")
+  const arAt = i18n.indexOf("\n  ar: {")
+  for (const k of ["eta.refuse-already_on_portal", "eta.refuse-portal_check_failed", "eta.refuse-portal_check_later", "eta.missing-portal_codes", "eta.portal-code-note", "eta.codes-by-accountant"]) {
+    assert.ok(i18n.slice(0, arAt).includes(`"${k}":`), `EN ${k}`)
+    assert.ok(i18n.slice(arAt).includes(`"${k}":`), `AR ${k}`)
+  }
+})
+
+test("H5. learn: the portal's most frequent code overwrites a differing learned row, never a confirmed one", () => withCreds(async () => {
+  const db = learnDb([
+    { memory_id: 1, normalized_name: "jack", core_name: "jack", code_id: 1, unit_type: "EA", source: "imported" },
+    { memory_id: 2, normalized_name: "other", core_name: "other", code_id: 1, unit_type: "EA", source: "confirmed" },
+  ])
+  const { portal } = learnPortal([["U1", "U2", "U3"]], { U1: [ln("Jack", "EG-1-B")], U2: [ln("Jack", "EG-1-B"), ln("Other", "EG-1-B")], U3: [ln("Jack", "EG-1-A")] })
+  const r = await learnFromPortalWindow(db, "test", { from: "2026-10-01", to: "2026-10-30" }, { portal, sleep: async () => {} })
+  assert.deepEqual([r.learned, r.alreadyKnown, r.conflicts], [1, 1, 1])
+  const m = (n: string) => db.tables.eta_code_memory.find((x) => x.normalized_name === n)!
+  assert.deepEqual([m("jack").code_id, m("jack").source], [2, "imported"])
+  assert.deepEqual([m("other").code_id, m("other").source], [1, "confirmed"])
+}))
+
+test("H6. the daily job also learns codes from the company's portal invoices of the last 3 days (time-budgeted)", () => withCreds(async () => {
+  const db = learnDb([{ memory_id: 1, normalized_name: "jack", core_name: "jack", code_id: 1, unit_type: "EA", source: "imported" }])
+  db.tables.company_settings = []
+  db.tables.eta_documents = []
+  const { portal, urls } = learnPortal([["U1"]], { U1: [ln("Jack", "EG-1-B")] })
+  const r = await runDailySync(db, {
+    receive: { portal: { ...portal, searchReceived: async () => { throw new Error("receive down") } }, sleep: async () => {} },
+    learn: { portal, sleep: async () => {} },
+    credentialsSet: () => true,
+    today: () => new Date("2026-11-16T03:17:00Z"),
+  })
+  assert.equal((r.learned as any).learned, 1)
+  assert.equal(db.tables.eta_code_memory[0].code_id, 2)
+  const s = urls.find((u) => u.includes("/documents/search"))!
+  assert.match(s, /direction=Sent/)
+  assert.match(s, /issueDateFrom=2026-11-14T00%3A00%3A00Z/)
+  assert.match(s, /issueDateTo=2026-11-16T23%3A59%3A59Z/)
+  // no portal login: nothing is read
+  assert.equal((await runDailySync(learnDb(), { credentialsSet: () => false })).learned, null)
+}))
+
+test("H7. matchCode: the code learned from the portal for the exact name beats the product card and the prediction; the accountant's confirmation settles it", async () => {
+  const codes: EtaCode[] = [
+    { codeId: 1, itemCode: "A", name: "A", keywords: [], defaultUnit: "EA", active: true },
+    { codeId: 2, itemCode: "B", name: "B", keywords: [], defaultUnit: "EA", active: true },
+  ]
+  const row = (name: string, codeId: number, source?: string): MemoryRow => ({ normalizedName: normalizeName(name), coreName: normalizeName(name), codeId, unitType: "EA", ...(source ? { source } : {}) })
+  const ctx = (memory: MemoryRow[]) => ({ codes, memory, brands: DEFAULT_BRANDS })
+  // learned from the portal, differs from the card: orange, the portal's code, flagged
+  const p = matchCode({ name: "Wrench", productCodeId: 1 }, ctx([row("Wrench", 2, "imported")]))
+  assert.deepEqual([p.codeId, p.state, p.by, p.portalCodeId], [2, "orange", "portal", 2])
+  // the same code as the card: green by the card
+  assert.deepEqual(matchCode({ name: "Wrench", productCodeId: 2 }, ctx([row("Wrench", 2, "imported")])).by, "product")
+  // confirmed by the accountant: green, the accountant's code
+  const c = matchCode({ name: "Wrench", productCodeId: 1 }, ctx([row("Wrench", 2, "confirmed")]))
+  assert.deepEqual([c.codeId, c.state, c.by, c.portalCodeId], [2, "green", "memory", undefined])
+  // rows of unknown source (older callers) keep the card first
+  assert.equal(matchCode({ name: "Wrench", productCodeId: 1 }, ctx([row("Wrench", 2)])).by, "product")
+  // exact memory beats a prediction
+  const predictor = { predict: () => ({ codeId: 1, state: "green" as const, neighbours: [] }) } as any
+  assert.equal(matchCode({ name: "Wrench" }, { ...ctx([row("Wrench", 2, "imported")]), predictor }).codeId, 2)
+
+  // on an unsent invoice: the line is orange with the note, the invoice is not sent until the accountant confirms it
+  const { db, id } = await invoiceH([memH("Wrench", 2, "imported", 1)])
+  const before = (await buildPreviewH(db, id))!
+  const wrench = before.lines.find((l) => l.name === "Wrench")!
+  assert.deepEqual([wrench.state, wrench.codeId, wrench.portalItemCode], ["orange", 2, P2])
+  assert.ok(before.missing.includes("portal_codes"))
+  assert.deepEqual((await queueSend(db, [id], "real", 7, QS)).refused[0].reasons, ["portal_codes"])
+  useDb(db)
+  const ok = await memoryRoute53.POST(rq("POST", "/api/eta/memory", { name: "Wrench", codeId: 2, unitType: "EA", productId: 100 }))
+  assert.equal(ok.status, 200)
+  const after = (await buildPreviewH(db, id))!
+  assert.deepEqual([after.lines.find((l) => l.name === "Wrench")!.state, after.lines.find((l) => l.name === "Wrench")!.portalItemCode], ["green", undefined])
+  assert.ok(!after.missing.includes("portal_codes"))
+  assert.deepEqual((await queueSend(db, [id], "real", 7, QS)).queued, [id])
+  const win = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "components/accounting/eta-preview-dialog.tsx"), "utf8")
+  assert.match(win, /eta\.portal-code-note/)
+})
+
+test("H8. only the accountant, CEO or admin confirms codes: routes refuse others (403), the screens show codes read-only", async () => {
+  const { db } = await invoiceH()
+  useDb(db)
+  const as = (roles: string) => ({ "x-mm-roles": roles })
+  const line = { name: "Wrench", codeId: 2, unitType: "EA" }
+  for (const roles of ["sales-rep", "po-rep", "warehouse-rep", ""]) {
+    const res = await memoryRoute53.POST(rq("POST", "/api/eta/memory", line, as(roles)))
+    assert.equal(res.status, 403, `memory POST ${roles}`)
+    assert.equal((await res.json()).error, "Codes are confirmed by the accountant.")
+    assert.equal((await memoryRoute53.POST(rq("POST", "/api/eta/memory", { items: [line] }, as(roles)))).status, 403, `classify ${roles}`)
+    assert.equal((await memoryRoute53.DELETE(rq("DELETE", "/api/eta/memory?id=1", undefined, as(roles)))).status, 403)
+    assert.equal((await prepareRouteH.POST(rq("POST", "/api/eta/memory/prepare", { items: [line] }, as(roles)))).status, 403, `prepare ${roles}`)
+    assert.equal((await codesRouteH.POST(rq("POST", "/api/eta/codes", { item_code: "X1", name: "X" }, as(roles)))).status, 403, `codes POST ${roles}`)
+    assert.equal((await codesRouteH.PUT(rq("PUT", "/api/eta/codes", { code_id: 2, name: "Changed" }, as(roles)))).status, 403, `codes PUT ${roles}`)
+  }
+  assert.equal(db.tables.eta_code_memory.length, 0)
+  assert.equal(db.tables.eta_item_codes.find((c) => c.code_id === 2)!.name, "Garage")
+  // the accountant (also with a second role), the CEO and admin may
+  assert.equal((await memoryRoute53.POST(rq("POST", "/api/eta/memory", line, as("sales-rep,accountant")))).status, 200)
+  assert.equal((await memoryRoute53.POST(rq("POST", "/api/eta/memory", line, as("accountant")))).status, 200)
+  assert.equal((await prepareRouteH.POST(rq("POST", "/api/eta/memory/prepare", { items: [line] }, as("ceo")))).status, 200)
+  assert.equal((await codesRouteH.PUT(rq("PUT", "/api/eta/codes", { code_id: 2, name: "Changed" }, as("admin")))).status, 200)
+  assert.equal(db.tables.eta_code_memory.find((m) => m.normalized_name === "wrench")!.source, "imported", "prepare saves as learned")
+  // the /api/eta rule blocks the others before the route as well
+  for (const path of ["/api/eta/memory", "/api/eta/memory/prepare", "/api/eta/codes"]) {
+    const rule = ruleFor(path)!
+    assert.equal(allows(rule, "POST", ["sales-rep"] as any), false, path)
+    assert.equal(allows(rule, "POST", ["accountant"] as any), true, path)
+  }
+  assert.deepEqual([canDecideCodes(["accountant"]), canDecideCodes(["ceo"]), canDecideCodes(["admin"]), canDecideCodes(["sales-rep"]), canDecideCodes([])], [true, true, true, false, false])
+  // screens: read-only for others, with the line
+  const repo = process.env.REPO_ROOT || process.cwd()
+  const settings = readFileSync(join(repo, "components/modules/e-invoice-settings-module.tsx"), "utf8")
+  assert.match(settings, /const mayCodes = canDecideCodes\(roles\)/)
+  assert.match(settings, /readOnly=\{!mayCodes\}/)
+  assert.ok((settings.match(/disabled=\{!mayCodes\}/g) || []).length >= 2, "pickers read-only")
+  const win = readFileSync(join(repo, "components/accounting/eta-preview-dialog.tsx"), "utf8")
+  assert.match(win, /!canEditCodes && <p[^>]*>\{t\("eta\.codes-by-accountant"\)\}/)
+  assert.match(win, /readOnly=\{!canEditCodes\}/)
+  assert.match(readFileSync(join(repo, "components/modules/accounts-receivable-module.tsx"), "utf8"), /canEditCodes=\{canDecideCodes\(/)
 })

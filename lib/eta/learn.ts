@@ -106,10 +106,40 @@ export async function learnFromPortalWindow(db: Db, env: EtaEnv, win: { from: st
     if (a.codes.size > 1) conflicts++
     const [codeId] = [...a.codes.entries()].sort((x, y) => y[1] - x[1] || x[0] - y[0])[0]
     const have = known.get(key)
+    // the accountant's portal invoices are the truth for codes: a differing learned ('imported') row takes the portal's
+    // most frequent code; a row the accountant confirmed in the ERP is never replaced
     if (have && (have.source === "confirmed" || have.code_id === codeId)) { alreadyKnown++; continue }
     await rememberCode(db, { name: a.name, codeId, unitType: a.units.get(codeId) || "", userId: deps.userId ?? null, source: "imported", keepConfirmed: true })
     learned++
   }
   const cursor = i < uuids.length ? { uuids, next: i } : null
   return { invoices: i - first, lines, learned, alreadyKnown, conflicts, unknownCodes: [...unknown].slice(0, MAX_UNKNOWN), cursor }
+}
+
+/**
+ * One portal document's lines (its details answer) into the memory: each description -> its item code, as 'imported'
+ * (the accountant typed it on the portal), replacing a differing row that was not confirmed in the ERP. Codes the ERP
+ * does not know are skipped. Returns how many names were written.
+ */
+export async function rememberPortalLines(db: Db, details: any, userId: number | null = null): Promise<number> {
+  const lines = linesOf(details)
+  if (!lines.length) return 0
+  const { data: codeRows, error } = await db.from("eta_item_codes").select("code_id, item_code, active")
+  if (error) throw new Error(error.message || "Could not read the item codes")
+  const codeByItem = new Map<string, number>()
+  for (const c of (codeRows || []) as any[]) if (c.active !== false) codeByItem.set(String(c.item_code), Number(c.code_id))
+  const seen = new Map<string, { name: string; codeId: number; unit: string }>()
+  for (const l of lines) {
+    const name = String(l?.description ?? "").trim()
+    const key = normalizeName(name)
+    const codeId = codeByItem.get(String(l?.itemCode ?? "").trim())
+    if (!key || codeId === undefined) continue
+    seen.set(key, { name, codeId, unit: String(l?.unitType ?? "") })
+  }
+  let written = 0
+  for (const { name, codeId, unit } of seen.values()) {
+    await rememberCode(db, { name, codeId, unitType: unit, userId, source: "imported", keepConfirmed: true })
+    written++
+  }
+  return written
 }

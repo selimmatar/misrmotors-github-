@@ -8,7 +8,7 @@ export const AUTO_SIMILARITY = 0.92
 export const SUGGEST_SIMILARITY = 0.8
 
 export type CodeState = "green" | "orange" | "red"
-export type MatchBy = "product" | "memory" | "core" | "close" | "predict" | "keyword" | "none"
+export type MatchBy = "product" | "memory" | "portal" | "core" | "close" | "predict" | "keyword" | "none"
 
 export interface EtaCode {
   codeId: number
@@ -49,6 +49,11 @@ export interface MatchResult {
   unit: string
   state: CodeState
   by: MatchBy
+  /**
+   * set (by "portal") when the code the accountant used on the portal for this exact name differs from the product
+   * card's code: the line is orange and the invoice is not sent until the accountant confirms the line
+   */
+  portalCodeId?: number
 }
 
 export function matchCode(input: MatchInput, ctx: MatchContext): MatchResult {
@@ -63,21 +68,25 @@ export function matchCode(input: MatchInput, ctx: MatchContext): MatchResult {
     by,
   })
 
-  // 1. product card code
-  if (input.productCodeId != null && active.has(input.productCodeId)) {
-    return done(input.productCodeId, "green", "product", input.productUnit)
-  }
-
   const full = normalizeName(input.name)
   const core = coreName(full, ctx.brands)
   const memory = ctx.memory.filter((r) => active.has(r.codeId))
+  const exact = full ? memory.filter((r) => r.normalizedName === full) : []
+  const exactRow = exact[exact.length - 1]
+
+  // 1. product card code - unless the memory holds a different code for this exact name: the accountant's own
+  //    decision (confirmed, green) or the code learned from the accountant's portal invoices (imported: orange, to be
+  //    confirmed before the invoice can be sent)
+  if (input.productCodeId != null && active.has(input.productCodeId)) {
+    if (exactRow && exactRow.codeId !== input.productCodeId) {
+      if (exactRow.source === "confirmed") return done(exactRow.codeId, "green", "memory", exactRow.unitType)
+      if (exactRow.source === "imported") return { ...done(exactRow.codeId, "orange", "portal", exactRow.unitType), portalCodeId: exactRow.codeId }
+    }
+    return done(input.productCodeId, "green", "product", input.productUnit)
+  }
 
   // 2. memory by full normalised name
-  const byFull = memory.filter((r) => r.normalizedName === full)
-  if (full && byFull.length) {
-    const last = byFull[byFull.length - 1]
-    return done(last.codeId, "green", "memory", last.unitType)
-  }
+  if (exactRow) return done(exactRow.codeId, "green", "memory", exactRow.unitType)
 
   if (core) {
     // 3. memory by core name
