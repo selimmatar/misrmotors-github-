@@ -193,7 +193,8 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
     const mine = linkedPoItems.filter((p) => Number(p.source_so_item_id) === Number(i.so_item_id))
     const isPo = i.item_type === "outsourced" || !i.product_id || mine.length > 0
     const onPo = isPo ? mine.reduce((s, p) => s + num(p.quantity), 0) : null
-    const received = isPo ? mine.reduce((s, p) => s + (receivedByPoItem.get(Number(p.po_item_id)) || 0), 0) : null
+    // a PO line lowered below what was received (the item went back to the supplier) only counts what is left on it
+    const received = isPo ? mine.reduce((s, p) => s + Math.min(receivedByPoItem.get(Number(p.po_item_id)) || 0, num(p.quantity)), 0) : null
     const delivered = states[idx].deliveredQuantity
     const returned = returnedLeft.get(key) || 0
     if (returned > 0) returnedLeft.set(key, 0)

@@ -296,3 +296,14 @@ test("O13. Create Invoice: choose the sales order first, then only its delivery 
   assert.match(ar, /\{dpsInWindow\.map\(\(dp\) => \{/)
   assert.doesNotMatch(ar, /onClick=\{\(\) => alert\(INVOICE_FROM_DP_ONLY_MESSAGE\)\}/)
 })
+
+test("O14. a PO line lowered below what was received (item went back to the supplier) counts only its remaining quantity as received", async () => {
+  const db = seed()
+  // the 5 t forklift was received on an old PO line, sent back (line lowered to 0) and re-ordered on PO-1 (not received)
+  db.tables.purchase_orders.push({ po_id: 4, po_number: "PO-RET", supplier_id: 9, status: "received", total: 0, created_at: "2026-11-03T09:00:00" })
+  db.tables.purchase_order_items.push({ po_item_id: 5, po_id: 4, source_so_item_id: 5, quantity: 0, unit_price: 1300 })
+  db.tables.goods_receipt_lines.push({ line_id: 3, po_item_id: 5, quantity_received: 1 })
+  const ov = (await buildSoOverview(db, 1))!
+  const line = ov.lines.find((l) => l.name === "Forklift 5 ton")!
+  assert.deepEqual({ onPo: line.onPo, rec: line.received, state: line.state }, { onPo: 1, rec: 0, state: "waiting_supplier" })
+})
