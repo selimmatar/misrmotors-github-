@@ -68,6 +68,7 @@ const roleVisibleTabs: Record<UserRole, string[]> = {
   "po-rep": ["operations"],
   admin: ["executive", "sales", "inventory", "financial", "operations", "predictions"],
   shipment: ["operations"],
+  maintenance: [],
 }
 
 // Display-only maps: the raw values (risk, confidence, priority, AI category) stay as they are in data.

@@ -356,6 +356,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dueDate: inv.dueDate,
     status: inv.status,
     replacedByInvoiceId: inv.replacedByInvoiceId ?? null,
+    arTab: inv.arTab === "maintenance" ? "maintenance" : "sales",
     installmentMonths: inv.installmentMonths,
     monthsPaid: inv.monthsPaid || 0,
     items: inv.items || [],

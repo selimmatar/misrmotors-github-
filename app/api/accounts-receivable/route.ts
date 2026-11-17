@@ -3,6 +3,7 @@ import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { resolveInstallmentCount } from "@/lib/payment-type"
 import { ETA_LIVE_MESSAGE, clearRemovableDocuments, liveRealDocument } from "@/lib/eta/live"
+import { isMaintenanceInvoice } from "@/lib/maintenance-quick-invoice"
 import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
@@ -19,6 +20,8 @@ export async function GET() {
           customers:customer_id (customer_name),
           sales_orders:so_id (
             so_number,
+            so_type,
+            notes,
             quotation_request_number,
             quotation_request_file_name,
             quotation_request_file_path
@@ -80,6 +83,15 @@ export async function GET() {
         installmentMonths: resolveInstallmentCount(invoice.payment_terms, invoice.installment_months) || 0,
         monthsPaid: invoice.months_paid || 0,
         isMaintenance: invoice.invoice_number?.startsWith("INV-MNT-") || false,
+        // Accounts Receivable tab: work-order (INV-MNT-) and quick maintenance invoices are "maintenance"
+        arTab: isMaintenanceInvoice({
+          is_maintenance: invoice.is_maintenance,
+          invoice_number: invoice.invoice_number,
+          so_type: invoice.sales_orders?.so_type,
+          so_notes: invoice.sales_orders?.notes,
+        })
+          ? "maintenance"
+          : "sales",
         items: invoice.items || [],
         deliveryPermits:
           invoice.invoice_delivery_permits?.map((link: any) => ({

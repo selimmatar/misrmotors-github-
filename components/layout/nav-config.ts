@@ -134,6 +134,8 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "shipment", label: "module.shipping", icon: Truck },
     { id: "delivery-permits", label: "module.delivery-permits", icon: FileText },
   ],
+  // Maintenance (owner-approved 2026-11-17): one screen, the quick maintenance invoice.
+  maintenance: [{ id: "maintenance-quick-invoice", label: "module.maintenance-quick-invoice", icon: Wrench }],
 }
 
 export const ROLE_DISPLAY_NAMES: Record<UserRole, string> = {
@@ -144,4 +146,5 @@ export const ROLE_DISPLAY_NAMES: Record<UserRole, string> = {
   "warehouse-rep": "role.warehouse-rep",
   "po-rep": "role.purchasing",
   shipment: "role.shipping",
+  maintenance: "role.maintenance",
 }
