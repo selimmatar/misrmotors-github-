@@ -3,10 +3,11 @@
 // Accounts Payable -> "Portal comparison": the company's supplier invoices in the ERP, each with the supplier e-invoices
 // on the tax portal that belong to it (many-to-many). Links are suggested automatically (lib/eta/ap-match.ts); a person
 // can add a link or remove one (it is then never suggested again). The portal invoices are behind Show / Hide, each
-// with its ERP invoices, a link picker and the portal PDF. "Check now" reads the portal (cursor by cursor).
+// with its ERP invoices, a link picker and the portal PDF. "Check now" reads the portal (cursor by cursor). A linked
+// invoice (or group) opens to compare it item by item (ap-line-compare.tsx).
 // Accounts Payable itself is never changed here.
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { FileText, Link2, Loader2, RefreshCw, X } from "lucide-react"
+import { ChevronDown, FileText, Link2, Loader2, RefreshCw, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,9 +19,11 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { formatDate, formatMoney } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { ApLineCompare } from "@/components/accounting/ap-line-compare"
 
 type GroupStatus = "matched" | "differs" | "no_portal" | "no_erp" | "unknown_supplier"
 type Source = "auto" | "manual"
+type Reason = "supplier_number" | "our_number" | "po_number" | "amount" | "amount_close" | "lines" | "date"
 interface Group {
   key: string
   supplierId: number | null
@@ -40,7 +43,7 @@ interface ApInvoice {
   date: string | null
   amount: number
   groupKey: string
-  links: { receivedId: number; source: Source }[]
+  links: { receivedId: number; source: Source; reasons?: Reason[] }[]
 }
 interface PortalDoc {
   receivedId: number
@@ -97,24 +100,27 @@ function StatusPill({ status }: { status: GroupStatus }) {
   )
 }
 
-function SourceBadge({ source }: { source: Source }) {
+function SourceBadge({ source, reasons }: { source: Source; reasons?: Reason[] }) {
   const { t } = useI18n()
+  // why an automatic link was suggested, in words (shown on hover and read by screen readers)
+  const why = source === "auto" && reasons?.length ? `${t("eta.apl-why")}: ${reasons.map((r) => t(`eta.apl-why-${r}`)).join(", ")}` : undefined
   return (
-    <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", source === "auto" ? "bg-muted text-muted-foreground" : "bg-tone-approved-bg text-tone-approved")}>
+    <span title={why} className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", source === "auto" ? "bg-muted text-muted-foreground" : "bg-tone-approved-bg text-tone-approved")}>
       {t(source === "auto" ? "eta.apl-auto" : "eta.apl-manual")}
+      {why && <span className="sr-only"> ({why})</span>}
     </span>
   )
 }
 
 /** a linked invoice: number, date, amount, auto / manual, and a remove button */
-function LinkChip({ number, date, amount, source, onRemove, disabled }: { number: string; date: string | null; amount: number; source: Source; onRemove: () => void; disabled: boolean }) {
+function LinkChip({ number, date, amount, source, reasons, onRemove, disabled }: { number: string; date: string | null; amount: number; source: Source; reasons?: Reason[]; onRemove: () => void; disabled: boolean }) {
   const { t, language } = useI18n()
   return (
     <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-background py-0.5 ps-2.5 pe-0.5 text-xs">
       <bdi dir="ltr" className="truncate font-medium">{number}</bdi>
       {date && <span className="whitespace-nowrap text-muted-foreground">{formatDate(date, language)}</span>}
       <Money value={amount} className="font-semibold" />
-      <SourceBadge source={source} />
+      <SourceBadge source={source} reasons={reasons} />
       <button
         type="button"
         onClick={onRemove}
@@ -207,6 +213,15 @@ export function ApPortalComparison() {
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState<{ done: number; total: number } | null>(null)
   const [summary, setSummary] = useState<{ added: number; updated: number; unknown: number } | null>(null)
+  // the groups opened to compare item by item
+  const [openItems, setOpenItems] = useState<Set<string>>(new Set())
+  const toggleItems = (key: string) =>
+    setOpenItems((cur) => {
+      const next = new Set(cur)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
 
   const failed = (e: unknown) => toast({ title: t("message.error"), description: e instanceof Error ? e.message : String(e), variant: "destructive" })
   const validRange = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to
@@ -348,14 +363,32 @@ export function ApPortalComparison() {
         {a.links.map((l) => {
           const d = docById.get(l.receivedId)
           return d ? (
-            <LinkChip key={l.receivedId} number={docNumber(d)} date={d.dateIssued} amount={d.signedTotal} source={l.source} disabled={busy} onRemove={() => unlink(l.receivedId, a.invoiceId)} />
+            <LinkChip key={l.receivedId} number={docNumber(d)} date={d.dateIssued} amount={d.signedTotal} source={l.source} reasons={l.reasons} disabled={busy} onRemove={() => unlink(l.receivedId, a.invoiceId)} />
           ) : null
         })}
         <LinkPicker items={portalItemsFor(a)} buttonLabel={t("eta.apl-link-portal")} disabled={busy} onPick={(id) => link(id, a.invoiceId)} />
       </div>
-      <div className="sm:text-end">{single && <StatusPill status={single.status} />}</div>
+      <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-end">
+        {single && <StatusPill status={single.status} />}
+        {single && itemsButton(single)}
+      </div>
     </div>
   )
+
+  /** "Compare items" for a group with both sides */
+  const itemsButton = (g: Group) =>
+    g.apInvoiceIds.length > 0 && g.receivedIds.length > 0 ? (
+      <Button type="button" size="sm" variant="ghost" aria-expanded={openItems.has(g.key)} aria-controls={`apl-items-${g.key}`} onClick={() => toggleItems(g.key)}>
+        <ChevronDown className={cn("h-4 w-4 me-1 transition-transform", openItems.has(g.key) && "rotate-180")} aria-hidden="true" />
+        {t(openItems.has(g.key) ? "eta.apl-hide-items" : "eta.apl-compare-items")}
+      </Button>
+    ) : null
+  const itemsPanel = (g: Group) =>
+    openItems.has(g.key) && g.apInvoiceIds.length > 0 && g.receivedIds.length > 0 ? (
+      <div id={`apl-items-${g.key}`}>
+        <ApLineCompare apInvoiceIds={g.apInvoiceIds} receivedIds={g.receivedIds} />
+      </div>
+    ) : null
 
   return (
     <section className="space-y-4" aria-labelledby="apl-title">
@@ -451,7 +484,13 @@ export function ApPortalComparison() {
             {erpGroups.map((g) => {
               const several = g.apInvoiceIds.length > 1 || g.receivedIds.length > 1
               const rows = g.apInvoiceIds.map((id) => apById.get(id)).filter((a): a is ApInvoice => !!a)
-              if (!several) return <li key={g.key}>{rows[0] && apRow(rows[0], g)}</li>
+              if (!several)
+                return (
+                  <li key={g.key}>
+                    {rows[0] && apRow(rows[0], g)}
+                    {itemsPanel(g)}
+                  </li>
+                )
               return (
                 <li key={g.key} className="border-s-4 border-s-primary/40">
                   <div className="divide-y divide-dashed">
@@ -470,8 +509,10 @@ export function ApPortalComparison() {
                         {t("eta.apl-diff")} <Money value={g.difference} className="font-semibold" />
                       </span>
                       <StatusPill status={g.status} />
+                      {itemsButton(g)}
                     </span>
                   </div>
+                  {itemsPanel(g)}
                 </li>
               )
             })}

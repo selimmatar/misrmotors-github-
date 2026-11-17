@@ -20,11 +20,15 @@ export interface StoredLink {
 export interface AutoMatch {
   receivedId: number
   apInvoiceId: number
+  /** why it was suggested (lib/eta/ap-score.ts) */
+  reasons?: string[]
 }
 export interface EffectiveLink {
   receivedId: number
   apInvoiceId: number
   source: LinkSource
+  /** automatic links: why they were suggested */
+  reasons?: string[]
 }
 export interface Group {
   /** stable key: "ap:<lowest AP id>" or "r:<lowest received id>" */
@@ -114,7 +118,7 @@ export function effectiveLinks(
     const k = pairKey(m.receivedId, m.apInvoiceId)
     if (seen.has(k) || rejected.has(k) || manualAp.has(m.apInvoiceId) || manualReceived.has(m.receivedId) || !here(m.receivedId, m.apInvoiceId)) continue
     seen.add(k)
-    out.push({ receivedId: m.receivedId, apInvoiceId: m.apInvoiceId, source: "auto" })
+    out.push({ receivedId: m.receivedId, apInvoiceId: m.apInvoiceId, source: "auto", ...(m.reasons ? { reasons: m.reasons } : {}) })
   }
   return out
 }
