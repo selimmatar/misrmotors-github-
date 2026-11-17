@@ -5,10 +5,19 @@ import { matchCode, type CodeState, type MatchContext } from "./codes"
 import { loadMatchContext, readEtaSettings } from "./store"
 import { etaLines, isAfterGoLive, type EtaLineIn, type EtaLineOut, type EtaTotals } from "./totals"
 import { billedLinesForInvoice, loadSoInvoicingState, orderDiscountRate, round2 } from "../invoicing"
+import { loadCustomerIdentities, loadInvoiceIdentityId, pickIdentity, type TaxIdentity } from "./identities"
 
 type Db = any
 
-export type EtaMissing = "company_rin" | "company_activity" | "company_address" | "customer_tax_number" | "customer_address" | "line_codes" | "amount_mismatch"
+export type EtaMissing =
+  | "company_rin"
+  | "company_activity"
+  | "company_address"
+  | "receiver_identity"
+  | "customer_tax_number"
+  | "customer_address"
+  | "line_codes"
+  | "amount_mismatch"
 
 export type EtaItemType = "EGS" | "GS1"
 
@@ -53,6 +62,13 @@ export interface EtaPreview {
   lines: EtaPreviewLine[]
   totals: EtaTotals
   missing: EtaMissing[]
+  /**
+   * The customer's active tax identities (names only - the window's drop-down never shows tax numbers); empty when the
+   * customer has none (its card fields are used).
+   */
+  identities?: { identityId: number; name: string }[]
+  /** the identity this invoice is issued for (chosen, or the only one); null with none or 2+ and none chosen */
+  identityId?: number | null
 }
 
 const must = (result: any, what: string): any => {
@@ -144,8 +160,30 @@ export async function buildEtaPreview(
   const totals: EtaTotals = { sales: round2(sums.sales), discount: round2(sums.discount), net: round2(sums.net), vat: round2(sums.vat), total: round2(sums.total) }
 
   const manual = documents.find((d: any) => d.status === "manual") || null
-  const receiverType = text(customer?.eta_receiver_type) || "B"
-  const taxNumber = text(customer?.tax_registration_number)
+
+  // The receiver: the customer's chosen (or only) active tax identity; the card fields when it has none.
+  const active: TaxIdentity[] = invoice.customer_id != null ? await loadCustomerIdentities(db, invoice.customer_id, { activeOnly: true }) : []
+  const pick = pickIdentity(active, active.length > 1 ? await loadInvoiceIdentityId(db, invoiceId) : null)
+  const receiver =
+    pick.kind === "identity"
+      ? {
+          name: pick.identity.name,
+          receiverType: pick.identity.receiverType,
+          taxNumber: pick.identity.taxRegistrationNumber,
+          nationalId: pick.identity.nationalId,
+          address: [pick.identity.governorate, pick.identity.region, pick.identity.street, pick.identity.buildingNumber],
+        }
+      : pick.kind === "choose"
+        ? { name: text(customer?.customer_name), receiverType: "B", taxNumber: "", nationalId: "", address: ["", "", "", ""] }
+        : {
+            name: text(customer?.customer_name),
+            receiverType: text(customer?.eta_receiver_type) || "B",
+            taxNumber: text(customer?.tax_registration_number),
+            nationalId: text(customer?.national_id),
+            address: [customer?.address_governorate, customer?.address_region, customer?.address_street, customer?.address_building_number].map(text),
+          }
+  const receiverType = receiver.receiverType
+  const taxNumber = receiver.taxNumber
 
   const missing: EtaMissing[] = []
   if (!/^\d{9}$/.test(text(settings.eta_rin))) missing.push("company_rin")
@@ -153,12 +191,14 @@ export async function buildEtaPreview(
   if (["eta_branch_governorate", "eta_branch_region", "eta_branch_street", "eta_branch_building_number"].some((k) => !text(settings[k]))) {
     missing.push("company_address")
   }
-  if (receiverType === "B") {
+  if (pick.kind === "choose") {
+    // which company the invoice is for comes first; that company's own checks follow once it is chosen
+    missing.push("receiver_identity")
+  } else if (receiverType === "B") {
     if (!/^\d{9}$/.test(taxNumber)) missing.push("customer_tax_number")
-    const address = [customer?.address_governorate, customer?.address_region, customer?.address_street, customer?.address_building_number]
-    if (address.some((part) => !text(part))) missing.push("customer_address")
+    if (receiver.address.some((part) => !text(part))) missing.push("customer_address")
   } else if (receiverType === "P") {
-    if (!/^\d{14}$/.test(text(customer?.national_id))) missing.push("customer_tax_number")
+    if (!/^\d{14}$/.test(text(receiver.nationalId))) missing.push("customer_tax_number")
   }
   if (lines.some((l) => l.state === "red" || l.codeId == null)) missing.push("line_codes")
   // The preview is recomputed from today's data; a return rejected or an order edited after invoicing moves it away
@@ -174,19 +214,21 @@ export async function buildEtaPreview(
     manualEtaUuid: manual ? text(manual.eta_uuid) || null : null,
     storedAmount,
     customer: {
-      name: text(customer?.customer_name),
+      name: receiver.name,
       receiverType,
       taxRegistrationNumber: taxNumber || null,
-      nationalId: text(customer?.national_id) || null,
+      nationalId: text(receiver.nationalId) || null,
       address: {
-        governorate: text(customer?.address_governorate),
-        regionCity: text(customer?.address_region),
-        street: text(customer?.address_street),
-        buildingNumber: text(customer?.address_building_number),
+        governorate: text(receiver.address[0]),
+        regionCity: text(receiver.address[1]),
+        street: text(receiver.address[2]),
+        buildingNumber: text(receiver.address[3]),
       },
     },
     lines,
     totals,
     missing,
+    identities: active.map((i) => ({ identityId: i.identityId, name: i.name })),
+    identityId: pick.kind === "identity" ? pick.identity.identityId : null,
   }
 }

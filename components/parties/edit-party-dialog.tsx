@@ -8,8 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
-import { GOVERNORATES } from "@/lib/eta/egypt"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CustomerTaxIdentities } from "@/components/parties/customer-tax-identities"
 
 export interface PartyDetails {
   name: string
@@ -34,11 +33,13 @@ interface EditPartyDialogProps {
   onOpenChange: (open: boolean) => void
   kind: "customer" | "supplier"
   initial: PartyDetails
+  /** customers: the card's id, for its list of companies on the portal (tax identities) */
+  customerId?: string | number
   onSave: (details: PartyDetails) => Promise<string[] | void>
 }
 
-export function EditPartyDialog({ open, onOpenChange, kind, initial, onSave }: EditPartyDialogProps) {
-  const { t, language } = useI18n()
+export function EditPartyDialog({ open, onOpenChange, kind, initial, customerId, onSave }: EditPartyDialogProps) {
+  const { t } = useI18n()
   const [form, setForm] = useState<PartyDetails>(initial)
   const [saving, setSaving] = useState(false)
 
@@ -87,7 +88,7 @@ export function EditPartyDialog({ open, onOpenChange, kind, initial, onSave }: E
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t(kind === "customer" ? "party.edit-customer" : "party.edit-supplier")}</DialogTitle>
           <DialogDescription>{initial.name}</DialogDescription>
@@ -114,45 +115,13 @@ export function EditPartyDialog({ open, onOpenChange, kind, initial, onSave }: E
           <div className="sm:col-span-2 border-t pt-3">
             <p className="text-sm font-semibold">{t("eta.tax-section")}</p>
           </div>
-          {kind === "customer" && (
-            <div className="space-y-1">
-              <Label htmlFor="party-receiverType">{t("eta.receiver-type")}</Label>
-              <Select value={form.receiverType || "B"} onValueChange={(v) => set("receiverType", v)}>
-                <SelectTrigger id="party-receiverType" aria-label={t("eta.receiver-type")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="B">{t("eta.receiver-business")}</SelectItem>
-                  <SelectItem value="P">{t("eta.receiver-person")}</SelectItem>
-                  <SelectItem value="F">{t("eta.receiver-foreign")}</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* customers: one line per company on the portal (the identities replace the card's single tax fields) */}
+          {kind === "customer" ? (
+            <div className="sm:col-span-2">
+              <CustomerTaxIdentities customerId={customerId} card={form} />
             </div>
-          )}
-          {field("taxRegistrationNumber", t("eta.tax-number"))}
-          {kind === "customer" && form.receiverType === "P" && field("nationalId", t("eta.national-id"))}
-          {kind === "customer" && (
-            <>
-              <div className="space-y-1">
-                <Label htmlFor="party-governorate">{t("eta.governorate")}</Label>
-                <Select value={form.governorate || "none"} onValueChange={(v) => set("governorate", v === "none" ? "" : v)}>
-                  <SelectTrigger id="party-governorate" aria-label={t("eta.governorate")}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{t("eta.none")}</SelectItem>
-                    {GOVERNORATES.map((g) => (
-                      <SelectItem key={g.en} value={g.en}>
-                        {language === "ar" ? g.ar : g.en}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {field("region", t("eta.region"))}
-              {field("street", t("eta.street"))}
-              {field("buildingNumber", t("eta.building-number"))}
-            </>
+          ) : (
+            field("taxRegistrationNumber", t("eta.tax-number"))
           )}
         </div>
         <DialogFooter>

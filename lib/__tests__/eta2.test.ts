@@ -3415,3 +3415,226 @@ test("F57h. permissions: comparison and links are accountant / CEO / admin; scre
   assert.equal((ui.match(/<Select\b/g) || []).length, 2, "only the supplier and status filters are Radix Selects")
   assert.ok(!readFileSync(join(root, "components/modules/accounts-payable-module.tsx"), "utf8").includes("SupplierEInvoices"))
 })
+
+// ---- G: several tax identities per customer, chosen per invoice for the portal ----
+import { buildEtaPreview as buildPreviewG } from "../eta/preview"
+import { chooseInvoiceIdentity, loadCustomerIdentities, pickIdentity } from "../eta/identities"
+import * as identityRouteG from "../../app/api/eta/identity/route"
+import * as taxIdentitiesRouteG from "../../app/api/customers/tax-identities/route"
+
+const identityG = (id: number, name: string, extra: Row = {}): Row => ({
+  identity_id: id, customer_id: 5, name, receiver_type: "B", tax_registration_number: `30040050${id}`, national_id: null,
+  address_governorate: "Alexandria", address_region: `Smouha ${id}`, address_street: "Fawzy Moaz", address_building_number: String(10 + id), active: true, ...extra,
+})
+
+test("G1. one active identity is used automatically: its name, tax number and address in the preview and the document", async () => {
+  const { db, id } = await withInvoice("real")
+  db.tables.customer_tax_identities = [identityG(1, "Al Kasrawy Trading"), identityG(2, "Old branch", { active: false })]
+  const p = (await buildPreviewG(db, id))!
+  assert.deepEqual(p.missing, [])
+  assert.equal(p.identityId, 1)
+  assert.deepEqual(p.identities, [{ identityId: 1, name: "Al Kasrawy Trading" }], "switched-off identities are not offered")
+  assert.deepEqual(p.customer, {
+    name: "Al Kasrawy Trading", receiverType: "B", taxRegistrationNumber: "300400501", nationalId: null,
+    address: { governorate: "Alexandria", regionCity: "Smouha 1", street: "Fawzy Moaz", buildingNumber: "11" },
+  })
+  const doc = buildInvoiceDocument(p, sampleSettings, "2026-11-15T10:00:00Z")
+  assert.deepEqual(doc.receiver, {
+    address: { country: "EG", governate: "Alexandria", regionCity: "Smouha 1", street: "Fawzy Moaz", buildingNumber: "11" },
+    type: "B", id: "300400501", name: "Al Kasrawy Trading",
+  })
+  // the identity's own checks apply (not the card's, which is complete)
+  db.tables.customer_tax_identities[0].tax_registration_number = "123"
+  db.tables.customer_tax_identities[0].address_street = ""
+  assert.deepEqual([...(await buildPreviewG(db, id))!.missing].sort(), ["customer_address", "customer_tax_number"])
+  // a person identity needs its 14-digit national ID, no address
+  Object.assign(db.tables.customer_tax_identities[0], { receiver_type: "P", national_id: "29001011234567" })
+  const person = (await buildPreviewG(db, id))!
+  assert.deepEqual(person.missing, [])
+  assert.equal(buildInvoiceDocument(person, sampleSettings, "2026-11-15T10:00:00Z").receiver.id, "29001011234567")
+})
+
+test("G2. two identities: receiver_identity is missing (Send refused) until one is chosen; the chosen one goes in the document", async () => {
+  const { db, id } = await withInvoice("real")
+  db.tables.customer_tax_identities = [identityG(1, "Al Kasrawy Trading"), identityG(2, "Al Kasrawy Motors")]
+  const p = (await buildPreviewG(db, id))!
+  assert.deepEqual(p.missing, ["receiver_identity"])
+  assert.equal(p.identityId, null)
+  assert.deepEqual(p.identities, [{ identityId: 1, name: "Al Kasrawy Trading" }, { identityId: 2, name: "Al Kasrawy Motors" }])
+  assert.ok(p.identities!.every((i) => Object.keys(i).sort().join() === "identityId,name"), "names only, never tax numbers")
+  assert.deepEqual((await queueSend(db, [id], "real", 7, { now: NOW })).refused, [{ invoiceId: id, reasons: ["receiver_identity"] }])
+
+  assert.deepEqual(await chooseInvoiceIdentity(db, id, 2), { ok: true, value: 2, warnings: [] })
+  assert.equal(db.tables.accounts_receivable[0].eta_identity_id, 2)
+  const chosen = (await buildPreviewG(db, id))!
+  assert.deepEqual(chosen.missing, [])
+  assert.equal(chosen.identityId, 2)
+  assert.deepEqual(await queueSend(db, [id], "real", 7, { now: NOW }), { queued: [id], refused: [] })
+  const body = JSON.parse(db.tables.eta_documents[0].document)
+  assert.deepEqual(body.receiver, {
+    address: { country: "EG", governate: "Alexandria", regionCity: "Smouha 2", street: "Fawzy Moaz", buildingNumber: "12" },
+    type: "B", id: "300400502", name: "Al Kasrawy Motors",
+  })
+  // the chosen identity is part of the rebuild-and-compare before signing: editing it after Send stops the signing
+  db.tables.customer_tax_identities[1].tax_registration_number = "300400599"
+  assert.deepEqual(await nextForSigner(db, 1, 20, { credentialsSet: yes, now: NOW }), [])
+  assert.equal(db.tables.eta_documents[0].status, "needs_review")
+  assert.equal(db.tables.eta_documents[0].errors[0].code, "CHANGED_AFTER_SEND")
+
+  // a chosen identity that was switched off is no longer used: with 2+ others left, choose again
+  const b = await withInvoice("real")
+  b.db.tables.customer_tax_identities = [identityG(1, "A"), identityG(2, "B"), identityG(3, "C")]
+  await chooseInvoiceIdentity(b.db, b.id, 3)
+  b.db.tables.customer_tax_identities[2].active = false
+  assert.deepEqual((await buildPreviewG(b.db, b.id))!.missing, ["receiver_identity"])
+  // choosing: only an active identity of this invoice's customer
+  assert.equal(((await chooseInvoiceIdentity(b.db, b.id, 3)) as any).code, "NOT_CUSTOMER_IDENTITY")
+  b.db.tables.customer_tax_identities.push(identityG(9, "Someone else", { customer_id: 77 }))
+  assert.equal(((await chooseInvoiceIdentity(b.db, b.id, 9)) as any).code, "NOT_CUSTOMER_IDENTITY")
+  assert.equal(((await chooseInvoiceIdentity(b.db, 999, 1)) as any).code, "NOT_FOUND")
+  assert.deepEqual(await chooseInvoiceIdentity(b.db, b.id, null), { ok: true, value: null, warnings: [] })
+  assert.deepEqual(pickIdentity([], 5), { kind: "card" })
+})
+
+test("G3. the choice is locked once a real document is live (ETA_LIVE); a test send or invalid document does not lock it", async () => {
+  const { db, id } = await withInvoice("real")
+  db.tables.customer_tax_identities = [identityG(1, "A"), identityG(2, "B")]
+  await chooseInvoiceIdentity(db, id, 1)
+  db.tables.eta_documents = [{ doc_id: 1, invoice_id: id, document_type: "I", environment: "test", status: "valid", version: 1 }]
+  assert.equal((await chooseInvoiceIdentity(db, id, 2)).ok, true)
+  db.tables.eta_documents.push({ doc_id: 2, invoice_id: id, document_type: "I", environment: "real", status: "invalid", version: 1 })
+  assert.equal((await chooseInvoiceIdentity(db, id, 1)).ok, true)
+  db.tables.eta_documents.push({ doc_id: 3, invoice_id: id, document_type: "I", environment: "real", status: "valid", version: 2 })
+  const r = (await chooseInvoiceIdentity(db, id, 2)) as any
+  assert.equal(r.ok, false)
+  assert.equal(r.code, "ETA_LIVE")
+  assert.equal(r.status, 409)
+  assert.equal(db.tables.accounts_receivable[0].eta_identity_id, 1, "unchanged")
+  // the route says so too, and the preview route reports the lock
+  useDb(db)
+  const res = await identityRouteG.POST(rq("POST", "/api/eta/identity", { invoiceId: id, identityId: 2 }))
+  assert.equal(res.status, 409)
+  assert.equal((await res.json()).code, "ETA_LIVE")
+  const pv = await (await previewRoute2.GET(rq("GET", `/api/eta/preview?invoiceId=${id}`))).json()
+  assert.equal(pv.identityLocked, true)
+  assert.equal(pv.identityId, 1)
+  // a replaced invoice is refused
+  db.tables.accounts_receivable[0].status = "replaced"
+  assert.equal(((await chooseInvoiceIdentity(db, id, 2)) as any).code, "REPLACED")
+})
+
+test("G4. a customer without identities falls back to the card fields (nothing changes)", async () => {
+  const { db, id } = await withInvoice("real")
+  const p = (await buildPreviewG(db, id))!
+  assert.deepEqual(p.missing, [])
+  assert.deepEqual(p.identities, [])
+  assert.equal(p.identityId, null)
+  assert.deepEqual(p.customer, {
+    name: "Acme Trading", receiverType: "B", taxRegistrationNumber: "200300400", nationalId: null,
+    address: { governorate: "Giza", regionCity: "Dokki", street: "Tahrir", buildingNumber: "4" },
+  })
+  // only switched-off identities: still the card
+  db.tables.customer_tax_identities = [identityG(1, "Gone", { active: false })]
+  assert.equal((await buildPreviewG(db, id))!.customer.taxRegistrationNumber, "200300400")
+  // before the migration is applied (no table / no column) the preview still works from the card
+  const old = await withInvoice("real")
+  old.db.failOn["customer_tax_identities:select"] = 'relation "public.customer_tax_identities" does not exist'
+  const op = (await buildPreviewG(old.db, old.id))!
+  assert.deepEqual(op.missing, [])
+  assert.equal(op.customer.name, "Acme Trading")
+})
+
+test("G5. migration: additive table + column, RLS without policies, idempotent copy of each customer's tax details", () => {
+  const raw = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "scripts/sql/2026-11-17-customer-tax-identities.sql"), "utf8")
+  const lower = raw.split("\n").map((l) => l.replace(/--.*$/, "")).join("\n").toLowerCase().replace(/\s+/g, " ")
+  const statements = lower.split(";").map((s) => s.trim()).filter(Boolean)
+  assert.ok(!lower.includes("$$"), "no dollar-quoted code")
+  for (const s of statements) {
+    assert.ok(!/^(drop|update|delete|truncate|grant|create policy)\b/.test(s), `not additive: ${s.slice(0, 60)}`)
+    assert.ok(!/\b(drop|rename|truncate)\b/.test(s), `drop / rename: ${s.slice(0, 60)}`)
+    assert.ok(/^(create table if not exists|create index if not exists|alter table public\.\w+ (enable row level security|add column if not exists)|insert into public\.customer_tax_identities)\b/.test(s), `unexpected statement: ${s.slice(0, 60)}`)
+  }
+  for (const part of [
+    "create table if not exists public.customer_tax_identities ( identity_id serial primary key",
+    "customer_id int not null references public.customers(customer_id) on delete cascade",
+    "name text not null", "receiver_type text not null default 'b' check (receiver_type in ('b','p','f'))",
+    "tax_registration_number text", "national_id text", "address_governorate text", "address_region text", "address_street text",
+    "address_building_number text", "active boolean default true", "created_at timestamptz default now()",
+    "create index if not exists customer_tax_identities_customer_id_idx on public.customer_tax_identities (customer_id)",
+    "alter table public.customer_tax_identities enable row level security",
+    "alter table public.accounts_receivable add column if not exists eta_identity_id int references public.customer_tax_identities(identity_id) on delete set null",
+    "not exists (select 1 from public.customer_tax_identities i where i.customer_id = c.customer_id)",
+  ]) assert.ok(lower.includes(part), `missing: ${part}`)
+  assert.ok(!/create policy/.test(lower), "no policies")
+  const insert = statements.filter((s) => s.startsWith("insert"))
+  assert.equal(insert.length, 1)
+  assert.match(insert[0], /from public\.customers c where/)
+  assert.match(insert[0], /tax_registration_number.*<> ''.*or.*national_id.*<> ''/)
+})
+
+test("G6. routes: identities under /api/customers (sales / accountant write, everyone reads); the choice under /api/eta (accountant / CEO / admin)", async () => {
+  const c = ruleFor("/api/customers/tax-identities")!
+  assert.equal(c.prefix, "/api/customers")
+  for (const role of ["sales-rep", "accountant", "ceo", "admin"]) assert.equal(allows(c, "POST", [role] as any), true, role)
+  for (const role of ["warehouse-rep", "po-rep"]) assert.equal(allows(c, "PUT", [role] as any), false, role)
+  assert.equal(allows(c, "GET", ["warehouse-rep"] as any), true)
+  const e = ruleFor("/api/eta/identity")!
+  for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(e, "POST", [role] as any), true, role)
+  for (const role of ["sales-rep", "warehouse-rep", "po-rep"]) assert.equal(allows(e, "POST", [role] as any), false, role)
+
+  const db = new FakeDb({ customers: [{ customer_id: 5, customer_name: "Al Kasrawy" }], customer_tax_identities: [] })
+  db.jitter = false
+  useDb(db)
+  const post = (body: unknown) => taxIdentitiesRouteG.POST(rq("POST", "/api/customers/tax-identities", body))
+  const put = (body: unknown) => taxIdentitiesRouteG.PUT(rq("PUT", "/api/customers/tax-identities", body))
+  // tax number cleaned to 9 Latin digits; a bad one is kept as typed with a warning
+  const a = await (await post({ customerId: 5, name: " Al Kasrawy Trading ", taxRegistrationNumber: "٣٠٠-٤٠٠-٥٠١", governorate: "Alexandria" })).json()
+  assert.equal(a.name, "Al Kasrawy Trading")
+  assert.equal(a.taxRegistrationNumber, "300400501")
+  assert.equal(a.receiverType, "B")
+  assert.equal(a.warnings, undefined)
+  const b = await (await post({ customerId: 5, name: "Al Kasrawy Motors", taxRegistrationNumber: "12" })).json()
+  assert.deepEqual(b.warnings, ["tax_registration_number: must be 9 digits"])
+  assert.equal((await post({ customerId: 5, name: " " })).status, 400)
+  assert.equal((await post({ customerId: 99, name: "X" })).status, 404)
+  assert.equal((await post({ name: "X" })).status, 400)
+  // edit, switch off
+  const e1 = await (await put({ customerId: 5, identityId: b.identityId, taxRegistrationNumber: "300 400 502", receiverType: "P", nationalId: "29001011234567" })).json()
+  assert.deepEqual([e1.taxRegistrationNumber, e1.receiverType, e1.nationalId], ["300400502", "P", "29001011234567"])
+  assert.equal((await (await put({ customerId: 5, identityId: a.identityId, active: false })).json()).active, false)
+  assert.equal((await put({ customerId: 5, identityId: a.identityId, active: "no" })).status, 400)
+  assert.equal((await put({ customerId: 77, identityId: a.identityId, name: "X" })).status, 404, "another customer's identity")
+  // list: all, switched-off too
+  const list = await (await taxIdentitiesRouteG.GET(rq("GET", "/api/customers/tax-identities?customerId=5"))).json()
+  assert.deepEqual(list.map((i: any) => [i.name, i.active]), [["Al Kasrawy Trading", false], ["Al Kasrawy Motors", true]])
+  assert.equal((await taxIdentitiesRouteG.GET(rq("GET", "/api/customers/tax-identities"))).status, 400)
+  assert.deepEqual((await loadCustomerIdentities(db, 5, { activeOnly: true })).map((i) => i.name), ["Al Kasrawy Motors"])
+  // the choice route checks its input
+  assert.equal((await identityRouteG.POST(rq("POST", "/api/eta/identity", { identityId: 1 }))).status, 400)
+  assert.equal((await identityRouteG.POST(rq("POST", "/api/eta/identity", { invoiceId: 1, identityId: "x" }))).status, 400)
+})
+
+test("G7. screens wired: the customer card lists identities, the e-invoice window picks by name; texts EN + AR", () => {
+  const repo = process.env.REPO_ROOT || process.cwd()
+  const card = readFileSync(join(repo, "components/parties/edit-party-dialog.tsx"), "utf8")
+  assert.match(card, /<CustomerTaxIdentities/)
+  assert.ok(!card.includes("party-governorate"), "the single tax fields are replaced by the list for customers")
+  const list = readFileSync(join(repo, "components/parties/customer-tax-identities.tsx"), "utf8")
+  assert.match(list, /\/api\/customers\/tax-identities/)
+  assert.match(list, /GOVERNORATES/)
+  assert.match(readFileSync(join(repo, "components/modules/customer-module.tsx"), "utf8"), /customerId=\{selectedCustomer\.id\}/)
+  const win = readFileSync(join(repo, "components/accounting/eta-preview-dialog.tsx"), "utf8")
+  assert.match(win, /\/api\/eta\/identity/)
+  const dropDown = win.slice(win.indexOf('id="eta-identity"'), win.indexOf("</SelectContent>", win.indexOf('id="eta-identity"')))
+  assert.match(dropDown, /\{i\.name\}/)
+  assert.ok(!/taxRegistrationNumber|nationalId/.test(dropDown), "the drop-down shows names only")
+  const i18n = readFileSync(join(repo, "lib/i18n-context.tsx"), "utf8")
+  const arAt = i18n.indexOf("\n  ar: {")
+  const keys = new Set<string>(["eta.missing-receiver_identity"])
+  for (const src of [list, win]) for (const m of src.matchAll(/"(eta\.identit[\w-]+)"/g)) keys.add(m[1])
+  for (const k of keys) {
+    assert.ok(i18n.slice(0, arAt).includes(`"${k}":`), `EN ${k}`)
+    assert.ok(i18n.slice(arAt).includes(`"${k}":`), `AR ${k}`)
+  }
+  assert.match(i18n.slice(arAt), /"eta\.missing-receiver_identity": "اختر الشركة التي تصدر لها هذه الفاتورة"/)
+})
