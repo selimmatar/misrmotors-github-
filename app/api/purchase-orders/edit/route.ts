@@ -13,6 +13,7 @@ import { checkPoOverOrder, linesWithIncreasedQuantity } from "@/lib/po-over-orde
 import { computePoTotals, findExistingPoItem, mapPoItem, poPaymentColumns } from "@/lib/po-items"
 import { editBlocker, syncPoStatus, writePoLines } from "@/lib/po-edit"
 import { reservedCreditTotal } from "@/lib/supplier-credit-apply"
+import { belowBilledRefusal } from "@/lib/po-bill"
 
 export const dynamic = "force-dynamic"
 
@@ -99,6 +100,12 @@ export async function POST(request: Request) {
         total: totals.total,
       })
     }
+
+    // A line already on a supplier bill (bill received items, 2026-11-17) cannot go below the billed quantity.
+    const newQty = new Map<number, number>((oldRows || []).map((o: any) => [o.po_item_id, 0]))
+    for (const r of newRows) if (r.po_item_id) newQty.set(r.po_item_id, Number(r.quantity) || 0)
+    const billedBlock = await belowBilledRefusal(db, current, newQty)
+    if (billedBlock) return refuse(409, billedBlock.code, billedBlock.error)
 
     // 1. The order itself, compare-and-swap on the status we checked.
     const changes: Record<string, any> = {

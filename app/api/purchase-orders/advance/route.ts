@@ -5,7 +5,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { AP_PAYMENT_METHODS } from "@/lib/ap-payments"
-import { ADVANCE_CREDIT_TYPE, billsOf } from "@/lib/po-bill"
+import { ADVANCE_CREDIT_TYPE, isPoClosed } from "@/lib/po-bill"
 import { reservedCreditTotal } from "@/lib/supplier-credit-apply"
 
 export const dynamic = "force-dynamic"
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     if (error) throw error
     if (!po) return refuse(404, "NOT_FOUND", "Purchase order not found")
     if (["rejected", "draft"].includes(String(po.status))) return refuse(409, "PO_NOT_OPEN", `An advance cannot be paid on a "${po.status}" purchase order`)
-    if ((await billsOf(db, poId)).length > 0) return refuse(409, "PO_CLOSED", "This purchase order is closed: record the payment on its supplier bill in Accounts Payable")
+    if (await isPoClosed(db, po)) return refuse(409, "PO_CLOSED", "This purchase order is closed: record the payment on its supplier bill in Accounts Payable")
     const reserved = await reservedCreditTotal(db, poId)
     if (reserved.error) throw new Error(reserved.error)
     if (reserved.total + amount > (Number(po.total) || 0) + 0.005) {

@@ -9,6 +9,7 @@ import { parsePositiveId } from "@/lib/parse-id"
 import { logPoEvent, knownUserId } from "@/lib/po-history"
 import { computePoTotals, poMoney } from "@/lib/po-items"
 import { editBlocker, receivedByItem, syncPoStatus } from "@/lib/po-edit"
+import { belowBilledRefusal } from "@/lib/po-bill"
 import { reservedCreditTotal } from "@/lib/supplier-credit-apply"
 import { undoMoves, type StockMove } from "@/lib/dp-stock"
 import { logHandedBack, takeLineFromStock } from "@/lib/po-stock-out"
@@ -75,6 +76,9 @@ export async function POST(request: Request) {
       const l = lineById.get(id)
       if (taken > (Number(l.quantity) || 0) + 1e-9) return refuse(409, "RETURN_TOO_MANY", `Only ${l.quantity} of "${nameOf(l)}" are on the purchase order`)
     }
+    // what a supplier bill already charged stays on the PO (bill received items, 2026-11-17)
+    const billedBlock = await belowBilledRefusal(db, po, new Map([...takenById].map(([id, taken]) => [id, poMoney((Number(lineById.get(id).quantity) || 0) - taken)])))
+    if (billedBlock) return refuse(409, billedBlock.code, billedBlock.error)
     // Only what was received can go back (owner rule, 2026-11-12); what was not received yet is removed with Edit.
     const received = await receivedByItem(db, ids)
     const sentBack = await returnedSoFar(db, poId)

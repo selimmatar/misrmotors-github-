@@ -10,6 +10,7 @@ import { undoMoves, type StockMove } from "./dp-stock"
 import { logHandedBack, takeLineFromStock } from "./po-stock-out"
 import { computePoTotals, poMoney } from "./po-items"
 import { editBlocker, syncPoStatus } from "./po-edit"
+import { belowBilledRefusal } from "./po-bill"
 import { reservedCreditTotal } from "./supplier-credit-apply"
 
 type Db = any
@@ -99,6 +100,13 @@ export async function exchangeOnPo(db: Db, poId: number, pairs: Pair[], userId: 
         return refuse(409, "EXCHANGE_TOO_MANY", `Only ${from.quantity} of "${from.outsourced_name || from.item_name_snapshot || "that item"}" are on the purchase order`)
       }
     }
+    // what a supplier bill already charged stays on the PO (bill received items, 2026-11-17)
+    const billedBlock = await belowBilledRefusal(
+      db,
+      po,
+      new Map([...takenById].map(([id, taken]) => [id, poMoney((Number(fromById.get(id).quantity) || 0) - taken)])),
+    )
+    if (billedBlock) return refuse(409, billedBlock.code, billedBlock.error)
 
     const productIds = [...new Set([...(fromRows || []).map((r: any) => r.product_id), ...pairs.map((p) => p.toProductId)].filter(Boolean))]
     const names = new Map<number, string>()

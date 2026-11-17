@@ -4,7 +4,7 @@
 // item, record an advance, close & send to Accounts Payable, reopen) with its dialogs, and the PO history shown in the
 // PO details (exchanges with their cost difference, items sent back, advances, close / reopen).
 import { useEffect, useState } from "react"
-import { ArrowLeftRight, Banknote, Lock, LockOpen, MoreHorizontal, Loader2, Undo2 } from "lucide-react"
+import { ArrowLeftRight, Banknote, FileText, Lock, LockOpen, MoreHorizontal, Loader2, Trash2, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +21,7 @@ import { PO_CLOSABLE_STATUSES, PO_CLOSE_ROLES } from "@/lib/po-edit"
 import { toEnglishDigits } from "@/lib/po-requests/read-prices"
 import { typedNumber } from "@/lib/typed-number"
 import type { PurchaseOrder } from "@/lib/types"
+import { BillReceivedDialog, ClosePoDialog } from "./po-bill-dialog"
 
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
@@ -79,17 +80,25 @@ interface MenuProps {
   labelled?: boolean
   /** Warehouses goods can be taken back from when they are returned to the supplier. */
   warehouses?: { id: string | number; name: string }[]
+  /** The PO's supplier bills (several bills per PO, 2026-11-17), oldest first. */
+  bills?: { invoiceNumber?: string }[]
 }
 
-export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inventory = [], onDone, labelled = false, warehouses = [] }: MenuProps) {
+/** Statuses in which received items can be billed. */
+const BILLABLE_STATUSES = ["partially_received", "received", "received_with_issues"]
+
+export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inventory = [], onDone, labelled = false, warehouses = [], bills = [] }: MenuProps) {
   const { t } = useI18n()
-  const [dialog, setDialog] = useState<"exchange" | "advance" | "return" | null>(null)
+  const [dialog, setDialog] = useState<"exchange" | "advance" | "return" | "bill" | "close" | null>(null)
   const [busy, setBusy] = useState(false)
   const may = PO_CLOSE_ROLES.includes(role)
   const canClose = may && !closed && PO_CLOSABLE_STATUSES.includes(order.status)
   const canReopen = may && closed
   const canAdvance = may && !closed && !["rejected", "draft"].includes(order.status)
-  if (!canEdit && !canClose && !canReopen && !canAdvance) return null
+  const canBill = may && !closed && BILLABLE_STATUSES.includes(order.status)
+  const lastBill = bills.length > 0 ? bills[bills.length - 1] : null
+  const canRemoveLast = may && !closed && !!lastBill
+  if (!canEdit && !canClose && !canReopen && !canAdvance && !canBill && !canRemoveLast) return null
 
   const run = async (url: string, body: unknown, confirmText: string, done: string) => {
     if (!confirm(confirmText)) return
@@ -130,17 +139,28 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
               <Banknote className="w-4 h-4 me-2" /> {t("po.record-advance")}
             </DropdownMenuItem>
           )}
-          {canClose && (
+          {canBill && (
+            <DropdownMenuItem onSelect={() => setDialog("bill")}>
+              <FileText className="w-4 h-4 me-2" /> {t("po.bill-received")}
+            </DropdownMenuItem>
+          )}
+          {canRemoveLast && (
             <DropdownMenuItem
               onSelect={() =>
                 run(
-                  "/api/purchase-orders/close",
+                  "/api/purchase-orders/reopen",
                   { id: order.id, userId },
-                  fill(t("po.close-confirm"), { po: order.poNumber, total: money(Number(order.total) || 0).toLocaleString("en-US") }),
-                  t("po.closed-done"),
+                  fill(t("po.remove-last-bill-confirm"), { po: order.poNumber, invoice: lastBill?.invoiceNumber || "" }),
+                  t("po.removed-last-bill"),
                 )
               }
             >
+              <Trash2 className="w-4 h-4 me-2" /> {t("po.remove-last-bill")}
+            </DropdownMenuItem>
+          )}
+          {canClose && (
+            // the dialog asks what is not coming and the supplier invoice, then posts to "/api/purchase-orders/close"
+            <DropdownMenuItem onSelect={() => setDialog("close")}>
               <Lock className="w-4 h-4 me-2" /> {t("po.close-send-ap")}
             </DropdownMenuItem>
           )}
@@ -158,6 +178,8 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
       )}
       {dialog === "advance" && <AdvanceDialog order={order} userId={userId} onClose={() => setDialog(null)} onDone={onDone} />}
       {dialog === "return" && <ReturnDialog order={order} userId={userId} warehouses={warehouses} onClose={() => setDialog(null)} onDone={onDone} />}
+      {dialog === "bill" && <BillReceivedDialog order={order} userId={userId} onClose={() => setDialog(null)} onDone={onDone} />}
+      {dialog === "close" && <ClosePoDialog order={order} userId={userId} onClose={() => setDialog(null)} onDone={onDone} />}
     </>
   )
 }
