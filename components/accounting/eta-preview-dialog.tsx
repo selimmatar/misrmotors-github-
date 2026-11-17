@@ -28,6 +28,8 @@ export type EtaPreviewResponse = EtaPreview & {
   environment: "test" | "real"
   documents: Record<"test" | "real", EtaDocumentView[]>
   cancelWindowHours: number | null
+  /** a real document is live: the company the invoice is issued for can't change */
+  identityLocked?: boolean
 }
 
 export interface EtaCodeRow {
@@ -47,7 +49,7 @@ export async function readError(res: Response, fallback: string): Promise<string
 }
 
 const REFUSAL_REASONS = ["amount_mismatch", "already_live", "final", "not_found", "no_issue_date", "build_failed", "handled_manually"]
-const MISSING_REASONS = ["company_rin", "company_activity", "company_address", "customer_tax_number", "customer_address", "line_codes"]
+const MISSING_REASONS = ["company_rin", "company_activity", "company_address", "receiver_identity", "customer_tax_number", "customer_address", "line_codes"]
 
 /** A refusal reason code of the send routes in plain words. */
 export function reasonText(code: string, t: (key: string) => string): string {
@@ -371,6 +373,7 @@ export function EtaPreviewDialog({
   const [etaUuid, setEtaUuid] = useState("")
   const [marking, setMarking] = useState(false)
   const [makingSendable, setMakingSendable] = useState(false)
+  const [choosing, setChoosing] = useState(false)
 
   const load = useCallback(async () => {
     setError(null)
@@ -415,6 +418,25 @@ export function EtaPreviewDialog({
       toast({ title: t("message.error"), description: fill(t("eta.save-failed"), { error: e instanceof Error ? e.message : String(e) }), variant: "destructive" })
     } finally {
       setMarking(false)
+    }
+  }
+
+  // which of the customer's companies (tax identities) the invoice is issued for; the preview is rebuilt with it
+  const chooseIdentity = async (value: string) => {
+    setChoosing(true)
+    try {
+      const res = await fetch("/api/eta/identity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId: Number(invoiceId), identityId: Number(value) }),
+      })
+      if (!res.ok) throw new Error(await readError(res, t("message.error")))
+      toast({ title: t("eta.saved") })
+      await load()
+    } catch (e) {
+      toast({ title: t("message.error"), description: fill(t("eta.save-failed"), { error: e instanceof Error ? e.message : String(e) }), variant: "destructive" })
+    } finally {
+      setChoosing(false)
     }
   }
 
@@ -489,6 +511,30 @@ export function EtaPreviewDialog({
                 </span>
               )}
             </div>
+
+            {/* 2+ companies on the portal for this customer: pick one by NAME (tax numbers are never listed here) */}
+            {(preview.identities?.length ?? 0) > 1 && (
+              <div className="space-y-1 max-w-sm">
+                <Label htmlFor="eta-identity">{t("eta.identity-choose")}</Label>
+                <Select
+                  value={preview.identityId != null ? String(preview.identityId) : undefined}
+                  onValueChange={chooseIdentity}
+                  disabled={choosing || !!preview.identityLocked}
+                >
+                  <SelectTrigger id="eta-identity" aria-label={t("eta.identity-choose")}>
+                    <SelectValue placeholder={t("eta.identity-choose-placeholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {preview.identities!.map((i) => (
+                      <SelectItem key={i.identityId} value={String(i.identityId)}>
+                        {i.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {preview.identityLocked && <p className="text-xs text-muted-foreground">{t("eta.identity-locked")}</p>}
+              </div>
+            )}
 
             {preview.handledManually && (
               <div className="rounded-lg border bg-muted/50 p-3 space-y-1">

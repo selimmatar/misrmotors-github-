@@ -40,6 +40,7 @@ const PK: Record<string, string> = {
   eta_documents: "doc_id",
   eta_signers: "signer_id",
   eta_received_documents: "received_id",
+  customer_tax_identities: "identity_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {

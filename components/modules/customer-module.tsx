@@ -209,6 +209,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
           open={editOpen}
           onOpenChange={setEditOpen}
           kind="customer"
+          customerId={selectedCustomer.id}
           initial={{
             name: selectedCustomer.name,
             email: selectedCustomer.email,
