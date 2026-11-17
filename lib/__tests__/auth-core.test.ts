@@ -10,7 +10,7 @@ import { authMode, decide, identityFromAuthUser, identityHeaders, isIdle, loginA
 const ROOT = process.env.REPO_ROOT || process.cwd()
 
 test("roles: priority order and isRole", () => {
-  assert.deepEqual(ROLE_PRIORITY, ["admin", "ceo", "accountant", "po-rep", "sales-rep", "warehouse-rep", "shipment"])
+  assert.deepEqual(ROLE_PRIORITY, ["admin", "ceo", "accountant", "po-rep", "sales-rep", "warehouse-rep", "shipment", "maintenance"])
   assert.equal(isRole("sales-rep"), true)
   assert.equal(isRole("sales_rep"), false)
   assert.equal(isRole(undefined), false)

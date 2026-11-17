@@ -33,7 +33,8 @@ export function Sidebar({ activeModule, onModuleChange, userRole, roles, onLogou
     const merged: Record<string, number> = {}
     let any = false
     await Promise.all(
-      roleKey.split(",").map(async (role) => {
+      // the maintenance role has no counters (and may not read them)
+      roleKey.split(",").filter((role) => role !== "maintenance").map(async (role) => {
         try {
           const response = await fetch(`/api/pending-counts?role=${role}`)
           if (!response.ok) return

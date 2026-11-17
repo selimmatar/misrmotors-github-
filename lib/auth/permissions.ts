@@ -19,6 +19,7 @@ const STOCK_PLANNERS: UserRole[] = ["po-rep", "warehouse-rep", "sales-rep"]
 const RETURNS: UserRole[] = ["sales-rep", "accountant", "warehouse-rep"]
 const CUSTOMER_MONEY: UserRole[] = ["accountant", "sales-rep"]
 const ACCOUNTANT: UserRole[] = ["accountant"]
+const QUICK_INVOICE: UserRole[] = ["maintenance", "accountant"]
 
 const rule = (prefix: string, read: Access, write: Access): Rule => ({ prefix, read, write })
 
@@ -81,6 +82,8 @@ export const RULES: Rule[] = [
   rule("/api/balance", ACCOUNTANT, ACCOUNTANT),
   // Maintenance
   rule("/api/maintenance", ["accountant", "sales-rep", "warehouse-rep"], ["accountant", "sales-rep"]),
+  // Maintenance quick invoice (owner-approved 2026-11-17): the maintenance person's one screen; the accountant too
+  rule("/api/maintenance/quick-invoice", QUICK_INVOICE, QUICK_INVOICE),
   // Reports
   rule("/api/reports", ["accountant", "sales-rep"], ONLY_TOP),
   rule("/api/analytics", ["accountant", "sales-rep", "po-rep"], ONLY_TOP),
@@ -132,11 +135,19 @@ export function ruleFor(path: string): Rule | null {
   return best
 }
 
+/** Besides the rules that name it, a person whose only role is "maintenance" may use their own session. */
+const MAINTENANCE_ONLY_OPEN = ["/api/auth"]
+
 export function allows(rule: Rule, method: string, roles: UserRole[]): boolean {
   if (roles.includes("admin") || roles.includes("ceo")) return true
   if (roles.length === 0) return false
   const m = method.toUpperCase()
   const access = m === "GET" || m === "HEAD" ? rule.read : rule.write
+  // The maintenance role reaches only the rules that name it: "signed-in" does not open the rest of the system to it
+  // (owner-approved 2026-11-17). Someone with another role as well gets that role's access as usual.
+  if (roles.every((r) => r === "maintenance")) {
+    return MAINTENANCE_ONLY_OPEN.includes(rule.prefix) || (access !== "signed-in" && access.includes("maintenance"))
+  }
   if (access === "signed-in") return true
   return roles.some((r) => access.includes(r))
 }

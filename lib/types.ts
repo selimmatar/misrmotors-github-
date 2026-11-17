@@ -1,4 +1,4 @@
-export type UserRole = "ceo" | "accountant" | "sales-rep" | "warehouse-rep" | "po-rep" | "admin" | "shipment"
+export type UserRole = "ceo" | "accountant" | "sales-rep" | "warehouse-rep" | "po-rep" | "admin" | "shipment" | "maintenance"
 
 export interface User {
   id: string
@@ -353,6 +353,8 @@ export interface AccountsReceivableInvoice {
   soNumber?: string
   paymentTerms?: string | null
   isMaintenance?: boolean
+  /** Accounts Receivable tab: "maintenance" for work-order and quick maintenance invoices, else "sales" */
+  arTab?: "sales" | "maintenance"
   date: string
   dueDate: string
   items: InvoiceItem[]

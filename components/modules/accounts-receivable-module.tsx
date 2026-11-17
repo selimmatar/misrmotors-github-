@@ -22,6 +22,8 @@ import { fill } from "@/lib/i18n-format"
 import type { CustomerInvoice } from "@/lib/types"
 import { isSinglePayment } from "@/lib/payment-type"
 import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
+import { invoicesForTab, type ArTab } from "@/lib/ar-tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -82,6 +84,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const [creditDialogInvoice, setCreditDialogInvoice] = useState<CustomerInvoice | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [listFilter, setListFilter] = useState<"all" | "pending" | "partially_paid" | "paid" | "overdue">("all")
+  // Sales / Maintenance tab of the invoice list (spec 2026-11-17)
+  const [invoiceTab, setInvoiceTab] = useState<ArTab>("sales")
   const [widgetDialogOpen, setWidgetDialogOpen] = useState(false)
   const [widgetDialogType, setWidgetDialogType] = useState<"receivable" | "collected" | "outstanding" | "overdue">(
     "receivable",
@@ -419,6 +423,9 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const totalOutstanding = totalReceivable - totalCollected
   const overdueInvoices = allInvoices.filter((inv) => getInvoiceStatus(inv) === "overdue")
   const overdueAmount = overdueInvoices.reduce((sum, inv) => sum + dueSummary(inv).overdue, 0)
+  // the invoice list and its filter buttons show the chosen tab only; the totals above stay for all invoices
+  const tabInvoices = invoicesForTab(allInvoices, invoiceTab)
+  const tabOverdueInvoices = invoicesForTab(overdueInvoices, invoiceTab)
 
   const fetchPaymentSchedule = async (invoice: CustomerInvoice) => {
     setIsLoadingSchedule(true)
@@ -1068,6 +1075,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
  default:
  filtered = allCustomerInvoices
  }
+ // only the chosen tab (Sales / Maintenance)
+ filtered = invoicesForTab(filtered, invoiceTab)
 
  const query = invoiceSearchQuery.trim().toLowerCase()
  if (!query) return filtered
@@ -1368,6 +1377,18 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         />
       )}
 
+      {/* Sales / Maintenance invoices */}
+      <Tabs value={invoiceTab} onValueChange={(v) => setInvoiceTab(v === "maintenance" ? "maintenance" : "sales")}>
+        <TabsList className="h-auto flex-wrap justify-start">
+          <TabsTrigger value="sales">
+            {t("ar.tab-sales")} ({formatNumber(invoicesForTab(allInvoices, "sales").length)})
+          </TabsTrigger>
+          <TabsTrigger value="maintenance">
+            {t("ar.tab-maintenance")} ({formatNumber(invoicesForTab(allInvoices, "maintenance").length)})
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* Filter Buttons */}
       <div className="flex gap-2 flex-wrap">
         {mayEta && (
@@ -1380,23 +1401,23 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           />
         )}
         <Button variant={listFilter === "all" ? "default" : "outline"} onClick={() => setListFilter("all")}>
-          {t("ar.all-invoices")} ({formatNumber(allInvoices.length)})
+          {t("ar.all-invoices")} ({formatNumber(tabInvoices.length)})
         </Button>
         <Button variant={listFilter === "pending" ? "default" : "outline"} onClick={() => setListFilter("pending")}>
-          {t("status.pending")} ({formatNumber(allInvoices.filter((i) => getInvoiceStatus(i) === "pending").length)})
+          {t("status.pending")} ({formatNumber(tabInvoices.filter((i) => getInvoiceStatus(i) === "pending").length)})
         </Button>
         <Button
           variant={listFilter === "partially_paid" ? "default" : "outline"}
           onClick={() => setListFilter("partially_paid")}
         >
           {t("ar.partially-paid")} (
-          {formatNumber(allInvoices.filter((i) => getInvoiceStatus(i) === "partially_paid").length)})
+          {formatNumber(tabInvoices.filter((i) => getInvoiceStatus(i) === "partially_paid").length)})
         </Button>
         <Button variant={listFilter === "paid" ? "default" : "outline"} onClick={() => setListFilter("paid")}>
-          {t("ar.paid")} ({formatNumber(allInvoices.filter((i) => getInvoiceStatus(i) === "paid").length)})
+          {t("ar.paid")} ({formatNumber(tabInvoices.filter((i) => getInvoiceStatus(i) === "paid").length)})
         </Button>
         <Button variant={listFilter === "overdue" ? "default" : "outline"} onClick={() => setListFilter("overdue")}>
-          {t("ar.overdue")} ({formatNumber(overdueInvoices.length)})
+          {t("ar.overdue")} ({formatNumber(tabOverdueInvoices.length)})
         </Button>
       </div>
 

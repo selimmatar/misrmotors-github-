@@ -27,6 +27,8 @@ const MAIN_IDS: Record<string, string[]> = { // verbatim from origin/main compon
   "po-rep": ["dashboard","analytics","suppliers","products","po-requests","purchase-orders","goods-receipt-tracking","inventory","reorder-suggestions","lost-sales"],
   // shipment: courier manager retired, operations moved to sales + CEO (owner request 2026-10-31).
   shipment: ["shipment","delivery-permits"],
+  // maintenance: new role with one screen, the quick maintenance invoice (owner-approved 2026-11-17).
+  maintenance: ["maintenance-quick-invoice"],
 }
 
 test("each role's item set is unchanged versus main", () => {
