@@ -201,7 +201,7 @@ export function createPortal(env: EtaEnv, deps: PortalDeps = {}): EtaPortal {
   return {
     async submit(docsJson) {
       // documents are already serialized (and signed) text: send them verbatim, never re-stringify
-      const b: any = await json("POST", "/api/v1.0/documentsubmissions/", `{"documents":[${docsJson.join(",")}]}`)
+      const b: any = await json("POST", "/api/v1.0/documentsubmissions", `{"documents":[${docsJson.join(",")}]}`)
       return { ...b, submissionUUID: b.submissionUUID, acceptedDocuments: b.acceptedDocuments || [], rejectedDocuments: b.rejectedDocuments || [] }
     },
     getSubmission: (uuid) => json("GET", `/api/v1.0/documentsubmissions/${encodeURIComponent(uuid)}?pageNo=1&pageSize=100`),
