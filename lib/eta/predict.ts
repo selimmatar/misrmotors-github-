@@ -8,11 +8,11 @@
 import { coreName, normalizeName, DEFAULT_BRANDS } from "./normalize"
 
 /** green only when the closest remembered name is at least this similar ... */
-export const GREEN_SIMILARITY = 0.85
+export const GREEN_SIMILARITY = 0.75
 /** ... and the winning code holds at least this share of all the votes ... */
 export const GREEN_CONFIDENCE = 0.9
 /** ... and this many distinct neighbours of the winning code agree (or one the accountant confirmed) */
-export const GREEN_AGREE = 2
+export const GREEN_AGREE = 3
 /** orange (a suggestion) when the closest name is at least this similar and the code holds this share */
 export const ORANGE_SIMILARITY = 0.45
 export const ORANGE_CONFIDENCE = 0.5

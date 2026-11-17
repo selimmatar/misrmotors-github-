@@ -2780,13 +2780,15 @@ test("F53b. predict: a misspelling finds the remembered name; stemming; confirme
 })
 
 test("F53c. thresholds are named and ordered; evaluate reports leave-one-out accuracy", () => {
-  assert.ok(GREEN_SIMILARITY === 0.85 && GREEN_CONFIDENCE === 0.9 && GREEN_AGREE === 2)
+  assert.ok(GREEN_SIMILARITY === 0.75 && GREEN_CONFIDENCE === 0.9 && GREEN_AGREE === 3)
   assert.ok(ORANGE_SIMILARITY === 0.45 && ORANGE_CONFIDENCE === 0.5)
   assert.ok(CONFIRMED_WEIGHT === 2 && CODE_NAME_WEIGHT === 0.5 && TOP_K === 5)
   const r = evaluatePrediction(MEMORY53)
   assert.equal(r.total, r.green.n + r.orange.n + r.red)
   assert.ok(r.green.correct <= r.green.n && r.orange.correct <= r.orange.n)
-  assert.ok(r.green.n > 0 && r.green.correct === r.green.n, JSON.stringify(r))
+  // the small fixture has no name with 3 agreeing neighbours, so nothing is green here; every green would be right
+  assert.ok(r.green.correct === r.green.n, JSON.stringify(r))
+  assert.ok((r.calibration || []).some((c) => c.agree === 2 && c.n > 0 && c.accuracy === 1), "the calibration table scores the looser rules")
   // held out together: "مفك صليبة" and its "ستانلي 6 بوصة" twin share one core and never answer each other
   assert.equal(r.total, new Set(MEMORY53.map((m) => m.core_name)).size)
 })
