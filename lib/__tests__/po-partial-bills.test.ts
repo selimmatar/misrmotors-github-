@@ -15,6 +15,9 @@ import * as advanceRoute from "../../app/api/purchase-orders/advance/route"
 import { PO_CLOSE_ROLES } from "../po-edit"
 import { decide } from "../auth/decide"
 import { closingBillOf, isPartialBill } from "../po-bill-number"
+import * as apRoute from "../../app/api/accounts-payable/route"
+import { apDueSchedule, summarizeDue } from "../due-schedule"
+import { billSchedules } from "../po-bill-schedule"
 
 const src = (p: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), p), "utf8")
 
@@ -218,4 +221,100 @@ test("PB11. the migration is additive and safe to run twice; RLS on, no policies
   assert.match(code, /references public\.purchase_order_items\(po_item_id\)/)
   assert.match(code, /alter table public\.ap_invoice_lines enable row level security/)
   for (const stmt of code.match(/(create table|create index|add column)[^;]*/gi) || []) assert.match(stmt, /if not exists/i, stmt)
+})
+
+// ---------------------------------------------------------------------------------------------------------------
+// Accounts Payable: each bill's payment schedule is its own share of the PO plan (2026-11-17)
+// ---------------------------------------------------------------------------------------------------------------
+
+// 30% down on the order date, the rest in 3 monthly payments from a month later
+const hybrid = (extra: Row = {}) => po({
+  payment_type: "hybrid", payment_terms: "hybrid", installments: 3, down_payment_amount: 410.4, down_payment_percent: 30,
+  down_payment_due_date: "2026-11-01", remaining_amount: 957.6, remaining_installment_months: 3, monthly_amount: 319.2,
+  payment_start_date: "2026-12-01", ...extra,
+})
+const apList = async (): Promise<any[]> =>
+  (await (await (apRoute.GET as any)(new Request("http://test.local/api/accounts-payable"))).json()).sort((a: any, b: any) => Number(a.id) - Number(b.id))
+const due = (inv: any) => apDueSchedule(inv, null).map((e) => [e.dueDate, e.amount, e.paid, e.isDownPayment])
+
+test("PB12. a part bill gets the PO plan scaled to its amount, its days counted from the bill date", async () => {
+  const db = mk({ purchase_orders: [hybrid()] })
+  receive(db, 7, 4)
+  receive(db, 8, 5)
+  assert.equal((await bill([{ poItemId: 7, quantity: 4 }, { poItemId: 8, quantity: 5 }], { invoiceDate: "2026-11-15" })).status, 200) // 684 = half
+  const [b1] = await apList()
+  assert.deepEqual(b1.billSchedule, [
+    { dueDate: "2026-11-15", amount: 205.2, isDownPayment: true },
+    { dueDate: "2026-12-15", amount: 159.6, isDownPayment: false },
+    { dueDate: "2027-01-15", amount: 159.6, isDownPayment: false },
+    { dueDate: "2027-02-15", amount: 159.6, isDownPayment: false },
+  ])
+  assert.deepEqual(
+    [b1.downPaymentAmount, b1.downPaymentDueDate, b1.remainingAmount, b1.remainingInstallmentMonths, b1.monthlyAmount, b1.paymentStartDate],
+    [205.2, "2026-11-15", 478.8, 3, 159.6, "2026-12-15"],
+    "not the whole PO's 410.40 down payment",
+  )
+  assert.equal(summarizeDue(apDueSchedule(b1, hybrid() as any), "2026-11-20").overdue, 205.2, "the PO passed in is not used")
+})
+
+test("PB13. the closing bill takes what is left of each payment, so the bills add up to the PO plan", () => {
+  const p = po({ total: 100, payment_type: "installments", installments: 3, remaining_installment_months: 3, payment_start_date: "2026-11-01", order_date: "2026-11-01" })
+  const list = [
+    { invoice_id: 1, invoice_number: "APINV-PO-1-B1", amount: 33.33, invoice_date: "2026-11-01" },
+    { invoice_id: 2, invoice_number: "APINV-PO-1", amount: 66.67, invoice_date: "2026-11-11" },
+  ]
+  const s = billSchedules(p, list, new Set([1, 2]))
+  assert.deepEqual(s.get(1)!.map((e) => [e.dueDate, e.amount]), [["2026-11-01", 11.11], ["2026-12-01", 11.11], ["2027-01-01", 11.11]])
+  assert.deepEqual(s.get(2)!.map((e) => [e.dueDate, e.amount]), [["2026-11-11", 22.22], ["2026-12-11", 22.22], ["2027-01-11", 22.23]])
+  const odd = billSchedules(p, [{ ...list[0], amount: 10 }], new Set([1]))
+  assert.deepEqual(odd.get(1)!.map((e) => e.amount), [3.33, 3.33, 3.34], "a bill's own last payment takes its rounding")
+  // a bill dated before the PO: its days are not counted backwards
+  assert.equal(billSchedules(p, [{ ...list[0], invoice_date: "2026-10-01" }], new Set([1])).get(1)![0].dueDate, "2026-11-01")
+})
+
+test("PB14. the advance on the first bills (option A) fills their first payments; a paid or 0 bill has nothing due", async () => {
+  const db = mk({
+    purchase_orders: [hybrid()],
+    supplier_credits: [{ credit_id: 3, supplier_id: 1, amount: 600, status: "used", used_in_po_id: 1, credit_type: "advance", notes: "method=cash" }],
+  })
+  receive(db, 7, 10)
+  assert.equal((await bill([{ poItemId: 7, quantity: 4 }], { invoiceDate: "2026-11-01" })).status, 200) // 456, all from the advance
+  assert.equal((await bill([{ poItemId: 7, quantity: 4 }], { invoiceDate: "2026-11-01" })).status, 200) // 456, 144 from the advance
+  const [b1, b2] = await apList()
+  assert.equal(summarizeDue(apDueSchedule(b1, null), "2027-06-01").balance, 0, "fully paid by the advance: nothing due")
+  assert.deepEqual(due(b2), [
+    ["2026-11-01", 136.8, 136.8, true],
+    ["2026-12-01", 106.4, 7.2, false],
+    ["2027-01-01", 106.4, 0, false],
+    ["2027-02-01", 106.4, 0, false],
+  ])
+  assert.equal(summarizeDue(apDueSchedule(b2, null), "2026-12-05").overdue, 99.2)
+  const zero = billSchedules(hybrid(), [{ invoice_id: 9, invoice_number: "APINV-PO-1-B1", amount: 0, invoice_date: "2026-11-01" }], new Set([9]))
+  assert.deepEqual(zero.get(9), [])
+  assert.deepEqual(apDueSchedule({ amount: 0, paidAmount: 0, billSchedule: [] }, hybrid() as any), [])
+})
+
+test("PB15. bills without lines, and the one bill of a whole PO, keep the PO plan exactly as before", async () => {
+  mk({
+    purchase_orders: [hybrid()],
+    accounts_payable: [{ invoice_id: 50, invoice_number: "APINV-PO-1", po_id: 1, supplier_id: 1, amount: 1368, paid_amount: 0, status: "pending", months_paid: 0, invoice_date: "2026-11-05", down_payment_amount: 410.4, payment_type: "hybrid" }],
+  })
+  const [old] = await apList()
+  assert.equal(old.billSchedule, null)
+  assert.equal(old.downPaymentAmount, 410.4)
+  // closed in one go with the lines table in place: a single bill that carries the PO's own plan
+  mk({ purchase_orders: [hybrid({ status: "approved" })] })
+  assert.equal((await close()).status, 200)
+  const [whole] = await apList()
+  assert.equal(whole.billSchedule, null)
+  assert.equal(whole.downPaymentAmount, 410.4)
+  // the lines table not made yet: the list still loads, as before
+  const pending = mk({ purchase_orders: [hybrid()], accounts_payable: [{ invoice_id: 51, invoice_number: "APINV-PO-1-B1", po_id: 1, supplier_id: 1, amount: 684, paid_amount: 0, status: "pending" }] })
+  pending.failOn["ap_invoice_lines:select"] = 'relation "public.ap_invoice_lines" does not exist'
+  const rows = await apList()
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].billSchedule, null)
+  const ui = src("components/modules/accounts-payable-module.tsx")
+  assert.match(ui, /if \(Array\.isArray\(invoice\.billSchedule\)\)/)
+  assert.match(ui, /if \(poId && !ownSchedule\)/)
 })

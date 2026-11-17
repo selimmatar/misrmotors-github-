@@ -183,9 +183,11 @@ export function AccountsPayableModule() {
 
     try {
       let schedules: PaymentScheduleEntry[] = []
+      // A bill for part of a PO has its own schedule: never the PO's rows, and its own rows only if they add up to it.
+      const ownSchedule = Array.isArray(invoice.billSchedule)
 
       // Try to fetch from database by PO ID first
-      if (poId) {
+      if (poId && !ownSchedule) {
         const response = await fetch(`/api/payment-schedules?poId=${poId}`)
 
         if (response.ok) {
@@ -208,6 +210,10 @@ export function AccountsPayableModule() {
             schedules = data
           }
         }
+      }
+      if (ownSchedule && schedules.length > 0) {
+        const saved = schedules.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+        if (Math.abs(saved - (invoice.totalAmount || invoice.amount || 0)) > 0.01) schedules = []
       }
 
       // If still no schedules, generate from PO/invoice data
@@ -236,6 +242,25 @@ export function AccountsPayableModule() {
   const generateScheduleFromInvoice = (invoice: SupplierInvoice): PaymentScheduleEntry[] => {
     const schedules: PaymentScheduleEntry[] = []
     const po = getPO(invoice.poId)
+
+    // A bill for part of a PO: its own share of the PO plan (GET /api/accounts-payable), paid amounts filled in order.
+    if (Array.isArray(invoice.billSchedule)) {
+      let installment = 0
+      return apDueSchedule(invoice as any, null).map((e, i) => {
+        const number = e.isDownPayment ? 0 : ++installment
+        return {
+          id: e.isDownPayment ? `gen-dp-${invoice.id}-${i}` : `gen-${invoice.id}-${number}`,
+          invoiceId: invoice.id,
+          poId: invoice.poId,
+          installmentNumber: number,
+          dueDate: e.dueDate,
+          amount: e.amount,
+          paidAmount: e.paid,
+          status: e.paid >= e.amount - 0.005 ? "paid" : e.paid > 0 ? "partial" : "pending",
+          isDownPayment: e.isDownPayment,
+        }
+      })
+    }
 
     const effectivePaymentType =
       invoice.paymentType || po?.paymentType || po?.paymentTerms || invoice.paymentTerms || "installments"

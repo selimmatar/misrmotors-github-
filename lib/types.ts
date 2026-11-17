@@ -247,6 +247,8 @@ export interface AccountsPayableInvoice {
   /** several bills per PO (2026-11-17): this bill's place among its PO's bills, and how many there are */
   poBillNo?: number | null
   poBillCount?: number | null
+  /** A bill for part of a PO: its own share of the PO's payment plan (lib/po-bill-schedule.ts), else null */
+  billSchedule?: { dueDate: string; amount: number; isDownPayment: boolean }[] | null
 }
 
 export type SupplierInvoice = AccountsPayableInvoice
