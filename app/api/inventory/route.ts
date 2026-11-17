@@ -3,6 +3,7 @@ import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { loadHoldSplit } from "@/lib/stock-hold"
+import { loadOutsourcedHolds, isStoredOutsourced, type OutsourcedHold } from "@/lib/outsourced-hold"
 
 export const dynamic = "force-dynamic"
 
@@ -54,19 +55,26 @@ export async function GET() {
     }
 
     // An outsourced item stored for a sales order (lib/goods-receiving.ts storeOutsourced) is on hold for that order
-    // while it is open; once the order is cancelled, rejected or delivered it is a free outsourced item (owner, 2026-11-04).
-    const heldFor = new Map<string, { soNumber: string; customerName: string | null }>()
+    // up to what the order's matching outsourced lines still need (lib/outsourced-hold.ts, owner 2026-11-17); the rest,
+    // and everything once the order is cancelled, rejected or delivered, is free stock any sales order can take.
+    let outsourcedHolds: Map<number, OutsourcedHold> | null = null
     try {
-      for (const [k, v] of await openOrdersFor(createAdminClient(), result as any[])) heldFor.set(k, v)
+      outsourcedHolds = await loadOutsourcedHolds(createAdminClient(), result as any[])
     } catch (orderError) {
       console.error("Inventory GET: could not read the orders of stored outsourced items:", orderError)
     }
 
     const transformed = result.map((item: any) => {
       const sellable = !!item.product_id && !item.is_returned
-      const storedFor = !item.product_id && item.is_outsourced && !item.is_returned && item.so_number ? heldFor.get(item.so_number) || null : null
-      const onHold = storedFor ? Number(item.quantity) || 0 : heldByProduct && sellable ? heldByProduct.get(item.product_id) || 0 : heldByProduct ? 0 : null
-      const available = storedFor ? 0 : heldByProduct && sellable ? Math.max(0, (onHandByProduct.get(item.product_id) || 0) - (onHold || 0)) : heldByProduct ? 0 : null
+      const stored = isStoredOutsourced(item)
+      const storedHold = stored && outsourcedHolds ? outsourcedHolds.get(item.inventory_id) || null : null
+      const storedFor = storedHold && storedHold.held > 0 && storedHold.soNumber ? { soNumber: storedHold.soNumber, customerName: storedHold.customerName } : null
+      const onHold = stored
+        ? outsourcedHolds ? storedHold?.held || 0 : null
+        : heldByProduct && sellable ? heldByProduct.get(item.product_id) || 0 : heldByProduct ? 0 : null
+      const available = stored
+        ? outsourcedHolds ? Math.max(0, (Number(item.quantity) || 0) - (storedHold?.held || 0)) : null
+        : heldByProduct && sellable ? Math.max(0, (onHandByProduct.get(item.product_id) || 0) - (onHold || 0)) : heldByProduct ? 0 : null
       const isOutsourced = item.is_outsourced || !item.product_id
       const productName = isOutsourced
         ? (item.outsourced_name || "Outsourced Item")
@@ -117,27 +125,6 @@ export async function GET() {
     console.error("Error fetching inventory:", error)
     return NextResponse.json({ error: "Failed to fetch inventory" }, { status: 500 })
   }
-}
-
-/** so_number -> order + customer, for the open orders that stored outsourced items are kept for. */
-const CLOSED_SO_STATUSES = ["cancelled", "rejected", "delivered", "completed"]
-async function openOrdersFor(db: any, rows: any[]) {
-  const numbers = [...new Set(rows.filter((r) => !r.product_id && r.is_outsourced && !r.is_returned && r.so_number).map((r) => String(r.so_number)))]
-  const open = new Map<string, { soNumber: string; customerName: string | null }>()
-  if (numbers.length === 0) return open
-  const { data: orders, error } = await db.from("sales_orders").select("so_number, status, customer_id").in("so_number", numbers)
-  if (error) throw error
-  const live = (orders || []).filter((o: any) => !CLOSED_SO_STATUSES.includes(o.status))
-  const customerIds = [...new Set(live.map((o: any) => o.customer_id).filter(Boolean))]
-  const { data: customers, error: customerError } = customerIds.length
-    ? await db.from("customers").select("customer_id, customer_name").in("customer_id", customerIds)
-    : { data: [], error: null }
-  if (customerError) throw customerError
-  for (const o of live) {
-    const customer = (customers || []).find((c: any) => c.customer_id === o.customer_id)
-    open.set(String(o.so_number), { soNumber: String(o.so_number), customerName: customer?.customer_name ?? null })
-  }
-  return open
 }
 
 export async function POST(request: Request) {

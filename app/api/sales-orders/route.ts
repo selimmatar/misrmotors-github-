@@ -5,6 +5,7 @@ import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { checkSoStock, loadAvailability } from "@/lib/stock-hold"
+import { checkStoredPicks, reserveStoredPicks, type StoredPick } from "@/lib/outsourced-hold"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
 import { correctionPermitUpdates, markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit, type PermitLineUpdate } from "@/lib/so-edit"
 import { refreshSoFulfilment } from "@/lib/goods-receiving"
@@ -352,6 +353,14 @@ export async function POST(request: Request) {
     }
 
 
+    // Lines taken from a free stored outsourced item (owner, 2026-11-17; lib/outsourced-hold.ts): checked before the
+    // order is written, reserved for the order right after its lines are written.
+    const storedPicks: StoredPick[] = (items || [])
+      .filter((item: any) => item.fromInventoryId !== undefined && item.fromInventoryId !== null && item.fromInventoryId !== "")
+      .map((item: any) => ({ inventoryId: Number(item.fromInventoryId), quantity: Number(item.quantity) }))
+    const storedCheck = await checkStoredPicks(supabase, storedPicks)
+    if (!storedCheck.ok) return Response.json({ error: storedCheck.error, code: storedCheck.code }, { status: storedCheck.status })
+
     // payment_terms only allows 'prepaid' | 'installment' (DB CHECK); cheque is a single payment -> 'prepaid'.
     const finalPaymentTerms = paymentTerms || toSalesOrderPaymentTerms(finalPaymentType)
 
@@ -486,7 +495,7 @@ export async function POST(request: Request) {
               .join(" | ")
           : null
         
-        return {
+        const row: any = {
           so_id: order.so_id,
           product_id: hasProductId ? item.productId : null,
           quantity: item.quantity,
@@ -500,6 +509,18 @@ export async function POST(request: Request) {
           supplier_id: item.supplierId ? Number(item.supplierId) : null,
           cost_estimate: isOutsourced ? item.costEstimate ?? null : null,
         }
+        const stored = storedCheck.rows.get(Number(item.fromInventoryId))
+        if (stored && item.fromInventoryId !== undefined && item.fromInventoryId !== null && item.fromInventoryId !== "") {
+          // Taken from a stored outsourced item: named exactly like it (the hold and the delivery permit match by name),
+          // already in hand (received), costed at the item's cost.
+          row.product_id = null
+          row.item_type = "outsourced"
+          row.outsourced_name = stored.outsourced_name
+          row.outsourced_description = `From stock (inventory #${stored.inventory_id})`
+          row.cost_estimate = Number(stored.unit_cost) || 0
+          row.fulfilled_at = new Date().toISOString()
+        }
+        return row
       })
 
 
@@ -509,6 +530,19 @@ export async function POST(request: Request) {
         throw itemsError
       }
 
+      if (storedPicks.length > 0) {
+        try {
+          await reserveStoredPicks(supabase, order.so_number, storedPicks, storedCheck.rows)
+        } catch (reserveError: any) {
+          console.error("Sales Orders POST: could not reserve stored items", reserveError?.message || reserveError)
+          await supabase.from("sales_order_items").delete().eq("so_id", order.so_id)
+          await supabase.from("sales_orders").delete().eq("so_id", order.so_id)
+          return Response.json(
+            { error: "A stored item on this order was changed by someone else. Nothing was saved; please try again.", code: "STORED_ITEM_CHANGED" },
+            { status: 409 },
+          )
+        }
+      }
     }
 
     if (quotationRequests && quotationRequests.length > 0) {
