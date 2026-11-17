@@ -3,6 +3,7 @@ import { parsePositiveId } from "@/lib/parse-id"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
+import { billPlanFields, billSchedules, type BillScheduleEntry } from "@/lib/po-bill-schedule"
 
 export const dynamic = "force-dynamic"
 
@@ -51,6 +52,7 @@ export async function GET(request: Request) {
       billsByPo.set(key, [...(billsByPo.get(key) || []), Number(inv.invoice_id)])
     }
     for (const ids of billsByPo.values()) ids.sort((a, b) => a - b)
+    const ownSchedules = await partBillSchedules(result as any[])
 
     const transformed = result.map((inv: any) => {
       const poBills = inv.po_id == null ? [] : billsByPo.get(String(inv.po_id)) || []
@@ -98,8 +100,13 @@ export async function GET(request: Request) {
         supplierInvoiceNumber: inv.supplier_invoice_number ?? null,
         poBillNo: poBills.indexOf(Number(inv.invoice_id)) + 1 || null,
         poBillCount: poBills.length || null,
+        billSchedule: null as BillScheduleEntry[] | null,
         items: [],
       }
+    }).map((row: any) => {
+      // a bill for part of a PO: its own share of the PO plan, never the whole PO's (lib/po-bill-schedule.ts)
+      const own = ownSchedules.get(Number(row.id))
+      return own ? { ...row, ...billPlanFields(own, row.amount), billSchedule: own } : row
     })
 
     return NextResponse.json(transformed)
@@ -107,6 +114,32 @@ export async function GET(request: Request) {
     console.error("Error fetching accounts payable:", error)
     return NextResponse.json([], { status: 200 })
   }
+}
+
+/**
+ * The schedule of each bill for part of a PO (several bills per PO, 2026-11-17), by invoice_id. Bills without lines
+ * in ap_invoice_lines (older bills, or the table not made yet) are left out and keep their schedule as before.
+ */
+async function partBillSchedules(bills: any[]): Promise<Map<number, BillScheduleEntry[]>> {
+  const out = new Map<number, BillScheduleEntry[]>()
+  try {
+    const ids = bills.filter((b) => b.po_id != null).map((b) => Number(b.invoice_id))
+    if (ids.length === 0) return out
+    const supabase = createAdminClient()
+    const { data: lines, error } = await supabase.from("ap_invoice_lines").select("ap_invoice_id").in("ap_invoice_id", ids)
+    if (error || !lines?.length) return out
+    const withLines = new Set<number>(lines.map((l: any) => Number(l.ap_invoice_id)))
+    const poIds = [...new Set(bills.filter((b) => withLines.has(Number(b.invoice_id))).map((b) => Number(b.po_id)))]
+    const { data: pos, error: poError } = await supabase.from("purchase_orders").select("*").in("po_id", poIds)
+    if (poError) throw poError
+    for (const po of pos || []) {
+      const poBills = bills.filter((b) => Number(b.po_id) === Number(po.po_id))
+      for (const [id, entries] of billSchedules(po, poBills, withLines)) out.set(id, entries)
+    }
+  } catch (error) {
+    console.error("Accounts Payable: could not work out the schedules of part bills", error)
+  }
+  return out
 }
 
 // RETIRED (BIZ-P-06), like POST /api/supplier-payments. AP invoices are created when a purchase order is approved

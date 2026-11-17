@@ -196,6 +196,8 @@ export interface ApInvoiceLike {
   monthlyAmount?: any
   paymentStartDate?: string | null
   scheduleEntries?: any[] | null
+  /** A bill for part of a PO: its own share of the PO plan (lib/po-bill-schedule.ts); the PO's plan is not used. */
+  billSchedule?: { dueDate: string; amount: number; isDownPayment: boolean }[] | null
 }
 
 /** A purchase order as the screens hold it (GET /api/purchase-orders). */
@@ -220,6 +222,7 @@ export const apPaid = (inv: ApInvoiceLike) =>
 export function apDueSchedule(inv: ApInvoiceLike, po: PoLike | null | undefined): DueEntry[] {
   const total = num(inv.totalAmount || inv.amount)
   const paidTotal = apPaid(inv)
+  if (Array.isArray(inv.billSchedule)) return fill(inv.billSchedule, paidTotal)
   const type = inv.paymentType || po?.paymentType || po?.paymentTerms || inv.paymentTerms || "installments"
   const start = ymd(inv.paymentStartDate) || ymd(po?.paymentStartDate) || ymd(inv.dueDate) || ymd(inv.invoiceDate)
 
