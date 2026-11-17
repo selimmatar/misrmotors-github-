@@ -103,16 +103,31 @@ export function receivedRow(summary: any, details: any, env: EtaEnv, supplierId:
     vat,
     total,
     status: text(summary?.status ?? details?.status) || null,
-    lines: lines.map((l: any) => ({
-      description: l?.description ?? null,
-      itemCode: l?.itemCode ?? null,
-      unitType: l?.unitType ?? null,
-      quantity: num(l?.quantity),
-      unitPrice: num(l?.unitValue?.amountEGP),
-      total: num(l?.total),
-    })),
-    raw: summary ?? null,
+    lines: storedLines(lines),
+    raw: summary ? { ...summary, ...referencesOf(doc) } : null,
   }
+}
+
+/** the portal lines as stored on eta_received_documents.lines (also used to cache details read later) */
+export function storedLines(lines: any[]): Record<string, any>[] {
+  return (Array.isArray(lines) ? lines : []).map((l: any) => ({
+    description: l?.description ?? null,
+    itemCode: l?.itemCode ?? null,
+    internalCode: l?.internalCode ?? null,
+    unitType: l?.unitType ?? null,
+    quantity: num(l?.quantity),
+    unitPrice: num(l?.unitValue?.amountEGP),
+    netTotal: num(l?.netTotal),
+    total: num(l?.total),
+  }))
+}
+
+/** the document's own references to the buyer's numbers (PO / sales order / referenced documents), when it has them */
+export function referencesOf(doc: any): Record<string, any> {
+  const out: Record<string, any> = {}
+  for (const k of ["purchaseOrderReference", "purchaseOrderDescription", "salesOrderReference", "salesOrderDescription"]) if (text(doc?.[k])) out[k] = text(doc[k])
+  if (Array.isArray(doc?.references) && doc.references.length) out.references = doc.references.map((x: unknown) => text(x)).filter(Boolean)
+  return out
 }
 
 const must = (result: any, what: string): any => {

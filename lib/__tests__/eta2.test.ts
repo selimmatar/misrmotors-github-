@@ -3335,7 +3335,7 @@ test("F57e. GET /api/eta/ap-portal: groups, AP invoices and portal documents wit
   assert.equal(status, 200)
   assert.equal(body.environment, "test")
   const a10 = body.apInvoices.find((a: any) => a.invoiceId === 10)
-  assert.deepEqual([a10.poNumber, a10.supplierName, a10.links], ["PO-70", "Oil Co", [{ receivedId: 1, source: "auto" }]])
+  assert.deepEqual([a10.poNumber, a10.supplierName, a10.links], ["PO-70", "Oil Co", [{ receivedId: 1, source: "auto", reasons: ["our_number", "date"] }]])
   assert.deepEqual(body.portalDocs.map((d: any) => d.receivedId).sort(), [1, 2, 3, 4], "only the selected environment")
   assert.equal(body.portalDocs.find((d: any) => d.receivedId === 4).linkable, false)
   assert.equal(body.portalDocs.find((d: any) => d.receivedId === 2).linkable, true)
@@ -3901,4 +3901,302 @@ test("H8. only the accountant, CEO or admin confirms codes: routes refuse others
   assert.match(win, /!canEditCodes && <p[^>]*>\{t\("eta\.codes-by-accountant"\)\}/)
   assert.match(win, /readOnly=\{!canEditCodes\}/)
   assert.match(readFileSync(join(repo, "components/modules/accounts-receivable-module.tsx"), "utf8"), /canEditCodes=\{canDecideCodes\(/)
+})
+
+// ---- IC: smarter invoice matching and the item-by-item comparison of bills with portal invoices ----
+import { numberOnDoc, scoreMatches, scorePair } from "../eta/ap-score"
+import { compareLines, ourMemoryKey, portalLinesOf, scoreLinePair, type OurLine, type PairMemory } from "../eta/ap-lines"
+import { portalLinesFor, MAX_DETAIL_READS } from "../eta/ap-line-compare"
+import { DETAILS_GAP_MS } from "../eta/learn"
+import * as apLinesRouteIC from "../../app/api/eta/ap-portal/lines/route"
+
+test("IC1. invoice matching scores the supplier's number, our PO / bill number, amount, lines and dates; ties left to a person", () => {
+  // the supplier's own invoice number on the bill finds the portal invoice although the amount differs
+  const bySupplierNo = scoreMatches([rec54(1, { internal_id: "45", total: 900 })], [ap54(10, { invoice_number: "APINV-PO-9", supplier_invoice_number: "INV-0045", amount: 100 })], sup54)
+  assert.deepEqual(bySupplierNo.map((m) => [m.receivedId, m.apInvoiceId, m.reasons.includes("supplier_number")]), [[1, 10, true]])
+  // our PO number in the document's references or inside its internal ID
+  assert.equal(numberOnDoc("PO-2026-0012", ["SO/PO-2026-0012/A"]), true)
+  assert.equal(numberOnDoc("PO-2026-0012", ["PO-2026-0013"]), false)
+  assert.equal(numberOnDoc("INV-0045", ["45"]), true)
+  assert.equal(numberOnDoc("APINV-PO-2026-0012", ["20260012"]), false, "a number of several parts is not compared by its digits")
+  const byPo = scoreMatches([rec54(2, { internal_id: "X-1", references: ["PO-2026-0012"], total: 700 })], [ap54(11, { po_number: "PO-2026-0012", amount: 1000 })], sup54)
+  assert.deepEqual(byPo.map((m) => [m.apInvoiceId, m.reasons[0]]), [[11, "po_number"]])
+  // the same amount: the nearer date wins
+  const near = scoreMatches([rec54(3, { total: 100 })], [ap54(12, { amount: 100, invoice_date: "2026-10-12" }), ap54(13, { amount: 100, invoice_date: "2026-11-11" })], sup54)
+  assert.deepEqual(near.map((m) => m.apInvoiceId), [13])
+  // the same amount and date: the bill with the same number of lines wins; without it the doc is left for a person
+  const twins = [ap54(14, { amount: 100, line_count: 3 }), ap54(15, { amount: 100, line_count: 2 })]
+  assert.deepEqual(scoreMatches([rec54(4, { total: 100, line_count: 2 })], twins, sup54).map((m) => m.apInvoiceId), [15])
+  const tie = scoreMatches([rec54(4, { total: 100 })], [ap54(14, { amount: 100 }), ap54(15, { amount: 100 }), ap54(16, { amount: 100, invoice_date: "2026-10-20" })], sup54)
+  assert.deepEqual(tie, [], "a tie is not given to a weaker candidate either")
+  // a close amount (2 %) only with the same number of lines and near dates
+  assert.deepEqual(scoreMatches([rec54(5, { total: 101.5, line_count: 2 })], [ap54(17, { amount: 100, line_count: 2 })], sup54).map((m) => m.reasons), [["amount_close", "lines", "date"]])
+  assert.deepEqual(scoreMatches([rec54(5, { total: 101.5, line_count: 3 })], [ap54(17, { amount: 100, line_count: 2 })], sup54), [])
+  // credit notes, withdrawn documents and other suppliers are never matched; each side used once, best first
+  assert.deepEqual(scoreMatches([rec54(6, { document_type: "C" }), rec54(7, { status: "Cancelled" }), rec54(8, { supplier_id: 2, issuer_id: "444555666" })], [ap54(18, {})], sup54), [])
+  const once = scoreMatches([rec54(9, { internal_id: "77", total: 100 }), rec54(10, { total: 100 })], [ap54(19, { invoice_number: "77", amount: 100 })], sup54)
+  assert.deepEqual(once.map((m) => [m.receivedId, m.apInvoiceId]), [[9, 19]])
+  assert.ok(scorePair(rec54(9, { internal_id: "77" }), ap54(19, { invoice_number: "77" })).score > scorePair(rec54(10, {}), ap54(19, {})).score)
+})
+
+test("IC2. the comparison uses the new matching; manual links and rejections still win; works before supplier_invoice_number exists", async () => {
+  const seed = () =>
+    recvDb({
+      eta_received_documents: [
+        { received_id: 1, uuid: "R1", environment: "test", document_type: "I", issuer_id: "111222333", supplier_id: 1, internal_id: "S-88", date_issued: "2026-11-10T08:00:00Z", total: 500, status: "Valid", raw: { purchaseOrderReference: "PO-2026-0070" } },
+        { received_id: 2, uuid: "R2", environment: "test", document_type: "I", issuer_id: "111222333", supplier_id: 1, internal_id: "INV-0031", date_issued: "2026-11-12T08:00:00Z", total: 260, status: "Valid", lines: [{ description: "a" }, { description: "b" }] },
+      ],
+      accounts_payable: [
+        ap54(10, { invoice_number: "APINV-PO-2026-0070", amount: 480, po_id: 70 }),
+        ap54(11, { invoice_number: "APINV-PO-2026-0071", supplier_invoice_number: "31", amount: 250, po_id: 71 }),
+      ],
+      purchase_orders: [{ po_id: 70, po_number: "PO-2026-0070" }, { po_id: 71, po_number: "PO-2026-0071" }],
+      purchase_order_items: [],
+      ap_invoice_lines: [],
+      ap_portal_links: [],
+      workflow_events: [],
+      users: [{ user_id: 7 }],
+    })
+  let db = seed()
+  useDb(db)
+  let body = (await getAp()).body
+  const links = (id: number) => body.apInvoices.find((a: any) => a.invoiceId === id).links
+  assert.deepEqual(links(10).map((l: any) => [l.receivedId, l.source, l.reasons[0]]), [[1, "auto", "po_number"]])
+  assert.deepEqual(links(11).map((l: any) => [l.receivedId, l.reasons[0]]), [[2, "supplier_number"]])
+  assert.equal(body.apInvoices.find((a: any) => a.invoiceId === 11).supplierInvoiceNumber, "31")
+  // a rejection and a manual link win over the scores
+  db.tables.ap_portal_links.push({ link_id: 1, received_id: 1, ap_invoice_id: 10, kind: "rejected" }, { link_id: 2, received_id: 2, ap_invoice_id: 10, kind: "manual" })
+  body = (await getAp()).body
+  assert.deepEqual(links(10).map((l: any) => [l.receivedId, l.source]), [[2, "manual"]])
+  assert.deepEqual(links(11), [], "R2 is linked by hand elsewhere: not suggested")
+  // before the column exists: read without it, matching by the other numbers
+  db = seed()
+  const from = db.from.bind(db)
+  ;(db as any).from = (table: string) => {
+    const q: any = from(table)
+    if (table !== "accounts_payable") return q
+    const select = q.select.bind(q)
+    q.select = (cols?: string, o?: any) => {
+      if (String(cols || "").includes("supplier_invoice_number")) q.then = (f: any, r: any) => Promise.resolve({ data: null, error: { code: "42703", message: "column accounts_payable.supplier_invoice_number does not exist" } }).then(f, r)
+      return select(cols, o)
+    }
+    return q
+  }
+  useDb(db)
+  const res = await getAp()
+  assert.equal(res.status, 200)
+  assert.deepEqual(res.body.apInvoices.find((a: any) => a.invoiceId === 10).links.map((l: any) => l.receivedId), [1])
+  assert.equal(db.tables.ap_portal_links.length, 0, "a read writes nothing")
+})
+
+const our = (key: string, name: string, quantity: number, unitPrice: number, productId: number | null = null): OurLine => ({ key, apInvoiceId: 10, poItemId: null, productId, name, quantity, unitPrice, total: Math.round(quantity * unitPrice * 100) / 100 })
+
+test("IC3. item pairing: name (Arabic / English spellings), supplier code, quantity, price, total; differences flagged; memory", () => {
+  const portal = portalLinesOf(5, [
+    { description: "فلتر زيت تويوتا", itemCode: "EG-1", internalCode: "OF-220", quantity: 10, unitPrice: 50 },
+    { description: "Brake pads front", quantity: 4, unitPrice: 300, netTotal: 1200 },
+    { description: "Service charge", quantity: 1, unitPrice: 75 },
+  ])
+  assert.deepEqual(portal.map((p) => [p.key, p.total]), [["5:0", 500], ["5:1", 1200], ["5:2", 75]])
+  const ours = [our("l1", "فلتر الزيت تويوتا", 10, 50, 1), our("l2", "BRAKE PADS - FRONT", 3, 300, 2), our("l3", "Wiper blade 24", 2, 40, 3)]
+  const { rows, summary } = compareLines(ours, portal)
+  const of = (k: string) => rows.find((r) => r.our?.key === k)!
+  assert.deepEqual([of("l1").status, of("l1").portal!.key], ["matched", "5:0"])
+  assert.deepEqual([of("l2").status, of("l2").portal!.key, of("l2").diffs], ["differs", "5:1", { quantity: true, unitPrice: false, total: true }])
+  assert.equal(of("l3").status, "only_erp")
+  assert.deepEqual(rows.filter((r) => r.status === "only_portal").map((r) => r.portal!.key), ["5:2"])
+  assert.deepEqual([summary.matched, summary.differs, summary.only_erp, summary.only_portal, summary.ourTotal, summary.portalTotal], [1, 1, 1, 1, 1480, 1775])
+  // the supplier's code written in our item name pairs lines whose names differ
+  const coded = compareLines([our("l9", "Part OF220 genuine", 10, 50)], portal)
+  assert.equal(coded.rows[0].portal!.key, "5:0")
+  assert.ok(scoreLinePair(our("l9", "Part OF220 genuine", 10, 50), portal[0]).reasons.includes("code"))
+  // memory: a confirmed pair wins over a better-looking name; a rejected pair is never made
+  const confirmed: PairMemory[] = [{ supplier_id: 1, portal_name: "", portal_code: "OF-220", our_key: ourMemoryKey(ours[2]), kind: "confirmed" }]
+  const withMemory = compareLines(ours, portal, confirmed)
+  const wiper = withMemory.rows.find((r) => r.our?.key === "l3")!
+  assert.deepEqual([wiper.portal!.key, wiper.remembered], ["5:0", true])
+  assert.equal(withMemory.rows.find((r) => r.our?.key === "l1")!.status, "only_erp")
+  const rejected: PairMemory[] = [{ supplier_id: 1, portal_name: "brake pads front", portal_code: "", our_key: "p:2", kind: "rejected" }]
+  assert.equal(compareLines(ours, portal, rejected).rows.find((r) => r.our?.key === "l2")!.status, "only_erp")
+  assert.equal(ourMemoryKey(our("x", "Bolt  M8", 1, 1)), "n:bolt m8")
+  // nothing alike: no pair
+  assert.equal(scoreLinePair(our("l4", "Engine oil 5W30", 2, 900), portal[1]).eligible, false)
+})
+
+test("IC4. portal lines: stored ones used; missing ones read from the portal at its pace (at most a few per call) and stored", async () => {
+  const db = recvDb()
+  const docs = [1, 2, 3, 4, 5, 6].map((i) => ({ received_id: i, uuid: `U${i}`, environment: "test", document_type: "I", status: "Valid", lines: i === 1 ? [{ description: "kept", quantity: 1, unitPrice: 5 }] : null }))
+  docs.push({ received_id: 7, uuid: "U7", environment: "test", document_type: "C", status: "Valid", lines: null })
+  db.tables.eta_received_documents = docs.map((d) => ({ ...d }))
+  const reads: string[] = []
+  const sleeps: number[] = []
+  const portal: any = {
+    getDetails: async (uuid: string) => {
+      reads.push(uuid)
+      if (uuid === "U3") throw new Error("busy")
+      return { document: JSON.stringify({ invoiceLines: [{ description: `line ${uuid}`, itemCode: "EG-9", internalCode: "C9", quantity: 2, unitValue: { amountEGP: 10 }, netTotal: 20, total: 22.8 }] }) }
+    },
+  }
+  const out = await portalLinesFor(db, "test", docs, { portal, sleep: async (ms) => { sleeps.push(ms) } })
+  assert.equal(MAX_DETAIL_READS, 4)
+  assert.deepEqual(reads, ["U2", "U3", "U4", "U5"], "the stored document is not read; at most 4 reads")
+  assert.deepEqual(sleeps, [DETAILS_GAP_MS, DETAILS_GAP_MS, DETAILS_GAP_MS])
+  assert.deepEqual(out.map((d) => [d.receivedId, d.unread, d.skipped, d.lines.length]), [[1, false, null, 1], [2, false, null, 1], [3, true, null, 0], [4, false, null, 1], [5, false, null, 1], [6, true, null, 0], [7, false, "credit_note", 0]])
+  assert.deepEqual(out[1].lines[0], { key: "2:0", receivedId: 2, index: 0, description: "line U2", itemCode: "EG-9", internalCode: "C9", unitType: null, quantity: 2, unitPrice: 10, total: 20 })
+  // stored for next time (the cache); a failed read stores nothing
+  const stored = (id: number) => db.tables.eta_received_documents.find((d) => d.received_id === id)!.lines
+  assert.equal(stored(2)[0].internalCode, "C9")
+  assert.equal(stored(3), null)
+  // without portal credentials nothing is read
+  const none = await portalLinesFor(db, "test", [{ received_id: 6, uuid: "U6", document_type: "I", status: "Valid", lines: null }])
+  assert.equal(none[0].unread, true)
+})
+
+const icDb = (memory = true) => {
+  const db = recvDb({
+    eta_received_documents: [
+      {
+        received_id: 1, uuid: "R1", environment: "test", document_type: "I", issuer_id: "111222333", supplier_id: 1, internal_id: "S-1", date_issued: "2026-11-10T08:00:00Z", total: 1140, status: "Valid",
+        lines: [
+          { description: "Oil filter", internalCode: "OF-1", quantity: 10, unitPrice: 50, netTotal: 500 },
+          { description: "Air filter big", internalCode: "AF-9", quantity: 4, unitPrice: 125, netTotal: 500 },
+        ],
+      },
+      { received_id: 2, uuid: "R2", environment: "test", document_type: "I", issuer_id: "444555666", supplier_id: 2, internal_id: "P-2", date_issued: "2026-11-10T08:00:00Z", total: 10, status: "Valid", lines: [] },
+    ],
+    accounts_payable: [
+      ap54(10, { invoice_number: "APINV-PO-70-B1", amount: 1140, po_id: 70 }),
+      ap54(11, { invoice_number: "APINV-PO-71", amount: 1000, po_id: 71 }),
+      ap54(12, { supplier_id: 2, invoice_number: "APINV-PO-72", amount: 10, po_id: null }),
+    ],
+    purchase_orders: [{ po_id: 70, po_number: "PO-70" }, { po_id: 71, po_number: "PO-71" }],
+    purchase_order_items: [
+      { po_item_id: 1, po_id: 71, product_id: 8, quantity: 10, quantity_not_coming: 2, unit_price: 50, item_name_snapshot: null },
+      { po_item_id: 2, po_id: 71, product_id: null, outsourced_name: "Cabin filter", quantity: 3, unit_price: 100 },
+      { po_item_id: 3, po_id: 71, product_id: 9, quantity: 1, quantity_not_coming: 1, unit_price: 5 },
+    ],
+    products: [{ product_id: 8, product_name: "Oil filter" }, { product_id: 9, product_name: "Gasket" }],
+    ap_invoice_lines: [
+      { line_id: 1, ap_invoice_id: 10, po_item_id: 101, product_id: 8, description: "OIL FILTER", quantity: 10, unit_price: 50, total: 500 },
+      { line_id: 2, ap_invoice_id: 10, po_item_id: 102, product_id: 5, description: "Cabin filter", quantity: 4, unit_price: 125, total: 500 },
+    ],
+    ap_portal_links: [],
+    workflow_events: [],
+    users: [{ user_id: 7 }],
+  })
+  if (memory) db.tables.ap_line_pair_memory = []
+  else db.failOn["ap_line_pair_memory:select"] = 'relation "public.ap_line_pair_memory" does not exist'
+  useDb(db)
+  return db
+}
+const getLines = async (qs: string, roles = "accountant") => {
+  const res = await apLinesRouteIC.GET(rq("GET", `/api/eta/ap-portal/lines?${qs}`, undefined, { "x-mm-roles": roles }))
+  return { status: res.status, body: await res.json() }
+}
+const pairCall = (body: unknown) => apLinesRouteIC.POST(rq("POST", "/api/eta/ap-portal/lines", body))
+
+test("IC5. GET /api/eta/ap-portal/lines: bill lines, or the whole PO less 'not coming' for a bill without lines; one supplier only", async () => {
+  const db = icDb()
+  const { status, body } = await getLines("apInvoiceIds=10&receivedIds=1")
+  assert.equal(status, 200)
+  assert.deepEqual([body.supplierId, body.memoryReady, body.bills], [1, true, [{ invoiceId: 10, invoiceNumber: "APINV-PO-70-B1", source: "bill", lines: 2 }]])
+  const rowOf = (k: string) => body.rows.find((r: any) => r.our?.key === k)
+  assert.deepEqual([rowOf("l1").status, rowOf("l1").portal.key], ["matched", "1:0"])
+  // "Cabin filter" against "Air filter big": same quantity, price and total -> paired, the names differ
+  assert.deepEqual([rowOf("l2").status, rowOf("l2").portal.key], ["matched", "1:1"])
+  assert.deepEqual(body.summary, { matched: 2, differs: 0, only_erp: 0, only_portal: 0, ourTotal: 1000, portalTotal: 1000 })
+  // a bill without lines: its PO lines, less what is not coming (a line with nothing coming is left out)
+  const whole = (await getLines("apInvoiceIds=11&receivedIds=1")).body
+  assert.deepEqual(whole.bills, [{ invoiceId: 11, invoiceNumber: "APINV-PO-71", source: "po", lines: 2 }])
+  const oil = whole.rows.find((r: any) => r.our?.key === "p11-1")
+  assert.deepEqual([oil.status, oil.our.quantity, oil.our.name, oil.diffs], ["differs", 8, "Oil filter", { quantity: true, unitPrice: false, total: true }])
+  assert.ok(whole.rows.some((r: any) => r.our?.name === "Cabin filter"))
+  // refusals
+  assert.equal((await getLines("apInvoiceIds=10&receivedIds=2")).status, 409, "two suppliers")
+  assert.equal((await getLines("apInvoiceIds=10&receivedIds=99")).status, 404)
+  assert.equal((await getLines("apInvoiceIds=x&receivedIds=1")).status, 400)
+  assert.equal((await getLines("apInvoiceIds=10")).status, 400)
+  assert.equal((await getLines(`apInvoiceIds=${Array.from({ length: 21 }, (_, i) => i + 1).join(",")}&receivedIds=1`)).status, 400)
+  // without the memory table: compared all the same
+  icDb(false)
+  const bare = await getLines("apInvoiceIds=10&receivedIds=1")
+  assert.deepEqual([bare.status, bare.body.memoryReady, bare.body.summary.matched], [200, false, 2])
+  assert.equal(db.tables.accounts_payable.length, 3, "Accounts Payable untouched")
+})
+
+test("IC6. pair / unpair lines: remembered per supplier and used next time; refused without the table; workflow events", async () => {
+  // without the table: "database update needed", nothing written
+  const bare = icDb(false)
+  bare.failOn["ap_line_pair_memory:select"] = 'relation "public.ap_line_pair_memory" does not exist'
+  const refused = await pairCall({ action: "pair", apInvoiceId: 10, ourKey: "l2", portalKey: "1:0" })
+  assert.equal(refused.status, 409)
+  const rb = await refused.json()
+  assert.equal(rb.code, "DB_UPDATE_NEEDED")
+  assert.match(rb.error, /Database update needed/)
+  assert.ok(rb.errorAr)
+  assert.equal(bare.tables.workflow_events.length, 0)
+
+  const db = icDb()
+  // take the automatic pair apart: never paired again
+  assert.equal((await pairCall({ action: "unpair", apInvoiceId: 10, ourKey: "l2", portalKey: "1:1" })).status, 200)
+  assert.deepEqual(db.tables.ap_line_pair_memory.map((m) => [m.supplier_id, m.portal_name, m.portal_code, m.our_key, m.product_id, m.kind, m.created_by]), [[1, "air filter big", "AF-9", "p:5", 5, "rejected", 7]])
+  let body = (await getLines("apInvoiceIds=10&receivedIds=1")).body
+  assert.deepEqual(body.rows.map((r: any) => r.status).sort(), ["matched", "only_erp", "only_portal"])
+  // pair by hand: remembered (the rejected row turns confirmed), shown as remembered
+  assert.equal((await pairCall({ action: "pair", apInvoiceId: 10, ourKey: "l2", portalKey: "1:1" })).status, 200)
+  assert.deepEqual(db.tables.ap_line_pair_memory.map((m) => m.kind), ["confirmed"])
+  body = (await getLines("apInvoiceIds=10&receivedIds=1")).body
+  const cabin = body.rows.find((r: any) => r.our?.key === "l2")
+  assert.deepEqual([cabin.portal.key, cabin.remembered], ["1:1", true])
+  // the memory is the supplier's: another bill of the same supplier (product 5 again) pairs with the same portal code
+  db.tables.ap_invoice_lines.push({ line_id: 3, ap_invoice_id: 11, po_item_id: 1, product_id: 5, description: "Something else", quantity: 1, unit_price: 1, total: 1 })
+  const other = (await getLines("apInvoiceIds=11&receivedIds=1")).body
+  assert.equal(other.rows.find((r: any) => r.our?.key === "l3").portal.key, "1:1")
+  // pairing the portal line with another item forgets the earlier item for it
+  assert.equal((await pairCall({ action: "pair", apInvoiceId: 10, ourKey: "l1", portalKey: "1:1" })).status, 200)
+  assert.deepEqual(db.tables.ap_line_pair_memory.map((m) => [m.our_key, m.kind]), [["p:8", "confirmed"]])
+  const ev = db.tables.workflow_events
+  assert.deepEqual(ev.map((e) => [e.entity_type, e.entity_id, e.event_type, e.performed_by]), [
+    ["AP_INVOICE", 10, "AP_LINE_UNPAIRED", 7], ["AP_INVOICE", 10, "AP_LINE_PAIRED", 7], ["AP_INVOICE", 10, "AP_LINE_PAIRED", 7],
+  ])
+  // refusals: another supplier's portal invoice, a line that is not there, bad input
+  assert.equal((await pairCall({ action: "pair", apInvoiceId: 12, ourKey: "l1", portalKey: "1:0" })).status, 409)
+  assert.equal((await pairCall({ action: "pair", apInvoiceId: 10, ourKey: "l99", portalKey: "1:0" })).status, 404)
+  assert.equal((await pairCall({ action: "pair", apInvoiceId: 10, ourKey: "l1", portalKey: "1:9" })).status, 404)
+  for (const bad of [{}, { action: "x", apInvoiceId: 10, ourKey: "l1", portalKey: "1:0" }, { action: "pair", apInvoiceId: 0, ourKey: "l1", portalKey: "1:0" }, { action: "pair", apInvoiceId: 10, ourKey: "l1;drop", portalKey: "1:0" }])
+    assert.equal((await pairCall(bad)).status, 400, JSON.stringify(bad))
+  assert.equal(db.tables.workflow_events.length, 3)
+  assert.deepEqual(db.tables.accounts_payable.map((a) => a.amount), [1140, 1000, 10], "Accounts Payable untouched")
+})
+
+test("IC7. permissions, screen wiring, texts and the memory table script (written, not applied)", () => {
+  for (const m of ["GET", "POST"]) {
+    const rule = ruleFor("/api/eta/ap-portal/lines")!
+    for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, m, [role] as any), true, `${m} ${role}`)
+    for (const role of ["sales-rep", "po-rep", "warehouse-rep"]) assert.equal(allows(rule, m, [role] as any), false, `${m} ${role}`)
+  }
+  const root = process.env.REPO_ROOT || process.cwd()
+  const screen = readFileSync(join(root, "components/accounting/ap-portal-comparison.tsx"), "utf8")
+  assert.match(screen, /<ApLineCompare apInvoiceIds=\{g\.apInvoiceIds\} receivedIds=\{g\.receivedIds\} \/>/)
+  assert.match(screen, /aria-expanded=\{openItems\.has\(g\.key\)\}/)
+  const panel = readFileSync(join(root, "components/accounting/ap-line-compare.tsx"), "utf8")
+  for (const s of ["/api/eta/ap-portal/lines?", '"pair"', '"unpair"', "errorAr"]) assert.ok(panel.includes(s), s)
+  const i18n = readFileSync(join(root, "lib/i18n-context.tsx"), "utf8")
+  const arAt = i18n.indexOf("\n  ar: {")
+  for (const k of ["eta.apl-compare-items", "eta.apl-line-diff-qty", "eta.apl-line-explain-only_portal", "eta.apl-lines-no-memory"]) {
+    assert.ok(i18n.slice(0, arAt).includes(`"${k}"`) && i18n.slice(arAt).includes(`"${k}"`), k)
+    assert.ok(i18n.indexOf(`"${k}"`, arAt) < i18n.indexOf('"eta.go-live-started"', arAt), `${k} before eta.go-live-started`)
+  }
+  const raw = readFileSync(join(root, "scripts/sql/2026-11-17-ap-line-pairs.sql"), "utf8")
+  assert.match(raw, /WRITTEN, NOT APPLIED/)
+  const sql = raw.split("\n").map((l) => l.replace(/--.*$/, "")).join("\n")
+  const statements = sql.split(";").map((s) => s.trim().toLowerCase().replace(/\s+/g, " ")).filter(Boolean)
+  for (const s of statements) {
+    assert.ok(!/^(drop|update|delete|truncate|insert|grant|revoke)\b/.test(s), `not additive: ${s.slice(0, 60)}`)
+    assert.ok(/^(create table if not exists public\.ap_line_pair_memory|create index if not exists \w+ on public\.ap_line_pair_memory|alter table public\.ap_line_pair_memory enable row level security)\b/.test(s), `unexpected: ${s.slice(0, 80)}`)
+  }
+  const flat = statements.join(";")
+  assert.ok(!/create policy|\$\$/.test(flat), "no policies, no code")
+  assert.match(flat, /kind text not null check \(kind in \('confirmed','rejected'\)\)/)
+  assert.match(flat, /unique \(supplier_id, portal_name, portal_code, our_key\)/)
 })

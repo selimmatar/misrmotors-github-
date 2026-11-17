@@ -2,9 +2,11 @@
 // (POST / DELETE /api/eta/ap-portal/link). Accounts Payable and the portal documents are never changed here; only
 // ap_portal_links rows are written, and every change is recorded in workflow_events (entity_type 'AP_INVOICE').
 import { DATE_WINDOW_DAYS, type ApForMatch, type ReceivedForMatch } from "./ap-match"
-import { buildGroups, portalAmount, standingDoc, suggestMatches, supplierResolver, totalsOf, type EffectiveLink, type Group, type LinkSource, type StoredLink } from "./ap-links"
+import { buildGroups, portalAmount, standingDoc, supplierResolver, totalsOf, type EffectiveLink, type Group, type LinkSource, type StoredLink } from "./ap-links"
+import { scoreMatches, type ApForScore, type ReceivedForScore } from "./ap-score"
 import type { EtaEnv } from "./portal"
 import { knownUserId } from "../po-history"
+import { isMissingRelation } from "../po-bill"
 
 type Db = any
 
@@ -32,18 +34,56 @@ const text = (v: unknown) => (v == null ? "" : String(v).trim())
 const num = (v: unknown) => (v == null ? null : Number(v))
 
 const AP_COLUMNS = "invoice_id, invoice_number, supplier_id, amount, invoice_date, created_at, po_id"
-const DOC_COLUMNS = "received_id, uuid, document_type, issuer_id, issuer_name, supplier_id, internal_id, date_issued, net, vat, total, status"
+const DOC_COLUMNS = "received_id, uuid, document_type, issuer_id, issuer_name, supplier_id, internal_id, date_issued, net, vat, total, status, lines, raw"
+
+/** accounts_payable.supplier_invoice_number exists (scripts/sql/2026-11-17-ap-invoice-lines.sql is applied) */
+async function hasSupplierNumber(db: Db): Promise<boolean> {
+  const r = await db.from("accounts_payable").select("supplier_invoice_number").limit(1)
+  if (!r.error) return true
+  if (isMissingRelation(r.error)) return false
+  throw new Error(`load supplier invoices: ${r.error.message || r.error}`)
+}
+
+/** the texts of a portal document that may carry our numbers (its references, PO / sales-order references) */
+const referencesOf = (d: any): string[] => {
+  const raw = d?.raw && typeof d.raw === "object" ? d.raw : {}
+  return [raw.purchaseOrderReference, raw.purchaseOrderDescription, raw.salesOrderReference, raw.salesOrderDescription, ...(Array.isArray(raw.references) ? raw.references : [])]
+    .map(text)
+    .filter(Boolean)
+}
+
+/** lines per bill: its ap_invoice_lines, else (a bill without lines) the lines of its PO that are coming */
+async function lineCounts(db: Db, ap: { invoice_id: number; po_id?: number | null }[]): Promise<Map<number, number>> {
+  const counts = new Map<number, number>()
+  if (!ap.length) return counts
+  const ids = ap.map((a) => a.invoice_id)
+  const first = await db.from("ap_invoice_lines").select("ap_invoice_id").in("ap_invoice_id", ids.slice(0, CHUNK))
+  if (first.error && !isMissingRelation(first.error)) throw new Error(`load bill lines: ${first.error.message || first.error}`)
+  if (!first.error) {
+    const rows = [...(first.data || []), ...(await byIds(ids.slice(CHUNK), (c) => db.from("ap_invoice_lines").select("ap_invoice_id").in("ap_invoice_id", c), "load bill lines"))]
+    for (const l of rows) counts.set(Number(l.ap_invoice_id), (counts.get(Number(l.ap_invoice_id)) || 0) + 1)
+  }
+  const poIds = [...new Set(ap.filter((a) => !counts.has(a.invoice_id) && a.po_id != null).map((a) => a.po_id as number))]
+  if (poIds.length) {
+    const items = await byIds(poIds, (c) => db.from("purchase_order_items").select("*").in("po_id", c), "load PO lines")
+    const perPo = new Map<number, number>()
+    for (const i of items) if ((Number(i.quantity) || 0) - (Number(i.quantity_not_coming) || 0) > 0) perPo.set(Number(i.po_id), (perPo.get(Number(i.po_id)) || 0) + 1)
+    for (const a of ap) if (!counts.has(a.invoice_id) && a.po_id != null && perPo.has(a.po_id)) counts.set(a.invoice_id, perPo.get(a.po_id)!)
+  }
+  return counts
+}
 
 export interface ApPortalInvoice {
   invoiceId: number
   invoiceNumber: string
+  supplierInvoiceNumber: string | null
   poNumber: string | null
   supplierId: number | null
   supplierName: string | null
   date: string | null
   amount: number
   groupKey: string
-  links: { receivedId: number; source: LinkSource }[]
+  links: { receivedId: number; source: LinkSource; reasons?: string[] }[]
 }
 export interface ApPortalDoc {
   receivedId: number
@@ -63,13 +103,14 @@ export interface ApPortalDoc {
   portalStatus: string | null
   standing: boolean
   groupKey: string
-  links: { apInvoiceId: number; source: LinkSource }[]
+  links: { apInvoiceId: number; source: LinkSource; reasons?: string[] }[]
   /** a person can link it (its supplier is known) */
   linkable: boolean
 }
 
 export async function loadApPortal(db: Db, env: EtaEnv, q: { from: string; to: string; supplierId?: number | null }) {
   const { from, to } = q
+  const apColumns = (await hasSupplierNumber(db)) ? `${AP_COLUMNS}, supplier_invoice_number` : AP_COLUMNS
   const [docs, suppliers, apWide, stored] = await Promise.all([
     paged(
       (a, b) =>
@@ -85,7 +126,7 @@ export async function loadApPortal(db: Db, env: EtaEnv, q: { from: string; to: s
     // AP of the period, widened by the date window so an invoice dated just outside it still matches
     paged(
       (a, b) =>
-        db.from("accounts_payable").select(AP_COLUMNS)
+        db.from("accounts_payable").select(apColumns)
           .gte("invoice_date", shift(from, -DATE_WINDOW_DAYS))
           .lte("invoice_date", shift(to, DATE_WINDOW_DAYS))
           .order("invoice_id")
@@ -96,7 +137,7 @@ export async function loadApPortal(db: Db, env: EtaEnv, q: { from: string; to: s
     paged((a, b) => db.from("ap_portal_links").select("received_id, ap_invoice_id, kind").order("link_id").range(a, b), "load portal links"),
   ])
   const links = stored as StoredLink[]
-  const ap = apWide as (ApForMatch & { po_id?: number | null })[]
+  const ap = apWide as (ApForMatch & { po_id?: number | null; supplier_invoice_number?: string | null })[]
   const received = docs as (ReceivedForMatch & Record<string, any>)[]
 
   // the other side of a manual link may fall outside the period: load it too, so the group is whole
@@ -105,13 +146,25 @@ export async function loadApPortal(db: Db, env: EtaEnv, q: { from: string; to: s
   const manual = links.filter((l) => l.kind === "manual")
   const missingAp = [...new Set(manual.filter((l) => docIds.has(l.received_id) && !apIds.has(l.ap_invoice_id)).map((l) => l.ap_invoice_id))]
   const missingDocs = [...new Set(manual.filter((l) => apIds.has(l.ap_invoice_id) && !docIds.has(l.received_id)).map((l) => l.received_id))]
-  if (missingAp.length) ap.push(...(await byIds(missingAp, (c) => db.from("accounts_payable").select(AP_COLUMNS).in("invoice_id", c), "load linked supplier invoices")))
+  if (missingAp.length) ap.push(...(await byIds(missingAp, (c) => db.from("accounts_payable").select(apColumns).in("invoice_id", c), "load linked supplier invoices")))
   if (missingDocs.length) received.push(...(await byIds(missingDocs, (c) => db.from("eta_received_documents").select(DOC_COLUMNS).eq("environment", env).in("received_id", c), "load linked received documents")))
+
+  // PO numbers and line counts of every bill: the automatic matching scores on them
+  const allPoIds = [...new Set(ap.map((a) => a.po_id).filter((p): p is number => p != null))]
+  const pos = allPoIds.length ? await byIds(allPoIds, (c) => db.from("purchase_orders").select("po_id, po_number").in("po_id", c), "load purchase orders") : []
+  const poNumber = new Map<number, string>(pos.map((p: any) => [p.po_id, String(p.po_number ?? "")]))
+  const counts = await lineCounts(db, ap)
 
   // automatic suggestions among the rows no one linked by hand, so a manual link never hides a better match elsewhere
   const manualAp = new Set(manual.map((l) => l.ap_invoice_id))
   const manualDocs = new Set(manual.map((l) => l.received_id))
-  const auto = suggestMatches(received.filter((r) => !manualDocs.has(r.received_id)), ap.filter((a) => !manualAp.has(a.invoice_id)), suppliers)
+  const scoredDocs: ReceivedForScore[] = received
+    .filter((r) => !manualDocs.has(r.received_id))
+    .map((r) => ({ ...r, references: referencesOf(r), line_count: Array.isArray(r.lines) && r.lines.length ? r.lines.length : null }))
+  const scoredAp: ApForScore[] = ap
+    .filter((a) => !manualAp.has(a.invoice_id))
+    .map((a) => ({ ...a, po_number: a.po_id != null ? poNumber.get(a.po_id) ?? null : null, line_count: counts.get(a.invoice_id) ?? null }))
+  const auto = scoreMatches(scoredDocs, scoredAp, suppliers)
   const result = buildGroups(ap, received, suppliers, links, auto)
 
   // the period and the supplier filter: a group is shown when one of its rows is in the period
@@ -129,9 +182,6 @@ export async function loadApPortal(db: Db, env: EtaEnv, q: { from: string; to: s
   const name = new Map<number, string>(suppliers.map((s: any) => [s.supplier_id, String(s.supplier_name ?? "")]))
   const shownAp = groups.flatMap((g) => g.apInvoiceIds.map((id) => [id, g.key] as const))
   const shownDocs = groups.flatMap((g) => g.receivedIds.map((id) => [id, g.key] as const))
-  const poIds = [...new Set(shownAp.map(([id]) => apById.get(id)!.po_id).filter((p): p is number => p != null))]
-  const pos = poIds.length ? await byIds(poIds, (c) => db.from("purchase_orders").select("po_id, po_number").in("po_id", c), "load purchase orders") : []
-  const poNumber = new Map<number, string>(pos.map((p: any) => [p.po_id, String(p.po_number ?? "")]))
   const linksOfAp = new Map<number, EffectiveLink[]>()
   const linksOfDoc = new Map<number, EffectiveLink[]>()
   for (const l of result.links) {
@@ -144,13 +194,14 @@ export async function loadApPortal(db: Db, env: EtaEnv, q: { from: string; to: s
     return {
       invoiceId: id,
       invoiceNumber: text(a.invoice_number),
+      supplierInvoiceNumber: text(a.supplier_invoice_number) || null,
       poNumber: a.po_id != null ? poNumber.get(a.po_id) ?? null : null,
       supplierId: a.supplier_id ?? null,
       supplierName: a.supplier_id != null ? name.get(a.supplier_id) ?? null : null,
       date: apDay(a) || null,
       amount: Number(a.amount) || 0,
       groupKey,
-      links: (linksOfAp.get(id) || []).map((l) => ({ receivedId: l.receivedId, source: l.source })),
+      links: (linksOfAp.get(id) || []).map((l) => ({ receivedId: l.receivedId, source: l.source, ...(l.reasons ? { reasons: l.reasons } : {}) })),
     }
   })
   const portalDocs: ApPortalDoc[] = shownDocs.map(([id, groupKey]) => {
@@ -173,7 +224,7 @@ export async function loadApPortal(db: Db, env: EtaEnv, q: { from: string; to: s
       portalStatus: d.status ?? null,
       standing: standingDoc(d),
       groupKey,
-      links: (linksOfDoc.get(id) || []).map((l) => ({ apInvoiceId: l.apInvoiceId, source: l.source })),
+      links: (linksOfDoc.get(id) || []).map((l) => ({ apInvoiceId: l.apInvoiceId, source: l.source, ...(l.reasons ? { reasons: l.reasons } : {}) })),
       linkable: supplierId != null,
     }
   })
@@ -202,7 +253,7 @@ type Failure = Extract<LinkResult, { ok: false }>
 const fail = (status: number, code: string, error: string, errorAr?: string): Failure => ({ ok: false, status, code, error, ...(errorAr ? { errorAr } : {}) })
 
 /** reads both sides of a pair and refuses a pair of two different suppliers (or a portal document of an unknown one) */
-async function checkPair(db: Db, p: Pair): Promise<{ ok: true; doc: any; ap: any } | Failure> {
+export async function checkPair(db: Db, p: Pair): Promise<{ ok: true; doc: any; ap: any } | Failure> {
   const [docRes, apRes] = await Promise.all([
     db.from("eta_received_documents").select("received_id, issuer_id, issuer_name, supplier_id, internal_id").eq("received_id", p.receivedId).maybeSingle(),
     db.from("accounts_payable").select("invoice_id, invoice_number, supplier_id").eq("invoice_id", p.apInvoiceId).maybeSingle(),
