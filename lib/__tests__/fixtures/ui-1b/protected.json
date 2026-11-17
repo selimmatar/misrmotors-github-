@@ -208,13 +208,12 @@
       "handleWidgetClick"
     ],
     "ids": [
-      "id=\"ar-manual-number\"",
-      "id={`vat-invoice-upload-${invoice.id}`}"
+      "id=\"ar-manual-number\""
     ],
     "fetch": 13,
     "iso": 10,
-    "t": 143,
-    "onClick": 34
+    "t": 238,
+    "onClick": 41
   },
   "components/modules/accounts-payable-module.tsx": {
     "api": [

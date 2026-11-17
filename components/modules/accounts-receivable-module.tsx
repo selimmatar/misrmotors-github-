@@ -22,7 +22,8 @@ import { fill } from "@/lib/i18n-format"
 import type { CustomerInvoice } from "@/lib/types"
 import { isSinglePayment } from "@/lib/payment-type"
 import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt } from "lucide-react"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
@@ -1203,19 +1204,9 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
       ) : null
     }
     const status = getInvoiceStatus(invoice)
+    const canCollect = status !== "paid" && (userRole === "accountant" || userRole === "ceo")
     return (
       <>
-        <Button
-          aria-label={`${t("a11y.finance.payment-schedule")} ${invoice.invoiceNumber}`}
-          size="sm"
-          variant="outline"
-          onClick={(e) => {
-            e.stopPropagation()
-            handleViewSchedule(invoice)
-          }}
-        >
-          <Calendar className="w-4 h-4" />
-        </Button>
         {status !== "paid" && (userRole === "accountant" || userRole === "ceo") && (
           <Button
             aria-label={`${t("action.record-payment")} ${invoice.invoiceNumber}`}
@@ -1232,31 +1223,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
             <DollarSign className="w-4 h-4" />
           </Button>
         )}
-        {status !== "paid" && (userRole === "accountant" || userRole === "ceo") && (
-          <Button
-            aria-label={`${t("ar.credit.use")} ${invoice.invoiceNumber}`}
-            title={t("ar.credit.use")}
-            size="sm"
-            variant="outline"
-            onClick={(e) => {
-              e.stopPropagation()
-              setCreditDialogInvoice(invoice)
-            }}
-          >
-            <Wallet className="w-4 h-4" />
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={(e) => {
-            e.stopPropagation()
-            handleDownloadInvoicePDF(invoice)
-          }}
-        >
-          <FileText className="w-4 h-4 me-2" />
-          {t("action.print-invoice")}
-        </Button>
         {ETA_ROLES.includes(userRole || "") && (
           <Button
             size="sm"
@@ -1271,44 +1237,29 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
             {t("eta.row-action")}
           </Button>
         )}
-        {invoice.vatInvoiceUrl ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={(e) => {
-              e.stopPropagation()
-              window.open(invoice.vatInvoiceUrl, "_blank")
-            }}
-            title={t("ar.view-vat-invoice")}
-            className="bg-purple-50 hover:bg-purple-100"
-          >
-            <Eye className="w-4 h-4 me-1" />
-            {t("ar.vat")}
-          </Button>
-        ) : (
-          (userRole === "accountant" || userRole === "ceo") && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation()
-                document.getElementById(`vat-invoice-upload-${invoice.id}`)?.click()
-              }}
-              title={t("ar.upload-vat-invoice")}
-              className="bg-purple-50 hover:bg-purple-100"
-            >
-              <Upload className="w-4 h-4 me-1" />
-              {t("ar.vat")}
-              <input
-                id={`vat-invoice-upload-${invoice.id}`}
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                className="hidden"
-                onChange={(e) => handleVATInvoiceUpload(e, invoice)}
-              />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" aria-label={`${t("so.more")} ${invoice.invoiceNumber}`} onClick={(e) => e.stopPropagation()}>
+              <MoreHorizontal className="w-4 h-4" />
             </Button>
-          )
-        )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuItem onSelect={() => handleDownloadInvoicePDF(invoice)}>
+              <FileText className="w-4 h-4 me-2" />
+              {t("action.print-invoice")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => handleViewSchedule(invoice)}>
+              <Calendar className="w-4 h-4 me-2" />
+              {t("a11y.finance.payment-schedule")}
+            </DropdownMenuItem>
+            {canCollect && (
+              <DropdownMenuItem onSelect={() => setCreditDialogInvoice(invoice)}>
+                <Wallet className="w-4 h-4 me-2" />
+                {t("ar.credit.use")}
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </>
     )
   }
