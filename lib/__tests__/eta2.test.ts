@@ -302,7 +302,7 @@ test("F7. submit posts raw documents text and returns accepted / rejected", () =
   const docs = ['{"a": 1,"b":"\\u0627"}', '{"c":2}']
   const r = await portal.submit(docs)
   const post = calls[1]
-  assert.equal(post.url, "https://api.preprod.invoicing.eta.gov.eg/api/v1.0/documentsubmissions/")
+  assert.equal(post.url, "https://api.preprod.invoicing.eta.gov.eg/api/v1.0/documentsubmissions")
   assert.equal(post.init.method, "POST")
   assert.equal(post.init.body, `{"documents":[${docs[0]},${docs[1]}]}`)
   assert.equal(r.submissionUUID, "S1")
