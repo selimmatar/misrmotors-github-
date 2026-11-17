@@ -13,6 +13,8 @@ export type SignatureCheck = { ok: true } | { ok: false; reason: string }
 
 const OID_SIGNED_DATA = "1.2.840.113549.1.7.2"
 const OID_DATA = "1.2.840.113549.1.7.1"
+// the content type the ETA portal's own signer uses (and requires); plain data is still accepted
+const OID_ETA_CONTENT = "1.2.840.113549.1.7.5"
 const OID_CONTENT_TYPE = "1.2.840.113549.1.9.3"
 const OID_MESSAGE_DIGEST = "1.2.840.113549.1.9.4"
 const OID_SHA256 = "2.16.840.1.101.3.4.2.1"
@@ -77,7 +79,7 @@ export async function checkSignature(signatureB64: string, canonical: string, ri
     const signed = new pkijs.SignedData({ schema: info.content })
 
     if (signed.signerInfos.length !== 1) return fail("The signature must have exactly one signer.")
-    if (signed.encapContentInfo.eContentType !== OID_DATA) return fail("The signed content type is not data.")
+    if (signed.encapContentInfo.eContentType !== OID_DATA && signed.encapContentInfo.eContentType !== OID_ETA_CONTENT) return fail("The signed content type is not data.")
     if (signed.encapContentInfo.eContent) return fail("The signature must be detached (it must not carry the document).")
     const signer = signed.signerInfos[0]
     if (signer.digestAlgorithm.algorithmId !== OID_SHA256) return fail("The signature must use SHA-256.")
@@ -86,7 +88,8 @@ export async function checkSignature(signatureB64: string, canonical: string, ri
     const digests = attrs.filter((a) => a.type === OID_MESSAGE_DIGEST)
     if (contentType.length !== 1 || digests.length !== 1 || digests[0].values.length !== 1) return fail("The signature has no single message digest.")
     const ct: any = contentType[0].values[0]
-    if (ct?.valueBlock?.toString?.() !== OID_DATA && ct?.getValue?.() !== OID_DATA) return fail("The signed content type is not data.")
+    const ctOids = [ct?.valueBlock?.toString?.(), ct?.getValue?.()]
+    if (!ctOids.some((o) => o === OID_DATA || o === OID_ETA_CONTENT)) return fail("The signed content type is not data.")
 
     const data = new TextEncoder().encode(canonical)
     const expected = createHash("sha256").update(data).digest()

@@ -20,7 +20,7 @@ public class CadesSignerTests
 
     static SignedCms Decode(string b64, string text)
     {
-        var cms = new SignedCms(new ContentInfo(Encoding.UTF8.GetBytes(text)), detached: true);
+        var cms = new SignedCms(new ContentInfo(new Oid(CadesSigner.OidEtaContentType), Encoding.UTF8.GetBytes(text)), detached: true);
         cms.Decode(Convert.FromBase64String(b64));
         return cms;
     }
@@ -44,6 +44,7 @@ public class CadesSignerTests
         Assert.Equal("2.16.840.1.101.3.4.2.1", info.DigestAlgorithm.Value);
         var oids = info.SignedAttributes.Cast<CryptographicAttributeObject>().Select(a => a.Oid.Value).ToList();
         Assert.Contains("1.2.840.113549.1.9.3", oids);   // content type
+        Assert.Equal(CadesSigner.OidEtaContentType, cms.ContentInfo.ContentType.Value); // what the ETA portal requires
         Assert.Contains("1.2.840.113549.1.9.4", oids);   // message digest
         Assert.Contains("1.2.840.113549.1.9.5", oids);   // signing time
         Assert.Contains(CadesSigner.OidSigningCertificateV2, oids);

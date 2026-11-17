@@ -521,18 +521,18 @@ function seal(rin: string): Promise<Seal> {
   })())
   return seals.get(rin)!
 }
-async function signCms(text: string, rin = RIN): Promise<string> {
+async function signCms(text: string, rin = RIN, contentType = "1.2.840.113549.1.7.1"): Promise<string> {
   const { keys, cert } = await seal(rin)
   const data = new TextEncoder().encode(text)
   const digest = createHash("sha256").update(data).digest()
   const sd = new pkijs.SignedData({
     version: 1,
-    encapContentInfo: new pkijs.EncapsulatedContentInfo({ eContentType: "1.2.840.113549.1.7.1" }),
+    encapContentInfo: new pkijs.EncapsulatedContentInfo({ eContentType: contentType }),
     signerInfos: [new pkijs.SignerInfo({ version: 1, sid: new pkijs.IssuerAndSerialNumber({ issuer: cert.issuer, serialNumber: cert.serialNumber }) })],
     certificates: [cert],
   })
   sd.signerInfos[0].signedAttrs = new pkijs.SignedAndUnsignedAttributes({ type: 0, attributes: [
-    new pkijs.Attribute({ type: "1.2.840.113549.1.9.3", values: [new asn1js.ObjectIdentifier({ value: "1.2.840.113549.1.7.1" })] }),
+    new pkijs.Attribute({ type: "1.2.840.113549.1.9.3", values: [new asn1js.ObjectIdentifier({ value: contentType })] }),
     new pkijs.Attribute({ type: "1.2.840.113549.1.9.5", values: [new asn1js.UTCTime({ valueDate: new Date("2026-11-15T09:59:00Z") })] }),
     new pkijs.Attribute({ type: "1.2.840.113549.1.9.4", values: [new asn1js.OctetString({ valueHex: digest })] }),
   ] })
@@ -3186,4 +3186,11 @@ test("F55. make sendable: moves an old invoice's creation to now, removes the ma
   for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, "POST", [role] as any), true, role)
   assert.equal(allows(rule, "POST", ["sales-rep"] as any), false)
   assert.match(readFileSync(join(process.env.REPO_ROOT || process.cwd(), "components/accounting/eta-preview-dialog.tsx"), "utf8"), /\/api\/eta\/make-sendable/)
+})
+
+test("F56. the server accepts the ETA portal's signature content type (1.2.840.113549.1.7.5) as well as plain data", async () => {
+  const text = '"ISSUER""ID""100060455"'
+  assert.deepEqual(await checkSignature(await signCms(text, RIN, "1.2.840.113549.1.7.5"), text, RIN), { ok: true })
+  assert.deepEqual(await checkSignature(await signCms(text, RIN), text, RIN), { ok: true })
+  assert.equal((await checkSignature(await signCms(text, RIN, "1.2.840.113549.1.7.3"), text, RIN)).ok, false)
 })
