@@ -16,9 +16,9 @@ const AR = I18N.slice(AR_AT)
 const MAIN_IDS: Record<string, string[]> = { // verbatim from origin/main components/layout/sidebar.tsx
   // e-invoice-settings added for admin, CEO and accountant (e-invoice step 1, 2026-11-15).
   admin: ["user-management","hr-management","metrics-validation","system-health","e-invoice-settings"],
-  // ceo: operations-management added (owner request 2026-10-31); every working screen and User Management added
+  // ceo: maintenance quick invoice added (owner request 2026-11-18); operations-management added (owner request 2026-10-31); every working screen and User Management added
   // (owner, 2026-11-01: the CEO sees everything and may edit and approve everything).
-  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","goods-receipt","warehouse-transfers","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","approve-sales-orders","delivery-permits","warehouse-delivery","shipment","operations-management","accounts-receivable","balance","finance-reports","e-invoice-settings","user-management","metrics-validation","system-health"],
+  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","goods-receipt","warehouse-transfers","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","approve-sales-orders","delivery-permits","warehouse-delivery","shipment","operations-management","maintenance-quick-invoice","accounts-receivable","balance","finance-reports","e-invoice-settings","user-management","metrics-validation","system-health"],
   // accountant: quotations swapped for the view-only order list (owner request); since 2026-11-14 no dashboard,
   // analytics, payment schedule, pricing review, costing settings, maintenance invoices or balance (owner request).
   accountant: ["approve-sales-orders","sales-orders","purchase-orders","accounts-payable","accounts-receivable","customers","suppliers","delivery-permits","finance-reports","e-invoice-settings"],
