@@ -22,6 +22,7 @@ const statusAr = (s: string | null | undefined) => (s ? STATUS_AR[s.toLowerCase(
 export function procurementAr(status: string): string {
   return status
     .replace(/\(([^,()]+), ([a-z_]+)\)/g, (_m, qty, st) => `(${qty}، ${statusAr(st)})`)
+    .replace("Taken from stock — No PO Needed", "مأخوذ من المخزون — لا يحتاج أمر شراء")
     .replace("Stock Item — No PO Needed", "صنف مخزون — لا يحتاج أمر شراء")
     .replace("In Stock — No PO Needed", "متوفر في المخزن — لا يحتاج أمر شراء")
     .replace("On Hold — In Stock", "محجوز — متوفر في المخزن")

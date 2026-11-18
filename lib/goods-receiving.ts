@@ -395,7 +395,7 @@ async function takeStock(db: Db, inventoryId: number, quantity: number, created 
 // ---------------------------------------------------------------------------------------------------------
 // Receive
 // ---------------------------------------------------------------------------------------------------------
-interface PoItem {
+export interface PoItem {
   po_item_id: number
   quantity: number
   unit_price: number | string | null
@@ -405,6 +405,7 @@ interface PoItem {
   item_name_snapshot: string | null
   source_so_item_id: number | null
   allocated_overhead?: number | string | null
+  landed_cost?: number | string | null
 }
 
 const sumByItem = (rows: any[]) => {
@@ -493,7 +494,7 @@ async function receiveLocked(db: Db, parsed: Parsed, undo: Undo[], onReceipt: (i
   const items: PoItem[] = must(
     await db
       .from("purchase_order_items")
-      .select("po_item_id, quantity, unit_price, product_id, item_type, outsourced_name, item_name_snapshot, source_so_item_id, allocated_overhead")
+      .select("po_item_id, quantity, unit_price, product_id, item_type, outsourced_name, item_name_snapshot, source_so_item_id, allocated_overhead, landed_cost")
       .eq("po_id", poId),
     "read purchase order items",
   )
@@ -717,27 +718,63 @@ async function rollbackAndReject(db: Db, undo: Undo[], status: number, error: st
  * this request touched are considered, and a sales order that is already being delivered is never moved back.
  */
 /**
- * An outsourced line received into a chosen warehouse gets its own inventory row there, on hold for its sales order
- * (so_number; the hold is shown by app/api/inventory and ends when the order's delivery permit is approved, see
- * lib/outsourced-stock.ts). Cost 0: it already belongs to the customer's order, so it never counts in the stock value.
- * The row is named like the sales-order line so the delivery permit (which copies the SO line name) finds it.
+ * Cost per unit of an outsourced PO line (owner, 2026-11-17: an outsourced item stored in a warehouse shows its real
+ * cost). Before the PO's cost is finalized: the line's unit_price. After: the line's landed cost (purchase_order_items.
+ * landed_cost = line total + its allocated overhead) divided by the ordered quantity.
  */
-async function storeOutsourced(db: Db, po: any, lineRows: any[], itemById: Map<number, PoItem>, undo: Undo[]) {
-  const rows = lineRows.filter((r) => r.item_type === "outsourced" && r.warehouse_id)
-  if (rows.length === 0) return
-  const soItemIds = [...new Set(rows.map((r) => r.source_so_item_id).filter(Boolean))]
+export function outsourcedUnitCost(
+  item: { quantity?: unknown; unit_price?: unknown; landed_cost?: unknown },
+  costFinalized: boolean,
+): number {
+  const qty = Number(item.quantity) || 0
+  const landed = Number(item.landed_cost) || 0
+  if (costFinalized && qty > 0 && landed > 0) return Math.round((landed / qty) * 100) / 100
+  return Math.round((Number(item.unit_price) || 0) * 100) / 100
+}
+
+/**
+ * How an outsourced PO line's stored inventory row is labelled: its sales order number, its name (like the SO line,
+ * so the delivery permit finds it) and the "Received on <PO> for <SO>" description. Shared by storeOutsourced and by
+ * finalize-cost, which finds the rows again by these labels (an inventory row has no PO line id).
+ */
+export async function outsourcedLabels(db: Db, poNumber: string, items: PoItem[]) {
+  const soItemIds = [...new Set(items.map((i) => i.source_so_item_id).filter(Boolean))]
   const soItems: any[] = soItemIds.length
     ? must(await db.from("sales_order_items").select("so_item_id, so_id, outsourced_name").in("so_item_id", soItemIds), "read sales order lines")
     : []
   const soIds = [...new Set(soItems.map((i) => i.so_id))]
   const orders: any[] = soIds.length ? must(await db.from("sales_orders").select("so_id, so_number").in("so_id", soIds), "read sales orders") : []
+  const labels = new Map<number, { soNumber: string | null; name: string; description: string }>()
+  for (const item of items) {
+    const soItem = soItems.find((i) => i.so_item_id === item.source_so_item_id)
+    const soNumber: string | null = orders.find((o) => o.so_id === soItem?.so_id)?.so_number ?? null
+    labels.set(item.po_item_id, {
+      soNumber,
+      name: soItem?.outsourced_name || item.outsourced_name || item.item_name_snapshot || "Outsourced Item",
+      description: `Received on ${poNumber}${soNumber ? ` for ${soNumber}` : ""}`,
+    })
+  }
+  return labels
+}
+
+/**
+ * An outsourced line received into a chosen warehouse gets its own inventory row there, on hold for its sales order
+ * (so_number) while the order is open and listed on the Inventory page's Pending tab (owner decision, 2026-11-17;
+ * lib/outsourced-hold.ts, lib/outsourced-pending.ts). Its order delivers it by name (lib/dp-stock.ts). Only a customer
+ * return of it put into a warehouse becomes free stock. Without a warehouse nothing is stored (Pending too). Its unit_cost is the PO line's cost (outsourcedUnitCost: the landed cost when the PO's cost
+ * is already finalized, else the unit price; a later finalize updates it, see applyLandedCostToOutsourced).
+ * The row is named like the sales-order line so the delivery permit (which copies the SO line name) finds it.
+ */
+async function storeOutsourced(db: Db, po: any, lineRows: any[], itemById: Map<number, PoItem>, undo: Undo[]) {
+  const rows = lineRows.filter((r) => r.item_type === "outsourced" && r.warehouse_id)
+  if (rows.length === 0) return
+  const labels = await outsourcedLabels(db, po.po_number, [...new Set(rows.map((r) => itemById.get(r.po_item_id)!))])
   const supplier = po.supplier_id
     ? must(await db.from("suppliers").select("supplier_name").eq("supplier_id", po.supplier_id).maybeSingle(), "read supplier")
     : null
   for (const row of rows) {
-    const soItem = soItems.find((i) => i.so_item_id === row.source_so_item_id)
-    const soNumber = orders.find((o) => o.so_id === soItem?.so_id)?.so_number ?? null
     const item = itemById.get(row.po_item_id)!
+    const label = labels.get(row.po_item_id)!
     const inserted = must(
       await db
         .from("inventory")
@@ -745,14 +782,14 @@ async function storeOutsourced(db: Db, po: any, lineRows: any[], itemById: Map<n
           product_id: null,
           warehouse_id: row.warehouse_id,
           quantity: row.quantity_received,
-          unit_cost: 0,
+          unit_cost: outsourcedUnitCost(item, !!po.cost_finalized),
           reorder_point: 0,
           is_outsourced: true,
           is_returned: false,
-          outsourced_name: soItem?.outsourced_name || item.outsourced_name || item.item_name_snapshot || "Outsourced Item",
-          outsourced_description: `Received on ${po.po_number}${soNumber ? ` for ${soNumber}` : ""}`,
+          outsourced_name: label.name,
+          outsourced_description: label.description,
           supplier_name: supplier?.supplier_name ?? null,
-          so_number: soNumber,
+          so_number: label.soNumber,
           last_updated: new Date().toISOString(),
         })
         .select("inventory_id")
@@ -763,6 +800,59 @@ async function storeOutsourced(db: Db, po: any, lineRows: any[], itemById: Map<n
       what: `outsourced inventory row ${inserted.inventory_id}`,
       run: async () => must(await db.from("inventory").delete().eq("inventory_id", inserted.inventory_id), "undo: delete outsourced row"),
     })
+  }
+}
+
+/**
+ * finalize-cost: the outsourced items this PO stored in a warehouse take the finalized landed cost per unit, like the
+ * stock rows do. Rows are found by their labels (outsourcedLabels); when two outsourced lines of the PO share the same
+ * labels but have different costs, those rows are ambiguous and left alone. Each change is compare-and-set on the old
+ * cost and pushed onto `restore` (which puts the old cost back only while nobody changed it since).
+ */
+export async function applyLandedCostToOutsourced(
+  db: Db,
+  po: { po_number: string },
+  items: PoItem[],
+  restore: (() => Promise<void>)[],
+) {
+  const outsourced = (items || []).filter((i) => i.item_type === "outsourced")
+  if (outsourced.length === 0) return
+  const labels = await outsourcedLabels(db, po.po_number, outsourced)
+  const groups = new Map<string, { description: string; name: string; costs: Set<number> }>()
+  for (const item of outsourced) {
+    const label = labels.get(item.po_item_id)!
+    const key = JSON.stringify([label.description, label.name])
+    const group = groups.get(key) || { description: label.description, name: label.name, costs: new Set<number>() }
+    group.costs.add(outsourcedUnitCost(item, true))
+    groups.set(key, group)
+  }
+  for (const { description, name, costs } of groups.values()) {
+    if (costs.size !== 1) continue // ambiguous: lines with different costs stored under the same labels
+    const cost = [...costs][0]
+    const rows: any[] = must(
+      await db
+        .from("inventory")
+        .select("inventory_id, unit_cost")
+        .eq("is_outsourced", true)
+        .eq("is_returned", false)
+        .is("product_id", null)
+        .eq("outsourced_description", description)
+        .eq("outsourced_name", name),
+      "read outsourced inventory",
+    )
+    for (const row of rows || []) {
+      if (row.unit_cost !== null && row.unit_cost !== undefined && Number(row.unit_cost) === cost) continue
+      let write = db.from("inventory").update({ unit_cost: cost, last_updated: new Date().toISOString() }).eq("inventory_id", row.inventory_id)
+      write = row.unit_cost === null || row.unit_cost === undefined ? write.is("unit_cost", null) : write.eq("unit_cost", row.unit_cost)
+      const updated = must(await write.select("inventory_id"), `outsourced inventory ${row.inventory_id}`)
+      if (!updated || updated.length !== 1) continue // changed meanwhile: left alone
+      restore.push(async () => {
+        must(
+          await db.from("inventory").update({ unit_cost: row.unit_cost }).eq("inventory_id", row.inventory_id).eq("unit_cost", cost),
+          `restore outsourced inventory ${row.inventory_id}`,
+        )
+      })
+    }
   }
 }
 

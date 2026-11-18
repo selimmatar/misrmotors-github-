@@ -312,6 +312,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onHold: inv.onHold ?? null,
     onHoldByQuotations: inv.onHoldByQuotations ?? null,
     heldFor: inv.heldFor ?? null,
+    purchasedFor: inv.purchasedFor ?? false,
     available: inv.available ?? null,
     reorderPoint: inv.reorder_point ?? inv.reorderPoint,
     location: inv.location,

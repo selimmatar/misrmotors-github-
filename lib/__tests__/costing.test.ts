@@ -228,3 +228,56 @@ test("costing: failure after the first item was written releases the claim too",
   assert.equal(r.status, 500)
   assert.equal(po(db).cost_finalized, false)
 })
+
+// ------------------------------------------------------------------ finalize-cost: stored outsourced items (2026-11-17)
+// PO 6 (received): item 10 = stock product 7, 6000;  item 11 = outsourced "Svc", 5 @ 800 = 4000, for SO item 28 (SO-T-3,
+// named "Gearbox" on the SO). Inventory 50 = the item stored by receiving at the unit price; 51 = another PO's item.
+function outsourcedPoDb(extraItems: Row[] = []) {
+  const stored = (inventory_id: number, description: string, unit_cost: number, extra: Row = {}) => ({
+    inventory_id, product_id: null, warehouse_id: 2, quantity: 5, unit_cost, is_outsourced: true, is_returned: false,
+    outsourced_name: "Gearbox", outsourced_description: description, so_number: "SO-T-3", reorder_point: 0, ...extra,
+  })
+  const db = new FakeDb({
+    purchase_orders: [{ po_id: 6, po_number: "PO-T-6", status: "received", total: 11400, cost_finalized: false }],
+    purchase_order_items: [
+      { po_item_id: 10, po_id: 6, product_id: 7, quantity: 1, unit_price: 6000, total: 6000, item_type: "stock" },
+      { po_item_id: 11, po_id: 6, product_id: null, quantity: 5, unit_price: 800, total: 4000, item_type: "outsourced", outsourced_name: "Svc", source_so_id: 3, source_so_item_id: 28 },
+      ...extraItems,
+    ],
+    sales_order_items: [{ so_item_id: 28, so_id: 3, outsourced_name: "Gearbox" }, { so_item_id: 29, so_id: 3, outsourced_name: "Gearbox" }],
+    sales_orders: [{ so_id: 3, so_number: "SO-T-3" }],
+    inventory: [stored(50, "Received on PO-T-6 for SO-T-3", 800), stored(51, "Received on PO-T-9 for SO-T-3", 0)],
+    inventory_batches: [],
+    idempotency_log: [],
+  })
+  useDb(db)
+  return db
+}
+const invCost = (db: FakeDb, id: number) => db.tables.inventory.find((i) => i.inventory_id === id)!.unit_cost
+
+test("costing: finalize moves a stored outsourced item of THIS PO to its landed cost per unit; other POs' rows untouched", async () => {
+  const db = outsourcedPoDb()
+  const r = await finalize({ taxAmount: 1000 }) // overhead 600 / 400 -> outsourced landed 4400 / 5 = 880
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(items(db).find((i) => i.po_item_id === 11)!.landed_cost, 4400)
+  assert.equal(invCost(db, 50), 880)
+  assert.equal(invCost(db, 51), 0, "another PO's outsourced row is not this finalize's")
+})
+
+test("costing: a finalize that fails afterwards puts the outsourced row's cost back", async () => {
+  const db = outsourcedPoDb()
+  db.failOn["purchase_orders:update"] = "boom"
+  db.failAfter["purchase_orders:update"] = 1 // the claim succeeds, the header update fails
+  const r = await finalize({ taxAmount: 1000 })
+  assert.equal(r.status, 500)
+  assert.equal(invCost(db, 50), 800)
+})
+
+test("costing: two outsourced lines with the same labels but different costs are ambiguous and left alone", async () => {
+  const db = outsourcedPoDb([
+    { po_item_id: 12, po_id: 6, product_id: null, quantity: 5, unit_price: 100, total: 500, item_type: "outsourced", outsourced_name: "Svc", source_so_id: 3, source_so_item_id: 29 },
+  ])
+  const r = await finalize({ taxAmount: 1000 })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(invCost(db, 50), 800)
+})

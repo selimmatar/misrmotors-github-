@@ -18,6 +18,7 @@ import { formatDate, formatMoney } from "@/lib/format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAppContext } from "@/lib/app-context"
 import { analyzeInventory } from "@/lib/ai-utils"
+import { isOnHandRow, matchesStockFilter, type StockFilter } from "@/lib/inventory-stock-filter"
 import { ReportGenerator } from "@/components/report-generator"
 import type { UserRole, DeliveryPermit, SalesOrder } from "@/lib/types"
 import {
@@ -67,11 +68,17 @@ interface PendingItem {
   dpStatus: string
   dpId: string
   dpNumber?: string
+  /** our cost per unit and the supplier (Sold tab; outsourced items received straight to the customer) */
+  unitCost?: number | null
+  supplierName?: string | null
 }
 
 interface SoldItem extends PendingItem {
   soldDate: string
 }
+
+/** dpStatus of an outsourced item received straight to its customer, not yet on a delivery permit */
+const RECEIVED_DIRECT = "RECEIVED_DIRECT"
 
 export function InventoryModule({ userRole }: InventoryModuleProps) {
   const { t, formatNumber, language } = useI18n()
@@ -82,6 +89,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const [showAiInsights, setShowAiInsights] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [warehouseFilter, setWarehouseFilter] = useState<string>("all")
+  const [stockFilter, setStockFilter] = useState<StockFilter>("all")
   const [showPhotoDialog, setShowPhotoDialog] = useState(false)
   const [selectedProductForPhoto, setSelectedProductForPhoto] = useState<any>(null)
   const [productImages, setProductImages] = useState<any[]>([])
@@ -89,6 +97,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
 
   const [deliveryPermits, setDeliveryPermits] = useState<DeliveryPermit[]>([])
+  const [directPending, setDirectPending] = useState<any[]>([])
+  const [outsourcedCosts, setOutsourcedCosts] = useState<any[]>([])
   const [soldDateFrom, setSoldDateFrom] = useState<string>("")
   const [soldDateTo, setSoldDateTo] = useState<string>("")
   const [selectedSODetails, setSelectedSODetails] = useState<SalesOrder | null>(null)
@@ -146,11 +156,43 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       }
     }
 
+    // Outsourced items received straight to their customer (no warehouse): Pending until a permit takes them
+    const fetchDirectPending = async () => {
+      try {
+        const response = await fetch("/api/inventory/pending")
+        if (response.ok) {
+          const data = await response.json()
+          if (Array.isArray(data)) setDirectPending(data)
+        }
+      } catch (error) {
+        console.error("Error fetching pending outsourced items:", error)
+      }
+    }
+
+    // Our cost of outsourced order lines, from their purchase orders (Sold tab)
+    const fetchOutsourcedCosts = async () => {
+      try {
+        const response = await fetch("/api/inventory/outsourced-costs")
+        if (response.ok) {
+          const data = await response.json()
+          if (Array.isArray(data)) setOutsourcedCosts(data)
+        }
+      } catch (error) {
+        console.error("Error fetching outsourced costs:", error)
+      }
+    }
+
     // Initial fetch
     fetchDeliveryPermits()
+    fetchDirectPending()
+    fetchOutsourcedCosts()
 
     // Auto-refresh every 10 seconds to detect signed DP uploads
-    const interval = setInterval(fetchDeliveryPermits, 10000)
+    const interval = setInterval(() => {
+      fetchDeliveryPermits()
+      fetchDirectPending()
+      fetchOutsourcedCosts()
+    }, 10000)
 
     return () => clearInterval(interval)
   }, [])
@@ -199,8 +241,59 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       }
     })
 
+    // Outsourced items received for an order straight to the customer (no warehouse, so not On hand)
+    for (const d of directPending) {
+      items.push({
+        id: d.id,
+        productId: "",
+        productName: d.name,
+        sku: "-",
+        quantity: Number(d.quantity) || 0,
+        unitPrice: Number(d.unitPrice) || 0,
+        total: Math.round((Number(d.quantity) || 0) * (Number(d.unitPrice) || 0) * 100) / 100,
+        soId: d.soId != null ? String(d.soId) : undefined,
+        soNumber: d.soNumber,
+        customerId: d.customerId != null ? String(d.customerId) : "",
+        customerName: d.customerName || "Unknown Customer",
+        orderDate: "",
+        dpStatus: RECEIVED_DIRECT,
+        dpId: "",
+        unitCost: Number(d.unitCost) || 0,
+        supplierName: d.supplierName || null,
+      })
+    }
+
     return items
-  }, [deliveryPermits, salesOrders, customers, products])
+  }, [deliveryPermits, salesOrders, customers, products, directPending])
+
+  // Sold tab (owner, 2026-11-17): our cost per unit and the supplier of a sold line. Outsourced: from its purchase
+  // order (landed once finalized, else the PO unit price; a line taken from stock: its stock row's cost), never the
+  // order's cost estimate (app/api/inventory/outsourced-costs); a catalogue product: its stock value per unit (all
+  // warehouses). Null when unknown.
+  const soldCostAndSupplier = (item: any, so: any): { unitCost: number | null; supplierName: string | null } => {
+    const sameName = (v: unknown) => String(v ?? "").trim().replace(/\s+/g, " ").toLowerCase()
+    const name = sameName(item.itemNameSnapshot || item.productName)
+    const soLine = (so?.items || []).find((l: any) =>
+      item.productId ? String(l.productId) === String(item.productId) : !l.productId && sameName(l.productName || l.outsourcedName) === name,
+    )
+    let unitCost: number | null = null
+    let poSupplier: string | null = null
+    if (!item.productId) {
+      const costed = outsourcedCosts.find((c: any) => String(c.soId) === String(so?.id ?? item.soId) && sameName(c.name) === name)
+      unitCost = costed?.unitCost ?? null
+      poSupplier = costed?.supplierName ?? null
+    } else {
+      const rows = (inventory || []).filter((r: any) => String(r.productId) === String(item.productId) && !r.isReturned)
+      const qty = rows.reduce((s: number, r: any) => s + Math.max(0, Number(r.quantity) || 0), 0)
+      if (rows.length > 0) {
+        unitCost = qty > 0
+          ? rows.reduce((s: number, r: any) => s + Math.max(0, Number(r.quantity) || 0) * (Number(r.unitCost) || 0), 0) / qty
+          : rows.reduce((s: number, r: any) => s + (Number(r.unitCost) || 0), 0) / rows.length
+      }
+    }
+    const supplierName = poSupplier || item.supplierName || soLine?.supplierName || null
+    return { unitCost, supplierName }
+  }
 
   const soldItems: SoldItem[] = useMemo(() => {
     const items: SoldItem[] = []
@@ -234,8 +327,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           const sold = (Number(item.quantity) || 0) - returned
           if (sold <= 0) return
           const unit = Number(item.unitPrice) || 0
+          const { unitCost, supplierName } = soldCostAndSupplier(item, so)
 
           items.push({
+            unitCost,
+            supplierName,
             id: `${dp.id}-${item.productId ?? "x"}-${itemIndex}`, // Unique ID per DP line (outsourced lines have no product)
             productId: item.productId,
             productName: item.itemNameSnapshot || item.productName || product?.productName || "Unknown Product",
@@ -258,7 +354,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     })
 
     return items.sort((a, b) => new Date(b.soldDate).getTime() - new Date(a.soldDate).getTime())
-  }, [deliveryPermits, salesOrders, customers, products, soldDateFrom, soldDateTo])
+  }, [deliveryPermits, salesOrders, customers, products, soldDateFrom, soldDateTo, inventory, outsourcedCosts])
 
   const handleViewSODetails = (item: PendingItem | SoldItem) => {
     const so = salesOrders.find((s) => s.id === item.soId || String(s.id) === String(item.soId))
@@ -307,12 +403,16 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
         if (!isUniqueRow && aggregatedMap.has(productKey)) {
           const existing = aggregatedMap.get(productKey)
           existing.quantity += item.quantity || 0
+          existing.stockValue += (item.quantity || 0) * (item.unitCost || 0)
+          // unit cost of the summed row = stock value / quantity (warehouses can hold the product at different costs)
+          if (existing.quantity > 0) existing.unitCost = existing.stockValue / existing.quantity
           existing.reorderPoint = Math.max(existing.reorderPoint || 0, item.reorderPoint || 0)
         } else {
           aggregatedMap.set(productKey, {
             ...item,
             id: isUniqueRow ? item.id : `aggregated-${productKey}`,
             quantity: item.quantity || 0,
+            stockValue: (item.quantity || 0) * (item.unitCost || 0),
             warehouseName: isUniqueRow ? (item.warehouseName || "Main Warehouse") : "All Warehouses",
             location: isUniqueRow ? (item.location || "Warehouse") : "All Warehouses",
           })
@@ -322,11 +422,16 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       filtered = Array.from(aggregatedMap.values())
     }
 
-    // Exclude returned items from On Hand — they go into the Returns tab
-    filtered = filtered.filter((item) => !item.isReturned)
+    // On hand = everything physically in our warehouses (owner, 2026-11-17). Returned catalogue goods wait on the
+    // Returns tab; an outsourced return put into a warehouse is ordinary stock here (and on the Returns tab for its
+    // actions). An outsourced row that is used up is gone (sold), not "out of stock".
+    filtered = filtered.filter((item) => isOnHandRow(item))
+
+    // Stock filter last, so with "All Warehouses" it looks at the product's summed quantity
+    if (stockFilter !== "all") filtered = filtered.filter((item) => matchesStockFilter(item.quantity, stockFilter))
 
     return filtered
-  }, [inventory, categoryFilter, warehouseFilter, products, searchQuery])
+  }, [inventory, categoryFilter, warehouseFilter, stockFilter, products, searchQuery])
 
   const returnedItems = useMemo(() => {
     if (!inventory) return []
@@ -642,6 +747,12 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       {viewPhotosButton(item)}
     </>
   )
+  const pendingBadge = (item: PendingItem) =>
+    item.dpStatus === RECEIVED_DIRECT ? (
+      <StatusBadge status="pending" label={t("inventory.received-direct")} />
+    ) : (
+      <StatusBadge status="pending" label={t("inventory.awaiting-dp")} />
+    )
   const renderPendingActions = (item: PendingItem) => (
     <Button variant="ghost" size="sm" onClick={() => handleViewSODetails(item)}>
       <Eye className="w-4 h-4 me-1" />
@@ -746,6 +857,18 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                   {wh.name}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={stockFilter} onValueChange={(v) => setStockFilter(v as StockFilter)}>
+            <SelectTrigger className="w-[180px]" aria-label={t("inventory.stock-filter")}>
+              <SelectValue placeholder={t("inventory.stock-filter")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("inventory.stock-all")}</SelectItem>
+              <SelectItem value="in-stock">{t("inventory.stock-in")}</SelectItem>
+              <SelectItem value="out-of-stock">{t("inventory.stock-out")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -935,9 +1058,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                           <NumCell>{formatMoney(item.total, language)}</NumCell>
                           <TableCell>{item.soNumber}</TableCell>
                           <TableCell>{item.customerName}</TableCell>
-                          <TableCell>
-                            <StatusBadge status="pending" label={t("inventory.awaiting-dp")} />
-                          </TableCell>
+                          <TableCell>{pendingBadge(item)}</TableCell>
                           <ActionsCell>{renderPendingActions(item)}</ActionsCell>
                         </TableRow>
                       ))}
@@ -949,7 +1070,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                     id={renderProductName(item.productName, !item.productId && outsourcedTag)}
                     amount={formatMoney(item.total, language)}
                     party={item.customerName}
-                    status={<StatusBadge status="pending" label={t("inventory.awaiting-dp")} />}
+                    status={pendingBadge(item)}
                     note={
                       <>
                         {item.sku} · {t("field.quantity")}: {formatNumber(item.quantity)}
@@ -1024,9 +1145,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                         <TableHead>{t("field.product-name")}</TableHead>
                         <TableHead>{t("field.sku")}</TableHead>
                         <NumHead>{t("field.quantity")}</NumHead>
+                        <NumHead>{t("inventory.sold-cost")} {t("common.egp")}</NumHead>
                         <NumHead>{t("field.unit-price")} {t("common.egp")}</NumHead>
                         <NumHead>{t("field.total")} {t("common.egp")}</NumHead>
                         <TableHead>{t("field.so-number")}</TableHead>
+                        <TableHead>{t("inventory.sold-supplier")}</TableHead>
                         <TableHead>{t("field.customer")}</TableHead>
                         <TableHead>{t("inventory.sold-date")}</TableHead>
                         <ActionsHead>{t("field.actions")}</ActionsHead>
@@ -1038,9 +1161,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                           <IdCell>{renderProductName(item.productName, !item.productId && outsourcedTag)}</IdCell>
                           <TableCell>{item.sku}</TableCell>
                           <NumCell>{formatNumber(item.quantity)}</NumCell>
+                          <NumCell>{item.unitCost != null ? formatMoney(item.unitCost, language) : "—"}</NumCell>
                           <NumCell>{formatMoney(item.unitPrice, language)}</NumCell>
                           <NumCell>{formatMoney(item.total, language)}</NumCell>
                           <TableCell>{item.soNumber}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{item.supplierName || "—"}</TableCell>
                           <TableCell>{item.customerName}</TableCell>
                           <TableCell>{formatDate(item.soldDate, language)}</TableCell>
                           <ActionsCell>{renderSoldActions(item)}</ActionsCell>
@@ -1057,6 +1182,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                     note={
                       <>
                         {item.sku} · {t("field.quantity")}: {formatNumber(item.quantity)}
+                        {item.unitCost != null ? ` · ${t("inventory.sold-cost")}: ${formatMoney(item.unitCost, language)}` : ""}
+                        {item.supplierName ? ` · ${item.supplierName}` : ""}
                         {item.soNumber ? ` · ${item.soNumber}` : ""} · {formatDate(item.soldDate, language)}
                       </>
                     }

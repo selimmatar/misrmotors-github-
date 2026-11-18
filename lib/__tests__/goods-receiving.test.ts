@@ -6,7 +6,7 @@ import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import * as grnRoute from "../../app/api/goods-receipts/route"
-import { acquirePoLock, releasePoLock, LOCK_STALE_MS } from "../goods-receiving"
+import { acquirePoLock, releasePoLock, LOCK_STALE_MS, outsourcedUnitCost } from "../goods-receiving"
 
 // Rounds for the randomised concurrency scenarios (GRN_STRESS=200 for a long soak)
 const ROUNDS = Number(process.env.GRN_STRESS) || 30
@@ -887,8 +887,8 @@ test("G1. GET /api/goods-receipts succeeds for outsourced lines (product_id NULL
 })
 
 // Owner, 2026-11-04: an outsourced item received into a chosen warehouse is stored there, on hold for its sales order,
-// at cost 0 so it never counts in the stock value. Without a warehouse it is not stored (goes straight to the customer).
-test("R60. outsourced line with a warehouse: stored on hold for its SO at cost 0", async () => {
+// at the PO line's cost (owner, 2026-11-17; it was 0 before). Without a warehouse it is not stored (goes straight to the customer).
+test("R60. outsourced line with a warehouse: stored on hold for its SO at the PO line's unit price", async () => {
   const db = baseDb({ suppliers: [{ supplier_id: 1, supplier_name: "Supp A" }] })
   db.tables.sales_order_items.find((i) => i.so_item_id === 28)!.outsourced_name = "Gearbox for car"
   const res = await post(rec(1, [outs(5, { warehouseId: 2 })]))
@@ -897,7 +897,7 @@ test("R60. outsourced line with a warehouse: stored on hold for its SO at cost 0
   assert.equal(held.length, 1)
   assert.equal(held[0].warehouse_id, 2)
   assert.equal(held[0].quantity, 5)
-  assert.equal(held[0].unit_cost, 0, "never counts in the stock value")
+  assert.equal(held[0].unit_cost, 2000, "the PO line's unit price (cost not finalized yet)")
   assert.equal(held[0].product_id, null)
   assert.equal(held[0].is_returned, false)
   assert.equal(held[0].so_number, "SO-T-3")
@@ -905,6 +905,26 @@ test("R60. outsourced line with a warehouse: stored on hold for its SO at cost 0
   assert.equal(held[0].supplier_name, "Supp A")
   assert.equal(db.tables.goods_receipt_lines[0].warehouse_id, 2)
   assert.equal(db.tables.inventory_batches.length, 0)
+})
+
+test("R60b. outsourced line received after the PO's cost was finalized: stored at the landed cost per unit", async () => {
+  const db = baseDb()
+  db.tables.purchase_orders.find((p) => p.po_id === 1)!.cost_finalized = true
+  Object.assign(db.tables.purchase_order_items.find((i) => i.po_item_id === 2)!, { allocated_overhead: 500, landed_cost: 10500 })
+  const res = await post(rec(1, [outs(2, { warehouseId: 2 })]))
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  const held = db.tables.inventory.filter((i) => i.is_outsourced)
+  assert.equal(held.length, 1)
+  assert.equal(held[0].unit_cost, 2100, "10,500 landed / 5 ordered")
+  assert.equal(held[0].outsourced_description, "Received on PO-T-1 for SO-T-3")
+})
+
+test("R60c. outsourcedUnitCost: unit price before finalize; landed / quantity after; falls back to the unit price", () => {
+  assert.equal(outsourcedUnitCost({ quantity: 3, unit_price: 100, landed_cost: 330 }, false), 100)
+  assert.equal(outsourcedUnitCost({ quantity: 3, unit_price: 100, landed_cost: 330 }, true), 110)
+  assert.equal(outsourcedUnitCost({ quantity: 3, unit_price: "99.999", landed_cost: null }, true), 100)
+  assert.equal(outsourcedUnitCost({ quantity: 0, unit_price: 50, landed_cost: 330 }, true), 50)
+  assert.equal(outsourcedUnitCost({}, true), 0)
 })
 
 test("R61. outsourced line without a warehouse is not stored", async () => {

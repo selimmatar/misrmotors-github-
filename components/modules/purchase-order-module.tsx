@@ -53,6 +53,7 @@ import { closingBillOf, sortBills } from "@/lib/po-bill-number"
 import { PoBilledNote } from "@/components/purchase-order/po-bill-dialog"
 import { PoHistory, PoOpenBadge, PoOpenMenu } from "@/components/purchase-order/po-open-actions"
 import { NotesButton, useNoteCounts } from "@/components/notes/notes-button"
+import { isFromStockLine } from "@/lib/from-stock-line"
 import { SupplierCreditPicker, appliedCreditTotal, creditSelections, type CreditAmounts } from "@/components/supplier/supplier-credit-picker"
 
 interface PurchaseOrderModuleProps {
@@ -534,7 +535,8 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
     .filter((so: any) => !["draft", "cancelled", "rejected", "delivered"].includes(String(so.status || "")))
     .flatMap((so: any) =>
       (so.items || [])
-        .filter((it: any) => (it.itemType || it.item_type) === "outsourced" && it.id)
+        // a line taken from a stored item is already in hand: never offered for a purchase order
+        .filter((it: any) => (it.itemType || it.item_type) === "outsourced" && it.id && !isFromStockLine(it))
         .map((it: any) => ({
           value: `${so.id}:${it.id}`,
           soId: String(so.id),
@@ -587,7 +589,7 @@ export function PurchaseOrderModule({ userRole = "accountant" }: PurchaseOrderMo
   // Match item to supplier by id (new orders) OR by name in outsourced_description (legacy orders)
   const itemBelongsToSupplier = (item: any, supplierId: string): boolean => {
     const isOutsourced = item.itemType === "outsourced" || item.item_type === "outsourced"
-    if (!isOutsourced) return false
+    if (!isOutsourced || isFromStockLine(item)) return false
     // New orders: supplier_id is set
     if (item.supplierId && item.supplierId.toString() === supplierId.toString()) return true
     // Legacy orders: supplier stored as "Supplier: NAME" in outsourced_description

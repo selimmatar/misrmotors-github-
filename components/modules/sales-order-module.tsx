@@ -298,8 +298,40 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
       outsourced_description?: string
       outsourced_unit?: string
       supplier_name?: string
+      /** a free stored outsourced item taken from the warehouse (lib/outsourced-hold.ts): its inventory id and name */
+      fromInventoryId?: string
+      storedName?: string
     }>
   >([])
+  // Free stored outsourced items (not held for an order, see lib/outsourced-hold.ts) can go on any order from the warehouse
+  const storedAvailable = (inv: any) => Math.max(0, Number(inv?.available ?? 0) || 0)
+  const freeStoredItems = (warehouseId: number | null | "any") =>
+    warehouseId === null
+      ? []
+      : (inventory || []).filter(
+          (inv: any) =>
+            inv.isOutsourced && !inv.productId && (warehouseId === "any" || inv.warehouseId === warehouseId) && storedAvailable(inv) > 0,
+        )
+  const freeStoredItem = (inventoryId: string | undefined) =>
+    (inventory || []).find((inv: any) => inv.isOutsourced && !inv.productId && String(inv.inventoryId ?? inv.id) === String(inventoryId))
+  const storedOptionId = (inv: any) => `stored-${inv.inventoryId ?? inv.id}`
+  // Mixed equipment / parts layout: a product select whose value may be a stored item ("stored-<inventory id>")
+  const storedChoice = (value: string) => (value && value.startsWith("stored-") ? freeStoredItem(value.slice("stored-".length)) : undefined)
+  const storedOptions = () => {
+    const free = freeStoredItems("any")
+    if (free.length === 0) return null
+    return (
+      <optgroup label={t("so.stored-items-group")}>
+        {free.map((inv: any) => (
+          <option key={storedOptionId(inv)} value={storedOptionId(inv)}>
+            {fill(t("so.stored-item-label"), { name: inv.productName, cost: formatMoney(Number(inv.unitCost) || 0, language) })} ({t("field.stock")}: {storedAvailable(inv)})
+          </option>
+        ))}
+      </optgroup>
+    )
+  }
+  const mixedStockOf = (value: string): number | null =>
+    value && value.startsWith("stored-") ? storedAvailable(storedChoice(value)) : inventory.find((inv) => inv.productId === value)?.quantity ?? null
   // const [monthsPaid, setMonthsPaid] = useState<number>(0) // No longer needed here, managed within payment logic
 
   // State for selected customer in customer tab
@@ -644,7 +676,7 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           return
         }
 
-        const availableStock = inventory.find((inv) => inv.productId === item.productId)?.quantity ?? null
+        const availableStock = mixedStockOf(item.productId)
         if (availableStock !== null && quantity > availableStock) {
           alert(fill(t("so.only-in-stock-for-this"), { availableStock }))
           setIsSubmitting(false)
@@ -655,6 +687,21 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
         const itemCategory: ItemCategory = equipmentItems.some((eqItem) => eqItem.productId === item.productId)
           ? "EQUIPMENT"
           : "MAINTENANCE_PARTS"
+
+        // a free stored outsourced item: sent with its inventory id, reserved by the server
+        if (item.productId.startsWith("stored-")) {
+          const stored = storedChoice(item.productId)
+          currentOrderItems.push({
+            productId: "",
+            productName: stored?.productName || "",
+            quantity,
+            unitPrice,
+            total: quantity * unitPrice,
+            itemCategory,
+            fromInventoryId: item.productId.slice("stored-".length),
+          } as unknown as SOItem)
+          continue
+        }
 
         currentOrderItems.push({
           productId: item.productId,
@@ -667,6 +714,38 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
       }
     } else {
       for (const item of orderItems) {
+        // A free stored outsourced item taken from the warehouse: sent with its inventory id, reserved by the server
+        if ((!item.item_type || item.item_type === "stock") && item.fromInventoryId) {
+          const quantity = Number.parseInt(item.quantity)
+          const unitPrice = Number.parseFloat(item.unitPrice)
+          if (!item.quantity || isNaN(quantity) || quantity <= 0) {
+            alert(t("so.quantity-must-be-a-positive-2"))
+            setIsSubmitting(false)
+            return
+          }
+          if (!item.unitPrice || isNaN(unitPrice) || unitPrice < 0) {
+            alert(t("so.unit-price-cannot-be-negative-2"))
+            setIsSubmitting(false)
+            return
+          }
+          const stored = freeStoredItem(item.fromInventoryId)
+          const availableStock = stored ? storedAvailable(stored) : 0
+          if (quantity > availableStock) {
+            alert(fill(t("so.only-in-stock-for-this"), { availableStock }))
+            setIsSubmitting(false)
+            return
+          }
+          currentOrderItems.push({
+            productId: "",
+            productName: item.storedName || stored?.productName || "",
+            quantity,
+            unitPrice,
+            total: quantity * unitPrice,
+            itemCategory: "OUTSOURCED",
+            fromInventoryId: item.fromInventoryId,
+          } as unknown as SOItem)
+          continue
+        }
         // Treat items without item_type as stock items (default behavior)
         if (!item.item_type || item.item_type === "stock") {
           if (!item.productId || item.productId.trim() === "") {
@@ -972,8 +1051,11 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                       const newItems = [...equipmentItems]
                       newItems[index].productId = e.target.value
                       const selectedProduct = products.find((p) => p.id === e.target.value)
+                      const stored = storedChoice(e.target.value)
                       if (selectedProduct) {
                         newItems[index].unitPrice = selectedProduct.unitPrice.toString()
+                      } else if (stored) {
+                        newItems[index].unitPrice = String(Number(stored.unitCost) || 0)
                       }
                       setEquipmentItems(newItems)
                     }}
@@ -993,9 +1075,10 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                           </option>
                         )
                       })}
+                    {storedOptions()}
                   </select>
                   {(() => {
-                    const equipmentStock = inventory.find((inv) => inv.productId === item.productId)?.quantity ?? null
+                    const equipmentStock = mixedStockOf(item.productId)
                     return (
                       <div>
                         <Input
@@ -1068,8 +1151,11 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                       const newItems = [...maintenanceItems]
                       newItems[index].productId = e.target.value
                       const selectedProduct = products.find((p) => p.id === e.target.value)
+                      const stored = storedChoice(e.target.value)
                       if (selectedProduct) {
                         newItems[index].unitPrice = selectedProduct.unitPrice.toString()
+                      } else if (stored) {
+                        newItems[index].unitPrice = String(Number(stored.unitCost) || 0)
                       }
                       setMaintenanceItems(newItems)
                     }}
@@ -1089,10 +1175,10 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                           </option>
                         )
                       })}
+                    {storedOptions()}
                   </select>
                   {(() => {
-                    const maintenanceStock =
-                      inventory.find((inv) => inv.productId === item.productId)?.quantity ?? null
+                    const maintenanceStock = mixedStockOf(item.productId)
                     return (
                       <div>
                         <Input
@@ -1205,7 +1291,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                   return inventoryItem && inventoryItem.quantity > 0
                 })
               : []
-            
+            const storedHere = freeStoredItems(selectedWarehouseId)
+
             return (
             <div key={index} className="border rounded-lg p-4 bg-gray-50 space-y-3">
               <div className="flex items-center justify-between">
@@ -1268,6 +1355,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                           const newItems = [...orderItems]
                           newItems[index].warehouseId = e.target.value
                           newItems[index].productId = "" // Reset product when warehouse changes
+                          newItems[index].fromInventoryId = undefined
+                          newItems[index].storedName = undefined
                           setOrderItems(newItems)
                         }}
                       >
@@ -1282,16 +1371,41 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                     <div>
                       <Label className="text-xs text-gray-600 mb-1">{t("common.product")}</Label>
                       <ProductSearchCombobox
-                        products={products.map(p => ({
-                          id: p.id,
-                          productName: p.productName,
-                          sku: p.sku
-                        }))}
-                        inventory={inventory.filter(inv => inv.warehouseId === selectedWarehouseId)}
+                        products={[
+                          ...products.map(p => ({
+                            id: p.id,
+                            productName: p.productName,
+                            sku: p.sku
+                          })),
+                          // free stored outsourced items in this warehouse: by name (no SKU), with their cost
+                          ...storedHere.map((inv: any) => ({
+                            id: storedOptionId(inv),
+                            productName: fill(t("so.stored-item-label"), { name: inv.productName, cost: formatMoney(Number(inv.unitCost) || 0, language) }),
+                            sku: inv.sku && inv.sku !== "OUTSOURCED" ? inv.sku : "",
+                          })),
+                        ]}
+                        inventory={[
+                          ...inventory.filter(inv => inv.warehouseId === selectedWarehouseId),
+                          ...storedHere.map((inv: any) => ({ productId: storedOptionId(inv), quantity: storedAvailable(inv) })),
+                        ]}
                         warehouseId={item.warehouseId}
-                        value={item.productId}
+                        value={item.fromInventoryId ? `stored-${item.fromInventoryId}` : item.productId}
                         onSelect={(productId) => {
                           const newItems = [...orderItems]
+                          if (productId.startsWith("stored-")) {
+                            const stored = freeStoredItem(productId.slice("stored-".length))
+                            newItems[index].productId = ""
+                            newItems[index].fromInventoryId = productId.slice("stored-".length)
+                            newItems[index].storedName = stored?.productName || ""
+                            const cost = String(Number(stored?.unitCost) || 0)
+                            newItems[index].costPrice = cost
+                            newItems[index].unitPrice = cost
+                            newItems[index].markupPercent = "0"
+                            setOrderItems(newItems)
+                            return
+                          }
+                          newItems[index].fromInventoryId = undefined
+                          newItems[index].storedName = undefined
                           newItems[index].productId = productId
                           const selectedProduct = products.find((p) => p.id === productId)
                           if (selectedProduct) {
@@ -1316,6 +1430,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                     const stockLimit =
                       item.item_type === "outsourced"
                         ? null
+                        : item.fromInventoryId
+                        ? storedAvailable(freeStoredItem(item.fromInventoryId))
                         : inventory.find(
                             (inv) => inv.productId === item.productId && inv.warehouseId === selectedWarehouseId,
                           )?.quantity ?? null
