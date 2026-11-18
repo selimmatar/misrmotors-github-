@@ -370,6 +370,8 @@ test("GET /api/inventory: onHold and available are additive fields; existing fie
 // ---------------------------------------------------------------------------------------------------------
 const held = (inventory_id: number, warehouse_id: number, quantity: number, so_number = "SO-T-1", outsourced_name = "Outsourced thing"): Row => ({
   inventory_id, product_id: null, warehouse_id, quantity, is_returned: false, is_outsourced: true, unit_cost: 0, reorder_point: 0, outsourced_name, so_number,
+  // a restocked customer return (free stock): a row that only names an open order is that order's since 2026-11-18
+  outsourced_description: `Returned from ${so_number} — customer return`,
 })
 
 test("outsourced: APPROVE takes the stored item out of its warehouse row; stock lines as before", async () => {
@@ -710,7 +712,7 @@ test("sales order screens: free stored items are offered by name with cost and a
   const read = (p: string) => readFileSync(join(process.env.REPO_ROOT ?? process.cwd(), p), "utf8")
   const s = read("components/modules/sales-order-module.tsx")
   assert.match(s, /const storedHere = freeStoredItems\(selectedWarehouseId\)/)
-  assert.match(s, /inv\.isOutsourced && !inv\.productId && \(warehouseId === "any" \|\| inv\.warehouseId === warehouseId\) && storedAvailable\(inv\) > 0/)
+  assert.match(s, /isFreeStoredRow\(inv\) && \(warehouseId === "any" \|\| inv\.warehouseId === warehouseId\)/)
   assert.match(s, /fromInventoryId: item\.fromInventoryId,/)
   assert.match(s, /fromInventoryId: item\.productId\.slice\("stored-"\.length\)/, "mixed layout")
   assert.equal((s.match(/\{storedOptions\(\)\}/g) || []).length, 2, "equipment and maintenance selects")

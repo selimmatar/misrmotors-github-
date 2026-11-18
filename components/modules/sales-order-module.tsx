@@ -23,6 +23,7 @@ import { ReportGenerator } from "@/components/report-generator"
 import { isMaintenanceLive } from "@/lib/workflow-switch"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
+import { isFreeStoredRow, storedAvailable } from "@/lib/free-stock"
 import type {
   SalesOrder,
   UserRole,
@@ -329,14 +330,11 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
     (item) => orderLineKey(item),
   )
   // Free stored outsourced items (not held for an order, see lib/outsourced-hold.ts) can go on any order from the warehouse
-  const storedAvailable = (inv: any) => Math.max(0, Number(inv?.available ?? 0) || 0)
+  // (lib/free-stock.ts: the same list the quotation form offers)
   const freeStoredItems = (warehouseId: number | null | "any") =>
     warehouseId === null
       ? []
-      : (inventory || []).filter(
-          (inv: any) =>
-            inv.isOutsourced && !inv.productId && (warehouseId === "any" || inv.warehouseId === warehouseId) && storedAvailable(inv) > 0,
-        )
+      : (inventory || []).filter((inv: any) => isFreeStoredRow(inv) && (warehouseId === "any" || inv.warehouseId === warehouseId))
   const freeStoredItem = (inventoryId: string | undefined) =>
     (inventory || []).find((inv: any) => inv.isOutsourced && !inv.productId && String(inv.inventoryId ?? inv.id) === String(inventoryId))
   const storedOptionId = (inv: any) => `stored-${inv.inventoryId ?? inv.id}`

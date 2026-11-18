@@ -24,13 +24,22 @@ export const sameName = (v: unknown) => String(v ?? "").trim().replace(/\s+/g, "
 const num = (v: unknown) => Number(v) || 0
 
 /** An outsourced row with no product (stored on receipt, a reserved part, or an outsourced return). */
-export const isStoredOutsourced = (r: any) => !!r && !r.product_id && !!r.is_outsourced
+export const isStoredOutsourced = (r: any) => !!r && !r.product_id && (!!r.is_outsourced || !!String(r.outsourced_name ?? "").trim())
 /** Free-stock candidate: stored outsourced, not a return still waiting outside a warehouse. */
 export const isWarehouseOutsourced = (r: any) => isStoredOutsourced(r) && (!r.is_returned || r.warehouse_id !== null && r.warehouse_id !== undefined)
 
-/** A row purchased for a sales order (received into a warehouse by storeOutsourced), not a return or a reserved part. */
+/**
+ * A row bought for a sales order: an outsourced row that names its order (so_number) and is neither a customer return
+ * ("Returned from ...", free stock once in a warehouse) nor a part reserved by a from-stock line ("Taken from stock
+ * for ...", held only for what that line needs). storeOutsourced labels these "Received on <PO> for <SO>"; rows stored
+ * by older code carry other (or no) descriptions and are the order's all the same (owner report 2026-11-18: rows of
+ * open orders were shown On hand).
+ */
 export const isPurchasedRow = (r: any) =>
-  isStoredOutsourced(r) && !r.is_returned && /^Received on /.test(String(r.outsourced_description ?? ""))
+  isStoredOutsourced(r) &&
+  !r.is_returned &&
+  String(r.so_number ?? "").trim() !== "" &&
+  !/^(Returned from |Taken from stock for )/.test(String(r.outsourced_description ?? "").trim())
 
 /** The label of a row reserved for an order that took it from stock (no longer "purchased" for its first order). */
 export const takenFromStockLabel = (soNumber: string) => `Taken from stock for ${soNumber}`
@@ -91,12 +100,12 @@ export function computeOutsourcedHolds(input: {
     need.set(marker.reservedId, entry)
   }
 
-  const openByNumber = new Map([...open.values()].map((o) => [String(o.so_number), o]))
+  const openByNumber = new Map([...open.values()].map((o) => [String(o.so_number).trim(), o]))
   const customerOf = (order: any) => (order ? (input.customers || []).find((c) => c.customer_id === order.customer_id)?.customer_name ?? null : null)
   const out = new Map<number, OutsourcedHold>()
   for (const r of input.rows) {
     if (!isStoredOutsourced(r)) continue
-    const buyer = isPurchasedRow(r) && r.so_number ? openByNumber.get(String(r.so_number)) : undefined
+    const buyer = isPurchasedRow(r) ? openByNumber.get(String(r.so_number).trim()) : undefined
     if (buyer) {
       // purchased for an open order: held for it, whole
       const held = Math.max(0, num(r.quantity))
@@ -133,7 +142,7 @@ export async function loadOutsourcedHolds(db: Db, rows: any[]): Promise<Map<numb
     : []
   // the orders purchased rows were bought for
   const known = new Set(orders.map((o: any) => String(o.so_number)))
-  const buyerNumbers = [...new Set(stored.filter((r) => isPurchasedRow(r) && r.so_number && !known.has(String(r.so_number))).map((r) => String(r.so_number)))]
+  const buyerNumbers = [...new Set(stored.filter((r) => isPurchasedRow(r) && !known.has(String(r.so_number).trim())).map((r) => String(r.so_number).trim()))]
   if (buyerNumbers.length) {
     orders.push(
       ...(await selectInChunks(buyerNumbers, (chunk) => db.from("sales_orders").select("so_id, so_number, status, customer_id").in("so_number", chunk), "load buying orders")),
