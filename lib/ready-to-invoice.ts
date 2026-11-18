@@ -3,6 +3,7 @@
 // approved, nothing else on its way; otherwise the reasons in plain words. Part of an order can still be invoiced
 // (the screen warns first). Uses the order overview (lib/so-overview.ts) so both always agree.
 import { buildSoOverview, type OverviewLine } from "./so-overview"
+import { dpInvoiceValue, loadSoInvoicingState } from "./invoicing"
 
 type Db = any
 const must = (result: any, what: string): any => {
@@ -23,8 +24,12 @@ export interface OrderToInvoice {
   customer: string
   total: number
   ready: boolean
-  /** approved permits not invoiced yet: what an invoice can take now */
+  /** approved permits not invoiced yet: what an invoice can take now; value = that permit invoiced on its own */
   toInvoice: { permitId: number; number: string; value: number }[]
+  /**
+   * the amount the invoice for all of `toInvoice` would carry (lib/invoicing.ts dpInvoiceValue, what "Invoice delivered
+   * part" stores): returns taken off, order discount and VAT applied - the same figure as the delivered-items print
+   */
   value: number
   /** permits of the order already invoiced */
   invoiced: string[]
@@ -39,8 +44,9 @@ export async function ordersToInvoice(db: Db): Promise<OrderToInvoice[]> {
   for (const soId of soIds) {
     const ov = await buildSoOverview(db, soId)
     if (!ov) continue
-    const toInvoice = ov.permits.filter((p) => p.status === "APPROVED" && !p.invoiced).map((p) => ({ permitId: p.id, number: p.number, value: p.value }))
+    const toInvoice = ov.permits.filter((p) => p.status === "APPROVED" && !p.invoiced).map((p) => ({ permitId: p.id, number: p.number, value: p.invoiceValue }))
     if (toInvoice.length === 0) continue
+    const state = await loadSoInvoicingState(db, soId)
     const reasons: NotReadyReason[] = []
     for (const l of ov.lines) {
       const left = l.ordered - l.delivered
@@ -58,7 +64,7 @@ export async function ordersToInvoice(db: Db): Promise<OrderToInvoice[]> {
       total: ov.money.total,
       ready: reasons.length === 0,
       toInvoice,
-      value: money(toInvoice.reduce((s, p) => s + p.value, 0)),
+      value: state ? dpInvoiceValue(state, toInvoice.map((p) => p.permitId)) : money(toInvoice.reduce((s, p) => s + p.value, 0)),
       invoiced: ov.permits.filter((p) => p.invoiced).map((p) => p.number),
       lineCount: ov.lines.filter((l) => l.ordered > EPS).length,
       reasons,

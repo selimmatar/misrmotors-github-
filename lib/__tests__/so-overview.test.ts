@@ -10,6 +10,8 @@ import { buildSoOverview, soProfit } from "../so-overview"
 import { RULES, ruleFor, allows } from "../auth/permissions"
 import * as profitRoute from "../../app/api/sales-orders/overview/profit/route"
 import * as overviewRoute from "../../app/api/sales-orders/overview/route"
+import * as fromDpsRoute from "../../app/api/accounts-receivable/create-from-dps/route"
+import * as soPrintRoute from "../../app/api/sales-orders/print/route"
 
 const src = (p: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), p), "utf8")
 
@@ -97,7 +99,7 @@ test("O3. what is left: missing PO, waiting supplier, ready, to deliver, unsigne
     { kind: "ready", name: "Socket set", quantity: 10 },
     { kind: "no_po", name: "Jack", quantity: 4 },
     { kind: "waiting_supplier", name: "Forklift 5 ton", quantity: 1, po: "PO-1", expected: "2026-11-20" },
-    { kind: "not_invoiced", dp: "DP-2", value: 2000 },
+    { kind: "not_invoiced", dp: "DP-2", value: 2052 }, // what its invoice would be: 18 kept x 100 + 14% VAT
     { kind: "draft_dp", dp: "DP-3" },
   ])
 })
@@ -278,8 +280,8 @@ test("O12. orders to invoice: ready when everything is delivered and every DP ap
   })
   const list = await ordersToInvoice(db)
   assert.deepEqual(list.map((o) => [o.soNumber, o.ready, o.value, o.toInvoice.map((p) => p.number)]), [
-    ["SO-READY", true, 300, ["DP-1"]],
-    ["SO-OPEN", false, 200, ["DP-2"]],
+    ["SO-READY", true, 342, ["DP-1"]], // the invoice amount: 300 + 14% VAT
+    ["SO-OPEN", false, 228, ["DP-2"]],
   ])
   assert.deepEqual(list[1].reasons, [
     { kind: "not_delivered", name: "C", quantity: 2, state: "no_po" },
@@ -309,4 +311,73 @@ test("O14. a PO line lowered below what was received (item went back to the supp
   // the PO that will deliver is named, not the one the item went back to
   const waiting = ov.todo.find((t: any) => t.kind === "waiting_supplier" && t.name === "Forklift 5 ton") as any
   assert.equal(waiting.po, "PO-1")
+})
+
+test("O15. orders to invoice with customer returns: each DP's value and the total are the invoice amount, which equals the delivered-items print", async () => {
+  // Owner report, 2026-11-18 (SO-2026-507661): the card showed the permits' items before returns, discount and VAT;
+  // the delivered-items print and the invoice take the returns off. A: 10 x 1,000, B: 4 x 2,500, discount 1,000 (5%).
+  // DP-1: 6 A (1 returned), DP-2: 4 A + 2 B, DP-3: 2 B (1 returned) -> delivered 9 A + 3 B = 16,500 before discount.
+  const { ordersToInvoice } = await import("../ready-to-invoice")
+  const db = new FakeDb({
+    sales_orders: [{ so_id: 1, so_number: "SO-RET", customer_id: 5, status: "approved", total: 21660, subtotal: 20000, discount_amount: 1000, discount_type: "fixed", discount_value: 1000, payment_type: "cash" }],
+    customers: [{ customer_id: 5, customer_name: "Al Nour" }],
+    products: [],
+    sales_order_items: [
+      { so_item_id: 1, so_id: 1, product_id: null, outsourced_name: "A", item_type: "outsourced", quantity: 10, unit_price: 1000, total: 10000 },
+      { so_item_id: 2, so_id: 1, product_id: null, outsourced_name: "B", item_type: "outsourced", quantity: 4, unit_price: 2500, total: 10000 },
+    ],
+    delivery_permits: [1, 2, 3].map((id) => ({ permit_id: id, permit_no: `DP-${id}`, sales_order_id: 1, status: "APPROVED", created_at: `2026-11-0${id}T09:00:00Z` })),
+    delivery_permit_items: [
+      { item_id: 1, permit_id: 1, product_id: null, item_name_snapshot: "A", quantity: 6, unit_price: 1000, total: 6000 },
+      { item_id: 2, permit_id: 2, product_id: null, item_name_snapshot: "A", quantity: 4, unit_price: 1000, total: 4000 },
+      { item_id: 3, permit_id: 2, product_id: null, item_name_snapshot: "B", quantity: 2, unit_price: 2500, total: 5000 },
+      { item_id: 4, permit_id: 3, product_id: null, item_name_snapshot: "B", quantity: 2, unit_price: 2500, total: 5000 },
+    ],
+    product_returns: [
+      { return_id: 1, permit_id: "1", status: "approved", created_at: "2026-11-05T10:00:00Z" },
+      { return_id: 2, permit_id: "3", status: "received", created_at: "2026-11-06T10:00:00Z" },
+    ],
+    return_items: [
+      { return_item_id: 1, return_id: 1, product_id: null, product_name: "A", returned_quantity: 1 },
+      { return_item_id: 2, return_id: 2, product_id: null, product_name: "B", returned_quantity: 1 },
+    ],
+    purchase_order_items: [],
+    purchase_orders: [],
+    goods_receipt_lines: [],
+    accounts_receivable: [],
+    invoice_delivery_permits: [],
+    customer_payments: [],
+    accounts_payable: [],
+    supplier_credits: [],
+    suppliers: [],
+    workflow_events: [],
+  })
+  useDb(db)
+
+  const [order] = await ordersToInvoice(db)
+  // 16,500 x 0.95 x 1.14 (was 20,000: the permits' items before returns, discount and VAT)
+  assert.equal(order.value, 17869.5)
+  assert.deepEqual(order.toInvoice.map((p) => [p.number, p.value]), [["DP-1", 5415], ["DP-2", 9747], ["DP-3", 2707.5]])
+
+  // the delivered-items print of the same order
+  const print = await soPrintRoute.GET(new Request("http://localhost/api/sales-orders/print?soId=1&delivery=delivered") as any)
+  const html = await print.text()
+  assert.match(html, /16,500/) // subtotal of what was delivered, after returns
+  assert.match(html, /17,869\.5/) // its total with VAT
+
+  // "Invoice delivered part" stores the same amount
+  const res = await call(fromDpsRoute.POST, "POST", { permit_ids: order.toInvoice.map((p) => p.permitId) })
+  assert.equal(res.status, 200, JSON.stringify(res.body))
+  assert.equal(res.body.invoices[0].amount, order.value)
+  assert.equal(db.tables.accounts_receivable[0].amount, 17869.5)
+  assert.deepEqual(await ordersToInvoice(db), []) // invoiced: off the list
+})
+
+test("O16. the overview's DP list and 'not invoiced' item carry the invoice amount; the money bar's delivered is after returns", async () => {
+  const ov = (await buildSoOverview(seed(), 1))!
+  const dp2 = ov.permits.find((p) => p.number === "DP-2")!
+  assert.deepEqual({ value: dp2.value, returned: dp2.returned, invoiceValue: dp2.invoiceValue }, { value: 2000, returned: 2, invoiceValue: 2052 })
+  assert.equal(ov.money.delivered, 3800) // 18 drills kept + 2 forklifts, not the 20 drills on the permit
+  assert.match(src("lib/ready-to-invoice.ts"), /dpInvoiceValue\(state, toInvoice\.map\(\(p\) => p\.permitId\)\)/)
+  assert.match(src("lib/invoicing.ts"), /const \{ eta, newLines, newValue \} = priceDpInvoice\(state, newPermits, netByPermit\)/)
 })
