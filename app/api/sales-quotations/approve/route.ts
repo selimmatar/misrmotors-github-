@@ -7,6 +7,8 @@ import { runApprovalSideEffects } from "@/lib/sales-orders/on-approved"
 import { hasLineOrderColumn, sortQuotationLines } from "@/lib/line-order"
 import { type NextRequest, NextResponse } from "next/server"
 import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
+import { checkStoredPicks, fromStockLineFields, reserveStoredPicks } from "@/lib/outsourced-hold"
+import { quotationFromInventoryId } from "@/lib/quotations/from-stock"
 
 // Converts a quotation into a sales order using the values STORED on the quotation.
 // Edits made in the "Approve & Convert" dialog must be saved first (PATCH
@@ -110,6 +112,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Lines taken from free stored stock (lib/quotations/from-stock.ts): checked now like the sales order form does
+    // (the row must still be free), reserved for the new order once it exists (lib/outsourced-hold.ts).
+    const storedPicks = quotationItems
+      .filter((item) => item.item_type === "outsourced" && quotationFromInventoryId(item) !== null)
+      .map((item) => ({ inventoryId: quotationFromInventoryId(item)!, quantity: Number(item.quantity) }))
+    let storedCheck: Awaited<ReturnType<typeof checkStoredPicks>>
+    try {
+      storedCheck = await checkStoredPicks(supabase, storedPicks)
+    } catch (storedError: any) {
+      console.error("Approve quotation: could not check the stored items:", storedError?.message || storedError)
+      return NextResponse.json({ error: "Failed to validate inventory" }, { status: 500 })
+    }
+    if (!storedCheck.ok) return NextResponse.json({ error: storedCheck.error, code: storedCheck.code }, { status: storedCheck.status })
+
     const nextSoNumber = async () => {
       const { data: soNumberData, error: soNumberError } = await supabase.rpc("generate_so_number")
       if (soNumberError) console.error("Generate SO number error:", soNumberError)
@@ -208,10 +224,40 @@ export async function POST(request: NextRequest) {
       for (const row of supplierRows || []) supplierIdByName.set(row.supplier_name, row.supplier_id)
     }
 
+    // Reserve the stored items for the new order (the picked row, or the part split off it)
+    let reservation: Awaited<ReturnType<typeof reserveStoredPicks>> | null = null
+    if (storedPicks.length > 0 && storedCheck.ok) {
+      try {
+        reservation = await reserveStoredPicks(supabase, salesOrder.so_number, storedPicks, storedCheck.rows)
+      } catch (reserveError: any) {
+        console.error("Approve quotation: could not reserve the stored items:", reserveError?.message || reserveError)
+        await supabase.from("sales_orders").delete().eq("so_id", salesOrder.so_id)
+        return NextResponse.json(
+          { error: "A stored item on this quotation was changed by someone else. Nothing was saved; please try again.", code: "STORED_ITEM_CHANGED" },
+          { status: 409 },
+        )
+      }
+    }
+
     // Inserted in line order (so_item_id order); line_order is written too once the column exists.
     const withLineOrder = await hasLineOrderColumn(supabase)
     const soItems = quotationItems.map((item: any, index: number) => {
       const isOutsourced = item.item_type === "outsourced"
+      const picked = isOutsourced ? quotationFromInventoryId(item) : null
+      if (picked !== null && reservation && storedCheck.ok) {
+        // a from-stock line, named like the stored item and marked with its reserved row (lib/from-stock-line.ts)
+        return {
+          ...(withLineOrder ? { line_order: index + 1 } : {}),
+          so_id: salesOrder.so_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total: item.quantity * item.unit_price,
+          item_category: itemCategory,
+          outsourced_unit: "unit",
+          supplier_id: item.supplier_name ? supplierIdByName.get(item.supplier_name) || null : null,
+          ...fromStockLineFields(storedCheck.rows.get(picked), reservation.reserved.get(picked) ?? picked),
+        }
+      }
       return {
         ...(withLineOrder ? { line_order: index + 1 } : {}),
         so_id: salesOrder.so_id,
@@ -233,6 +279,7 @@ export async function POST(request: NextRequest) {
 
     if (itemsError) {
       console.error("Create SO items error:", itemsError)
+      if (reservation) await reservation.undo()
       const { error: rollbackError } = await supabase.from("sales_orders").delete().eq("so_id", salesOrder.so_id)
       if (rollbackError) console.error("Rollback: failed to remove sales order without items:", rollbackError)
       return NextResponse.json({ error: "Failed to create sales order items" }, { status: 500 })

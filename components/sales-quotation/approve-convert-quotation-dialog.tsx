@@ -45,6 +45,7 @@ interface QuotationItemInput {
   unit_price: number
   unit_cost?: number | null
   supplier_name?: string | null
+  from_inventory_id?: number | null
 }
 
 interface QuotationInput {
@@ -88,6 +89,8 @@ interface EditItem {
   unitCost?: number | null
   // Outsourced lines: selling price = cost + markup %. Not stored; worked out from cost and price on load.
   markup: number
+  /** a line taken from free stored stock: the picked inventory row (lib/quotations/from-stock.ts), kept on save */
+  fromInventoryId?: number | null
 }
 
 interface ApproveConvertQuotationDialogProps {
@@ -132,6 +135,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       unitPrice: item.unit_price || 0,
       unitCost: item.unit_cost ?? null,
       markup: markupFrom(item.unit_cost, item.unit_price),
+      fromInventoryId: item.from_inventory_id ?? null,
     })),
   )
 
@@ -423,6 +427,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         unit_cost: item.itemType === "outsourced" ? item.unitCost ?? null : null,
         item_type: item.itemType === "stock" ? "inventory" : "outsourced",
         supplier_name: item.itemType === "outsourced" ? item.supplierName : null,
+        from_inventory_id: item.itemType === "outsourced" ? item.fromInventoryId ?? null : null,
       }))
 
       const saveResponse = await fetch("/api/sales-quotations", {

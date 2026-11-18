@@ -44,6 +44,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useI18n } from "@/lib/i18n-context"
 import { ReturnedExchangeDialog } from "@/components/inventory/returned-exchange-dialog"
 import { fill } from "@/lib/i18n-format"
+import { soldLineCostAndSupplier } from "@/lib/sold-cost"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -270,30 +271,15 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
   // order (landed once finalized, else the PO unit price; a line taken from stock: its stock row's cost), never the
   // order's cost estimate (app/api/inventory/outsourced-costs); a catalogue product: its stock value per unit (all
   // warehouses). Null when unknown.
-  const soldCostAndSupplier = (item: any, so: any): { unitCost: number | null; supplierName: string | null } => {
-    const sameName = (v: unknown) => String(v ?? "").trim().replace(/\s+/g, " ").toLowerCase()
-    const name = sameName(item.itemNameSnapshot || item.productName)
-    const soLine = (so?.items || []).find((l: any) =>
-      item.productId ? String(l.productId) === String(item.productId) : !l.productId && sameName(l.productName || l.outsourcedName) === name,
-    )
-    let unitCost: number | null = null
-    let poSupplier: string | null = null
-    if (!item.productId) {
-      const costed = outsourcedCosts.find((c: any) => String(c.soId) === String(so?.id ?? item.soId) && sameName(c.name) === name)
-      unitCost = costed?.unitCost ?? null
-      poSupplier = costed?.supplierName ?? null
-    } else {
-      const rows = (inventory || []).filter((r: any) => String(r.productId) === String(item.productId) && !r.isReturned)
-      const qty = rows.reduce((s: number, r: any) => s + Math.max(0, Number(r.quantity) || 0), 0)
-      if (rows.length > 0) {
-        unitCost = qty > 0
-          ? rows.reduce((s: number, r: any) => s + Math.max(0, Number(r.quantity) || 0) * (Number(r.unitCost) || 0), 0) / qty
-          : rows.reduce((s: number, r: any) => s + (Number(r.unitCost) || 0), 0) / rows.length
-      }
-    }
-    const supplierName = poSupplier || item.supplierName || soLine?.supplierName || null
-    return { unitCost, supplierName }
-  }
+  // Matched by the permit's sales order id and the line's item_name_snapshot (lib/sold-cost.ts).
+  const soldCostAndSupplier = (item: any, so: any, dp: any): { unitCost: number | null; supplierName: string | null } =>
+    soldLineCostAndSupplier({
+      item,
+      soId: dp?.salesOrderId ?? dp?.soId ?? so?.id,
+      soLines: so?.items || [],
+      costs: outsourcedCosts,
+      inventory: inventory as any[],
+    })
 
   const soldItems: SoldItem[] = useMemo(() => {
     const items: SoldItem[] = []
@@ -327,7 +313,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           const sold = (Number(item.quantity) || 0) - returned
           if (sold <= 0) return
           const unit = Number(item.unitPrice) || 0
-          const { unitCost, supplierName } = soldCostAndSupplier(item, so)
+          const { unitCost, supplierName } = soldCostAndSupplier(item, so, dp)
 
           items.push({
             unitCost,
@@ -1182,8 +1168,9 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
                     note={
                       <>
                         {item.sku} · {t("field.quantity")}: {formatNumber(item.quantity)}
-                        {item.unitCost != null ? ` · ${t("inventory.sold-cost")}: ${formatMoney(item.unitCost, language)}` : ""}
-                        {item.supplierName ? ` · ${item.supplierName}` : ""}
+                        {` · ${t("inventory.sold-cost")}: ${item.unitCost != null ? formatMoney(item.unitCost, language) : "—"}`}
+                        {` · ${t("field.unit-price")}: ${formatMoney(item.unitPrice, language)}`}
+                        {` · ${t("inventory.sold-supplier")}: ${item.supplierName || "—"}`}
                         {item.soNumber ? ` · ${item.soNumber}` : ""} · {formatDate(item.soldDate, language)}
                       </>
                     }

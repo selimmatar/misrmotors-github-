@@ -69,7 +69,7 @@ export function computeDirectPending(input: {
   const poItemById = new Map(input.poItems.map((p) => [p.po_item_id, p]))
   const soItem = new Map(input.soItems.map((l) => [l.so_item_id, l]))
   const liveOrders = new Map(input.orders.filter((o) => !CLOSED_SO_STATUSES.includes(o.status)).map((o) => [o.so_id, o]))
-  const orderByNumber = new Map([...liveOrders.values()].map((o) => [String(o.so_number), o]))
+  const orderByNumber = new Map([...liveOrders.values()].map((o) => [String(o.so_number).trim(), o]))
   const key = (soId: number, name: unknown) => `${soId}\u0000${sameName(name)}`
   const soLineOf = (g: (typeof input.grnLines)[number]) =>
     g.source_so_item_id ?? (g.po_item_id != null ? poItemById.get(g.po_item_id)?.source_so_item_id ?? null : null)
@@ -99,7 +99,7 @@ export function computeDirectPending(input: {
   }
   for (const row of input.storedRows || []) {
     if (!isPurchasedRow(row) || !row.so_number) continue
-    const order = orderByNumber.get(String(row.so_number))
+    const order = orderByNumber.get(String(row.so_number).trim())
     if (!order) continue
     let g = groups.get(key(order.so_id, row.outsourced_name))
     if (!g) {
@@ -174,16 +174,16 @@ export async function loadDirectPending(db: Db): Promise<DirectPendingItem[]> {
     ? await selectInChunks(lineIds, (c) => db.from("sales_order_items").select("so_item_id, so_id").in("so_item_id", c), "load order lines")
     : []
   // purchased rows still in a warehouse (their order's line may be gone): their orders count too
+  // (any row naming its order that is not a return or a from-stock reservation, lib/outsourced-hold.ts isPurchasedRow)
   const storedRows = must(
     await db
       .from("inventory")
       .select("inventory_id, product_id, quantity, unit_cost, supplier_name, is_outsourced, is_returned, outsourced_name, outsourced_description, so_number")
-      .eq("is_outsourced", true)
-      .eq("is_returned", false)
-      .like("outsourced_description", "Received on %"),
+      .is("product_id", null)
+      .not("so_number", "is", null),
     "load purchased rows",
-  )
-  const rowNumbers = [...new Set(storedRows.filter((r: any) => r.so_number && Number(r.quantity) > 0).map((r: any) => String(r.so_number)))]
+  ).filter(isPurchasedRow)
+  const rowNumbers = [...new Set(storedRows.filter((r: any) => Number(r.quantity) > 0).map((r: any) => String(r.so_number).trim()))]
   const byNumber = rowNumbers.length
     ? await selectInChunks(rowNumbers, (c) => db.from("sales_orders").select("so_id").in("so_number", c), "load orders of purchased rows")
     : []
@@ -203,6 +203,7 @@ export async function loadDirectPending(db: Db): Promise<DirectPendingItem[]> {
 
 export interface OutsourcedLineCost {
   soId: number
+  /** the order line (0 = a purchase order line bought for the order whose order line is gone or renamed) */
   soItemId: number
   name: string
   /** per unit, from the purchase order (landed once finalized, else the PO line unit price); null = no PO yet */
@@ -210,19 +211,52 @@ export interface OutsourcedLineCost {
   supplierName: string | null
 }
 
+type CostPoItem = {
+  po_item_id: number
+  po_id: number
+  quantity: unknown
+  unit_price: unknown
+  landed_cost?: unknown
+  source_so_item_id?: number | null
+  source_so_id?: number | null
+  outsourced_name?: string | null
+  item_type?: string | null
+  product_id?: unknown
+}
+
 /**
  * Our cost of each outsourced sales-order line (owner decision, 2026-11-17: from the PURCHASE ORDER, not the order's
  * cost estimate): the quantity-weighted cost of the PO lines bought for it (rejected POs left out). A line taken from
  * stock costs what its reserved inventory row costs (that row's cost came from its own PO).
+ *
+ * The PO lines bought for an order line (owner report 2026-11-18, live data): the ones linked to it by
+ * source_so_item_id; when none is, the order's outsourced PO lines (source_so_id) with the same item name (whitespace
+ * and case ignored) that no other line of the order claims. Lines edited before the order kept its line ids point at
+ * order lines that are gone, so the order + name match is what finds them. A PO line bought for the order whose name
+ * matches no order line is still listed (soItemId 0) so a delivered line of that name finds its cost.
+ * The supplier: the PO's; else the order line's own supplier.
  */
 export function computeOutsourcedLineCosts(input: {
-  soItems: { so_item_id: number; so_id: number; outsourced_name?: string | null; outsourced_description?: string | null; product_id?: unknown }[]
-  poItems: { po_item_id: number; po_id: number; quantity: unknown; unit_price: unknown; landed_cost?: unknown; source_so_item_id?: number | null }[]
+  soItems: { so_item_id: number; so_id: number; outsourced_name?: string | null; outsourced_description?: string | null; product_id?: unknown; supplier_id?: number | null }[]
+  poItems: CostPoItem[]
   pos: { po_id: number; status?: string | null; supplier_id?: number | null; cost_finalized?: boolean | null }[]
   suppliers: { supplier_id: number; supplier_name: string }[]
   reservedRows: { inventory_id: number; unit_cost?: unknown; supplier_name?: string | null }[]
 }): OutsourcedLineCost[] {
   const out: OutsourcedLineCost[] = []
+  const poOf = (p: { po_id: number }) => input.pos.find((po) => po.po_id === p.po_id)
+  const supplierOf = (id: number | null | undefined) => (id ? input.suppliers.find((s) => s.supplier_id === id)?.supplier_name ?? null : null)
+  const live = input.poItems.filter((p) => poOf(p)?.status !== "rejected" && !p.product_id && (!p.item_type || p.item_type === "outsourced"))
+  const lineIds = new Set(input.soItems.map((l) => l.so_item_id))
+  // PO lines linked to a line that still exists are that line's; the rest are matched by order + name
+  const unlinked = live.filter((p) => p.source_so_item_id == null || !lineIds.has(p.source_so_item_id))
+  const used = new Set<number>()
+  const costOf = (bought: CostPoItem[]) => {
+    const cost = (p: CostPoItem) => outsourcedUnitCost(p, !!poOf(p)?.cost_finalized)
+    const qty = bought.reduce((s, p) => s + num(p.quantity), 0)
+    const unitCost = qty > 0 ? Math.round((bought.reduce((s, p) => s + num(p.quantity) * cost(p), 0) / qty) * 100) / 100 : cost(bought[0])
+    return { unitCost, supplierName: supplierOf(poOf(bought[bought.length - 1])?.supplier_id) }
+  }
   for (const line of input.soItems) {
     if (line.product_id) continue
     const marker = parseFromStock(line.outsourced_description)
@@ -235,36 +269,54 @@ export function computeOutsourcedLineCosts(input: {
         supplierName = row.supplier_name ?? null
       }
     } else {
-      const poOf = (p: { po_id: number }) => input.pos.find((po) => po.po_id === p.po_id)
-      const bought = input.poItems.filter((p) => p.source_so_item_id === line.so_item_id && poOf(p)?.status !== "rejected")
-      if (bought.length > 0) {
-        const cost = (p: (typeof bought)[number]) => outsourcedUnitCost(p, !!poOf(p)?.cost_finalized)
-        const qty = bought.reduce((s, p) => s + num(p.quantity), 0)
-        unitCost = qty > 0 ? Math.round((bought.reduce((s, p) => s + num(p.quantity) * cost(p), 0) / qty) * 100) / 100 : cost(bought[0])
-        const po = poOf(bought[bought.length - 1])
-        supplierName = po?.supplier_id ? input.suppliers.find((s) => s.supplier_id === po.supplier_id)?.supplier_name ?? null : null
+      let bought = live.filter((p) => p.source_so_item_id === line.so_item_id)
+      if (bought.length === 0) {
+        bought = unlinked.filter(
+          (p) => !used.has(p.po_item_id) && Number(p.source_so_id) === line.so_id && sameName(p.outsourced_name) === sameName(line.outsourced_name),
+        )
       }
+      for (const p of bought) used.add(p.po_item_id)
+      if (bought.length > 0) ({ unitCost, supplierName } = costOf(bought))
     }
-    out.push({ soId: line.so_id, soItemId: line.so_item_id, name: line.outsourced_name || "", unitCost, supplierName })
+    out.push({ soId: line.so_id, soItemId: line.so_item_id, name: line.outsourced_name || "", unitCost, supplierName: supplierName ?? supplierOf(line.supplier_id) })
+  }
+  // bought for the order, but no order line of that name (renamed / removed): listed under the PO line's name
+  const orphans = new Map<string, CostPoItem[]>()
+  for (const p of unlinked) {
+    if (used.has(p.po_item_id) || p.source_so_id == null || !p.outsourced_name) continue
+    const k = `${Number(p.source_so_id)}\u0000${sameName(p.outsourced_name)}`
+    orphans.set(k, [...(orphans.get(k) || []), p])
+  }
+  for (const group of orphans.values()) {
+    out.push({ soId: Number(group[0].source_so_id), soItemId: 0, name: group[0].outsourced_name || "", ...costOf(group) })
   }
   return out
 }
 
+const COST_PO_COLUMNS = "po_item_id, po_id, quantity, unit_price, landed_cost, source_so_item_id, source_so_id, outsourced_name, item_type, product_id"
+
 /** Loads computeOutsourcedLineCosts' inputs for every outsourced sales-order line. Throws on query errors. */
 export async function loadOutsourcedLineCosts(db: Db): Promise<OutsourcedLineCost[]> {
+  // an outsourced line is one without a catalogue product (older lines may not carry item_type "outsourced")
   const soItems = must(
-    await db.from("sales_order_items").select("so_item_id, so_id, outsourced_name, outsourced_description, product_id").eq("item_type", "outsourced"),
+    await db.from("sales_order_items").select("so_item_id, so_id, outsourced_name, outsourced_description, product_id, supplier_id").is("product_id", null),
     "load outsourced order lines",
   )
   if (soItems.length === 0) return []
-  const poItems = await selectInChunks(
+  const byLine = await selectInChunks(
     soItems.map((l: any) => l.so_item_id),
-    (c) => db.from("purchase_order_items").select("po_item_id, po_id, quantity, unit_price, landed_cost, source_so_item_id").in("source_so_item_id", c),
+    (c) => db.from("purchase_order_items").select(COST_PO_COLUMNS).in("source_so_item_id", c),
     "load PO lines",
   )
+  const byOrder = await selectInChunks(
+    [...new Set(soItems.map((l: any) => l.so_id))],
+    (c) => db.from("purchase_order_items").select(COST_PO_COLUMNS).in("source_so_id", c),
+    "load PO lines of the orders",
+  )
+  const poItems = [...new Map([...byLine, ...byOrder].map((p: any) => [p.po_item_id, p])).values()]
   const poIds = [...new Set(poItems.map((p: any) => p.po_id))]
   const pos = poIds.length ? await selectInChunks(poIds, (c) => db.from("purchase_orders").select("po_id, status, supplier_id, cost_finalized").in("po_id", c), "load POs") : []
-  const supplierIds = [...new Set(pos.map((p: any) => p.supplier_id).filter(Boolean))]
+  const supplierIds = [...new Set([...pos.map((p: any) => p.supplier_id), ...soItems.map((l: any) => l.supplier_id)].filter(Boolean))]
   const suppliers = supplierIds.length ? must(await db.from("suppliers").select("supplier_id, supplier_name").in("supplier_id", supplierIds), "load suppliers") : []
   const reservedIds = [...new Set(soItems.map((l: any) => parseFromStock(l.outsourced_description)?.reservedId).filter((v: any) => v != null))]
   const reservedRows = reservedIds.length

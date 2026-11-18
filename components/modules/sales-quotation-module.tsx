@@ -30,6 +30,8 @@ import * as XLSX from "xlsx"
 import { normalizeQuotationPaymentDetails } from "@/lib/payment-type"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
+import { formatMoney } from "@/lib/format"
+import { STORED_PREFIX, freeStockChoices, productFreeStock, storedAvailable, storedIdOf } from "@/lib/free-stock"
 import { formatDate } from "@/lib/format"
 import { PageHeader } from "@/components/erp/page-header"
 import { Money } from "@/components/erp/money"
@@ -52,6 +54,10 @@ interface QuotationItem {
   unit_price: number
   markup: number
   supplier_name?: string
+  /** "Add from inventory" picked a free stored outsourced item: its inventory row (saved as an outsourced line) */
+  from_inventory_id?: string
+  /** that item's stock cost per unit */
+  stored_cost?: number
 }
 
 interface SalesQuotationModuleProps {
@@ -79,14 +85,20 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   const newWorkflow = isNewQuotationWorkflow()
   const getAvailableStock = (productId?: number | null): number | null => {
     if (productId === undefined || productId === null) return null
-    // New quotation workflow: free stock = on hand minus what orders and other waiting quotations hold.
-    if (newWorkflow) {
-      const row = inventory.find((inv) => inv.productId === productId.toString() && typeof inv.available === "number")
-      if (row) return row.available as number
-    }
+    // New quotation workflow: free stock = on hand minus what orders and other waiting quotations hold (read from a
+    // non-returned row of the product: a returned row's `available` is always 0, lib/free-stock.ts).
+    if (newWorkflow) return productFreeStock(inventory as any[], productId)
     const entry = aggregatedInventory.find((inv) => inv.productId === productId.toString())
     return entry ? entry.quantity : 0
   }
+  // "Add from inventory" (owner, 2026-11-18): every item free to sell, the same list the sales order form offers:
+  // catalogue products with free stock, then free stored outsourced items by name with their cost (lib/free-stock.ts),
+  // then the catalogue products without free stock (a quotation may ask for more than is free).
+  const inventoryChoices = useMemo(() => freeStockChoices(products as any[], inventory as any[], { includeOutOfStock: true }), [products, inventory])
+  const storedRowOf = (inventoryId?: string) =>
+    inventoryId ? (inventory as any[]).find((inv) => !inv.productId && String(inv.inventoryId ?? inv.id) === String(inventoryId)) : undefined
+  const lineStock = (item: QuotationItem): number | null =>
+    item.from_inventory_id ? storedAvailable(storedRowOf(item.from_inventory_id)) : getAvailableStock(item.product_id)
 
   // Draft persistence: lets the user save multiple in-progress quotations and pick which one to
   // resume, e.g. when juggling several quotes at once or logging out mid-creation.
@@ -776,6 +788,29 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   )
 
   const handleInventorySelection = (itemId: string, productId: string) => {
+    const storedId = storedIdOf(productId)
+    if (storedId) {
+      // a free stored outsourced item: by name, priced at its stock cost (markup on top), its supplier kept
+      const stored = storedRowOf(storedId)
+      if (!stored) return
+      const cost = Number(stored.unitCost) || 0
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                product_id: undefined,
+                from_inventory_id: storedId,
+                stored_cost: cost,
+                product_name: stored.productName || stored.outsourcedName || "",
+                unit_price: cost,
+                supplier_name: stored.supplierName || undefined,
+              }
+            : item,
+        ),
+      )
+      return
+    }
     const product = products.find((p) => p.id?.toString() === productId)
     if (product) {
       setItems((prevItems) =>
@@ -784,6 +819,9 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
             ? {
                 ...item,
                 product_id: Number(productId),
+                from_inventory_id: undefined,
+                stored_cost: undefined,
+                supplier_name: undefined,
                 product_name: product.productName || product.product_name || "",
                 unit_price: product.unitPrice || product.unit_price || 0,
               }
@@ -812,7 +850,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
 
     const invalidItems = items.filter((item) => {
       if (item.item_type === "inventory") {
-        return !item.product_id || item.quantity <= 0 || item.unit_price < 0
+        return (!item.product_id && !item.from_inventory_id) || item.quantity <= 0 || item.unit_price < 0
       }
       if (item.item_type === "outsourced") {
         return !item.product_name || !item.product_name.trim() || item.quantity <= 0 || item.unit_price < 0
@@ -825,15 +863,17 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       return false
     }
 
-    // New quotation workflow: a quotation may ask for more than is free (the line shows "N missing").
-    const outOfStockItem = newWorkflow ? undefined : items.find((item) => {
+    // New quotation workflow: a quotation may ask for more than is free (the line shows "N missing"). A stored item is
+    // reserved as it is (no purchase follows): never more than is free.
+    const outOfStockItem = items.find((item) => {
       if (item.item_type !== "inventory") return false
-      const stock = getAvailableStock(item.product_id)
+      if (newWorkflow && !item.from_inventory_id) return false
+      const stock = lineStock(item)
       return stock !== null && item.quantity > stock
     })
 
     if (outOfStockItem) {
-      const stock = getAvailableStock(outOfStockItem.product_id)
+      const stock = lineStock(outOfStockItem)
       alert(fill(t("sq.only-has-in-stock-please"), { name: outOfStockItem.product_name, stock: String(stock) }))
       return false
     }
@@ -888,14 +928,16 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
         subtotal: subtotal,
         net_total: totalAmount,
         items: items.map((item) => ({
-          item_type: item.item_type,
-          product_id: item.product_id,
+          // a free stored item is an outsourced line that remembers its inventory row (reserved at approval)
+          item_type: item.from_inventory_id ? "outsourced" : item.item_type,
+          product_id: item.from_inventory_id ? null : item.product_id,
           product_name: item.product_name,
           quantity: item.quantity,
           unit_price: Number(getItemFinalPrice(item).toFixed(2)),
           // Cost before markup, so a purchase order made from this line starts with it
-          unit_cost: item.item_type === "outsourced" ? Number(item.unit_price) || null : null,
+          unit_cost: item.item_type === "outsourced" ? Number(item.unit_price) || null : item.from_inventory_id ? item.stored_cost ?? null : null,
           supplier_name: item.supplier_name || null,
+          from_inventory_id: item.from_inventory_id ? Number(item.from_inventory_id) : null,
         })),
       }),
     })
@@ -913,6 +955,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       productId: item.item_type === "inventory" && item.product_id ? item.product_id : null,
       productName: item.product_name,
       quantity: item.quantity,
+      // a stored item is in hand: no supplier price is asked for it (not outsourced, no product: nothing missing)
       outsourced: item.item_type === "outsourced",
     }))
     setSavedQuotation(quotation)
@@ -1330,16 +1373,16 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                       <div className="col-span-2 lg:col-span-6 space-y-2">
                         <Label htmlFor={`product-${item.id}`}>{t("sq.select-product-from-inventory")}</Label>
                         <ProductSearchCombobox
-                          products={products
-                            .filter((product) => product.id != null)
-                            .map((product) => ({
-                              id: product.id!.toString(),
-                              productName: product.productName,
-                              sku: product.sku
-                            }))}
-                          inventory={aggregatedInventory}
+                          products={inventoryChoices.map((choice) => ({
+                            id: choice.id,
+                            productName: choice.stored
+                              ? fill(t("so.stored-item-label"), { name: choice.name, cost: formatMoney(choice.unitCost || 0, language) })
+                              : choice.name,
+                            sku: choice.sku,
+                          }))}
+                          inventory={inventoryChoices.map((choice) => ({ productId: choice.id, quantity: choice.available }))}
                           warehouseId="all"
-                          value={item.product_id ? item.product_id.toString() : undefined}
+                          value={item.from_inventory_id ? `${STORED_PREFIX}${item.from_inventory_id}` : item.product_id ? item.product_id.toString() : undefined}
                           onSelect={(value) => handleInventorySelection(item.id, value)}
                           placeholder={t("so.search-product-by-name-or")}
                         />
@@ -1379,7 +1422,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                   <div className="col-span-1 lg:col-span-1 space-y-2">
                     <Label htmlFor={`quantity-${item.id}`}>{t("quantity")}</Label>
                     {(() => {
-                      const stockLimit = item.item_type === "inventory" ? getAvailableStock(item.product_id) : null
+                      const stockLimit = item.item_type === "inventory" ? lineStock(item) : null
                       return (
                         <>
                           <Input

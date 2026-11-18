@@ -321,7 +321,8 @@ test("availability route: leaves the asking quotation's own hold out", async () 
 
 test("new quotation screen: asking for more than is free is allowed only in the new workflow", () => {
   const src = readFileSync(join(process.env.REPO_ROOT || process.cwd(), "components/modules/sales-quotation-module.tsx"), "utf8")
-  assert.match(src, /const outOfStockItem = newWorkflow \? undefined :/)
+  // (a free stored item is reserved as it is: never more than is free, in either workflow)
+  assert.match(src, /if \(newWorkflow && !item\.from_inventory_id\) return false/)
   assert.match(src, /if \(!newWorkflow && stockLimit !== null/)
   assert.match(src, /<StockShortfallNote free=\{stockLimit\} requested=\{item.quantity\} \/>/)
 })

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getConvertedSo, getQuotationLockReason } from "@/lib/sales-quotations/converted"
 import { hasColumn, sortQuotationLines } from "@/lib/line-order"
 import { cleanAddressedTo } from "@/lib/quotations/addressed-to"
+import { fromStockField, hasQuotationFromStockColumn } from "@/lib/quotations/from-stock"
 import { type NextRequest, NextResponse } from "next/server"
 import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 
@@ -117,7 +118,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to create quotation" }, { status: 500 })
     }
 
-    // Insert items
+    // Insert items (a line taken from free stored stock keeps the picked row, lib/quotations/from-stock.ts)
+    const withFromStock = await hasQuotationFromStockColumn(supabase)
     const itemsData = items.map((item: any, index: number) => ({
       quotation_id: quotation.id,
       line_no: index + 1,
@@ -128,6 +130,7 @@ export async function POST(request: NextRequest) {
       unit_price: item.unit_price,
       unit_cost: item.unit_cost ?? null,
       supplier_name: item.supplier_name || null,
+      ...fromStockField(item, withFromStock),
     }))
 
     const { error: itemsError } = await supabase.from("sales_quotation_items").insert(itemsData)
@@ -217,6 +220,7 @@ export async function PATCH(request: NextRequest) {
 
     // Step 1: insert the new items (the old ones stay in place). `total` is a generated
     // column and must not be written.
+    const withFromStock = await hasQuotationFromStockColumn(supabase)
     const itemsData = items.map((item: any, index: number) => ({
       quotation_id: quotationId,
       line_no: index + 1,
@@ -227,6 +231,7 @@ export async function PATCH(request: NextRequest) {
       unit_price: item.unit_price,
       unit_cost: item.unit_cost ?? null,
       supplier_name: item.supplier_name || null,
+      ...fromStockField(item, withFromStock),
     }))
 
     const { data: insertedItems, error: insertItemsError } = await supabase
