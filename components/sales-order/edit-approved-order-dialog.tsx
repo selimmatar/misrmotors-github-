@@ -318,8 +318,10 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         ? "installment"
         : "prepaid"
 
+    // each saved line goes back with its so_item_id, so the server changes it in place (purchase orders point at it)
     const payloadItems = items.map((item) => ({
       id: item.id,
+      so_item_id: item.id || undefined,
       productId: item.itemType === "stock" ? item.productId : "",
       productName: item.itemType === "stock" ? item.productName : item.productName,
       quantity: item.quantity,
