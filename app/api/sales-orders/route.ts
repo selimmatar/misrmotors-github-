@@ -18,7 +18,16 @@ import {
 } from "@/lib/outsourced-hold"
 import { parseFromStock } from "@/lib/from-stock-line"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
-import { correctionPermitUpdates, markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit, type PermitLineUpdate } from "@/lib/so-edit"
+import {
+  correctionPermitUpdates,
+  markDeliveredIfComplete,
+  reopenIfNotFullyDelivered,
+  saveSoEditLines,
+  syncSalesOrderNetTotal,
+  validateSoEdit,
+  withSoLineIds,
+  type PermitLineUpdate,
+} from "@/lib/so-edit"
 import { refreshSoFulfilment } from "@/lib/goods-receiving"
 import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
 import { orderCorrectionScope } from "@/lib/eta/correction"
@@ -598,7 +607,7 @@ export async function PUT(request: Request) {
     const {
       id,
       so_id,
-      items,
+      items: sentItems,
       status,
       paymentType,
       payment_type,
@@ -758,6 +767,21 @@ export async function PUT(request: Request) {
     // An order whose invoice was reversed on the portal and is being corrected (spec §6.5a, P15) may change the price /
     // quantity of lines that sit only on the correction's permits, and its customer when no other invoice of the order
     // still counts, until the new invoice exists; otherwise the usual locks apply.
+    // The order's saved lines. Each edited line is matched to the saved line it is (by the id the form sends; for an
+    // older client, by item) so it keeps its so_item_id: purchase-order lines, receipts and stock holds point at it
+    // (lib/so-edit.ts matchSoEditLines). Everything below sees the matched ids.
+    let savedLines: any[] = []
+    let items: any[] | undefined = Array.isArray(sentItems) ? sentItems : undefined
+    if (items) {
+      const { data: savedRows, error: savedError } = await supabase
+        .from("sales_order_items")
+        .select("so_item_id, product_id, quantity, outsourced_name, outsourced_description")
+        .eq("so_id", numericId)
+      if (savedError) return NextResponse.json({ error: "Could not read the order lines. Nothing was changed." }, { status: 500 })
+      savedLines = savedRows || []
+      items = withSoLineIds(savedLines, items)
+    }
+
     const correction = await orderCorrectionScope(supabase, numericId)
     const correcting = correction !== null
     const editVerdict = await validateSoEdit(supabase, numericId, { customerId: updates.customerId ?? updates.customer_id, items, correction })
@@ -783,19 +807,12 @@ export async function PUT(request: Request) {
 
     // Lines taken from stored stock on an edit (owner, 2026-11-17; lib/outsourced-hold.ts planEditPicks): checked here,
     // before anything is written; reserved right before the order is saved and undone if it is not.
-    let savedLines: any[] = []
     let editPicks: StoredPick[] = []
     let editReuse = new Map<number, string>()
     let editTopUps: TopUp[] = []
     let editCheckRows = new Map<number, any>()
     let pickedRows = new Map<number, any>()
     if (items) {
-      const { data: savedRows, error: savedError } = await supabase
-        .from("sales_order_items")
-        .select("so_item_id, quantity, outsourced_name, outsourced_description")
-        .eq("so_id", numericId)
-      if (savedError) return NextResponse.json({ error: "Could not read the order lines. Nothing was changed." }, { status: 500 })
-      savedLines = savedRows || []
       const plan = planEditPicks(savedLines, items)
       if (!plan.ok) return NextResponse.json({ error: plan.error, code: plan.code }, { status: plan.status })
       const check = await checkStoredPicks(supabase, plan.picks)
@@ -893,6 +910,13 @@ export async function PUT(request: Request) {
       topUpUndo = topUp.undo
     }
 
+    // What the order's own fields were, to put back if its lines then cannot be saved.
+    let headerBefore: any = null
+    if (items) {
+      const { data: before } = await supabase.from("sales_orders").select(Object.keys(dbUpdates).join(", ")).eq("so_id", numericId).maybeSingle()
+      headerBefore = before || null
+    }
+
     const { data: order, error: orderError } = await supabase
       .from("sales_orders")
       .update(dbUpdates)
@@ -932,32 +956,16 @@ export async function PUT(request: Request) {
 
 
     if (items) {
-      // Diff against existing rows instead of delete-all-then-insert-all, so unchanged/edited
-      // items keep their so_item_id. Purchase orders can reference an item via
-      // source_so_item_id, so reusing the id here keeps that link valid; only items the
-      // caller actually removed get deleted.
-      const numericSoId = Number.parseInt(finalId)
-      const { data: existingItemRows } = await supabase
-        .from("sales_order_items")
-        .select("so_item_id")
-        .eq("so_id", numericSoId)
-
-      const existingIds = new Set((existingItemRows || []).map((row: any) => row.so_item_id))
-      const incomingIds = new Set(
-        items
-          .map((item: any) => item.id ?? item.so_item_id ?? item.soItemId)
-          .filter((id: any) => id !== undefined && id !== null && id !== "")
-          .map((id: any) => Number(id)),
-      )
-
-      const idsToDelete = [...existingIds].filter((id) => !incomingIds.has(id))
-      if (idsToDelete.length > 0) {
-        await supabase.from("sales_order_items").delete().in("so_item_id", idsToDelete)
-      }
+      // Lines change in place: a line still on the order keeps its so_item_id (purchase-order lines, receipts and stock
+      // holds point at it), only new lines are inserted and only removed lines deleted (lib/so-edit.ts saveSoEditLines).
+      // A purchase-order line of a removed line is left as it is.
+      const numericSoId = numericId
+      const savedIds = new Set(savedLines.map((row: any) => Number(row.so_item_id)))
 
       // The order of `items` is the order the person chose (drag / move up-down): saved as line_order once
       // scripts/sql/2026-11-18-line-order.sql is applied; silently skipped before that.
       const withLineOrder = await hasLineOrderColumn(supabase)
+      const lineWrites: { id: number | null; row: Record<string, any> }[] = []
       for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
         const item = items[itemIndex]
         const hasProductId = (item.productId || item.product_id) && (item.productId || item.product_id) !== ""
@@ -1015,13 +1023,39 @@ export async function PUT(request: Request) {
           const row = pickedRows.get(picked) || editCheckRows.get(picked)
           if (reservedId !== undefined && row) Object.assign(itemRow, fromStockLineFields(row, reservedId))
         }
-        if (existingId !== undefined && existingId !== null && existingId !== "" && existingIds.has(Number(existingId))) {
-          await supabase.from("sales_order_items").update(itemRow).eq("so_item_id", Number(existingId))
-        } else {
-          await supabase.from("sales_order_items").insert(itemRow)
+        const keptId = existingId !== undefined && existingId !== null && existingId !== "" && savedIds.has(Number(existingId)) ? Number(existingId) : null
+        lineWrites.push({ id: keptId, row: itemRow })
+      }
+
+      let saved: Awaited<ReturnType<typeof saveSoEditLines>>
+      try {
+        saved = await saveSoEditLines(supabase, numericSoId, lineWrites)
+      } catch (linesError: any) {
+        saved = { ok: false, error: linesError?.message || String(linesError), undone: false }
+      }
+      if (!saved.ok) {
+        console.error("Sales Orders PUT: could not save the order lines:", saved.error)
+        if (topUpUndo) await topUpUndo()
+        if (editReservation) await editReservation.undo()
+        let headerBack = true
+        if (headerBefore) {
+          const { error: backError } = await supabase.from("sales_orders").update(headerBefore).eq("so_id", numericId)
+          if (backError) headerBack = false
         }
+        const notBack = await putPermitsBack()
+        if (notBack.length) return partlyUndone(notBack)
+        return NextResponse.json(
+          {
+            error: saved.undone && headerBack
+              ? "The order lines could not be saved. Nothing was changed; please try again."
+              : "The order lines could not be saved and the edit could not be fully undone. Contact an administrator.",
+            code: "ORDER_LINES_NOT_SAVED",
+          },
+          { status: 500 },
+        )
       }
     }
+
 
     // P11: the correction's permit lines follow the corrected price / name, so the new invoice bills them.
     const permitLineFailures: number[] = []

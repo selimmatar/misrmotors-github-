@@ -292,3 +292,122 @@ export async function correctionPermitUpdates(
   }
   return { ok: true, updates }
 }
+
+// ---- keeping the order's line ids on an edit (owner report, 2026-11-18) ----
+// Purchase-order lines (purchase_order_items.source_so_item_id), goods receipts and stored-stock holds point at an
+// order line by its so_item_id, so an edit must change a line IN PLACE: a line that is still on the order keeps its
+// id, only a truly new line is inserted and only a removed line is deleted. A PO line that pointed at a removed line
+// is left as it is.
+
+const lineIdOf = (item: any): number | null => {
+  const raw = item?.id ?? item?.so_item_id ?? item?.soItemId
+  if (raw === undefined || raw === null || raw === "") return null
+  const id = Number(raw)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+const isNewStoredPick = (item: any) => item?.fromInventoryId !== undefined && item?.fromInventoryId !== null && item?.fromInventoryId !== ""
+
+/**
+ * Which saved line each edited line is (its so_item_id), or null for a new line. A line is matched by the id the form
+ * sends; a line sent without one (an older client) takes the first not yet matched saved line of the same item (its
+ * product, or the trimmed name of an outsourced line), in the saved order. An id that is not a line of this order, or
+ * one sent twice, makes a new line (the second copy). A new pick from stored stock is always a new line. Pure.
+ */
+export function matchSoEditLines(
+  stored: { so_item_id: number; product_id?: number | null; outsourced_name?: string | null; line_order?: number | null }[],
+  items: any[],
+): (number | null)[] {
+  const saved = new Set(stored.map((r) => Number(r.so_item_id)))
+  const claimed = new Set<number>()
+  const matched: (number | null)[] = (items || []).map(() => null)
+  const unsent: number[] = []
+  ;(items || []).forEach((item, index) => {
+    const id = lineIdOf(item)
+    if (id === null) {
+      if (!isNewStoredPick(item)) unsent.push(index)
+      return
+    }
+    if (saved.has(id) && !claimed.has(id)) {
+      claimed.add(id)
+      matched[index] = id
+    }
+  })
+  const position = (r: { line_order?: number | null }) => (r.line_order === null || r.line_order === undefined ? Number.MAX_SAFE_INTEGER : Number(r.line_order))
+  const free = stored
+    .filter((r) => !claimed.has(Number(r.so_item_id)))
+    .sort((a, b) => position(a) - position(b) || Number(a.so_item_id) - Number(b.so_item_id))
+  for (const index of unsent) {
+    const key = incomingKey(items[index])
+    const at = free.findIndex((r) => lineKey(r.product_id ? Number(r.product_id) : null, r.outsourced_name) === key)
+    if (at < 0) continue
+    matched[index] = Number(free[at].so_item_id)
+    free.splice(at, 1)
+  }
+  return matched
+}
+
+/** The edited lines with the saved line's id on each matched line (`id`) and no id on a new one (matchSoEditLines). */
+export function withSoLineIds(stored: Parameters<typeof matchSoEditLines>[0], items: any[]): any[] {
+  const matched = matchSoEditLines(stored, items)
+  return (items || []).map((item, index) => {
+    const { id: _id, so_item_id: _soItemId, soItemId: _camel, ...rest } = item || {}
+    return matched[index] === null ? rest : { ...rest, id: String(matched[index]) }
+  })
+}
+
+export type SoLineSaveResult =
+  | { ok: true; updatedIds: number[]; insertedIds: number[]; deletedIds: number[] }
+  | { ok: false; error: string; undone: boolean }
+
+/**
+ * Writes an edit's lines: a line with the id of a saved line of this order is updated in place (it keeps its
+ * so_item_id), a line without one is inserted, and the saved lines no edited line names are deleted, last. When a
+ * write fails, what was written is put back (updated lines restored, inserted lines deleted); `undone` says whether
+ * that worked.
+ */
+export async function saveSoEditLines(db: Db, soId: number, lines: { id: number | null; row: Record<string, any> }[]): Promise<SoLineSaveResult> {
+  const loaded = await db.from("sales_order_items").select("*").eq("so_id", soId)
+  if (loaded.error) return { ok: false, error: `load sales order items: ${loaded.error.message || loaded.error}`, undone: true }
+  const before = (loaded.data || []) as any[]
+  const beforeById = new Map(before.map((r) => [Number(r.so_item_id), r]))
+  const updatedIds: number[] = []
+  const insertedIds: number[] = []
+  const keep = new Set<number>()
+
+  const undo = async (): Promise<boolean> => {
+    let ok = true
+    for (const id of insertedIds) {
+      const { error } = await db.from("sales_order_items").delete().eq("so_item_id", id)
+      if (error) ok = false
+    }
+    for (const id of updatedIds) {
+      const { so_item_id: _id, ...old } = beforeById.get(id)
+      const { error } = await db.from("sales_order_items").update(old).eq("so_item_id", id)
+      if (error) ok = false
+    }
+    return ok
+  }
+  const fail = async (what: string, error: any): Promise<SoLineSaveResult> => {
+    const undone = await undo()
+    return { ok: false, error: `${what}: ${error?.message || error}`, undone }
+  }
+
+  for (const line of lines) {
+    if (line.id !== null && beforeById.has(line.id) && !keep.has(line.id)) {
+      keep.add(line.id)
+      const { error } = await db.from("sales_order_items").update(line.row).eq("so_item_id", line.id).eq("so_id", soId)
+      if (error) return fail("update order line", error)
+      updatedIds.push(line.id)
+    } else {
+      const { data, error } = await db.from("sales_order_items").insert(line.row).select("so_item_id")
+      if (error) return fail("add order line", error)
+      for (const r of data || []) insertedIds.push(Number(r.so_item_id))
+    }
+  }
+  const deletedIds = before.map((r) => Number(r.so_item_id)).filter((id) => !keep.has(id))
+  if (deletedIds.length > 0) {
+    const { error } = await db.from("sales_order_items").delete().in("so_item_id", deletedIds)
+    if (error) return fail("remove order line", error)
+  }
+  return { ok: true, updatedIds, insertedIds, deletedIds }
+}
