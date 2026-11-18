@@ -1,17 +1,18 @@
-// Outsourced items in our warehouses (owner, 2026-11-17).
+// Outsourced items in our warehouses (owner decisions, 2026-11-17).
 //
-// An outsourced item received INTO a warehouse (lib/goods-receiving.ts storeOutsourced) or an outsourced return put
-// into a warehouse (lib/returns.ts) is ordinary free stock: On hand, no hold for the order it was bought for, and any
-// sales order can take it ("add from inventory", create and edit). The order it was bought for still delivers it as
-// before (lib/dp-stock.ts takes the rows of its so_number by name).
+// PURCHASED for a sales order (lib/goods-receiving.ts storeOutsourced: "Received on <PO> ...", not a return): the row
+// is on hold for that order, whole, while the order is open, and the Inventory page shows it on the Pending tab, not
+// On hand. Its order delivers it (lib/dp-stock.ts takes the rows of its so_number by name). Once that order is
+// cancelled / rejected / delivered / completed nothing holds it (as before).
 //
-// A sales order line that TAKES such an item (lib/from-stock-line.ts marker) reserves an inventory row: the picked row
-// itself (its so_number moves to the order) or the part split off it. That row is held for the line:
+// FREE stock = an outsourced RETURN the customer gave back and that was put into a warehouse (lib/returns.ts), or a
+// purchased row whose order is closed: On hand, and any sales order can take it ("add from inventory", create and
+// edit). A sales order line that takes it (lib/from-stock-line.ts marker) reserves an inventory row - the picked row
+// itself or the part split off it, re-labelled "Taken from stock for <SO>" - held for the line:
 //   held(row) = min(row quantity, what the order's from-stock lines on that row still need)
 //   still need = their quantity - what the order's signed/approved delivery permits delivered of that name
-// Lowering or removing the line on an edit therefore releases the rest as free stock; a cancelled / rejected /
-// delivered / completed order holds nothing. Items received for an order WITHOUT a warehouse go straight to the
-// customer: they are not inventory rows (the Inventory page lists them on the Pending tab, app/api/inventory/pending).
+// Lowering or removing the line releases the rest as free stock; a closed order holds nothing. Items received for an
+// order WITHOUT a warehouse go straight to the customer: no inventory row (Pending tab, app/api/inventory/pending).
 import { STOCK_OUT_DP_STATUSES, selectInChunks } from "./stock-hold"
 import { fromStockDescription, parseFromStock } from "./from-stock-line"
 
@@ -27,11 +28,20 @@ export const isStoredOutsourced = (r: any) => !!r && !r.product_id && !!r.is_out
 /** Free-stock candidate: stored outsourced, not a return still waiting outside a warehouse. */
 export const isWarehouseOutsourced = (r: any) => isStoredOutsourced(r) && (!r.is_returned || r.warehouse_id !== null && r.warehouse_id !== undefined)
 
+/** A row purchased for a sales order (received into a warehouse by storeOutsourced), not a return or a reserved part. */
+export const isPurchasedRow = (r: any) =>
+  isStoredOutsourced(r) && !r.is_returned && /^Received on /.test(String(r.outsourced_description ?? ""))
+
+/** The label of a row reserved for an order that took it from stock (no longer "purchased" for its first order). */
+export const takenFromStockLabel = (soNumber: string) => `Taken from stock for ${soNumber}`
+
 export interface OutsourcedHold {
-  /** units of the row held for a sales order line that took it (0 = all free) */
+  /** units of the row held for an order (0 = all free) */
   held: number
   soNumber: string | null
   customerName: string | null
+  /** held because it was purchased for that order (Pending tab), not taken from stock */
+  purchased: boolean
 }
 
 export interface FromStockLine {
@@ -43,7 +53,7 @@ export interface FromStockLine {
 }
 
 export function computeOutsourcedHolds(input: {
-  rows: { inventory_id: number; quantity: unknown; product_id?: unknown; is_outsourced?: unknown; is_returned?: unknown; warehouse_id?: unknown }[]
+  rows: { inventory_id: number; quantity: unknown; product_id?: unknown; is_outsourced?: unknown; is_returned?: unknown; warehouse_id?: unknown; so_number?: string | null; outsourced_description?: string | null }[]
   orders: { so_id: number; so_number: string; status: string; customer_id?: number | null }[]
   lines: FromStockLine[]
   permits: { permit_id: number; sales_order_id: number; status: string }[]
@@ -81,14 +91,22 @@ export function computeOutsourcedHolds(input: {
     need.set(marker.reservedId, entry)
   }
 
+  const openByNumber = new Map([...open.values()].map((o) => [String(o.so_number), o]))
+  const customerOf = (order: any) => (order ? (input.customers || []).find((c) => c.customer_id === order.customer_id)?.customer_name ?? null : null)
   const out = new Map<number, OutsourcedHold>()
   for (const r of input.rows) {
     if (!isStoredOutsourced(r)) continue
+    const buyer = isPurchasedRow(r) && r.so_number ? openByNumber.get(String(r.so_number)) : undefined
+    if (buyer) {
+      // purchased for an open order: held for it, whole
+      const held = Math.max(0, num(r.quantity))
+      out.set(r.inventory_id, { held, soNumber: String(buyer.so_number), customerName: customerOf(buyer), purchased: true })
+      continue
+    }
     const n = need.get(r.inventory_id)
     const held = n ? Math.min(Math.max(0, num(r.quantity)), n.qty) : 0
     const order = n ? open.get(n.soId) : undefined
-    const customer = order ? (input.customers || []).find((c) => c.customer_id === order.customer_id) : undefined
-    out.set(r.inventory_id, { held, soNumber: held > 0 && order ? String(order.so_number) : null, customerName: held > 0 ? customer?.customer_name ?? null : null })
+    out.set(r.inventory_id, { held, soNumber: held > 0 && order ? String(order.so_number) : null, customerName: held > 0 ? customerOf(order) : null, purchased: false })
   }
   return out
 }
@@ -113,6 +131,14 @@ export async function loadOutsourcedHolds(db: Db, rows: any[]): Promise<Map<numb
   const orders = soIds.length
     ? await selectInChunks(soIds, (chunk) => db.from("sales_orders").select("so_id, so_number, status, customer_id").in("so_id", chunk), "load orders")
     : []
+  // the orders purchased rows were bought for
+  const known = new Set(orders.map((o: any) => String(o.so_number)))
+  const buyerNumbers = [...new Set(stored.filter((r) => isPurchasedRow(r) && r.so_number && !known.has(String(r.so_number))).map((r) => String(r.so_number)))]
+  if (buyerNumbers.length) {
+    orders.push(
+      ...(await selectInChunks(buyerNumbers, (chunk) => db.from("sales_orders").select("so_id, so_number, status, customer_id").in("so_number", chunk), "load buying orders")),
+    )
+  }
   const live = orders.filter((o: any) => !CLOSED_SO_STATUSES.includes(o.status))
   const liveIds = live.map((o: any) => o.so_id)
   const permits = liveIds.length
@@ -197,11 +223,20 @@ export async function reserveStoredPicks(db: Db, soNumber: string, picks: Stored
       }
       const now = new Date().toISOString()
       if (qty >= before) {
-        const moved = must(await guard(db.from("inventory").update({ so_number: soNumber, is_returned: false, last_updated: now })).select("inventory_id"), "reserve stored item")
+        const moved = must(
+          await guard(db.from("inventory").update({ so_number: soNumber, is_returned: false, outsourced_description: takenFromStockLabel(soNumber), last_updated: now })).select(
+            "inventory_id",
+          ),
+          "reserve stored item",
+        )
         if (moved.length !== 1) throw new Error(`stored item ${id} changed meanwhile`)
         undo.push(async () => {
           must(
-            await db.from("inventory").update({ so_number: row.so_number ?? null, is_returned: !!row.is_returned }).eq("inventory_id", id).eq("so_number", soNumber),
+            await db
+              .from("inventory")
+              .update({ so_number: row.so_number ?? null, is_returned: !!row.is_returned, outsourced_description: row.outsourced_description ?? null })
+              .eq("inventory_id", id)
+              .eq("so_number", soNumber),
             "undo reserve",
           )
         })
@@ -226,7 +261,7 @@ export async function reserveStoredPicks(db: Db, soNumber: string, picks: Stored
             is_outsourced: true,
             is_returned: false,
             outsourced_name: row.outsourced_name,
-            outsourced_description: row.outsourced_description,
+            outsourced_description: takenFromStockLabel(soNumber),
             supplier_name: row.supplier_name ?? null,
             so_number: soNumber,
             last_updated: now,
@@ -294,6 +329,76 @@ export interface EditPlan {
   picks: StoredPick[]
   /** new line index -> the saved line's marker it reuses (the same edit saved twice: nothing is taken again) */
   reuse: Map<number, string>
+  /** saved from-stock lines raised by the edit: the extra quantity their reserved row must get */
+  topUps: TopUp[]
+}
+
+export interface TopUp {
+  reservedId: number
+  pickedId: number
+  quantity: number
+  name: string
+}
+
+/**
+ * A raised from-stock line (owner, 2026-11-17): its reserved row must hold `quantity` more. What is free on the row
+ * itself is used first (e.g. after the line was lowered); the rest moves from the row it was picked from, if free
+ * there (compare-and-set on both rows). Otherwise the edit is refused with what is available. Call after the order's
+ * other reservations; `undo` puts the moved quantity back.
+ */
+export async function applyTopUps(
+  db: Db,
+  topUps: TopUp[],
+): Promise<{ ok: true; undo: () => Promise<void> } | { ok: false; status: number; error: string; code: string }> {
+  const undo: (() => Promise<void>)[] = []
+  const fail = async (error: string, code: string, status = 400) => {
+    await runUndo(undo)
+    return { ok: false as const, status, error, code }
+  }
+  try {
+    for (const t of topUps) {
+      const ids = [...new Set([t.reservedId, t.pickedId])]
+      const rows = must(await db.from("inventory").select(STORED_COLUMNS).in("inventory_id", ids), "load stored items")
+      const holds = await loadOutsourcedHolds(db, rows)
+      const byId = new Map<number, any>(rows.map((r: any) => [Number(r.inventory_id), r]))
+      const reserved = byId.get(t.reservedId)
+      const freeOn = (id: number) => {
+        const r = byId.get(id)
+        return r && isWarehouseOutsourced(r) ? Math.max(0, num(r.quantity) - (holds.get(id)?.held || 0)) : 0
+      }
+      const own = reserved ? freeOn(t.reservedId) : 0
+      if (own >= t.quantity) continue
+      const more = t.quantity - own
+      const source = t.pickedId !== t.reservedId ? byId.get(t.pickedId) : undefined
+      const there = source ? freeOn(t.pickedId) : 0
+      if (!reserved || there < more) {
+        return await fail(`Insufficient stock for ${t.name || "the stored item"}. Requested: ${t.quantity} more, Available: ${own + there}`, "STORED_ITEM_SHORT")
+      }
+      const now = new Date().toISOString()
+      const lowered = must(
+        await db.from("inventory").update({ quantity: num(source.quantity) - more, last_updated: now }).eq("inventory_id", t.pickedId).eq("quantity", source.quantity).select("inventory_id"),
+        "take from stored item",
+      )
+      if (lowered.length !== 1) return await fail("A stored item on this order was changed by someone else. Nothing was saved; please try again.", "STORED_ITEM_CHANGED", 409)
+      undo.push(async () => {
+        const cur = must(await db.from("inventory").select("quantity").eq("inventory_id", t.pickedId), "undo top-up: read")[0]
+        if (cur) must(await db.from("inventory").update({ quantity: num(cur.quantity) + more }).eq("inventory_id", t.pickedId).eq("quantity", cur.quantity), "undo top-up")
+      })
+      const raised = must(
+        await db.from("inventory").update({ quantity: num(reserved.quantity) + more, last_updated: now }).eq("inventory_id", t.reservedId).eq("quantity", reserved.quantity).select("inventory_id"),
+        "add to reserved item",
+      )
+      if (raised.length !== 1) return await fail("A stored item on this order was changed by someone else. Nothing was saved; please try again.", "STORED_ITEM_CHANGED", 409)
+      undo.push(async () => {
+        const cur = must(await db.from("inventory").select("quantity").eq("inventory_id", t.reservedId), "undo top-up: read")[0]
+        if (cur) must(await db.from("inventory").update({ quantity: num(cur.quantity) - more }).eq("inventory_id", t.reservedId).eq("quantity", cur.quantity), "undo top-up")
+      })
+    }
+  } catch (e: any) {
+    await runUndo(undo)
+    throw e
+  }
+  return { ok: true, undo: () => runUndo(undo) }
 }
 
 /**
@@ -301,8 +406,8 @@ export interface EditPlan {
  *  - a new line with fromInventoryId X reserves its quantity from X, unless the edit drops a saved from-stock line
  *    picked from X with the same name and at least that quantity (the same edit re-sent): it then keeps that line's
  *    reservation;
- *  - a saved from-stock line may be lowered or removed (its reservation shrinks with it: the rest is free stock again)
- *    but not raised: more of the item is a new line.
+ *  - a saved from-stock line lowered or removed: its reservation shrinks with it (the rest is free stock again);
+ *    raised: its reserved row must get the extra (applyTopUps).
  */
 export function planEditPicks(
   existing: { so_item_id: number; quantity: unknown; outsourced_name?: string | null; outsourced_description?: string | null }[],
@@ -313,18 +418,15 @@ export function planEditPicks(
   const dropped = existing.filter((l) => !kept.has(Number(l.so_item_id)) && parseFromStock(l.outsourced_description))
   const picks: StoredPick[] = []
   const reuse = new Map<number, string>()
+  const topUps: TopUp[] = []
   for (let i = 0; i < (items || []).length; i++) {
     const item = items[i]
     const id = idOf(item)
     if (id !== null && saved.has(id)) {
       const line = saved.get(id)!
-      if (parseFromStock(line.outsourced_description) && num(item.quantity) > num(line.quantity)) {
-        return {
-          ok: false,
-          status: 400,
-          error: `"${line.outsourced_name || "Stored item"}" was taken from stock: it cannot be raised above ${num(line.quantity)}. Add a new line for more.`,
-          code: "FROM_STOCK_RAISE",
-        }
+      const marker = parseFromStock(line.outsourced_description)
+      if (marker && num(item.quantity) > num(line.quantity)) {
+        topUps.push({ reservedId: marker.reservedId, pickedId: marker.pickedId, quantity: num(item.quantity) - num(line.quantity), name: String(line.outsourced_name || "") })
       }
       continue
     }
@@ -340,5 +442,5 @@ export function planEditPicks(
     }
     picks.push({ inventoryId: picked, quantity: num(item.quantity) })
   }
-  return { ok: true, picks, reuse }
+  return { ok: true, picks, reuse, topUps }
 }

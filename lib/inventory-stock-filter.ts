@@ -4,12 +4,15 @@ export type StockFilter = "all" | "in-stock" | "out-of-stock"
 export const STOCK_FILTERS: StockFilter[] = ["all", "in-stock", "out-of-stock"]
 
 /**
- * On hand tab rows (owner, 2026-11-17): catalogue stock (not returned) and every outsourced item in a warehouse
- * (received into it, taken from stock, or an outsourced return put there) while any of it is left.
+ * On hand tab rows (owner, 2026-11-17): catalogue stock (not returned) and every FREE outsourced item in a warehouse
+ * (a customer return put there, or taken from stock) while any of it is left. An outsourced item purchased for an open
+ * order is on the Pending tab instead.
  */
-export function isOnHandRow(item: { isOutsourced?: boolean; isReturned?: boolean; productId?: unknown; quantity?: unknown; warehouseId?: unknown }): boolean {
+export function isOnHandRow(item: { isOutsourced?: boolean; isReturned?: boolean; productId?: unknown; quantity?: unknown; warehouseId?: unknown; purchasedFor?: boolean }): boolean {
   const outsourced = !!item.isOutsourced || !item.productId
   if (outsourced) {
+    // purchased for an open order: it is that order's, on the Pending tab (owner decision, 2026-11-17)
+    if (item.purchasedFor) return false
     if (item.isReturned && (item.warehouseId === null || item.warehouseId === undefined || item.warehouseId === "")) return false
     return (Number(item.quantity) || 0) > 0
   }

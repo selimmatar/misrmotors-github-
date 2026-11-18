@@ -98,6 +98,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
 
   const [deliveryPermits, setDeliveryPermits] = useState<DeliveryPermit[]>([])
   const [directPending, setDirectPending] = useState<any[]>([])
+  const [outsourcedCosts, setOutsourcedCosts] = useState<any[]>([])
   const [soldDateFrom, setSoldDateFrom] = useState<string>("")
   const [soldDateTo, setSoldDateTo] = useState<string>("")
   const [selectedSODetails, setSelectedSODetails] = useState<SalesOrder | null>(null)
@@ -168,14 +169,29 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       }
     }
 
+    // Our cost of outsourced order lines, from their purchase orders (Sold tab)
+    const fetchOutsourcedCosts = async () => {
+      try {
+        const response = await fetch("/api/inventory/outsourced-costs")
+        if (response.ok) {
+          const data = await response.json()
+          if (Array.isArray(data)) setOutsourcedCosts(data)
+        }
+      } catch (error) {
+        console.error("Error fetching outsourced costs:", error)
+      }
+    }
+
     // Initial fetch
     fetchDeliveryPermits()
     fetchDirectPending()
+    fetchOutsourcedCosts()
 
     // Auto-refresh every 10 seconds to detect signed DP uploads
     const interval = setInterval(() => {
       fetchDeliveryPermits()
       fetchDirectPending()
+      fetchOutsourcedCosts()
     }, 10000)
 
     return () => clearInterval(interval)
@@ -250,17 +266,22 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     return items
   }, [deliveryPermits, salesOrders, customers, products, directPending])
 
-  // Sold tab (owner, 2026-11-17): our cost per unit and the supplier of a sold line. Outsourced: the order line's cost
-  // (the PO's cost, or the stored item's cost when taken from stock) and its supplier; a catalogue product: its stock
-  // value per unit (all warehouses). Null when unknown.
+  // Sold tab (owner, 2026-11-17): our cost per unit and the supplier of a sold line. Outsourced: from its purchase
+  // order (landed once finalized, else the PO unit price; a line taken from stock: its stock row's cost), never the
+  // order's cost estimate (app/api/inventory/outsourced-costs); a catalogue product: its stock value per unit (all
+  // warehouses). Null when unknown.
   const soldCostAndSupplier = (item: any, so: any): { unitCost: number | null; supplierName: string | null } => {
-    const name = String(item.itemNameSnapshot || item.productName || "").trim().toLowerCase()
+    const sameName = (v: unknown) => String(v ?? "").trim().replace(/\s+/g, " ").toLowerCase()
+    const name = sameName(item.itemNameSnapshot || item.productName)
     const soLine = (so?.items || []).find((l: any) =>
-      item.productId ? String(l.productId) === String(item.productId) : !l.productId && String(l.productName || l.outsourcedName || "").trim().toLowerCase() === name,
+      item.productId ? String(l.productId) === String(item.productId) : !l.productId && sameName(l.productName || l.outsourcedName) === name,
     )
     let unitCost: number | null = null
+    let poSupplier: string | null = null
     if (!item.productId) {
-      unitCost = soLine?.costEstimate != null ? Number(soLine.costEstimate) : null
+      const costed = outsourcedCosts.find((c: any) => String(c.soId) === String(so?.id ?? item.soId) && sameName(c.name) === name)
+      unitCost = costed?.unitCost ?? null
+      poSupplier = costed?.supplierName ?? null
     } else {
       const rows = (inventory || []).filter((r: any) => String(r.productId) === String(item.productId) && !r.isReturned)
       const qty = rows.reduce((s: number, r: any) => s + Math.max(0, Number(r.quantity) || 0), 0)
@@ -270,7 +291,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
           : rows.reduce((s: number, r: any) => s + (Number(r.unitCost) || 0), 0) / rows.length
       }
     }
-    const supplierName = item.supplierName || soLine?.supplierName || null
+    const supplierName = poSupplier || item.supplierName || soLine?.supplierName || null
     return { unitCost, supplierName }
   }
 
@@ -333,7 +354,7 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     })
 
     return items.sort((a, b) => new Date(b.soldDate).getTime() - new Date(a.soldDate).getTime())
-  }, [deliveryPermits, salesOrders, customers, products, soldDateFrom, soldDateTo, inventory])
+  }, [deliveryPermits, salesOrders, customers, products, soldDateFrom, soldDateTo, inventory, outsourcedCosts])
 
   const handleViewSODetails = (item: PendingItem | SoldItem) => {
     const so = salesOrders.find((s) => s.id === item.soId || String(s.id) === String(item.soId))

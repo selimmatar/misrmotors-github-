@@ -5,7 +5,17 @@ import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
 import { DELIVERED_PERMIT_STATUSES, lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { checkSoStock, loadAvailability } from "@/lib/stock-hold"
-import { checkStoredPicks, fromStockLineFields, loadStoredRows, planEditPicks, reserveStoredPicks, type Reservation, type StoredPick } from "@/lib/outsourced-hold"
+import {
+  applyTopUps,
+  checkStoredPicks,
+  fromStockLineFields,
+  loadStoredRows,
+  planEditPicks,
+  reserveStoredPicks,
+  type Reservation,
+  type StoredPick,
+  type TopUp,
+} from "@/lib/outsourced-hold"
 import { parseFromStock } from "@/lib/from-stock-line"
 import { DP_DELIVERED_STATUSES, lineDeliveryStates } from "@/lib/delivery-status"
 import { correctionPermitUpdates, markDeliveredIfComplete, reopenIfNotFullyDelivered, syncSalesOrderNetTotal, validateSoEdit, type PermitLineUpdate } from "@/lib/so-edit"
@@ -770,6 +780,7 @@ export async function PUT(request: Request) {
     let savedLines: any[] = []
     let editPicks: StoredPick[] = []
     let editReuse = new Map<number, string>()
+    let editTopUps: TopUp[] = []
     let editCheckRows = new Map<number, any>()
     let pickedRows = new Map<number, any>()
     if (items) {
@@ -785,6 +796,7 @@ export async function PUT(request: Request) {
       if (!check.ok) return NextResponse.json({ error: check.error, code: check.code }, { status: check.status })
       editPicks = plan.picks
       editReuse = plan.reuse
+      editTopUps = plan.topUps
       editCheckRows = check.rows
       pickedRows = await loadStoredRows(
         supabase,
@@ -836,6 +848,7 @@ export async function PUT(request: Request) {
     }
 
     let editReservation: Reservation | null = null
+    let topUpUndo: (() => Promise<void>) | null = null
     if (editPicks.length > 0) {
       const { data: soRow } = await supabase.from("sales_orders").select("so_number").eq("so_id", numericId).maybeSingle()
       try {
@@ -856,13 +869,34 @@ export async function PUT(request: Request) {
       }
     }
 
+    // A raised from-stock line takes the extra from free stock (lib/outsourced-hold.ts applyTopUps)
+    if (editTopUps.length > 0) {
+      let topUp: Awaited<ReturnType<typeof applyTopUps>>
+      try {
+        topUp = await applyTopUps(supabase, editTopUps)
+      } catch (topUpError: any) {
+        console.error("Sales Orders PUT: could not reserve more stored stock", topUpError?.message || topUpError)
+        topUp = { ok: false, status: 500, error: "Could not reserve the extra stored stock. Nothing was saved; please try again.", code: "STORED_ITEM_CHANGED" }
+      }
+      if (!topUp.ok) {
+        if (editReservation) await editReservation.undo()
+        const notBack = await putPermitsBack()
+        if (notBack.length) console.error("Sales Orders PUT: delivery permits not put back after a refused top-up:", notBack)
+        return NextResponse.json({ error: topUp.error, code: topUp.code }, { status: topUp.status })
+      }
+      topUpUndo = topUp.undo
+    }
+
     const { data: order, error: orderError } = await supabase
       .from("sales_orders")
       .update(dbUpdates)
       .eq("so_id", numericId)
       .select()
       .maybeSingle()
-    if ((orderError || !order || !order.so_id) && editReservation) await editReservation.undo()
+    if (orderError || !order || !order.so_id) {
+      if (topUpUndo) await topUpUndo()
+      if (editReservation) await editReservation.undo()
+    }
 
     // the order was not saved: a permit that could not move back leaves the edit only partly undone - say so
     const partlyUndone = (failed: number[]) =>

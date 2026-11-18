@@ -12,7 +12,7 @@ import * as pendingRoute from "../../app/api/inventory/pending/route"
 import { computeHeldByProduct, loadAvailability, loadHeldByProduct } from "../stock-hold"
 import { computeOutsourcedHolds } from "../outsourced-hold"
 import { fromStockDescription, isFromStockLine, parseFromStock } from "../from-stock-line"
-import { computeDirectPending } from "../outsourced-pending"
+import { computeDirectPending, computeOutsourcedLineCosts } from "../outsourced-pending"
 import { isOnHandRow } from "../inventory-stock-filter"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -413,23 +413,54 @@ test("outsourced: undo puts the stored item back when the permit status update f
   assert.equal(qty(db, 1), 20)
 })
 
-// Owner, 2026-11-17: an outsourced item in a warehouse is ordinary free stock (no hold for the order it was bought
-// for); only a sales order line that TOOK it from stock (lib/from-stock-line.ts marker) holds the row reserved for it.
-test("GET /api/inventory: an outsourced item received into a warehouse is free stock, whatever order it was bought for", async () => {
+// Owner decisions, 2026-11-17: an outsourced item PURCHASED for an order (storeOutsourced: "Received on ...") stays on
+// hold for that order (Pending tab) even in a warehouse; a customer return put into a warehouse (or the item of a closed
+// order) is free stock, held only by a sales order line that TOOK it from stock (lib/from-stock-line.ts marker).
+const purchased = (inventory_id: number, warehouse_id: number, quantity: number, so_number: string, name = "Outsourced thing"): Row => ({
+  ...held(inventory_id, warehouse_id, quantity, so_number, name), outsourced_description: `Received on PO-T-1 for ${so_number}`,
+})
+const returnedRow = (inventory_id: number, warehouse_id: number | null, quantity: number, name = "Outsourced thing"): Row => ({
+  ...held(inventory_id, warehouse_id as any, quantity, "SO-OLD", name), is_returned: true, outsourced_description: "Returned from SO-OLD — customer return",
+})
+
+test("GET /api/inventory: a purchased item is held for its open order (Pending, not On hand); closed order or a return = free", async () => {
   mk({
     customers: [{ customer_id: 5, customer_name: "Al Kasrawy" }],
     sales_orders: [so(1, "accountant_approved"), so(2, "cancelled")],
-    sales_order_items: [line(1, 1, null, 4, "outsourced"), line(2, 2, null, 2, "outsourced")],
-    inventory: [held(9, 3, 4, "SO-T-1"), held(10, 3, 2, "SO-T-2"), held(11, 3, 1, "")],
+    sales_order_items: [line(1, 1, null, 1, "outsourced")],
+    inventory: [purchased(9, 3, 4, "SO-T-1"), purchased(10, 3, 2, "SO-T-2"), returnedRow(11, 3, 1)],
   })
   const rows = (await (await inventoryRoute.GET()).json()) as any[]
-  for (const id of [9, 10, 11]) {
+  const r9 = rows.find((x) => x.inventoryId === 9)
+  assert.equal(r9.onHold, 4, "held whole, even when its order line was lowered")
+  assert.equal(r9.available, 0)
+  assert.deepEqual(r9.heldFor, { soNumber: "SO-T-1", customerName: "Al Kasrawy" })
+  assert.equal(r9.purchasedFor, true)
+  assert.equal(isOnHandRow({ ...r9, productId: "" }), false, "Pending tab, not On hand")
+  for (const id of [10, 11]) {
     const r = rows.find((x) => x.inventoryId === id)
     assert.equal(r.onHold, 0, `row ${id}`)
     assert.equal(r.available, r.quantity, `row ${id}`)
     assert.equal(r.heldFor, null, `row ${id}`)
+    assert.equal(r.purchasedFor, false, `row ${id}`)
     assert.equal(r.reorderPoint, 0, "an outsourced item is never 'low stock'")
+    assert.equal(isOnHandRow({ ...r, productId: "" }), true, `row ${id} is On hand`)
   }
+})
+
+test("SO POST: an item purchased for another open order cannot be taken; its customer return can", async () => {
+  const db = mk({
+    sales_orders: [so(1, "accountant_approved")],
+    inventory: [purchased(9, 3, 4, "SO-T-1"), returnedRow(11, 3, 1)],
+  })
+  const r = await soPost([storedLine(9, 1)])
+  assert.equal(r.status, 400)
+  assert.equal(r.body.code, "STORED_ITEM_SHORT")
+  const ok = await soPost([storedLine(11, 1)])
+  assert.equal(ok.status, 200, JSON.stringify(ok.body))
+  const row = db.tables.inventory.find((i) => i.inventory_id === 11)!
+  assert.equal(row.is_returned, false)
+  assert.equal(row.outsourced_description, "Taken from stock for SO-NEW-1")
 })
 
 const fsLine = (so_item_id: number, so_id: number, quantity: number, reservedId: number, pickedId = reservedId, name = "Outsourced thing"): Row => ({
@@ -594,7 +625,7 @@ test("SO edit: the same edit saved twice (new line re-sent without its id) does 
   assert.equal(lines.length, 1)
 })
 
-test("SO edit: lowering or removing a from-stock line releases it as free stock; raising it is refused", async () => {
+test("SO edit: lowering or removing a from-stock line releases it as free stock; raising it reserves more", async () => {
   const db = editDb()
   await soPut([keepLine, stockPick(2)])
   const l = db.tables.sales_order_items.find((i) => i.so_id === 7 && i.outsourced_description)!
@@ -605,13 +636,37 @@ test("SO edit: lowering or removing a from-stock line releases it as free stock;
   let rows = (await (await inventoryRoute.GET()).json()) as any[]
   assert.equal(rows.find((x) => x.inventoryId === splitId).onHold, 1)
   assert.equal(rows.find((x) => x.inventoryId === splitId).available, 1, "lowered: 1 free again")
+  // raised 1 -> 3: the 1 free on its own row first, then 1 more moved over from the row it was picked from
   const raised = await soPut([keepLine, { ...saved, quantity: 3 }])
-  assert.equal(raised.status, 400)
-  assert.equal(raised.body.code, "FROM_STOCK_RAISE")
+  assert.equal(raised.status, 200, JSON.stringify(raised.body))
+  assert.equal(qty(db, splitId), 3)
+  assert.equal(qty(db, 30), 2)
+  rows = (await (await inventoryRoute.GET()).json()) as any[]
+  assert.equal(rows.find((x) => x.inventoryId === splitId).onHold, 3)
+  // more than is free: a clear refusal, nothing moves
+  const tooMuch = await soPut([keepLine, { ...saved, quantity: 10 }])
+  assert.equal(tooMuch.status, 400)
+  assert.equal(tooMuch.body.code, "STORED_ITEM_SHORT")
+  assert.match(tooMuch.body.error, /Pump\. Requested: 7 more, Available: 2/)
+  assert.equal(qty(db, splitId), 3)
+  assert.equal(qty(db, 30), 2)
+  assert.equal(db.tables.sales_order_items.find((i) => i.so_item_id === l.so_item_id)!.quantity, 3)
   assert.equal((await soPut([keepLine])).status, 200)
   rows = (await (await inventoryRoute.GET()).json()) as any[]
   assert.equal(rows.find((x) => x.inventoryId === splitId).onHold, 0, "removed: all free")
-  assert.equal(rows.find((x) => x.inventoryId === splitId).available, 2)
+  assert.equal(rows.find((x) => x.inventoryId === splitId).available, 3)
+})
+
+test("SO edit: a raise that fails to save gives the moved quantity back", async () => {
+  const db = editDb()
+  await soPut([keepLine, stockPick(2)])
+  const l = db.tables.sales_order_items.find((i) => i.so_id === 7 && i.outsourced_description)!
+  const splitId = db.tables.inventory.find((i) => i.so_number === "SO-T-7")!.inventory_id
+  db.failOn["sales_orders:update"] = "boom"
+  const r = await soPut([keepLine, { id: String(l.so_item_id), productId: "", productName: "Pump", quantity: 4, unitPrice: 60, total: 240, itemType: "outsourced" }])
+  assert.notEqual(r.status, 200)
+  assert.equal(qty(db, splitId), 2)
+  assert.equal(qty(db, 30), 3)
 })
 
 test("SO edit: a failed save undoes the reservation; more than is free is refused before anything is written", async () => {
@@ -723,8 +778,26 @@ test("Pending: an outsourced item received straight to the customer is pending f
   assert.equal(pendingInput({ pos: [{ po_id: 1, po_number: "PO-T-1", supplier_id: 1, cost_finalized: true }] })[0].unitCost, 2100, "landed once finalized")
 })
 
-test("Pending: received into a warehouse is not pending; a permit takes it off; a lowered line or a closed order caps it", () => {
-  assert.equal(pendingInput({ grnLines: [{ po_item_id: 2, source_so_item_id: 28, quantity_received: 5, warehouse_id: 3, item_type: "outsourced" }] }).length, 0)
+test("Pending: purchased into a warehouse is pending too (until its permit is signed); a permit takes it off; closed order = none", () => {
+  const inWarehouse = (rowQty: number, permits: any[] = [], permitItems: any[] = []) =>
+    pendingInput({
+      grnLines: [{ po_item_id: 2, source_so_item_id: 28, quantity_received: 5, warehouse_id: 3, item_type: "outsourced" }],
+      storedRows: [{ ...purchased(40, 3, rowQty, "SO-T-3", "Gearbox"), unit_cost: 2000 }] as any[],
+      permits,
+      permitItems,
+    })
+  const [w] = inWarehouse(5)
+  assert.equal(w.quantity, 5)
+  assert.equal(w.inWarehouse, 5)
+  assert.equal(w.unitCost, 2000)
+  const signed = inWarehouse(2, [{ permit_id: 1, sales_order_id: 3, status: "APPROVED" }], [{ permit_id: 1, product_id: null, item_name_snapshot: "Gearbox", quantity: 3 }])
+  assert.equal(signed[0].quantity, 2, "3 delivered (taken from the row): 2 left")
+  assert.equal(inWarehouse(0, [{ permit_id: 1, sales_order_id: 3, status: "APPROVED" }], [{ permit_id: 1, product_id: null, item_name_snapshot: "Gearbox", quantity: 5 }]).length, 0)
+  // the order's line was removed: the purchased row is still the order's, still listed
+  const orphan = pendingInput({ grnLines: [], soItems: [], storedRows: [{ ...purchased(40, 3, 2, "SO-T-3", "Gearbox"), unit_cost: 2000, supplier_name: "Supp A" }] as any[] })
+  assert.equal(orphan.length, 1)
+  assert.equal(orphan[0].quantity, 2)
+  assert.equal(orphan[0].unitCost, 2000)
   const onDp = pendingInput({
     permits: [{ permit_id: 1, sales_order_id: 3, status: "DRAFT" }, { permit_id: 2, sales_order_id: 3, status: "REJECTED" }],
     permitItems: [{ permit_id: 1, product_id: null, item_name_snapshot: "gearbox ", quantity: 2 }, { permit_id: 2, product_id: null, item_name_snapshot: "Gearbox", quantity: 3 }],
@@ -749,6 +822,35 @@ test("GET /api/inventory/pending lists the straight-to-customer items (FakeDb)",
   assert.equal(rows.length, 1)
   assert.equal(rows[0].quantity, 4)
   assert.equal(rows[0].supplierName, "Supp A")
+})
+
+test("Sold cost of outsourced lines comes from the purchase order (landed when finalized), not the order's estimate", () => {
+  const costs = computeOutsourcedLineCosts({
+    soItems: [
+      { so_item_id: 28, so_id: 3, outsourced_name: "Gearbox", outsourced_description: null, product_id: null },
+      { so_item_id: 29, so_id: 3, outsourced_name: "Pump", outsourced_description: fromStockDescription(50, 30), product_id: null },
+      { so_item_id: 30, so_id: 3, outsourced_name: "Belt", outsourced_description: null, product_id: null },
+    ],
+    poItems: [
+      { po_item_id: 2, po_id: 1, quantity: 3, unit_price: 100, landed_cost: 330, source_so_item_id: 28 },
+      { po_item_id: 3, po_id: 2, quantity: 1, unit_price: 200, landed_cost: null, source_so_item_id: 28 },
+      { po_item_id: 4, po_id: 3, quantity: 1, unit_price: 999, landed_cost: null, source_so_item_id: 30 },
+    ],
+    pos: [
+      { po_id: 1, status: "received", supplier_id: 1, cost_finalized: true },
+      { po_id: 2, status: "received", supplier_id: 1, cost_finalized: false },
+      { po_id: 3, status: "rejected", supplier_id: 1, cost_finalized: false },
+    ],
+    suppliers: [{ supplier_id: 1, supplier_name: "Supp A" }],
+    reservedRows: [{ inventory_id: 50, unit_cost: 44, supplier_name: "Supp B" }],
+  })
+  assert.equal(costs.find((c) => c.soItemId === 28)!.unitCost, 132.5, "(3 x 110 landed + 1 x 200) / 4")
+  assert.equal(costs.find((c) => c.soItemId === 28)!.supplierName, "Supp A")
+  assert.equal(costs.find((c) => c.soItemId === 29)!.unitCost, 44, "taken from stock: its stock row's cost")
+  assert.equal(costs.find((c) => c.soItemId === 30)!.unitCost, null, "a rejected PO does not count")
+  const src = readFileSync(join(process.env.REPO_ROOT ?? process.cwd(), "components/modules/inventory-module.tsx"), "utf8")
+  assert.match(src, /fetch\("\/api\/inventory\/outsourced-costs"\)/)
+  assert.doesNotMatch(src.slice(src.indexOf("const soldCostAndSupplier"), src.indexOf("const soldItems")), /costEstimate/)
 })
 
 test("Pending and Sold tabs on the screen: straight-to-customer rows, and Cost before Price, Supplier name before Customer", () => {

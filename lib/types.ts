@@ -186,6 +186,8 @@ export interface InventoryItem {
   onHoldByQuotations?: number | null
   /** a stored outsourced item: the open sales order (and customer) it is on hold for */
   heldFor?: { soNumber: string; customerName: string | null } | null
+  /** outsourced item purchased for that open order: Pending tab, not On hand */
+  purchasedFor?: boolean
   available?: number | null
   unit: string
   reorderPoint: number

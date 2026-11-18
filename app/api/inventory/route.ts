@@ -54,8 +54,9 @@ export async function GET() {
       }
     }
 
-    // An outsourced item in a warehouse (received into it, or an outsourced return put there) is free stock; only a
-    // sales order line that took it from stock holds it (lib/outsourced-hold.ts, owner 2026-11-17).
+    // An outsourced item purchased for an open order is held for it (Pending tab); a customer return put into a
+    // warehouse (or an item of a closed order) is free stock, held only by an order line that took it from stock
+    // (lib/outsourced-hold.ts, owner 2026-11-17).
     let outsourcedHolds: Map<number, OutsourcedHold> | null = null
     try {
       outsourcedHolds = await loadOutsourcedHolds(createAdminClient(), result as any[])
@@ -91,6 +92,8 @@ export async function GET() {
         available,
         // the open sales order a stored outsourced item is held for (null = not held)
         heldFor: storedFor,
+        // purchased for that order: the Inventory page shows it on the Pending tab, not On hand (lib/outsourced-hold.ts)
+        purchasedFor: !!(storedFor && storedHold?.purchased),
         // outsourced rows too: the PO line's cost, the landed cost once the PO's cost is finalized (lib/goods-receiving.ts)
         unitCost: Number(item.unit_cost) || 0,
         totalValue: Math.round((Number(item.quantity) || 0) * (Number(item.unit_cost) || 0) * 100) / 100,
