@@ -4,6 +4,7 @@ import { lineKey, loadReturnLines, returnedByKey } from "@/lib/return-lines"
 import { lineDeliveryStates } from "@/lib/delivery-status"
 import { renderSoPrintHtml } from "@/lib/so-print-html"
 import { escapeHtml } from "@/lib/print-html"
+import { sortSoLines } from "@/lib/line-order"
 
 export const dynamic = "force-dynamic"
 
@@ -39,10 +40,11 @@ export async function GET(request: NextRequest) {
       ? must(await db.from("customers").select("customer_name, phone, email").eq("customer_id", so.customer_id).maybeSingle(), "load customer")
       : null
 
-    const soItems = must(
-      await db.from("sales_order_items").select("so_item_id, product_id, quantity, unit_price, total, item_type, outsourced_name").eq("so_id", soId).order("so_item_id", { ascending: true }),
+    // In the order's saved line order (line_order once the column exists, else so_item_id)
+    const soItems = sortSoLines(must(
+      await db.from("sales_order_items").select("*").eq("so_id", soId).order("so_item_id", { ascending: true }),
       "load sales order items",
-    ) as any[]
+    ) as any[])
 
     const productIds = [...new Set(soItems.filter((i) => i.product_id).map((i) => i.product_id as number))]
     const names = new Map<number, string>()

@@ -12,6 +12,7 @@ import { asUuid } from "@/lib/idempotency"
 import { actorOr } from "@/lib/auth/actor"
 import { badNumberResponse, cleanManualNumber, highestSerial, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 import { openCorrectionsByPermit } from "@/lib/eta/correction"
+import { sortLines } from "@/lib/line-order"
 
 export const dynamic = "force-dynamic"
 
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
     ])
 
     // Group items and files by permit_id
-    const itemsByPermit = (itemsResult.data || []).reduce((acc: any, item: any) => {
+    const itemsByPermit = sortLines(itemsResult.data as any[], "item_id", "item_id").reduce((acc: any, item: any) => {
       const pid = item.permit_id
       if (!acc[pid]) acc[pid] = []
       acc[pid].push(item)

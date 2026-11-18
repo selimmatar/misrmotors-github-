@@ -235,6 +235,8 @@ function quoteDb(onHand: number, seed: Record<string, Row[]> = {}) {
     inventory: [{ inventory_id: 1, product_id: 7, warehouse_id: 1, quantity: onHand, unit_cost: 50, is_returned: false }],
     ...seed,
   })
+  // The approve route reads the lines from sales_quotation_items in line order (lib/line-order.ts).
+  db.tables.sales_quotation_items = db.tables.sales_quotations[0].items.map((item: Row) => ({ ...item, quotation_id: 1 }))
   db.rpcHandlers.generate_so_number = () => "SO-NEW-1"
   useDb(db)
   return db

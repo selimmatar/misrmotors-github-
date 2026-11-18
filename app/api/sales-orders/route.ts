@@ -22,6 +22,7 @@ import { correctionPermitUpdates, markDeliveredIfComplete, reopenIfNotFullyDeliv
 import { refreshSoFulfilment } from "@/lib/goods-receiving"
 import { badNumberResponse, cleanManualNumber, isUniqueViolation, numberTakenResponse } from "@/lib/doc-number"
 import { orderCorrectionScope } from "@/lib/eta/correction"
+import { hasLineOrderColumn, sortSoLines } from "@/lib/line-order"
 
 export const dynamic = "force-dynamic"
 
@@ -57,6 +58,8 @@ export async function GET() {
       if (!ordersData) {
         return []
       }
+      // Each order's lines in their saved order (line_order, else so_item_id): an embedded select has no set order.
+      for (const order of ordersData as any[]) order.sales_order_items = sortSoLines(order.sales_order_items)
 
 
       // Batch 2: per-line delivery / return history, so the order can be edited safely after a return.
@@ -504,7 +507,9 @@ export async function POST(request: Request) {
           )
         }
       }
-      const itemsWithSoId = items.map((item: any) => {
+      // The lines are inserted in the form's order (so_item_id order); line_order too once the column exists.
+      const withLineOrder = await hasLineOrderColumn(supabase)
+      const itemsWithSoId = items.map((item: any, index: number) => {
         const hasProductId = item.productId && item.productId !== ""
         const isOutsourced = item.itemCategory === "OUTSOURCED" || !hasProductId
         
@@ -522,6 +527,7 @@ export async function POST(request: Request) {
           : null
         
         const row: any = {
+          ...(withLineOrder ? { line_order: index + 1 } : {}),
           so_id: order.so_id,
           product_id: hasProductId ? item.productId : null,
           quantity: item.quantity,
@@ -949,6 +955,9 @@ export async function PUT(request: Request) {
         await supabase.from("sales_order_items").delete().in("so_item_id", idsToDelete)
       }
 
+      // The order of `items` is the order the person chose (drag / move up-down): saved as line_order once
+      // scripts/sql/2026-11-18-line-order.sql is applied; silently skipped before that.
+      const withLineOrder = await hasLineOrderColumn(supabase)
       for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
         const item = items[itemIndex]
         const hasProductId = (item.productId || item.product_id) && (item.productId || item.product_id) !== ""
@@ -985,6 +994,7 @@ export async function PUT(request: Request) {
         }
         // Keep the saved cost unless the caller sends one (the edit screen does not show it)
         if (item.costEstimate !== undefined) itemRow.cost_estimate = isOutsourced ? item.costEstimate : null
+        if (withLineOrder) itemRow.line_order = itemIndex + 1
 
         const existingId = item.id ?? item.so_item_id ?? item.soItemId
         // A saved line taken from stock keeps its name and marker (the reservation follows the line); a new one names

@@ -11,6 +11,7 @@ import { Printer } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
 import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
+import { quoteAddressee } from "@/lib/quotations/addressed-to"
 
 interface QuotationItem {
   id: number
@@ -27,6 +28,8 @@ interface QuotationData {
   department_name?: string
   receiver_name?: string
   customer_name: string
+  /** "Quote addressed to" (optional): printed instead of the customer name */
+  addressed_to?: string | null
   customer_phone: string | null
   customer_email: string | null
   validity_days: number
@@ -256,7 +259,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
       <div class="pm-field pm-field-wide"><div class="pm-label">رقم طلب التسعير:</div><div class="pm-value">${escapeHtml(activeQuotation.quotation_request_number)}</div></div>` : ""}
       <div class="pm-field"><div class="pm-label">صالح حتى:</div><div class="pm-value">${validUntil ? formatDateAr(validUntil.toISOString()) : "-"}</div></div>
       <div class="pm-field"><div class="pm-label">مدة الصلاحية:</div><div class="pm-value">${activeQuotation.validity_days || 30} يوم</div></div>
-      <div class="pm-field pm-field-wide"><div class="pm-label">السادة:</div><div class="pm-value">${escapeHtml(activeQuotation.customer_name)}</div></div>
+      <div class="pm-field pm-field-wide"><div class="pm-label">السادة:</div><div class="pm-value">${escapeHtml(quoteAddressee(activeQuotation))}</div></div>
       ${activeQuotation.customer_phone ? `
       <div class="pm-field"><div class="pm-label">الهاتف:</div><div class="pm-value">${escapeHtml(activeQuotation.customer_phone)}</div></div>
       <div class="pm-field"><div class="pm-label">البريد الإلكتروني:</div><div class="pm-value">${escapeHtml(activeQuotation.customer_email || "-")}</div></div>` : ""}
@@ -400,7 +403,7 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
                 </div>
                 <div className="col-span-2">
                   <span className="text-sm text-gray-500">السادة:</span>
-                  <span className="font-semibold mr-2">{activeQuotation.customer_name}</span>
+                  <span className="font-semibold mr-2">{quoteAddressee(activeQuotation)}</span>
                 </div>
                 {activeQuotation.customer_phone && (
                   <div>

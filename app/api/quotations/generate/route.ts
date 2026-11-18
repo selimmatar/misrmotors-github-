@@ -4,6 +4,7 @@ import { COMPANY_SETTINGS } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 import { computeTotals } from "@/lib/print-totals"
+import { quoteAddressee } from "@/lib/quotations/addressed-to"
 
 export const dynamic = "force-dynamic"
 
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
 
     const {
       customer_name,
+      addressed_to,
       customer_email,
       customer_phone,
       items,
@@ -111,7 +113,7 @@ export async function GET(request: NextRequest) {
     <div class="pm-fields">
       <div class="pm-field"><div class="pm-label">رقم العرض:</div><div class="pm-value">${escapeHtml(quotationNumber)}</div></div>
       <div class="pm-field"><div class="pm-label">التاريخ:</div><div class="pm-value">${quotationDate}</div></div>
-      <div class="pm-field pm-field-wide"><div class="pm-label">العميل:</div><div class="pm-value">${escapeHtml(customer_name)}</div></div>
+      <div class="pm-field pm-field-wide"><div class="pm-label">العميل:</div><div class="pm-value">${escapeHtml(quoteAddressee({ addressed_to, customer_name }))}</div></div>
       ${customer_email ? `<div class="pm-field pm-field-wide"><div class="pm-label">البريد:</div><div class="pm-value">${escapeHtml(customer_email)}</div></div>` : ""}
       ${customer_phone ? `<div class="pm-field pm-field-wide"><div class="pm-label">الهاتف:</div><div class="pm-value">${escapeHtml(customer_phone)}</div></div>` : ""}
       <div class="pm-field pm-field-wide"><div class="pm-label">صالح حتى:</div><div class="pm-value">${validUntil}</div></div>

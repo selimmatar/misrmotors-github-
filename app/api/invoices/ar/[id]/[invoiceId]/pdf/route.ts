@@ -3,6 +3,8 @@ import { NextResponse } from "next/server"
 import { escapeHtml } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 import { replacedPrint } from "@/lib/eta/replaced-print"
+import { followLineOrder, sortSoLines } from "@/lib/line-order"
+import { lineKey } from "@/lib/return-lines"
 
 export const dynamic = "force-dynamic"
 
@@ -69,7 +71,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
           products:product_id (product_name, sku)
         `)
         .in("permit_id", permitIds)
-      items = dpItems || []
+      // In the sales order's line order (lib/line-order.ts), then permit-line id.
+      const { data: soLines } = invoice.so_id
+        ? await supabase.from("sales_order_items").select("*").eq("so_id", invoice.so_id)
+        : { data: [] as any[] }
+      items = followLineOrder(
+        dpItems,
+        sortSoLines(soLines),
+        (row: any) => lineKey(row.product_id, row.item_name_snapshot),
+        (line: any) => lineKey(line.product_id, line.outsourced_name),
+        "item_id",
+      )
     }
 
     // Fallback: fetch SO items if no DP items
@@ -81,7 +93,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
           products:product_id (product_name, sku)
         `)
         .eq("so_id", invoice.so_id)
-      items = soItems || []
+      items = sortSoLines(soItems)
     }
 
     // Fetch company settings

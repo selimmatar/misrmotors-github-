@@ -19,6 +19,7 @@ import {
 import { isAfterGoLive } from "@/lib/eta/totals"
 import { replacedPrint } from "@/lib/eta/replaced-print"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
+import { followLineOrder, sortSoLines } from "@/lib/line-order"
 
 export const dynamic = "force-dynamic"
 
@@ -72,12 +73,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           delivery_contact_name,
           delivery_contact_phone,
           sales_order_items (
-            product_id,
-            quantity,
-            unit_price,
-            total,
-            item_type,
-            outsourced_name,
+            *,
             products:product_id (product_name, sku)
           )
         )
@@ -113,6 +109,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           permit_no,
           status,
           delivery_permit_items (
+            item_id,
             product_id,
             quantity,
             unit_price,
@@ -124,7 +121,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       )
       .eq("invoice_id", invoiceId)
 
+    // The order's lines in their saved order; a delivery permit's lines follow the same order.
+    if (invoice.sales_orders) invoice.sales_orders.sales_order_items = sortSoLines(invoice.sales_orders.sales_order_items)
+    const soLineKey = (line: any) => lineKey(line.product_id, line.outsourced_name)
     const linkedPermits = (dpLinks || []).map((link: any) => link.delivery_permits).filter(Boolean)
+    for (const permit of linkedPermits) {
+      permit.delivery_permit_items = followLineOrder(
+        permit.delivery_permit_items,
+        invoice.sales_orders?.sales_order_items,
+        (row: any) => lineKey(row.product_id, row.item_name_snapshot),
+        soLineKey,
+        "item_id",
+      )
+    }
     const isDpBasedInvoice = linkedPermits.length > 0
 
     // Items shown on the invoice: only the linked DP's items for a DP-based

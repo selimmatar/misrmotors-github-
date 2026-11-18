@@ -28,6 +28,8 @@ interface Quotation {
   receiver_name?: string
   customer_id?: number | null
   customer_name: string
+  /** "Quote addressed to" (optional; lib/quotations/addressed-to.ts) */
+  addressed_to?: string | null
   customer_phone: string | null
   customer_email: string | null
   validity_days: number
@@ -412,6 +414,12 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQ
                   <p className="text-sm text-muted-foreground">{t("lost-sales.customer-name")}</p>
                   <p className="font-semibold">{selectedQuotation.customer_name}</p>
                 </div>
+                {selectedQuotation.addressed_to ? (
+                  <div>
+                    <p className="text-sm text-muted-foreground">{t("sq.addressed-to")}</p>
+                    <p className="font-semibold">{selectedQuotation.addressed_to}</p>
+                  </div>
+                ) : null}
                 <div>
                   <p className="text-sm text-muted-foreground">{t("phone")}</p>
                   <p className="font-semibold">{selectedQuotation.customer_phone || t("label.na")}</p>

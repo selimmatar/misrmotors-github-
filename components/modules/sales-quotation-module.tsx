@@ -41,6 +41,7 @@ import { shrinkPhoto } from "@/lib/shrink-photo"
 import type { PhotoItem } from "@/lib/quotations/read-items"
 import { photoNumbers, postPhotoRead } from "@/lib/photo-retry"
 import { StockShortfallNote } from "@/components/sales-quotation/stock-shortfall-note"
+import { LineMoveControls, LineSearchBox, lineRowDragClass, useLineOrdering } from "@/components/shared/line-order-controls"
 
 interface QuotationItem {
   id: string
@@ -104,6 +105,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   const [selectedCustomerId, setSelectedCustomerId] = useState("")
 
   const [customerName, setCustomerName] = useState("")
+  // Optional name the quotation is made out to (printed instead of the customer name; lib/quotations/addressed-to.ts)
+  const [addressedTo, setAddressedTo] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
   const [customerEmail, setCustomerEmail] = useState("")
   const [customerAddress, setCustomerAddress] = useState("")
@@ -172,6 +175,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   const buildDraftSnapshot = () => ({
     selectedCustomerId,
     customerName,
+    addressedTo,
     customerPhone,
     customerEmail,
     customerAddress,
@@ -197,6 +201,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   const applyDraftSnapshot = (draft: ReturnType<typeof buildDraftSnapshot>) => {
     setSelectedCustomerId(draft.selectedCustomerId ?? "")
     setCustomerName(draft.customerName ?? "")
+    setAddressedTo(draft.addressedTo ?? "")
     setCustomerPhone(draft.customerPhone ?? "")
     setCustomerEmail(draft.customerEmail ?? "")
     setCustomerAddress(draft.customerAddress ?? "")
@@ -226,6 +231,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     setSavedPdfUrl(null)
     setSelectedCustomerId("")
     setCustomerName("")
+    setAddressedTo("")
     setCustomerPhone("")
     setCustomerEmail("")
     setCustomerAddress("")
@@ -333,6 +339,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     activeDraftId,
     selectedCustomerId,
     customerName,
+    addressedTo,
     customerPhone,
     customerEmail,
     customerAddress,
@@ -755,6 +762,19 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     setItems(items.map((item) => (item.id === id ? { ...item, [field]: value } : item)))
   }
 
+  // The lines keep the order they were entered in; the person can drag them or move them up / down, and search them
+  // by item name or SKU without changing that order (saved as line_no, 1..n, in this order).
+  const lineOrdering = useLineOrdering(
+    items,
+    setItems,
+    (item) => [
+      item.product_name,
+      item.product_id ? products.find((p) => String(p.id) === String(item.product_id))?.sku : null,
+      item.supplier_name,
+    ],
+    (item) => item.id,
+  )
+
   const handleInventorySelection = (itemId: string, productId: string) => {
     const product = products.find((p) => p.id?.toString() === productId)
     if (product) {
@@ -824,7 +844,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   // so asking a supplier for a price first and then printing does not make a second quotation
   const savedFormRef = useRef<string | null>(null)
   const formSnapshot = () =>
-    JSON.stringify([customerName, customerPhone, customerEmail, selectedCustomerId, items, notes, discountType, discountValue, paymentType, paymentDetails, validityDays, deliveryDate, deliveryAddress, manualNumber])
+    JSON.stringify([customerName, addressedTo, customerPhone, customerEmail, selectedCustomerId, items, notes, discountType, discountValue, paymentType, paymentDetails, validityDays, deliveryDate, deliveryAddress, manualNumber])
 
   // Saves the quotation (VAT always applied at 14%) and returns it with its lines for a price request
   const saveQuotation = async () => {
@@ -839,6 +859,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       body: JSON.stringify({
         customer_id: selectedCustomerId ? Number(selectedCustomerId) : null,
         customer_name: customerName,
+        addressed_to: addressedTo,
         customer_phone: customerPhone,
         customer_email: customerEmail,
         quotation_request_number: quotationRequestNumber,
@@ -912,6 +933,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
     const quotationData = {
       quotation_number: quotation.quotation_number,
       customer_name: customerName,
+      addressed_to: addressedTo,
       customer_phone: customerPhone,
       customer_email: customerEmail,
       items: items.map((item) => ({
@@ -1096,6 +1118,17 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="addressedTo">{t("sq.addressed-to")}</Label>
+              <Input
+                id="addressedTo"
+                placeholder={t("sq.addressed-to-placeholder")}
+                value={addressedTo}
+                maxLength={200}
+                onChange={(e) => setAddressedTo(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">{t("sq.addressed-to-help")}</p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="customerPhone">{t("sq.phone-number")}</Label>
               <Input
                 id="customerPhone"
@@ -1274,13 +1307,23 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
             </div>
           ) : (
             <div className="space-y-4">
-              {items.map((item, index) => (
-                <div key={item.id} className="grid grid-cols-2 lg:grid-cols-12 gap-4 items-end p-4 border rounded-lg">
-                  <div className="col-span-2 lg:col-span-12">
-                    <div className="font-semibold">{index + 1}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {item.item_type === "inventory" ? t("group.inventory") : t("common.outsourced-2")}
+              <LineSearchBox ordering={lineOrdering} inputId="quotation-line-search" />
+              {lineOrdering.visible.map((index) => {
+                const item = items[index]
+                return (
+                <div
+                  key={item.id}
+                  {...lineOrdering.rowProps(index)}
+                  className={cn("grid grid-cols-2 lg:grid-cols-12 gap-4 items-end p-4 border rounded-lg", lineRowDragClass(lineOrdering, index))}
+                >
+                  <div className="col-span-2 lg:col-span-12 flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold">{index + 1}</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {item.item_type === "inventory" ? t("group.inventory") : t("common.outsourced-2")}
+                      </div>
                     </div>
+                    <LineMoveControls ordering={lineOrdering} index={index} />
                   </div>
                   {item.item_type === "inventory" ? (
                     <>
@@ -1399,7 +1442,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                     </Button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>

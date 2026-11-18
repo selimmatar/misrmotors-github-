@@ -35,6 +35,7 @@ const PK: Record<string, string> = {
   po_requests: "request_id",
   po_request_items: "item_id",
   sales_quotations: "id",
+  sales_quotation_items: "id",
   workflow_events: "event_id",
   eta_item_codes: "code_id",
   eta_code_memory: "memory_id",

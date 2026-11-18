@@ -4,6 +4,7 @@ import { buildSalesOrderPaymentFields } from "@/lib/payment-type"
 import { loadAvailability } from "@/lib/stock-hold"
 import { isNewQuotationWorkflow } from "@/lib/workflow-switch"
 import { runApprovalSideEffects } from "@/lib/sales-orders/on-approved"
+import { hasLineOrderColumn, sortQuotationLines } from "@/lib/line-order"
 import { type NextRequest, NextResponse } from "next/server"
 import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 
@@ -26,13 +27,23 @@ export async function POST(request: NextRequest) {
     // Fetch the quotation from sales_quotations table
     const { data: quotation, error: quotationError } = await supabase
       .from("sales_quotations")
-      .select("*, items:sales_quotation_items(*)")
+      .select("*")
       .eq("id", quotation_id)
       .single()
 
     if (quotationError || !quotation) {
       console.error("Fetch quotation error:", quotationError)
       return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
+    }
+    const { data: quotationItemRows, error: quotationItemsError } = await supabase
+      .from("sales_quotation_items")
+      .select("*")
+      .eq("quotation_id", quotation.id)
+      .order("line_no", { ascending: true })
+      .order("id", { ascending: true })
+    if (quotationItemsError) {
+      console.error("Fetch quotation items error:", quotationItemsError)
+      return NextResponse.json({ error: "Failed to read the quotation's items" }, { status: 500 })
     }
 
     // Rejected / expired quotations can't be converted.
@@ -50,7 +61,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const quotationItems: any[] = [...(quotation.items || [])].sort((x, y) => (x.line_no || 0) - (y.line_no || 0))
+    // The sales order's lines follow the quotation's line order (line_no, then id).
+    const quotationItems: any[] = sortQuotationLines(quotationItemRows)
     if (quotationItems.length === 0) {
       return NextResponse.json({ error: "This quotation has no items and cannot be converted to a sales order." }, { status: 400 })
     }
@@ -196,9 +208,12 @@ export async function POST(request: NextRequest) {
       for (const row of supplierRows || []) supplierIdByName.set(row.supplier_name, row.supplier_id)
     }
 
-    const soItems = quotationItems.map((item: any) => {
+    // Inserted in line order (so_item_id order); line_order is written too once the column exists.
+    const withLineOrder = await hasLineOrderColumn(supabase)
+    const soItems = quotationItems.map((item: any, index: number) => {
       const isOutsourced = item.item_type === "outsourced"
       return {
+        ...(withLineOrder ? { line_order: index + 1 } : {}),
         so_id: salesOrder.so_id,
         product_id: isOutsourced ? null : Number(item.product_id),
         quantity: item.quantity,
