@@ -216,7 +216,15 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
       returned,
       unitPrice: ordered > 0 ? money(num(i.total) / ordered) || num(i.unit_price) : num(i.unit_price),
       state,
-      poNumbers: [...new Set(mine.map((p) => poNumber.get(Number(p.po_id))!))],
+      // POs still holding a quantity for this line first (a line lowered to 0 — the item went back — comes last), so
+      // "waiting for the supplier" names the PO that will actually deliver
+      poNumbers: [
+        ...new Set(
+          [...mine]
+            .sort((a, b) => Number(num(b.quantity) > (receivedByPoItem.get(Number(b.po_item_id)) || 0)) - Number(num(a.quantity) > (receivedByPoItem.get(Number(a.po_item_id)) || 0)))
+            .map((p) => poNumber.get(Number(p.po_id))!),
+        ),
+      ],
       dpNumbers: [...(dpNumbersByKey.get(key) || [])],
     }
   })
