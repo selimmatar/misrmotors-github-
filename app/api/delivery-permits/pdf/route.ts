@@ -4,6 +4,8 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle, infoBox, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
+import { followLineOrder, sortSoLines } from "@/lib/line-order"
+import { lineKey } from "@/lib/return-lines"
 
 export const dynamic = "force-dynamic"
 
@@ -144,9 +146,20 @@ export async function GET(request: NextRequest) {
       console.error("Failed to load logo:", e)
     }
 
-    // Fetch permit items
-    const { data: items } = await withRetry(() =>
+    // Fetch permit items, in the order of the sales order's lines (lib/line-order.ts), then permit-line id
+    const { data: permitItems } = await withRetry(() =>
       supabase.from("delivery_permit_items").select("*").eq("permit_id", Number.parseInt(permitId)),
+    )
+    const soIdForOrder = (permit as any).sales_order_id
+    const { data: soLinesForOrder } = soIdForOrder
+      ? await supabase.from("sales_order_items").select("*").eq("so_id", soIdForOrder)
+      : { data: [] as any[] }
+    const items = followLineOrder(
+      permitItems,
+      sortSoLines(soLinesForOrder),
+      (row: any) => lineKey(row.product_id, row.item_name_snapshot),
+      (line: any) => lineKey(line.product_id, line.outsourced_name),
+      "item_id",
     )
 
     // Generate HTML for PDF (Arabic RTL)

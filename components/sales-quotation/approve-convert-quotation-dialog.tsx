@@ -32,6 +32,9 @@ import { applyChosenCost, markupFrom, priceWithMarkup, sameItemName, supplierOff
 import { stockShortfall } from "@/lib/quotation-shortfall"
 import { ChainLine } from "@/components/shared/chain-line"
 import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-field"
+import { LineMoveControls, LineSearchBox, lineRowDragClass, useLineOrdering } from "@/components/shared/line-order-controls"
+import { cn } from "@/lib/utils"
+import { quoteAddressee } from "@/lib/quotations/addressed-to"
 
 interface QuotationItemInput {
   id?: number
@@ -50,6 +53,8 @@ interface QuotationInput {
   quotation_request_number?: string | null
   customer_id?: number | null
   customer_name: string
+  /** "Quote addressed to" (optional; lib/quotations/addressed-to.ts) */
+  addressed_to?: string | null
   customer_phone?: string | null
   customer_email?: string | null
   notes?: string | null
@@ -110,6 +115,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   const [deliveryContactName, setDeliveryContactName] = useState(quotation.delivery_contact_name || "")
   const [deliveryContactPhone, setDeliveryContactPhone] = useState(quotation.delivery_contact_phone || "")
   const [notes, setNotes] = useState(quotation.notes || "")
+  const [addressedTo, setAddressedTo] = useState(quotation.addressed_to || "")
 
   const [items, setItems] = useState<EditItem[]>(() =>
     (quotation.items || []).map((item) => ({
@@ -178,6 +184,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     deliveryContactName,
     deliveryContactPhone,
     notes,
+    addressedTo,
     items: items.map(({ key: _key, ...rest }) => rest),
     discountType,
     discountValue,
@@ -326,6 +333,14 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     setItems((prev) => prev.map((item) => (item.key === key ? { ...item, ...patch } : item)))
   }
 
+  // The lines in the quotation's order (line_no); dragging or the up / down buttons change it, and Save writes it.
+  const lineOrdering = useLineOrdering(
+    items,
+    setItems,
+    (item) => [item.productName, item.productId ? products.find((p) => String(p.id) === item.productId)?.sku : null, item.supplierName],
+    (item) => item.key,
+  )
+
   const removeItem = (key: string) => {
     setItems((prev) => prev.filter((item) => item.key !== key))
   }
@@ -417,6 +432,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
           quotation_id: quotation.id,
           customer_id: customerId ? Number(customerId) : null,
           customer_name: customerName,
+          addressed_to: addressedTo,
           customer_phone: customerPhone,
           customer_email: customerEmail,
           delivery_address: deliveryAddress,
@@ -621,7 +637,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       <td>${validityDays} يوم</td>
     </tr>
     <tr>
-      <td colspan="4"><strong>السادة:</strong> ${escapeHtml(customerName)}</td>
+      <td colspan="4"><strong>السادة:</strong> ${escapeHtml(quoteAddressee({ addressed_to: addressedTo, customer_name: customerName }))}</td>
     </tr>
     ${
       customerPhone
@@ -809,6 +825,11 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
               {quotation.customer_phone ? ` • ${quotation.customer_phone}` : ""}
               {quotation.customer_email ? ` • ${quotation.customer_email}` : ""}
             </p>
+            {quotation.addressed_to ? (
+              <p className="text-xs text-muted-foreground">
+                {t("sq.addressed-to")}: <span className="font-medium text-foreground">{quotation.addressed_to}</span>
+              </p>
+            ) : null}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t("so.customer")}</Label>
@@ -824,6 +845,16 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="approve-addressed-to">{t("sq.addressed-to")}</Label>
+                <Input
+                  id="approve-addressed-to"
+                  value={addressedTo}
+                  maxLength={200}
+                  placeholder={t("sq.addressed-to-placeholder")}
+                  onChange={(e) => setAddressedTo(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label>{t("field.delivery-contact-name")}</Label>
@@ -892,12 +923,22 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
               </p>
             ) : (
               <div className="space-y-3">
-                {items.map((item) => {
+                <LineSearchBox ordering={lineOrdering} inputId="approve-line-search" />
+                {lineOrdering.visible.map((index) => {
+                  const item = items[index]
                   const stockLimit = item.itemType === "stock" ? getAvailableStock(item.productId) : null
                   return (
-                    <div key={item.key} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end p-3 border rounded-md">
-                      <div className="col-span-2 lg:col-span-12 text-xs text-muted-foreground">
-                        {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
+                    <div
+                      key={item.key}
+                      {...lineOrdering.rowProps(index)}
+                      className={cn("grid grid-cols-2 lg:grid-cols-12 gap-3 items-end p-3 border rounded-md", lineRowDragClass(lineOrdering, index))}
+                    >
+                      <div className="col-span-2 lg:col-span-12 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span>
+                          <span className="font-semibold text-foreground me-2">{index + 1}</span>
+                          {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
+                        </span>
+                        <LineMoveControls ordering={lineOrdering} index={index} />
                       </div>
                       {item.itemType === "stock" ? (
                         <div className="col-span-2 lg:col-span-6 space-y-1">

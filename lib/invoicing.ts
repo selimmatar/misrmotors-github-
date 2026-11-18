@@ -511,33 +511,6 @@ export function evaluateSoInvoice(state: SoInvoicingState): Verdict {
   }
 }
 
-// The price of a delivery-permit invoice created now for `newPermits` (this order's permits), each item at its net
-// quantity (`netByPermit`: delivered less returns): after go-live line by line (spec §6), before it as always (order
-// discount + 14% VAT). Unrounded; createDpInvoices rounds the stored amount.
-function priceDpInvoice(state: SoInvoicingState, newPermits: SoInvoicingState["permits"], netByPermit: Map<number, number[]>) {
-  const eta = isAfterGoLive(nowIso(), state.etaGoLiveAt)
-  const newLines = eta ? newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])).map((b) => b.line) : []
-  const newValue = eta
-    ? etaLines(newLines, stateDiscountRate(state)).totals.total
-    : newPermits.reduce((sum, p) => {
-        const net = netByPermit.get(p.permit_id) || []
-        const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)
-        return sum + netInvoiceValue(raw, soDiscountBase(state.soItems, state.so.subtotal), state.so.discount_amount)
-      }, 0)
-  return { eta, newLines, newValue }
-}
-
-/**
- * What "Invoice delivered part" (createDpInvoices) would store as the amount of an invoice for this order's permits
- * among `permitIds`, created now: items at their net quantity (returns taken off), order discount and VAT applied,
- * rounded as stored. The figure the screens show before invoicing (lib/so-overview.ts, lib/ready-to-invoice.ts).
- */
-export function dpInvoiceValue(state: SoInvoicingState, permitIds: number[]): number {
-  const permits = state.permits.filter((p) => permitIds.includes(p.permit_id))
-  const netByPermit = new Map(permits.map((p) => [p.permit_id, netPermitQuantities(state, p)]))
-  return round2(priceDpInvoice(state, permits, netByPermit).newValue)
-}
-
 // Workflow B guard for the permits `newPermitIds` (all belonging to this sales order).
 export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[]): Verdict {
   const unreadable = goLiveUnreadable(state)
@@ -597,7 +570,16 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
   }
 
   const priorValue = state.invoices.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
-  const { eta, newLines, newValue } = priceDpInvoice(state, newPermits, netByPermit)
+  // The invoice is created now: after go-live it is priced line by line (spec §6), before it as always.
+  const eta = isAfterGoLive(nowIso(), state.etaGoLiveAt)
+  const newLines = eta ? newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])).map((b) => b.line) : []
+  const newValue = eta
+    ? etaLines(newLines, stateDiscountRate(state)).totals.total
+    : newPermits.reduce((sum, p) => {
+        const net = netByPermit.get(p.permit_id) || []
+        const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)
+        return sum + netInvoiceValue(raw, soDiscountBase(state.soItems, state.so.subtotal), state.so.discount_amount)
+      }, 0)
   // The order total less the value of what was returned (nothing was credited on existing invoices, so returned
   // goods that were already billed are not billed again).
   const billableTotal = effectiveOrderTotal(state, state.returns || [], { eta })

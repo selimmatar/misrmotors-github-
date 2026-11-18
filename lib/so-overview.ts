@@ -5,7 +5,7 @@
 // (soProfit) because only the CEO and admins may see what the goods cost.
 import { lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "./return-lines"
 import { lineDeliveryStates, DP_DELIVERED_STATUSES } from "./delivery-status"
-import { dpInvoiceValue, loadSoInvoicingState } from "./invoicing"
+import { loadSoInvoicingState } from "./invoicing"
 import { excludeReplaced } from "./ar-live"
 
 type Db = any
@@ -42,13 +42,7 @@ export interface OverviewPermit {
   number: string
   status: string
   date: string | null
-  /** the permit's items as delivered, before returns, discount and VAT */
   value: number
-  /**
-   * what invoicing this permit on its own now would charge (lib/invoicing.ts dpInvoiceValue, the amount "Invoice
-   * delivered part" stores): returns taken off, order discount and VAT applied
-   */
-  invoiceValue: number
   returned: number
   /** "dp" invoiced on its own, "so" covered by an invoice for the whole order, null not invoiced */
   invoiced: "dp" | "so" | null
@@ -260,7 +254,6 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
         status: p.status,
         date: p.submitted_signed_at || p.created_at || null,
         value: money(value),
-        invoiceValue: invoicing ? dpInvoiceValue(invoicing, [id]) : 0,
         returned: returnedByPermit.get(id) || 0,
         invoiced: invoicedPermits.has(id) ? ("dp" as const) : soLevelInvoice ? ("so" as const) : null,
       }
@@ -352,7 +345,7 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
   }
   for (const p of permitList) {
     if (!STOCK_OUT.has(p.status)) todo.push({ kind: "draft_dp", dp: p.number })
-    else if (!p.invoiced) todo.push({ kind: "not_invoiced", dp: p.number, value: p.invoiceValue })
+    else if (!p.invoiced) todo.push({ kind: "not_invoiced", dp: p.number, value: p.value })
   }
   if (moneyBox.invoicedUnpaid > 0.009) todo.push({ kind: "unpaid", amount: moneyBox.invoicedUnpaid })
 

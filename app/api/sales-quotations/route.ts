@@ -1,6 +1,8 @@
 import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getConvertedSo, getQuotationLockReason } from "@/lib/sales-quotations/converted"
+import { hasColumn, sortQuotationLines } from "@/lib/line-order"
+import { cleanAddressedTo } from "@/lib/quotations/addressed-to"
 import { type NextRequest, NextResponse } from "next/server"
 import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 
@@ -55,6 +57,10 @@ export async function POST(request: NextRequest) {
       return numberError ? null : ((numberData as string) || null)
     }
 
+    // "Quote addressed to" (optional): saved only once sales_quotations.addressed_to exists (lib/quotations/addressed-to.ts)
+    const addressedTo = cleanAddressedTo(body.addressed_to)
+    const addressedToField = addressedTo !== null && (await hasColumn(supabase, "sales_quotations", "addressed_to")) ? { addressed_to: addressedTo } : {}
+
     // Calculate totals - use provided values if available
     const subtotal = providedSubtotal || items.reduce((sum: number, item: any) => sum + item.quantity * item.unit_price, 0)
     const tax = providedTax !== undefined ? providedTax : subtotal * 0.14
@@ -95,6 +101,7 @@ export async function POST(request: NextRequest) {
         net_total: net_total || total,
         status: "sent",
         created_by: "current_user", // TODO: Get from auth
+        ...addressedToField,
       })
       .select()
       .single())
@@ -260,12 +267,14 @@ export async function PATCH(request: NextRequest) {
           payment_type: current.payment_type,
           payment_details: current.payment_details,
           updated_at: current.updated_at,
+          ...("addressed_to" in current ? { addressed_to: current.addressed_to } : {}),
         })
         .eq("id", quotationId)
       if (error) console.error("Rollback: failed to restore quotation header:", error)
     }
 
     // Step 2: update the header.
+    const saveAddressedTo = "addressed_to" in body && (await hasColumn(supabase, "sales_quotations", "addressed_to"))
     const { error: updateError } = await supabase
       .from("sales_quotations")
       .update({
@@ -287,6 +296,8 @@ export async function PATCH(request: NextRequest) {
         payment_type: payment_type || "cash",
         payment_details: payment_details || null,
         updated_at: new Date().toISOString(),
+        // sent and the column exists: set or cleared; otherwise left alone (lib/quotations/addressed-to.ts)
+        ...(saveAddressedTo ? { addressed_to: cleanAddressedTo(body.addressed_to) } : {}),
       })
       .eq("id", quotationId)
 
@@ -326,16 +337,31 @@ export async function GET(request: NextRequest) {
 
     if (id) {
       // Get single quotation with items
-      const { data: quotation, error: quotationError } = await supabase
+      const { data: header, error: quotationError } = await supabase
         .from("sales_quotations")
-        .select("*, items:sales_quotation_items(*)")
-        .eq("id", id)
+        .select("*")
+        .eq("id", /^\d{1,15}$/.test(id) ? Number(id) : id)
         .single()
 
-      if (quotationError) {
+      if (quotationError || !header) {
         console.error("Fetch quotation error:", quotationError)
         return NextResponse.json({ error: "Failed to fetch quotation" }, { status: 500 })
       }
+
+      // The lines in the order they were entered (line_no). An embedded select returns them in no set order, which
+      // is why they used to show up scattered in the approval view (owner report, 2026-11-17).
+      const { data: itemRows, error: itemsError } = await supabase
+        .from("sales_quotation_items")
+        .select("*")
+        .eq("quotation_id", header.id)
+        .order("line_no", { ascending: true })
+        .order("id", { ascending: true })
+
+      if (itemsError) {
+        console.error("Fetch quotation items error:", itemsError)
+        return NextResponse.json({ error: "Failed to fetch quotation" }, { status: 500 })
+      }
+      const quotation = { ...header, items: sortQuotationLines(itemRows) }
 
       // Additive field: the sales order this quotation was converted into (if any).
       let converted_so = null

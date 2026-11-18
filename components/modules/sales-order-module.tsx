@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -90,6 +90,8 @@ import { NotesButton, useNoteCounts } from "@/components/notes/notes-button"
 import { OrderOverviewDialog } from "@/components/sales-order/order-overview-dialog"
 import { ApprovalDocumentLink } from "@/components/sales-order/approval-document-link"
 import { ChainLine } from "@/components/shared/chain-line"
+import { LineMoveControls, LineSearchBox, lineRowDragClass, useLineOrdering } from "@/components/shared/line-order-controls"
+import { cn } from "@/lib/utils"
 
 // Declare SalesOrderModuleProps type
 type SalesOrderModuleProps = {
@@ -303,6 +305,29 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
       storedName?: string
     }>
   >([])
+  // The form's lines keep the order they were added in; the person can drag them or move them up / down, and search
+  // them by item name or SKU without changing that order. The lines are sent (and inserted) in this order.
+  // Each line object keeps its identity while it is edited, so it is its own stable key.
+  const orderLineKeys = useRef(new WeakMap<object, string>())
+  const orderLineKeyCounter = useRef(0)
+  const orderLineKey = (item: object) => {
+    let key = orderLineKeys.current.get(item)
+    if (!key) {
+      orderLineKeyCounter.current += 1
+      key = `so-line-${orderLineKeyCounter.current}`
+      orderLineKeys.current.set(item, key)
+    }
+    return key
+  }
+  const orderLineOrdering = useLineOrdering(
+    orderItems,
+    setOrderItems,
+    (item) => {
+      const product = item.productId ? products.find((p) => String(p.id) === item.productId) : undefined
+      return [item.outsourced_name, product?.productName, product?.sku, item.supplier_name]
+    },
+    (item) => orderLineKey(item),
+  )
   // Free stored outsourced items (not held for an order, see lib/outsourced-hold.ts) can go on any order from the warehouse
   const storedAvailable = (inv: any) => Math.max(0, Number(inv?.available ?? 0) || 0)
   const freeStoredItems = (warehouseId: number | null | "any") =>
@@ -1279,7 +1304,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
         {/* Render different UI based on item_type */}
         <div className="space-y-3">
-          {orderItems.map((item, index) => {
+          {orderItems.length > 0 && <LineSearchBox ordering={orderLineOrdering} inputId="so-line-search" />}
+          {orderLineOrdering.visible.map((index) => {
+            const item = orderItems[index]
             // Filter products based on selected warehouse for this item
             const selectedWarehouseId = item.warehouseId ? parseInt(item.warehouseId) : null
             
@@ -1294,12 +1321,19 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             const storedHere = freeStoredItems(selectedWarehouseId)
 
             return (
-            <div key={index} className="border rounded-lg p-4 bg-gray-50 space-y-3">
-              <div className="flex items-center justify-between">
+            <div
+              key={orderLineOrdering.keyOf(index)}
+              {...orderLineOrdering.rowProps(index)}
+              className={cn("border rounded-lg p-4 bg-gray-50 space-y-3", lineRowDragClass(orderLineOrdering, index))}
+            >
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium text-gray-700">{t("so.item-number")}{index + 1}</span>
-                <Button size="sm" variant="destructive" onClick={() => handleRemoveItem(index)}>
-                  {t("action.remove")}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <LineMoveControls ordering={orderLineOrdering} index={index} />
+                  <Button size="sm" variant="destructive" onClick={() => handleRemoveItem(index)}>
+                    {t("action.remove")}
+                  </Button>
+                </div>
               </div>
               
               {item.item_type === "outsourced" ? (

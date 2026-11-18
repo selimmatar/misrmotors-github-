@@ -28,6 +28,8 @@ import { AlertTriangle, Package, Printer, Trash2, UserPlus } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
 import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 import { useAppContext } from "@/lib/app-context"
+import { LineMoveControls, LineSearchBox, lineRowDragClass, useLineOrdering } from "@/components/shared/line-order-controls"
+import { cn } from "@/lib/utils"
 import { lineKey } from "@/lib/return-lines"
 import { isLineLocked } from "@/lib/so-edit-eligibility"
 import { useI18n } from "@/lib/i18n-context"
@@ -211,6 +213,15 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
   const updateItem = (key: string, patch: Partial<EditItem>) => {
     setItems((prev) => prev.map((item) => (item.key === key ? { ...item, ...patch } : item)))
   }
+
+  // The lines in the order's saved order; dragging or the up / down buttons change it and Save keeps it
+  // (sales_order_items.line_order, once scripts/sql/2026-11-18-line-order.sql is applied).
+  const lineOrdering = useLineOrdering(
+    items,
+    setItems,
+    (item) => [item.productName, item.productId ? products.find((p) => String(p.id) === item.productId)?.sku : null, item.supplierName],
+    (item) => item.key,
+  )
 
   const removeItem = (row: EditItem, choiceMade = false) => {
     if (!choiceMade && row.onDeliveryPermit && returnedOf(row) > 0 && (row.quantity || 0) > 0) {
@@ -686,7 +697,9 @@ ${renderTotalsBlock(printTotals)}
               <p className="text-sm text-muted-foreground text-center py-6">{t("so-edit.no-items")}</p>
             ) : (
               <div className="space-y-3">
-                {items.map((item) => {
+                <LineSearchBox ordering={lineOrdering} inputId="so-edit-line-search" />
+                {lineOrdering.visible.map((index) => {
+                  const item = items[index]
                   const poStatus = item.id ? itemPoStatus[item.id] : undefined
                   const stockLimit =
                     item.itemType !== "stock"
@@ -701,9 +714,17 @@ ${renderTotalsBlock(printTotals)}
                   const held = item.onDeliveryPermit && !locked && keptOf(item) > 0
                   const fixedItem = locked || held
                   return (
-                    <div key={item.key} className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end p-3 border rounded-md">
-                      <div className="col-span-2 lg:col-span-12 text-xs text-muted-foreground">
-                        {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
+                    <div
+                      key={item.key}
+                      {...lineOrdering.rowProps(index)}
+                      className={cn("grid grid-cols-2 lg:grid-cols-12 gap-3 items-end p-3 border rounded-md", lineRowDragClass(lineOrdering, index))}
+                    >
+                      <div className="col-span-2 lg:col-span-12 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span>
+                          <span className="font-semibold text-foreground me-2">{index + 1}</span>
+                          {item.itemType === "stock" ? t("so-edit.stock") : t("common.outsourced-2")}
+                        </span>
+                        <LineMoveControls ordering={lineOrdering} index={index} />
                       </div>
                       {item.itemType === "stock" && fixedItem ? (
                         <div className="col-span-2 lg:col-span-6 space-y-1">

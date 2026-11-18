@@ -126,7 +126,7 @@ export function OrdersToInvoice({
                     )}
                     {!o.ready && o.reasons.length > 4 && <p className="text-xs text-muted-foreground">{fill(t("rti.more"), { n: o.reasons.length - 4 })}</p>}
                     <p className="text-xs text-muted-foreground">
-                      {t("rti.to-invoice-now")} <strong className="text-foreground"><Money value={o.value} /></strong> {t("rti.value-basis")} · {o.toInvoice.map((p) => p.number).join(", ")}
+                      {t("rti.to-invoice-now")} <strong className="text-foreground"><Money value={o.value} /></strong> · {o.toInvoice.map((p) => p.number).join(", ")}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 md:justify-end">
@@ -160,7 +160,7 @@ export function OrdersToInvoice({
               <p className="text-xs text-muted-foreground">{t("rti.part-help")}</p>
             </div>
             <p className="text-sm">
-              {t("rti.to-invoice-now")} <strong><Money value={warnFor.value} /></strong> {t("rti.value-basis")} · {warnFor.toInvoice.map((p) => p.number).join(", ")}
+              {t("rti.to-invoice-now")} <strong><Money value={warnFor.value} /></strong> · {warnFor.toInvoice.map((p) => p.number).join(", ")}
             </p>
             <DialogFooter>
               <Button variant="outline" onClick={() => setWarnFor(null)}>{t("action.cancel")}</Button>
