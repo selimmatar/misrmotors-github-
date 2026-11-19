@@ -13,29 +13,31 @@ Sales and maintenance invoices share one number sequence today (`INV-2026-0001` 
 The owner wants them told apart by the number itself, each counting on its own.
 
 ### Decided (owner)
-- Sales invoices: `INV-` + number. Maintenance invoices: `MINV-` + number.
-- Format: code + last two digits of the year + number: `INV-26-5567`, `MINV-26-5567` (in 2026).
+- Sales invoices: `INV` + number. Maintenance invoices: `MINV` + number. No dashes.
+- Format: code + last two digits of the year + number, all joined: `INV265567`, `MINV265567` (in 2026).
 - Not a basic-looking number: both sequences start at **5567** each year, then count up by 1
-  (`INV-26-5567`, `INV-26-5568` … then `INV-27-5567` in 2027).
+  (`INV265567`, `INV265568` … then `INV275567` in 2027).
 - The two sequences never clash (different code in front).
 
 ### Rules
 - Applies to NEW invoices only. Existing invoices keep their numbers (`10503`, `INV-2026-0001`, `INV-2026-10525`,
   `INV-MNT-WO-…`); invoices already on the ETA portal cannot be renumbered anyway.
 - Next number = highest existing number of that code and year + 1 (only `INV-<yy>-<digits>` /
-  `MINV-<yy>-<digits>` count), or 5567 if none yet that year. The year is the invoice date's year (Cairo time).
+  `MINV<yy><digits>` count), or 5567 if none yet that year. The year is the invoice date's year (Cairo time).
   Old formats are ignored, so they cannot push the new sequence.
 - Two invoices created at the same moment: the existing unique-number retry (`attemptOffset`, Postgres 23505) stays.
   Builder must confirm the unique index on `accounts_receivable.invoice_number` exists.
 - Which code: an invoice is maintenance when it comes from the quick maintenance screen, from a photo draft
   (part 2), or from a maintenance work order; everything else (sales order / delivery permit / down payment) is INV.
 - Change invoice number (feature from 2026-11-18): the new number must keep its code — a sales invoice cannot be
-  given an `MINV-` number and a maintenance invoice cannot be given an `INV-` number (the code decides the tab).
+  given an `MINV` number and a maintenance invoice cannot be given an `INV` number (the code decides the tab).
 
 ### How the code is chosen (decided after reading lib/invoicing.ts)
 - `nextInvoiceNumber(db, attemptOffset)` gets a third argument, the code. It reads only `INV-<yy>-<digits>` or
-  `MINV-<yy>-<digits>` rows for the current year, so old numbers (`INV-2026-…`, `10503`, `INV-MNT-…`) never move
-  the new counters (`INV-2026-…` has a 4-digit year, so it cannot match the 2-digit pattern).
+`MINV<yy><digits>` rows for the current year, so old numbers (`INV-2026-…`, `10503`, `INV-MNT-…`) never move
+the new counters (old numbers all contain a dash or have no letters, so they cannot match the dash-free pattern).
+Patterns are anchored at the start (`^INV…` / `^MINV…`), so `MINV265567` is never read as a sales invoice even
+though it contains the letters `INV`.
 - `createDpInvoices` picks the code from the invoice's sales order: a quick-maintenance order
   (`so_type = MAINTENANCE_PARTS` and note "Maintenance quick invoice") gets `MINV`, anything else `INV`.
   The order decides it, not the screen, so correct-and-reissue of a maintenance invoice also stays `MINV`.
@@ -43,11 +45,11 @@ The owner wants them told apart by the number itself, each counting on its own.
 
 ### Where the code changes (found by search)
 - `lib/invoicing.ts` `nextInvoiceNumber` → takes the code (`INV` / `MINV`).
-- `lib/maintenance-quick-invoice.ts` → asks for `MINV`; `isMaintenanceInvoice` also accepts `MINV-`.
-- `lib/ar-tabs.ts`, `lib/due-schedule.ts` → treat `MINV-` as maintenance (keep `INV-MNT-` for old invoices).
+- `lib/maintenance-quick-invoice.ts` → asks for `MINV`; `isMaintenanceInvoice` also accepts numbers starting with `MINV`.
+- `lib/ar-tabs.ts`, `lib/due-schedule.ts` → treat numbers starting with `MINV` as maintenance (keep `INV-MNT-` for old invoices).
 - `lib/eta/rename-invoice.ts` → the "keep its code" rule above.
-- Work-order invoice creation (`INV-MNT-WO-…`) → `MINV-` (owner to confirm, see open question 1).
-- `scripts/sql/2026-11-17-maintenance-role.sql` view uses `like 'INV-MNT-%'` → add `MINV-%` (SQL change, owner approval).
+- Work-order invoice creation (`INV-MNT-WO-…`) → `MINV` (owner to confirm, see open question 1).
+- `scripts/sql/2026-11-17-maintenance-role.sql` view uses `like 'INV-MNT-%'` → add `MINV%` (SQL change, owner approval).
 - Tests that expect `INV-<year>-0001` are updated to the new format.
 
 ---
@@ -65,7 +67,7 @@ password. He should tap one icon, take a photo, done. The accountant reviews it 
   Arabic by default, English switch, right-to-left in Arabic. Large text and touch targets.
 - The photo is saved and read by AI (customer name, date, lines: description, quantity, price).
 - The accountant sees new photo drafts in the **Maintenance** tab of Accounts Receivable: the photo beside the lines
-  the AI read, all editable, picks the existing customer, then **Create invoice** (gets an `MINV-` number) or **Reject**.
+  the AI read, all editable, picks the existing customer, then **Create invoice** (gets an `MINV` number) or **Reject**.
 
 ### Non-goals
 - No WhatsApp. No invoice is created without the accountant pressing Create.
@@ -100,11 +102,11 @@ password. He should tap one icon, take a photo, done. The accountant reviews it 
 
 ## Owner answers (2026-11-19)
 1. Work orders: OUT OF SCOPE. The work-order workflow is paused/in the pipeline. Work-order invoices keep
-   `INV-MNT-WO-…` untouched; only quick maintenance invoices and photo drafts get `MINV-`.
+   `INV-MNT-WO-…` untouched; only quick maintenance invoices and photo drafts get `MINV`.
 2. Handwritten prices are written **before VAT** (VAT is added on top, as on the quick maintenance screen).
 3. Start number is **5567** for both codes.
-4. The code includes the last two digits of the year: `INV-26-5567`, `MINV-26-5567`. Assumed: each code starts
-   again at 5567 in a new year (`INV-27-5567`), since the year already tells the years apart. Owner can change this.
+4. The code includes the last two digits of the year: `INV265567`, `MINV265567`, no dashes. Assumed: each code
+   starts again at 5567 in a new year (`INV275567`), since the year already tells the years apart. Owner can change this.
 
 ## Order of work
 1. Part 1 (codes) on its own branch + tests, owner reviews the pull request.
