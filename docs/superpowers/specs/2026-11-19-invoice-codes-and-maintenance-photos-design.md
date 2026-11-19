@@ -28,12 +28,12 @@ The owner wants them told apart by the number itself, each counting on its own.
 - Two invoices created at the same moment: the existing unique-number retry (`attemptOffset`, Postgres 23505) stays.
   Builder must confirm the unique index on `accounts_receivable.invoice_number` exists.
 - Which code: an invoice is maintenance when it comes from the quick maintenance screen, from a photo draft
-  (part 2), or from a maintenance work order; everything else (sales order / delivery permit / down payment) is INV.
+  (part 2); everything else (sales order / delivery permit / down payment) is INV. Work orders are out of scope.
 - Change invoice number (feature from 2026-11-18): the new number must keep its code — a sales invoice cannot be
   given an `MINV` number and a maintenance invoice cannot be given an `INV` number (the code decides the tab).
 
 ### How the code is chosen (decided after reading lib/invoicing.ts)
-- `nextInvoiceNumber(db, attemptOffset)` gets a third argument, the code. It reads only `INV-<yy>-<digits>` or
+- `nextInvoiceNumber(db, attemptOffset)` gets a third argument, the code. It reads only `INV<yy><digits>` or
 `MINV<yy><digits>` rows for the current year, so old numbers (`INV-2026-…`, `10503`, `INV-MNT-…`) never move
 the new counters (old numbers all contain a dash or have no letters, so they cannot match the dash-free pattern).
 Patterns are anchored at the start (`^INV…` / `^MINV…`), so `MINV265567` is never read as a sales invoice even
@@ -46,10 +46,13 @@ though it contains the letters `INV`.
 ### Where the code changes (found by search)
 - `lib/invoicing.ts` `nextInvoiceNumber` → takes the code (`INV` / `MINV`).
 - `lib/maintenance-quick-invoice.ts` → asks for `MINV`; `isMaintenanceInvoice` also accepts numbers starting with `MINV`.
-- `lib/ar-tabs.ts`, `lib/due-schedule.ts` → treat numbers starting with `MINV` as maintenance (keep `INV-MNT-` for old invoices).
-- `lib/eta/rename-invoice.ts` → the "keep its code" rule above.
-- Work-order invoice creation (`INV-MNT-WO-…`) → `MINV` (owner to confirm, see open question 1).
-- `scripts/sql/2026-11-17-maintenance-role.sql` view uses `like 'INV-MNT-%'` → add `MINV%` (SQL change, owner approval).
+- `lib/ar-tabs.ts` → numbers starting with `MINV` are in the Maintenance tab (keep `INV-MNT-` for old invoices).
+  `lib/due-schedule.ts` and the AR `isMaintenance` flag are NOT changed: that flag means "work-order invoice with no
+  sales order, use the invoice's own terms"; MINV invoices have a sales order.
+- `lib/eta/rename-invoice.ts` → MINV numbers cannot be changed, and no invoice can be given one (same rule as `INV-MNT-`).
+- Work-order invoices (`INV-MNT-WO-…`) → unchanged (out of scope).
+- `scripts/sql/2026-11-17-maintenance-role.sql` view → not changed; the app decides the tab itself, so no database change.
+- New shared module `lib/invoice-codes.ts` (codes, year, next number); tests in `lib/__tests__/invoice-codes.test.ts`.
 - Tests that expect `INV-<year>-0001` are updated to the new format.
 
 ---

@@ -14,6 +14,7 @@
 import { resolveInstallmentCount } from "./payment-type"
 import { excludeReplaced } from "./ar-live"
 import { numberTakenMessage } from "./doc-number"
+import { invoiceCodeForOrders, invoiceYear2, nextCodedNumber, type InvoiceCode } from "./invoice-codes"
 import {
   DELIVERED_PERMIT_STATUSES,
   invoiceablePool,
@@ -747,18 +748,14 @@ async function goLiveFields(db: Db): Promise<Pick<SoInvoicingState, "etaGoLiveAt
   }
 }
 
-async function nextInvoiceNumber(db: Db, attemptOffset: number) {
-  const year = new Date().getFullYear()
+// INV265567 / MINV265567: code + two-digit year + its own serial (lib/invoice-codes.ts)
+async function nextInvoiceNumber(db: Db, attemptOffset: number, code: InvoiceCode = "INV") {
+  const year2 = invoiceYear2()
   const rows = must(
-    await db.from("accounts_receivable").select("invoice_number").like("invoice_number", `INV-${year}-%`),
+    await db.from("accounts_receivable").select("invoice_number").like("invoice_number", `${code}${year2}%`),
     "load invoice numbers",
   ) as any[]
-  let max = 0
-  for (const row of rows) {
-    const match = /^INV-\d{4}-(\d+)$/.exec(row.invoice_number || "")
-    if (match) max = Math.max(max, Number.parseInt(match[1], 10))
-  }
-  return `INV-${year}-${String(max + 1 + attemptOffset).padStart(4, "0")}`
+  return nextCodedNumber(code, year2, rows.map((row) => row.invoice_number), attemptOffset)
 }
 
 // Insert an accounts_receivable row, retrying with the next number if another request took the same one
@@ -770,7 +767,7 @@ class InvoiceNumberTaken extends Error {
   }
 }
 
-async function insertInvoice(db: Db, row: Record<string, any>, manualNumber: string | null = null) {
+async function insertInvoice(db: Db, row: Record<string, any>, manualNumber: string | null = null, code: InvoiceCode = "INV") {
   if (manualNumber) {
     const { data, error } = await db.from("accounts_receivable").insert({ ...row, invoice_number: manualNumber }).select().single()
     if (error?.code === "23505") throw new InvoiceNumberTaken(manualNumber)
@@ -779,7 +776,7 @@ async function insertInvoice(db: Db, row: Record<string, any>, manualNumber: str
   }
   let lastError: any = null
   for (let attempt = 0; attempt < MAX_NUMBER_ATTEMPTS; attempt++) {
-    const invoiceNumber = await nextInvoiceNumber(db, attempt)
+    const invoiceNumber = await nextInvoiceNumber(db, attempt, code)
     const { data, error } = await db.from("accounts_receivable").insert({ ...row, invoice_number: invoiceNumber }).select().single()
     if (!error) return data
     lastError = error
@@ -791,7 +788,7 @@ async function insertInvoice(db: Db, row: Record<string, any>, manualNumber: str
 // Correct and reissue (spec §6.5a): the new invoice of an open correction is created by one database function that
 // also moves the old invoice's permit links, payments, schedules and collected amount (lib/eta/correction.ts). The
 // number is chosen exactly as insertInvoice does.
-async function insertReissue(db: Db, correction: OpenCorrection, row: Record<string, any>, permitIds: number[], manualNumber: string | null, confirmOverpaid: boolean) {
+async function insertReissue(db: Db, correction: OpenCorrection, row: Record<string, any>, permitIds: number[], manualNumber: string | null, confirmOverpaid: boolean, code: InvoiceCode = "INV") {
   if (manualNumber) {
     try {
       return await reissueInvoice(db, correction.invoiceId, { ...row, invoice_number: manualNumber }, permitIds, confirmOverpaid)
@@ -802,7 +799,7 @@ async function insertReissue(db: Db, correction: OpenCorrection, row: Record<str
   }
   let last: unknown = null
   for (let attempt = 0; attempt < MAX_NUMBER_ATTEMPTS; attempt++) {
-    const invoiceNumber = await nextInvoiceNumber(db, attempt)
+    const invoiceNumber = await nextInvoiceNumber(db, attempt, code)
     try {
       return await reissueInvoice(db, correction.invoiceId, { ...row, invoice_number: invoiceNumber }, permitIds, confirmOverpaid)
     } catch (error) {
@@ -979,7 +976,7 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
 
     const soIds = [...new Set(permits.map((p) => p.sales_order_id))]
     const orders = must(
-      await db.from("sales_orders").select("so_id, customer_id, payment_type, payment_terms").in("so_id", soIds),
+      await db.from("sales_orders").select("so_id, customer_id, payment_type, payment_terms, so_type, notes").in("so_id", soIds),
       "load sales orders",
     ) as any[]
     const orderById = new Map(orders.map((o) => [o.so_id, o]))
@@ -1028,6 +1025,8 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
     const paymentType = paymentTypes[0]
     const group = byPaymentType[paymentType]
     const groupSoIds = [...new Set(group.map((p) => p.sales_order_id))] as number[]
+    // the order decides the code, so a corrected-and-reissued maintenance invoice stays MINV
+    const invoiceCode = invoiceCodeForOrders(groupSoIds.map((id) => orderById.get(id)))
 
     // The reissue takes over every delivery permit of the old invoice (its links move to the new invoice).
     if (correction) {
@@ -1085,7 +1084,7 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
       let invoice: any
       try {
         // one transaction: the invoice, its permit links (moved from the old invoice, or new), payments and links both ways
-        invoice = await insertReissue(db, correction, row, group.map((p) => p.permit_id), manualNumber, options.confirmOverpaid === true)
+        invoice = await insertReissue(db, correction, row, group.map((p) => p.permit_id), manualNumber, options.confirmOverpaid === true, invoiceCode)
       } catch (error) {
         const refused = reissueRefusal(error)
         if (refused) return refused
@@ -1113,7 +1112,7 @@ export async function createDpInvoices(db: Db, permitIds: number[], manualNumber
       }
     }
 
-    const invoice = await insertInvoice(db, row, manualNumber)
+    const invoice = await insertInvoice(db, row, manualNumber, invoiceCode)
 
     const { error: linksError } = await db
       .from("invoice_delivery_permits")

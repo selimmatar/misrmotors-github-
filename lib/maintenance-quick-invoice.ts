@@ -12,13 +12,12 @@ import { createDpInvoices, loadEtaGoLiveAt, round2, VAT_RATE } from "./invoicing
 import { etaLines, isAfterGoLive } from "./eta/totals"
 import { buildSalesOrderPaymentFields } from "./payment-type"
 import { highestSerial, insertWithNumber } from "./doc-number"
+import { QUICK_SO_TYPE, QUICK_SO_NOTE, isMaintenanceNumber } from "./invoice-codes"
 
 type Db = any
 
-/** Sales order type of a quick maintenance order (an allowed value of sales_orders.so_type). */
-export const QUICK_SO_TYPE = "MAINTENANCE_PARTS"
-/** Notes on the quick order: with QUICK_SO_TYPE it marks the order (and its invoice) as maintenance. */
-export const QUICK_SO_NOTE = "Maintenance quick invoice"
+// moved to ./invoice-codes (lib/invoicing.ts uses them to pick the MINV code); re-exported for existing imports
+export { QUICK_SO_TYPE, QUICK_SO_NOTE }
 export const MAX_LINES = 50
 export const MAX_NAME_LENGTH = 200
 
@@ -88,8 +87,8 @@ export function isMaintenanceInvoice(inv: {
   so_notes?: string | null
 }): boolean {
   if (inv.is_maintenance === true) return true
-  // the work-order maintenance invoices (app/api/maintenance/invoices)
-  if (String(inv.invoice_number || "").startsWith("INV-MNT-")) return true
+  // MINV numbers, and the work-order maintenance invoices (INV-MNT-, app/api/maintenance/invoices)
+  if (isMaintenanceNumber(inv.invoice_number)) return true
   // a quick invoice made before accounts_receivable.is_maintenance exists (scripts/sql/2026-11-17-maintenance-role.sql)
   return inv.so_type === QUICK_SO_TYPE && String(inv.so_notes || "").startsWith(QUICK_SO_NOTE)
 }
