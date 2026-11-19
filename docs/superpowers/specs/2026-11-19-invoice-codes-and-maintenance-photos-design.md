@@ -30,6 +30,14 @@ The owner wants them told apart by the number itself, each counting on its own.
 - Change invoice number (feature from 2026-11-18): the new number must keep its code — a sales invoice cannot be
   given an `MINV-` number and a maintenance invoice cannot be given an `INV-` number (the code decides the tab).
 
+### How the code is chosen (decided after reading lib/invoicing.ts)
+- `nextInvoiceNumber(db, attemptOffset)` gets a third argument, the code. It reads only `INV-<digits>` or
+  `MINV-<digits>` rows, so old numbers (`INV-2026-…`, `10503`, `INV-MNT-…`) never move the new counters.
+- `createDpInvoices` picks the code from the invoice's sales order: a quick-maintenance order
+  (`so_type = MAINTENANCE_PARTS` and note "Maintenance quick invoice") gets `MINV`, anything else `INV`.
+  The order decides it, not the screen, so correct-and-reissue of a maintenance invoice also stays `MINV`.
+- `createSoInvoice` (whole sales order) is always `INV`. A typed (manual) number is still used exactly as typed.
+
 ### Where the code changes (found by search)
 - `lib/invoicing.ts` `nextInvoiceNumber` → takes the code (`INV` / `MINV`).
 - `lib/maintenance-quick-invoice.ts` → asks for `MINV`; `isMaintenanceInvoice` also accepts `MINV-`.
@@ -87,10 +95,11 @@ password. He should tap one icon, take a photo, done. The accountant reviews it 
 
 ---
 
-## Open questions for the owner
-1. Should invoices created from a maintenance **work order** also get `MINV-` numbers? (Recommended: yes.)
-2. On the handwritten invoices, are prices written **before VAT or including VAT**?
-3. Start number **567** for both INV and MINV — confirm, or give another number.
+## Owner answers (2026-11-19)
+1. Work orders: OUT OF SCOPE. The work-order workflow is paused/in the pipeline. Work-order invoices keep
+   `INV-MNT-WO-…` untouched; only quick maintenance invoices and photo drafts get `MINV-`.
+2. Handwritten prices are written **before VAT** (VAT is added on top, as on the quick maintenance screen).
+3. Start number is **5567** for both codes (`INV-5567`, `MINV-5567`). This replaces the 567 above.
 
 ## Order of work
 1. Part 1 (codes) on its own branch + tests, owner reviews the pull request.
