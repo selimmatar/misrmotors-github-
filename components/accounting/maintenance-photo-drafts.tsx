@@ -227,7 +227,21 @@ function DraftDialog({
   const customers = customerData?.customers ?? []
   const writtenName = draft.read?.customerName ?? ""
   const [search, setSearch] = useState(writtenName)
-  const [customerId, setCustomerId] = useState<number | null>(null)
+  const [pickedCustomerId, setPickedCustomerId] = useState<number | null>(null)
+  const [autoPickDismissed, setAutoPickDismissed] = useState(false)
+  const autoMatchedId = useMemo(() => {
+    const q = writtenName.trim().toLowerCase()
+    if (!q) return null
+    const exact = customers.find((c) => c.name.trim().toLowerCase() === q)
+    if (exact) return exact.id
+    const partial = customers.filter((c) => c.name.toLowerCase().includes(q))
+    return partial.length === 1 ? partial[0].id : null
+  }, [customers, writtenName])
+  const customerId = pickedCustomerId ?? (autoPickDismissed ? null : autoMatchedId)
+  const setCustomerId = (id: number | null) => {
+    setPickedCustomerId(id)
+    if (id === null) setAutoPickDismissed(true)
+  }
   const [lines, setLines] = useState<DraftLine[]>(
     draft.read?.lines?.length ? draft.read.lines : [{ name: "", quantity: 1, unitPrice: 0 }],
   )
@@ -494,6 +508,11 @@ function DraftDialog({
                 {text.reject}
               </Button>
             </>
+          )}
+          {!customerId && (
+            <p role="status" className="text-sm font-medium text-destructive sm:self-center">
+              {text.pickCustomer}
+            </p>
           )}
           <Button
             className="min-h-11"
