@@ -4,7 +4,7 @@ import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkIdempotency, completeIdempotency } from "@/lib/idempotency"
 import { arPaymentLogKey, recordArPayment } from "@/lib/ar-payments"
 import { actorOr } from "@/lib/auth/actor"
-import { isReplacedInvoice, REPLACED_PAYMENT_MESSAGE } from "@/lib/ar-live"
+import { isCancelledInvoice, isReplacedInvoice, CANCELLED_PAYMENT_MESSAGE, REPLACED_PAYMENT_MESSAGE } from "@/lib/ar-live"
 
 export const dynamic = "force-dynamic"
 
@@ -309,6 +309,7 @@ async function checkInvoiceCap(supabase: any, invoiceId: number, amountToPay: nu
   if (error) return { ok: false, kind: "db", error }
   if (!invoice) return { ok: true }
   if (isReplacedInvoice(invoice)) return { ok: false, kind: "conflict", status: 409, error: REPLACED_PAYMENT_MESSAGE }
+  if (isCancelledInvoice(invoice)) return { ok: false, kind: "conflict", status: 409, error: CANCELLED_PAYMENT_MESSAGE }
   if (cents(invoice.collected_amount) + cents(amountToPay) > cents(invoice.amount)) {
     return { ok: false, kind: "overpay", status: 400, error: overpayMessage(amountToPay, invoice) }
   }
@@ -331,6 +332,7 @@ async function applySchedulePaymentToInvoice(
     if (readError) return { ok: false, kind: "db", error: readError }
     if (!arInvoice) return { ok: true }
     if (isReplacedInvoice(arInvoice)) return { ok: false, kind: "conflict", status: 409, error: REPLACED_PAYMENT_MESSAGE }
+    if (isCancelledInvoice(arInvoice)) return { ok: false, kind: "conflict", status: 409, error: CANCELLED_PAYMENT_MESSAGE }
 
     if (cents(arInvoice.collected_amount) + cents(amountToPay) > cents(arInvoice.amount)) {
       return { ok: false, kind: "overpay", status: 400, error: overpayMessage(amountToPay, arInvoice) }

@@ -97,7 +97,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
           const invoiceMap: Record<string, any[]> = {}
           invoices.forEach((inv: any) => {
             // a replaced invoice no longer counts (its replacement does)
-            if (inv.status !== "replaced") (invoiceMap[inv.soId] ||= []).push(inv)
+            if (inv.status !== "replaced" && inv.status !== "cancelled") (invoiceMap[inv.soId] ||= []).push(inv)
           })
           setOrderInvoices(invoiceMap)
         }

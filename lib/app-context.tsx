@@ -362,7 +362,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     monthsPaid: inv.monthsPaid || 0,
     items: inv.items || [],
   }))
-  const customerInvoices: CustomerInvoice[] = allCustomerInvoices.filter((inv) => (inv.status as string) !== "replaced")
+  const customerInvoices: CustomerInvoice[] = allCustomerInvoices.filter((inv) => !["replaced", "cancelled"].includes(inv.status as string))
 
   useEffect(() => {
     if (hasMountedRef.current) return
