@@ -29,28 +29,26 @@ export async function workerHasBooklet(db: Db, linkId: number): Promise<boolean>
   return (data || []).length > 0
 }
 
-export type PageCheck = { ok: true; bookletId: number; number: string } | { ok: false; error: string }
+export type PageCheck = { ok: true; bookletId: number | null; number: string } | { ok: false; error: string }
 
-/** The page number must be in one of this worker's booklets, not cancelled and not on an invoice already. */
+/** Any MINV number is accepted unless it was cancelled or is on an invoice already; linked to a booklet when one holds it. */
 export async function checkBookletPage(db: Db, linkId: number, number: string): Promise<PageCheck> {
   const parsed = parseMinvNumber(number)
   if (!parsed) return { ok: false, error: "Enter the MINV number printed on the page" }
   const { data: booklets, error } = await db
     .from("maintenance_booklets")
-    .select("id")
-    .eq("link_id", linkId)
+    .select("id, link_id")
     .eq("year2", parsed.year2)
     .lte("first_serial", parsed.serial)
     .gte("last_serial", parsed.serial)
-    .limit(1)
-  if (error) throw new Error(`load booklets: ${error.message}`)
-  if (!booklets?.length) return { ok: false, error: `${number} is not in a booklet given to this worker` }
+  if (error && !missingTable(error)) throw new Error(`load booklets: ${error.message}`)
+  const holder = (booklets || []).find((b: any) => Number(b.link_id) === linkId) ?? (booklets || [])[0]
 
   const { data: voided } = await db.from("maintenance_booklet_voids").select("id").eq("invoice_number", number).limit(1)
   if (voided?.length) return { ok: false, error: `Page ${number} was cancelled` }
   const { data: used } = await db.from("accounts_receivable").select("invoice_id").eq("invoice_number", number).limit(1)
   if (used?.length) return { ok: false, error: `${number} is already on an invoice` }
-  return { ok: true, bookletId: Number(booklets[0].id), number }
+  return { ok: true, bookletId: holder ? Number(holder.id) : null, number }
 }
 
 export interface BookletStats {
