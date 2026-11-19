@@ -37,6 +37,7 @@ export const MODULE_GROUP: Readonly<Record<string, GroupId>> = {
   "e-invoice-settings": "finance",
   "maintenance-invoices": "finance",
   "maintenance-quick-invoice": "finance",
+  "maintenance-workers": "finance",
   accountant: "finance",
   shipment: "operations",
   "courier-management": "operations",

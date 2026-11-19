@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { formatDate, formatMoney } from "@/lib/format"
-import { WorkerLinksManager } from "./worker-links-manager"
 
 interface DraftLine {
   name: string
@@ -191,7 +190,6 @@ export function MaintenancePhotoDrafts() {
             ))}
           </ul>
         )}
-        <WorkerLinksManager />
       </CardContent>
 
       {open && (

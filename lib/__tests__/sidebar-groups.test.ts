@@ -15,10 +15,11 @@ const AR = I18N.slice(AR_AT)
 
 const MAIN_IDS: Record<string, string[]> = { // verbatim from origin/main components/layout/sidebar.tsx
   // e-invoice-settings added for admin, CEO and accountant (e-invoice step 1, 2026-11-15).
-  admin: ["user-management","hr-management","metrics-validation","system-health","e-invoice-settings"],
+  // maintenance-workers (worker photo links + booklets) added for admin and CEO (owner request 2026-11-19).
+  admin: ["user-management","hr-management","metrics-validation","system-health","e-invoice-settings","maintenance-workers"],
   // ceo: maintenance quick invoice added (owner request 2026-11-18); operations-management added (owner request 2026-10-31); every working screen and User Management added
   // (owner, 2026-11-01: the CEO sees everything and may edit and approve everything).
-  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","goods-receipt","warehouse-transfers","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","approve-sales-orders","delivery-permits","warehouse-delivery","shipment","operations-management","maintenance-quick-invoice","accounts-receivable","balance","finance-reports","e-invoice-settings","user-management","metrics-validation","system-health"],
+  ceo: ["dashboard","analytics","ceo-chat","hr-management","suppliers","products","po-requests","purchase-orders","pricing-review","costing-settings","inventory","inventory-audit","goods-receipt-tracking","goods-receipt","warehouse-transfers","reorder-suggestions","lost-sales","accounts-payable","customers","sales-orders","approve-sales-orders","delivery-permits","warehouse-delivery","shipment","operations-management","maintenance-quick-invoice","maintenance-workers","accounts-receivable","balance","finance-reports","e-invoice-settings","user-management","metrics-validation","system-health"],
   // accountant: quotations swapped for the view-only order list (owner request); since 2026-11-14 no dashboard,
   // analytics, payment schedule, pricing review, costing settings, maintenance invoices or balance (owner request).
   accountant: ["approve-sales-orders","sales-orders","purchase-orders","accounts-payable","accounts-receivable","customers","suppliers","delivery-permits","finance-reports","e-invoice-settings"],
@@ -62,7 +63,7 @@ test("mobile tabs", () => {
   const shape = (r: keyof typeof ROLE_MODULES) => buildMobileTabs(ROLE_MODULES[r]).map((t) =>
     t.kind === "home" ? `home:${t.moduleId}` : t.kind === "group" ? `${t.group}:${t.items.length}` : "menu")
   assert.deepEqual(shape("ceo"), ["home:dashboard", "sales:5", "purchasing:6", "inventory:6", "menu"])
-  assert.deepEqual(shape("admin"), ["home:user-management", "finance:1", "admin:4", "menu"])
+  assert.deepEqual(shape("admin"), ["home:user-management", "finance:2", "admin:4", "menu"])
   assert.deepEqual(shape("shipment"), ["home:shipment", "sales:1", "operations:1", "menu"])
   assert.deepEqual(buildMobileTabs([]).map((t) => t.kind), ["menu"])
 })

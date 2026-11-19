@@ -48,6 +48,7 @@ import { GoodsReceiptTrackingModule } from "@/components/modules/goods-receipt-t
 import { MaintenanceInvoicesModule } from "@/components/modules/maintenance-invoices-module"
 import { OperationsManagementModule } from "@/components/modules/operations-management-module"
 import { MaintenanceQuickInvoiceModule } from "@/components/modules/maintenance-quick-invoice-module"
+import { MaintenanceWorkersModule } from "@/components/modules/maintenance-workers-module"
 import type { User } from "@/lib/types"
 
 interface DashboardProps {
@@ -96,6 +97,7 @@ type ModuleType =
   | "operations-management" // Added operations-management module type
   | "e-invoice-settings"
   | "maintenance-quick-invoice"
+  | "maintenance-workers"
 
 export function Dashboard({ user: account, onLogout }: DashboardProps) {
   // A person can hold several roles: the menu shows all their screens, and each screen opens with the role that owns it.
@@ -183,6 +185,8 @@ case "po-requests":
         return <MaintenanceInvoicesModule />
       case "maintenance-quick-invoice":
         return <MaintenanceQuickInvoiceModule />
+      case "maintenance-workers":
+        return <MaintenanceWorkersModule />
       case "inventory":
         return <InventoryModule userRole={user.role} />
       case "inventory-audit":

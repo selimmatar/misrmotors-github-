@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react"
-import { AlertCircle, Camera, Check, Loader2 } from "lucide-react"
+import { AlertCircle, Camera, Check, ImageUp, Loader2 } from "lucide-react"
 import { WORKER_TEXT, useWorkerLanguage, type WorkerErrorCode } from "./worker-text"
 
 type Stage = { kind: "idle" } | { kind: "sending" } | { kind: "done" } | { kind: "error"; code: WorkerErrorCode }
@@ -37,7 +37,20 @@ export function WorkerUploadScreen({ secret, workerName }: { secret: string; wor
     if (stage.kind === "done") navigator.vibrate?.(120)
   }, [stage.kind])
 
+  const gallery = useRef<HTMLInputElement>(null)
   const openCamera = () => input.current?.click()
+  const openGallery = () => gallery.current?.click()
+  const uploadButton = (
+    <button
+      type="button"
+      onClick={openGallery}
+      disabled={stage.kind === "sending"}
+      className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl border-2 border-border px-6 text-xl font-bold disabled:opacity-60"
+    >
+      <ImageUp className="size-7" aria-hidden="true" />
+      {text.upload}
+    </button>
+  )
 
   const send = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -84,6 +97,15 @@ export function WorkerUploadScreen({ secret, workerName }: { secret: string; wor
           aria-hidden="true"
           onChange={send}
         />
+        <input
+          ref={gallery}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={send}
+        />
 
         {stage.kind === "done" ? (
           <div role="status" className="flex w-full max-w-sm flex-col items-center gap-6">
@@ -102,6 +124,7 @@ export function WorkerUploadScreen({ secret, workerName }: { secret: string; wor
               <Camera className="size-7" aria-hidden="true" />
               {text.another}
             </button>
+            {uploadButton}
           </div>
         ) : (
           <div className="flex w-full max-w-sm flex-col items-center gap-6">
@@ -118,6 +141,7 @@ export function WorkerUploadScreen({ secret, workerName }: { secret: string; wor
               )}
               <span className="text-4xl font-extrabold">{stage.kind === "sending" ? text.sending : text.take}</span>
             </button>
+            {uploadButton}
 
             {stage.kind === "error" ? (
               <div role="alert" className="flex w-full items-start gap-3 rounded-2xl bg-destructive/10 p-4 text-start text-destructive">
