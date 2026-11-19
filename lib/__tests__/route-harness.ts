@@ -73,8 +73,10 @@ M._load = function (request: string, parent: any, isMain: boolean) {
     } catch {
       resolved = null
     }
-    if (resolved === ADMIN_FILE) return adminStub
-    if (resolved === SERVER_FILE) return serverStub
+    // Match with or without the extension so running the .ts sources directly (tsx) is stubbed too, never the real db.
+    const bare = resolved?.replace(/\.(js|ts|mjs|cjs)$/, "")
+    if (bare === ADMIN_FILE.replace(/\.js$/, "")) return adminStub
+    if (bare === SERVER_FILE.replace(/\.js$/, "")) return serverStub
     return originalLoad.call(this, resolved ?? mapped, parent, isMain)
   }
   return originalLoad.call(this, request, parent, isMain)
