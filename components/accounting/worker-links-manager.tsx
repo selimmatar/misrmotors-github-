@@ -185,7 +185,7 @@ export function WorkerLinksManager() {
         </ul>
       )}
 
-      <WorkerBooklets links={links} />
+      <WorkerBooklets />
     </section>
   )
 }

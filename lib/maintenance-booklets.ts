@@ -11,7 +11,8 @@ export const minvNumber = (year2: string, serial: number) => `MINV${year2}${seri
 
 export interface BookletRow {
   id: number
-  link_id: number
+  /** Old per-worker booklets only; the booklet is now shared by every worker (owner, 2026-11-19). */
+  link_id: number | null
   year2: string
   first_serial: number
   last_serial: number
@@ -19,14 +20,35 @@ export interface BookletRow {
   created_at: string
 }
 
-/** True when this worker has been given at least one booklet: his photos must then carry a page number. */
-export async function workerHasBooklet(db: Db, linkId: number): Promise<boolean> {
-  const { data, error } = await db.from("maintenance_booklets").select("id").eq("link_id", linkId).limit(1)
+export class BookletStillOpen extends Error {
+  constructor() {
+    super("Finish the current booklet before making a new one")
+  }
+}
+
+/** True while a booklet is open: every photo must then carry its page number. */
+export async function hasActiveBooklet(db: Db): Promise<boolean> {
+  const { data, error } = await db.from("maintenance_booklets").select("id").eq("status", "active").limit(1)
   if (error) {
     if (missingTable(error)) return false
     throw new Error(`load booklets: ${error.message}`)
   }
   return (data || []).length > 0
+}
+
+/**
+ * MINV numbers of the year that are taken but not on an invoice yet: cancelled pages and photos still waiting with a
+ * number. The office counter counts them so it never hands out a page a worker already wrote.
+ */
+export async function pendingMinvNumbers(db: Db, year2: string): Promise<string[]> {
+  const [voids, drafts] = await Promise.all([
+    db.from("maintenance_booklet_voids").select("invoice_number").like("invoice_number", `MINV${year2}%`),
+    db.from("maintenance_photo_drafts").select("invoice_number").neq("status", "rejected").like("invoice_number", `MINV${year2}%`),
+  ])
+  for (const result of [voids, drafts]) {
+    if (result.error && !missingTable(result.error)) throw new Error(`load MINV numbers: ${result.error.message}`)
+  }
+  return [...(voids.data || []), ...(drafts.data || [])].map((row: any) => String(row.invoice_number))
 }
 
 export type PageCheck = { ok: true; bookletId: number | null; number: string } | { ok: false; error: string }
@@ -52,35 +74,24 @@ export async function checkBookletPage(db: Db, linkId: number, number: string): 
 }
 
 /**
- * The MINV number the worker should write on his next page: one after the highest number already on an invoice,
- * cancelled, or sent by him in a photo. A worker with an active booklet counts inside that booklet only.
+ * The next MINV number in the one system sequence, the same for every worker and for the office: one after the
+ * highest number on an invoice, cancelled, or on a photo still waiting. With no number yet, the open booklet's first page.
  */
-export async function nextMinvForWorker(db: Db, linkId: number): Promise<string | null> {
+export async function nextMinvNumber(db: Db): Promise<string | null> {
   const year2 = invoiceYear2()
-  const [invoices, voids, drafts, booklets] = await Promise.all([
+  const [invoices, pending, booklet] = await Promise.all([
     db.from("accounts_receivable").select("invoice_number").like("invoice_number", `MINV${year2}%`),
-    db.from("maintenance_booklet_voids").select("invoice_number").like("invoice_number", `MINV${year2}%`),
-    db.from("maintenance_photo_drafts").select("invoice_number").eq("link_id", linkId).neq("status", "rejected").not("invoice_number", "is", null),
-    db.from("maintenance_booklets").select("first_serial, last_serial, status").eq("link_id", linkId).eq("year2", year2).order("first_serial"),
+    pendingMinvNumbers(db, year2),
+    db.from("maintenance_booklets").select("first_serial").eq("year2", year2).eq("status", "active").limit(1),
   ])
-  const serials = [...(invoices.data || []), ...(voids.data || []), ...(drafts.data || [])]
-    .map((row: any) => parseMinvNumber(row.invoice_number))
+  if (invoices.error) throw new Error(`load invoice numbers: ${invoices.error.message}`)
+  const serials = [...(invoices.data || []).map((row: any) => row.invoice_number), ...pending]
+    .map((number) => parseMinvNumber(number))
     .filter((p): p is { year2: string; serial: number } => !!p && p.year2 === year2)
     .map((p) => p.serial)
-
-  const active = (booklets.data || []).filter((b: any) => b.status === "active")
-  if (active.length) {
-    for (const b of active) {
-      const first = Number(b.first_serial)
-      const last = Number(b.last_serial)
-      const inside = serials.filter((s) => s >= first && s <= last)
-      const next = inside.length ? Math.max(...inside) + 1 : first
-      if (next <= last) return minvNumber(year2, next)
-    }
-    return null
-  }
-  if (!serials.length) return null
-  return minvNumber(year2, Math.max(...serials) + 1)
+  if (serials.length) return minvNumber(year2, Math.max(...serials) + 1)
+  const first = booklet.data?.[0]?.first_serial
+  return first ? minvNumber(year2, Number(first)) : null
 }
 
 export interface BookletStats {
@@ -111,9 +122,10 @@ export function bookletStats(booklet: Pick<BookletRow, "year2" | "first_serial" 
   return { used: usedCount, voided: voidedCount, blank: size - usedCount - voidedCount, skipped }
 }
 
-/** Gives a worker a new booklet: the next BOOKLET_PAGES serials after every MINV number and every booklet block. */
-export async function createBooklet(db: Db, linkId: number, createdBy: number | null): Promise<BookletRow> {
+/** The next shared booklet, once the open one is finished: the next BOOKLET_PAGES serials after every MINV number. */
+export async function createBooklet(db: Db, createdBy: number | null): Promise<BookletRow> {
   const year2 = invoiceYear2()
+  if (await hasActiveBooklet(db)) throw new BookletStillOpen()
   for (let attempt = 0; attempt < 3; attempt++) {
     const [numbers, blocks] = await Promise.all([
       db.from("accounts_receivable").select("invoice_number").like("invoice_number", `MINV${year2}%`),
@@ -122,14 +134,16 @@ export async function createBooklet(db: Db, linkId: number, createdBy: number | 
     if (numbers.error) throw new Error(`load invoice numbers: ${numbers.error.message}`)
     if (blocks.error) throw new Error(`load booklets: ${blocks.error.message}`)
     const reserved: SerialRange[] = (blocks.data || []).map((b: any) => ({ first: Number(b.first_serial), last: Number(b.last_serial) }))
-    const range = nextBookletRange(year2, (numbers.data || []).map((r: any) => r.invoice_number), reserved, BOOKLET_PAGES)
+    const taken = [...(numbers.data || []).map((r: any) => r.invoice_number), ...(await pendingMinvNumbers(db, year2))]
+    const range = nextBookletRange(year2, taken, reserved, BOOKLET_PAGES)
     const { data, error } = await db
       .from("maintenance_booklets")
-      .insert({ link_id: linkId, year2, first_serial: range.first, last_serial: range.last, created_by: createdBy })
+      .insert({ link_id: null, year2, first_serial: range.first, last_serial: range.last, created_by: createdBy })
       .select()
       .single()
     if (!error) return data as BookletRow
     if (error.code !== "23505") throw new Error(`create booklet: ${error.message}`)
+    if (await hasActiveBooklet(db)) throw new BookletStillOpen()
   }
   throw new Error("create booklet: another booklet was being made at the same time, try again")
 }

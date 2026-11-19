@@ -28,8 +28,8 @@ const fetcher = (url: string) => fetch(url).then((r) => (r.ok ? r.json() : null)
 const TEXT = {
   en: {
     title: "Invoice booklets",
-    hint: "Each booklet has 300 carbon pages with MINV numbers printed in order. Print it, then hand it to the worker.",
-    give: (n: string) => `Give ${n} a booklet`,
+    hint: "One booklet of 300 carbon pages is shared by all workers. Office MINV invoices take the next number in the same sequence. When it is finished, make the next one.",
+    give: "New booklet",
     print: "Print",
     used: "used",
     voided: "cancelled",
@@ -47,8 +47,8 @@ const TEXT = {
   },
   ar: {
     title: "دفاتر الفواتير",
-    hint: "كل دفتر فيه 300 ورقة كربون عليها أرقام MINV بالترتيب. اطبعه ثم سلّمه للعامل.",
-    give: (n: string) => `إعطاء ${n} دفتر`,
+    hint: "دفتر واحد فيه 300 ورقة كربون مشترك بين كل العمال. فواتير MINV من المكتب تأخذ الرقم التالي في نفس التسلسل. عند انتهائه أنشئ الدفتر التالي.",
+    give: "دفتر جديد",
     print: "طباعة",
     used: "مستخدمة",
     voided: "ملغاة",
@@ -66,7 +66,7 @@ const TEXT = {
   },
 }
 
-export function WorkerBooklets({ links }: { links: Array<{ id: number; workerName: string; active: boolean }> }) {
+export function WorkerBooklets() {
   const { language } = useI18n()
   const text = TEXT[language === "ar" ? "ar" : "en"]
   const { toast } = useToast()
@@ -97,7 +97,7 @@ export function WorkerBooklets({ links }: { links: Array<{ id: number; workerNam
     }
   }
 
-  const activeLinks = links.filter((l) => l.active)
+  const hasOpenBooklet = data.booklets.some((b) => b.status === "active")
 
   return (
     <section aria-labelledby="booklets-title" className="flex flex-col gap-3 border-t border-border pt-4">
@@ -109,25 +109,19 @@ export function WorkerBooklets({ links }: { links: Array<{ id: number; workerNam
         <p className="text-sm text-muted-foreground text-pretty">{text.hint}</p>
       </div>
 
-      {activeLinks.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {activeLinks.map((l) => (
-            <Button
-              key={l.id}
-              variant="outline"
-              size="sm"
-              className="min-h-11"
-              disabled={busy === `g${l.id}`}
-              onClick={async () => {
-                const made = await call(`g${l.id}`, "POST", { linkId: l.id })
-                if (made) toast({ title: text.made(made.firstNumber, made.lastNumber) })
-              }}
-            >
-              {busy === `g${l.id}` && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-              {text.give(l.workerName)}
-            </Button>
-          ))}
-        </div>
+      {!hasOpenBooklet && (
+        <Button
+          variant="outline"
+          className="min-h-11 self-start"
+          disabled={busy === "new"}
+          onClick={async () => {
+            const made = await call("new", "POST", {})
+            if (made) toast({ title: text.made(made.firstNumber, made.lastNumber) })
+          }}
+        >
+          {busy === "new" && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+          {text.give}
+        </Button>
       )}
 
       {data.booklets.length > 0 && (
@@ -143,7 +137,7 @@ export function WorkerBooklets({ links }: { links: Array<{ id: number; workerNam
                     {b.status === "finished" && <Badge variant="secondary">{text.finished}</Badge>}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {b.workerName} · {b.used} {text.used} · {b.voided} {text.voided} · {b.blank} {text.blank}
+                    {b.used} {text.used} · {b.voided} {text.voided} · {b.blank} {text.blank}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">

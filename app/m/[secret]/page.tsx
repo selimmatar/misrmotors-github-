@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { hashSecret, isSecretShape } from "@/lib/maintenance-photos"
-import { nextMinvForWorker } from "@/lib/maintenance-booklets"
+import { nextMinvNumber } from "@/lib/maintenance-booklets"
 import { WorkerUploadScreen } from "@/components/worker-upload/worker-upload-screen"
 import { WorkerLinkInactive } from "@/components/worker-upload/worker-link-inactive"
 
@@ -22,7 +22,7 @@ async function findWorker(secret: string): Promise<{ id: number; name: string } 
 
 async function findNextNumber(linkId: number): Promise<string | null> {
   try {
-    return await nextMinvForWorker(createAdminClient(), linkId)
+    return await nextMinvNumber(createAdminClient())
   } catch (error: any) {
     console.error("[worker-page] next number:", error?.message || error)
     return null
