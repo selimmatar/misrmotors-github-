@@ -156,7 +156,7 @@ export function WorkerLinksManager() {
                   <Badge variant={l.active ? "default" : "secondary"}>{l.active ? text.on : text.off}</Badge>
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {text.lastUsed}: {l.lastUsedAt ? formatDate(l.lastUsedAt) : text.never}
+                  {text.lastUsed}: {l.lastUsedAt ? formatDate(l.lastUsedAt, language) : text.never}
                 </span>
               </div>
               <div className="flex gap-2">

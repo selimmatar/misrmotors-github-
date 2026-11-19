@@ -111,6 +111,47 @@ password. He should tap one icon, take a photo, done. The accountant reviews it 
 4. The code includes the last two digits of the year: `INV265567`, `MINV265567`, no dashes. Assumed: each code
    starts again at 5567 in a new year (`INV275567`), since the year already tells the years apart. Owner can change this.
 
+## Part 3 — pre-numbered carbon booklets (owner chose option 1, 2026-11-19)
+
+### Why
+The worker must hand the customer an invoice with its number on the spot. He can't use a phone app for that,
+so the number is printed on paper in advance.
+
+### Decided (owner)
+- A booklet has **300 pages**, each with its own pre-printed `MINV` number, in order.
+- **Carbon copy**: the original goes to the customer, the copy stays in the booklet.
+- Prices are written **before VAT**.
+
+### How it works
+1. Office registers a booklet in the system and gives it to a worker. The system **reserves the next 300
+   `MINV` numbers** for it (for example `MINV265567` to `MINV265866`).
+2. System makes a **print file** (300 numbered pages, our template). The print shop makes the carbon booklet from it.
+3. Worker fills a page by hand: date, customer, description, qty, price before VAT. He gives the customer the
+   original, then photographs the page with his link (Part 2).
+4. AI reads the **printed number** and the lines. The accountant confirms. The invoice is created with
+   **exactly that number**, so the customer's paper and the official e-invoice match.
+5. A spoiled page: worker writes "cancelled" and photographs it. The number is recorded as void, never reused.
+
+### Rules (system checks)
+- The number must belong to a booklet given to that worker, and must not be used or voided already.
+- Office quick maintenance invoices keep auto `MINV` numbers but **skip numbers reserved by booklets**.
+- Accountant sees each booklet: pages used, voided, still blank. Missing numbers (gaps) are flagged.
+
+### Page template (draft)
+Logo and company details, tax registration number, the printed number, date, customer name and phone,
+table (description, qty, price before VAT), signatures. Footer line:
+"Prices before VAT. The official electronic tax invoice with this number will be sent to you."
+
+### Open decisions (owner)
+1. Year in the number: a booklet printed in 2026 may still be in use in 2027. Keep the printed number
+   (`MINV26…`) until the booklet ends? Recommended: yes.
+2. Legal status: the handwritten page is a provisional copy, the e-invoice is the official one. Owner to confirm
+   with the accountant that this wording is acceptable.
+
+### New database table (owner approval needed)
+- `maintenance_booklets`: worker, first number, last number, status. Voided pages: a small list per booklet.
+
 ## Order of work
 1. Part 1 (codes) on its own branch + tests, owner reviews the pull request.
 2. Part 2 after the two tables are approved.
+3. Part 3 (booklets) after the owner answers the open decisions and approves the booklet table.

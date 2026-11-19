@@ -150,7 +150,7 @@ export function MaintenancePhotoDrafts() {
                     {d.read?.customerName || `${text.from} ${d.workerName}`}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {d.workerName} · {formatDate(d.createdAt)}
+                    {d.workerName} · {formatDate(d.createdAt, language)}
                   </span>
                   <span>{statusBadge(d)}</span>
                 </div>
@@ -265,7 +265,7 @@ function DraftDialog({
         <DialogHeader>
           <DialogTitle>{text.dialogTitle}</DialogTitle>
           <DialogDescription>
-            {draft.workerName} · {formatDate(draft.createdAt)}
+            {draft.workerName} · {formatDate(draft.createdAt, language)}
           </DialogDescription>
         </DialogHeader>
 
@@ -388,15 +388,15 @@ function DraftDialog({
             <dl className="flex flex-col gap-1 rounded-md bg-muted p-3 text-sm">
               <div className="flex justify-between">
                 <dt>{text.subtotal}</dt>
-                <dd className="tabular-nums">{formatMoney(subtotal)}</dd>
+                <dd className="tabular-nums">{formatMoney(subtotal, language)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt>{text.vat}</dt>
-                <dd className="tabular-nums">{formatMoney(vat)}</dd>
+                <dd className="tabular-nums">{formatMoney(vat, language)}</dd>
               </div>
               <div className="flex justify-between font-bold">
                 <dt>{text.total}</dt>
-                <dd className="tabular-nums">{formatMoney(subtotal + vat)}</dd>
+                <dd className="tabular-nums">{formatMoney(subtotal + vat, language)}</dd>
               </div>
             </dl>
 
