@@ -51,6 +51,38 @@ export async function checkBookletPage(db: Db, linkId: number, number: string): 
   return { ok: true, bookletId: holder ? Number(holder.id) : null, number }
 }
 
+/**
+ * The MINV number the worker should write on his next page: one after the highest number already on an invoice,
+ * cancelled, or sent by him in a photo. A worker with an active booklet counts inside that booklet only.
+ */
+export async function nextMinvForWorker(db: Db, linkId: number): Promise<string | null> {
+  const year2 = invoiceYear2()
+  const [invoices, voids, drafts, booklets] = await Promise.all([
+    db.from("accounts_receivable").select("invoice_number").like("invoice_number", `MINV${year2}%`),
+    db.from("maintenance_booklet_voids").select("invoice_number").like("invoice_number", `MINV${year2}%`),
+    db.from("maintenance_photo_drafts").select("invoice_number").eq("link_id", linkId).neq("status", "rejected").not("invoice_number", "is", null),
+    db.from("maintenance_booklets").select("first_serial, last_serial, status").eq("link_id", linkId).eq("year2", year2).order("first_serial"),
+  ])
+  const serials = [...(invoices.data || []), ...(voids.data || []), ...(drafts.data || [])]
+    .map((row: any) => parseMinvNumber(row.invoice_number))
+    .filter((p): p is { year2: string; serial: number } => !!p && p.year2 === year2)
+    .map((p) => p.serial)
+
+  const active = (booklets.data || []).filter((b: any) => b.status === "active")
+  if (active.length) {
+    for (const b of active) {
+      const first = Number(b.first_serial)
+      const last = Number(b.last_serial)
+      const inside = serials.filter((s) => s >= first && s <= last)
+      const next = inside.length ? Math.max(...inside) + 1 : first
+      if (next <= last) return minvNumber(year2, next)
+    }
+    return null
+  }
+  if (!serials.length) return null
+  return minvNumber(year2, Math.max(...serials) + 1)
+}
+
 export interface BookletStats {
   used: number
   voided: number

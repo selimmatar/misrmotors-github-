@@ -27,11 +27,38 @@ async function shrinkPhoto(file: File): Promise<Blob> {
 
 const CODE_BY_STATUS: Record<number, WorkerErrorCode> = { 404: "inactive", 413: "too_big", 415: "not_photo", 429: "limit" }
 
-export function WorkerUploadScreen({ secret, workerName }: { secret: string; workerName: string }) {
+const bumpMinv = (number: string | null) => {
+  const match = number ? /^MINV(\d{2})(\d+)$/.exec(number) : null
+  return match ? `MINV${match[1]}${Number(match[2]) + 1}` : number
+}
+
+export function WorkerUploadScreen({
+  secret,
+  workerName,
+  nextNumber: initialNext,
+}: {
+  secret: string
+  workerName: string
+  nextNumber: string | null
+}) {
   const { lang, toggle } = useWorkerLanguage()
   const text = WORKER_TEXT[lang]
   const input = useRef<HTMLInputElement>(null)
   const [stage, setStage] = useState<Stage>({ kind: "idle" })
+  const [nextNumber, setNextNumber] = useState(initialNext)
+
+  const nextNumberCard = nextNumber ? (
+    <section
+      aria-label={text.nextNumber}
+      className="flex w-full flex-col items-center gap-1 rounded-2xl border-2 border-primary bg-primary/10 px-4 py-4"
+    >
+      <span className="text-lg font-bold">{text.nextNumber}</span>
+      <span dir="ltr" className="font-mono text-4xl font-extrabold tracking-wide text-primary">
+        {nextNumber}
+      </span>
+      <span className="text-base leading-relaxed text-muted-foreground text-pretty">{text.nextNumberHint}</span>
+    </section>
+  ) : null
 
   useEffect(() => {
     if (stage.kind === "done") navigator.vibrate?.(120)
@@ -62,7 +89,10 @@ export function WorkerUploadScreen({ secret, workerName }: { secret: string; wor
       const form = new FormData()
       form.append("photo", photo, photo === file ? file.name : "invoice.jpg")
       const response = await fetch(`/api/worker-upload/${secret}`, { method: "POST", body: form })
-      if (response.ok) setStage({ kind: "done" })
+      if (response.ok) {
+        setStage({ kind: "done" })
+        setNextNumber(bumpMinv)
+      }
       else setStage({ kind: "error", code: CODE_BY_STATUS[response.status] ?? "failed" })
     } catch {
       setStage({ kind: "error", code: "offline" })
@@ -116,6 +146,7 @@ export function WorkerUploadScreen({ secret, workerName }: { secret: string; wor
               <h1 className="text-4xl font-extrabold text-balance">{text.received}</h1>
               <p className="text-xl leading-relaxed text-muted-foreground text-pretty">{text.receivedHint}</p>
             </div>
+            {nextNumberCard}
             <button
               type="button"
               onClick={openCamera}
@@ -128,6 +159,7 @@ export function WorkerUploadScreen({ secret, workerName }: { secret: string; wor
           </div>
         ) : (
           <div className="flex w-full max-w-sm flex-col items-center gap-6">
+            {nextNumberCard}
             <button
               type="button"
               onClick={openCamera}

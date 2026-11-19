@@ -19,6 +19,8 @@ export const WORKER_TEXT = {
     received: "تم الاستلام",
     receivedHint: "وصلت الصورة للحسابات. شكراً.",
     another: "صورة أخرى",
+    nextNumber: "رقم الفاتورة القادمة",
+    nextNumberHint: "اكتب هذا الرقم على الفاتورة القادمة.",
     failed: "لم تصل الصورة",
     inactiveTitle: "الرابط لا يعمل",
     errors: {
@@ -42,6 +44,8 @@ export const WORKER_TEXT = {
     received: "Received",
     receivedHint: "The photo reached the accounts team. Thank you.",
     another: "Another photo",
+    nextNumber: "Next invoice number",
+    nextNumberHint: "Write this number on the next invoice.",
     failed: "The photo was not sent",
     inactiveTitle: "This link does not work",
     errors: {
