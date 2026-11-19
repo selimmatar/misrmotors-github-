@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { actorUserId } from "@/lib/auth/actor"
 import { cleanMinvNumber } from "@/lib/invoice-codes"
-import { MAX_VOID_REASON, bookletStats, createBooklet, minvNumber, type BookletRow } from "@/lib/maintenance-booklets"
+import { BookletStillOpen, MAX_VOID_REASON, bookletStats, createBooklet, minvNumber, type BookletRow } from "@/lib/maintenance-booklets"
 
 // Pre-numbered carbon booklets (spec 2026-11-19, Part 3). GET: the accountant; POST / PATCH: admin and CEO.
 export const dynamic = "force-dynamic"
@@ -47,23 +47,18 @@ export async function GET() {
   })
 }
 
-/** { linkId } gives that worker a new booklet of the next 300 MINV numbers. */
+/** The next shared booklet of 300 MINV numbers, once the open one is finished. */
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as Record<string, any> | null
-  const linkId = Number(body?.linkId)
-  if (!Number.isInteger(linkId) || linkId <= 0) return answer(400, "Choose the worker")
   const db = createAdminClient()
-  const { data: link } = await db.from("maintenance_upload_links").select("id, active").eq("id", linkId).maybeSingle()
-  if (!link) return answer(404, "Worker link not found")
-  if (!link.active) return answer(400, "This worker's link is switched off")
   try {
-    const booklet = await createBooklet(db, linkId, actorUserId(request))
+    const booklet = await createBooklet(db, actorUserId(request))
     return NextResponse.json({
       id: booklet.id,
       firstNumber: minvNumber(booklet.year2, booklet.first_serial),
       lastNumber: minvNumber(booklet.year2, booklet.last_serial),
     })
   } catch (error: any) {
+    if (error instanceof BookletStillOpen) return answer(409, error.message)
     console.error("[booklets] create:", error?.message || error)
     return answer(500, "Could not make the booklet")
   }
@@ -94,6 +89,7 @@ export async function PATCH(request: Request) {
 
   if (body?.status !== "active" && body?.status !== "finished") return answer(400, "Missing details")
   const { data, error } = await db.from("maintenance_booklets").update({ status: body.status }).eq("id", id).select("id")
+  if (error?.code === "23505") return answer(409, "Another booklet is open. Finish it before reopening this one")
   if (error) return answer(500, "Could not change the booklet")
   if (!data?.length) return answer(404, "Booklet not found")
   return NextResponse.json({ ok: true })

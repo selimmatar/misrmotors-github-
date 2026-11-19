@@ -14,7 +14,8 @@
 import { resolveInstallmentCount } from "./payment-type"
 import { excludeReplaced } from "./ar-live"
 import { numberTakenMessage } from "./doc-number"
-import { invoiceCodeForOrders, invoiceYear2, nextCodedNumber, type InvoiceCode, type SerialRange } from "./invoice-codes"
+import { invoiceCodeForOrders, invoiceYear2, nextCodedNumber, type InvoiceCode } from "./invoice-codes"
+import { pendingMinvNumbers } from "./maintenance-booklets"
 import {
   DELIVERED_PERMIT_STATUSES,
   invoiceablePool,
@@ -755,18 +756,11 @@ async function nextInvoiceNumber(db: Db, attemptOffset: number, code: InvoiceCod
     await db.from("accounts_receivable").select("invoice_number").like("invoice_number", `${code}${year2}%`),
     "load invoice numbers",
   ) as any[]
-  return nextCodedNumber(code, year2, rows.map((row) => row.invoice_number), attemptOffset, code === "MINV" ? await bookletRanges(db, year2) : [])
-}
-
-// Serial blocks held by maintenance carbon booklets (spec 2026-11-19, Part 3): office MINV numbers skip them.
-// Before the booklet table exists there are no blocks.
-async function bookletRanges(db: Db, year2: string): Promise<SerialRange[]> {
-  const { data, error } = await db.from("maintenance_booklets").select("first_serial, last_serial").eq("year2", year2)
-  if (error) {
-    if (error.code === "42P01" || error.code === "PGRST205") return []
-    throw new Error(`load booklet numbers: ${error.message || error}`)
-  }
-  return (data || []).map((b: any) => ({ first: Number(b.first_serial), last: Number(b.last_serial) }))
+  // MINV is one sequence shared by the office and the workers' booklet (owner, 2026-11-19): cancelled pages and
+  // photos still waiting with a number count as taken, so the office takes the next page after them.
+  const existing = rows.map((row) => row.invoice_number)
+  if (code === "MINV") existing.push(...(await pendingMinvNumbers(db, year2)))
+  return nextCodedNumber(code, year2, existing, attemptOffset)
 }
 
 // Insert an accounts_receivable row, retrying with the next number if another request took the same one

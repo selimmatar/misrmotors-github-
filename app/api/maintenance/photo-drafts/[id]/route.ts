@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { actorUserId } from "@/lib/auth/actor"
 import { createQuickMaintenanceInvoice, validateQuickInvoice } from "@/lib/maintenance-quick-invoice"
 import { MAX_REJECT_REASON, readDraftPhoto } from "@/lib/maintenance-photos"
-import { MAX_VOID_REASON, checkBookletPage, workerHasBooklet } from "@/lib/maintenance-booklets"
+import { MAX_VOID_REASON, checkBookletPage, hasActiveBooklet } from "@/lib/maintenance-booklets"
 import { cleanMinvNumber } from "@/lib/invoice-codes"
 
 // One photo draft: create the MINV invoice from it, reject it, or read the photo again (spec 2026-11-19, Part 2).
@@ -84,7 +84,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!draftRow) return answer(404, "Photo not found")
   const typed = cleanMinvNumber(body?.invoiceNumber)
   let invoiceNumber: string | null = null
-  if (typed || (await workerHasBooklet(db, Number(draftRow.link_id)))) {
+  if (typed || (await hasActiveBooklet(db))) {
     if (!typed) return answer(400, "Enter the MINV number printed on the page")
     const page = await checkBookletPage(db, Number(draftRow.link_id), typed)
     if (!page.ok) return answer(400, page.error)
