@@ -152,6 +152,9 @@ export function Dashboard({ user: account, onLogout }: DashboardProps) {
       if (activeModule === "e-invoice-settings") {
         return <EInvoiceSettingsModule roles={roles} />
       }
+      if (activeModule === "maintenance-workers") {
+        return <MaintenanceWorkersModule />
+      }
       return <UserManagementModule />
     }
     switch (activeModule) {
