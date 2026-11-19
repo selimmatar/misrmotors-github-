@@ -24,7 +24,7 @@ import { isSinglePayment } from "@/lib/payment-type"
 import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
 import { invoicesForTab, type ArTab } from "@/lib/ar-tabs"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal } from "lucide-react"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal, Pencil } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/erp/page-header"
@@ -44,6 +44,7 @@ import { OrderOverviewDialog } from "@/components/sales-order/order-overview-dia
 import { EtaPreviewDialog } from "@/components/accounting/eta-preview-dialog"
 import { canDecideCodes } from "@/lib/eta/code-roles"
 import { EtaReissueDialog } from "@/components/accounting/eta-reissue-dialog"
+import { RenameInvoiceDialog } from "@/components/accounting/rename-invoice-dialog"
 import { EtaBadge, EtaSendAll, ReplacementMarks, useEtaBadges } from "@/components/accounting/eta-ar-bits"
 
 interface PaymentScheduleEntry {
@@ -114,6 +115,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const [overviewSoId, setOverviewSoId] = useState<number | null>(null)
   const [etaInvoice, setEtaInvoice] = useState<CustomerInvoice | null>(null)
   const [reissueInvoice, setReissueInvoice] = useState<CustomerInvoice | null>(null)
+  const [renameInvoice, setRenameInvoice] = useState<CustomerInvoice | null>(null)
   const etaBadges = useEtaBadges(ETA_ROLES.includes(userRole || ""))
   const readyOrders = (toInvoice.orders || []).filter((o) => o.ready)
   const openOrders = (toInvoice.orders || []).filter((o) => !o.ready)
@@ -1165,6 +1167,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     invoice.replacedByInvoiceId ? allCustomerInvoices.find((i) => i.id === invoice.replacedByInvoiceId) || null : null
   const replacesOf = (invoice: CustomerInvoice) => allCustomerInvoices.find((i) => i.replacedByInvoiceId === invoice.id) || null
   const mayEta = ETA_ROLES.includes(userRole || "")
+  // The number can be changed only while the invoice is not on the portal (no document yet, or a rejected one); the
+  // server checks this again. Maintenance (INV-MNT-) numbers stay.
+  const canRenameNumber = (invoice: CustomerInvoice) => {
+    const state = etaBadges.statuses[invoice.id]
+    return (!state || state === "invalid") && !/^INV-MNT-/i.test(invoice.invoiceNumber)
+  }
 
   // The e-invoice badge and the Replaced / Replaces marks of a row.
   const renderEtaMarks = (invoice: CustomerInvoice) => (
@@ -1266,6 +1274,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               <DropdownMenuItem onSelect={() => setCreditDialogInvoice(invoice)}>
                 <Wallet className="w-4 h-4 me-2" />
                 {t("ar.credit.use")}
+              </DropdownMenuItem>
+            )}
+            {mayEta && canRenameNumber(invoice) && (
+              <DropdownMenuItem onSelect={() => setRenameInvoice(invoice)}>
+                <Pencil className="w-4 h-4 me-2" />
+                {t("ar.rename-invoice")}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -1371,6 +1385,17 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           started={isReplaced(reissueInvoice)}
           onClose={() => setReissueInvoice(null)}
           onStarted={() => {
+            loadData()
+            etaBadges.reload()
+          }}
+        />
+      )}
+      {renameInvoice && (
+        <RenameInvoiceDialog
+          invoiceId={renameInvoice.id}
+          invoiceNumber={renameInvoice.invoiceNumber}
+          onClose={() => setRenameInvoice(null)}
+          onChanged={() => {
             loadData()
             etaBadges.reload()
           }}
