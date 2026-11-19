@@ -136,6 +136,7 @@ export async function chooseInvoiceIdentity(db: Db, invoiceId: number, identityI
   if (error) return { ok: false, status: 500, code: "READ_FAILED", error: "Could not read the invoice." }
   if (!inv) return { ok: false, status: 404, code: "NOT_FOUND", error: "Invoice not found." }
   if (inv.status === "replaced") return { ok: false, status: 409, code: "REPLACED", error: "This invoice was replaced; use its new invoice instead." }
+  if (inv.status === "cancelled") return { ok: false, status: 409, code: "CANCELLED", error: "This invoice was cancelled." }
   if (await liveRealDocument(db, invoiceId)) return { ok: false, status: 409, code: "ETA_LIVE", error: "This invoice is already on the portal; the company it was issued for can't change." }
   if (identityId !== null) {
     const active = inv.customer_id != null ? await loadCustomerIdentities(db, Number(inv.customer_id), { activeOnly: true }) : []

@@ -8,12 +8,16 @@
 // rows, so the filter keeps them).
 export const LIVE_AR_STATUSES = ["pending", "partially_paid", "paid", "overdue"] as const
 export const REPLACED_AR_STATUS = "replaced"
+// A cancelled maintenance invoice (lib/minv-cancel.ts) counts nowhere either, exactly like a replaced one.
+export const CANCELLED_AR_STATUS = "cancelled"
 
-/** `accounts_receivable` query -> the same query without replaced invoices (rows with no status are kept). */
+/** `accounts_receivable` query -> the same query without replaced or cancelled invoices (rows with no status are kept). */
 export function excludeReplaced<T>(query: T): T {
-  return (query as any).or(`status.is.null,status.neq.${REPLACED_AR_STATUS}`)
+  return (query as any).or(`status.is.null,status.not.in.(${REPLACED_AR_STATUS},${CANCELLED_AR_STATUS})`)
 }
 
 export const isReplacedInvoice = (row: { status?: string | null } | null | undefined): boolean => row?.status === REPLACED_AR_STATUS
+export const isCancelledInvoice = (row: { status?: string | null } | null | undefined): boolean => row?.status === CANCELLED_AR_STATUS
 
 export const REPLACED_PAYMENT_MESSAGE = "This invoice has been replaced by a corrected invoice. Record payments on the new invoice."
+export const CANCELLED_PAYMENT_MESSAGE = "This invoice was cancelled. No payment can be recorded on it."

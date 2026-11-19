@@ -24,7 +24,7 @@ import { isSinglePayment } from "@/lib/payment-type"
 import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
 import { invoicesForTab, type ArTab } from "@/lib/ar-tabs"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal, Pencil, Image as ImageIcon } from "lucide-react"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal, Pencil, XCircle, Image as ImageIcon } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/erp/page-header"
@@ -45,6 +45,7 @@ import { EtaPreviewDialog } from "@/components/accounting/eta-preview-dialog"
 import { canDecideCodes } from "@/lib/eta/code-roles"
 import { EtaReissueDialog } from "@/components/accounting/eta-reissue-dialog"
 import { RenameInvoiceDialog } from "@/components/accounting/rename-invoice-dialog"
+import { CancelMinvDialog } from "@/components/accounting/cancel-minv-dialog"
 import { EtaBadge, EtaSendAll, ReplacementMarks, useEtaBadges } from "@/components/accounting/eta-ar-bits"
 import { MaintenancePhotoDrafts } from "@/components/accounting/maintenance-photo-drafts"
 
@@ -117,6 +118,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   const [etaInvoice, setEtaInvoice] = useState<CustomerInvoice | null>(null)
   const [reissueInvoice, setReissueInvoice] = useState<CustomerInvoice | null>(null)
   const [renameInvoice, setRenameInvoice] = useState<CustomerInvoice | null>(null)
+  const [cancelInvoice, setCancelInvoice] = useState<CustomerInvoice | null>(null)
   const etaBadges = useEtaBadges(ETA_ROLES.includes(userRole || ""))
   const readyOrders = (toInvoice.orders || []).filter((o) => o.ready)
   const openOrders = (toInvoice.orders || []).filter((o) => !o.ready)
@@ -1164,6 +1166,15 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
   // A corrected invoice is Replaced; the new one replaces it (spec §6.5a). Each links to the other.
   const isReplaced = (invoice: CustomerInvoice) => (invoice.status as string) === "replaced"
+  // A cancelled MINV (lib/minv-cancel.ts) stays listed for history; its number is free again.
+  const isCancelled = (invoice: CustomerInvoice) => (invoice.status as string) === "cancelled"
+  const canCancelMinv = (invoice: CustomerInvoice) =>
+    (userRole === "accountant" || userRole === "ceo") &&
+    /^MINV\d/i.test(invoice.invoiceNumber || "") &&
+    !isReplaced(invoice) &&
+    !isCancelled(invoice) &&
+    (invoice.collectedAmount || 0) <= 0.005 &&
+    (!etaBadges.statuses[invoice.id] || etaBadges.statuses[invoice.id] === "invalid")
   const replacedByOf = (invoice: CustomerInvoice) =>
     invoice.replacedByInvoiceId ? allCustomerInvoices.find((i) => i.id === invoice.replacedByInvoiceId) || null : null
   const replacesOf = (invoice: CustomerInvoice) => allCustomerInvoices.find((i) => i.replacedByInvoiceId === invoice.id) || null
@@ -1178,7 +1189,15 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
   // The e-invoice badge and the Replaced / Replaces marks of a row.
   const renderEtaMarks = (invoice: CustomerInvoice) => (
     <div className="flex flex-col items-start gap-1">
-      {mayEta && !isReplaced(invoice) && <EtaBadge state={etaBadges.statuses[invoice.id]} environment={etaBadges.environment} />}
+      {isCancelled(invoice) && (
+        <span
+          className="inline-flex items-center rounded-md border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
+          title={invoice.cancelReason || undefined}
+        >
+          {t("ar.cancelled")}
+        </span>
+      )}
+      {mayEta && !isReplaced(invoice) && !isCancelled(invoice) && <EtaBadge state={etaBadges.statuses[invoice.id]} environment={etaBadges.environment} />}
       <ReplacementMarks
         invoice={invoice}
         replacedBy={replacedByOf(invoice)}
@@ -1191,6 +1210,23 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
   // The row's actions, shared by the table's actions cell and the phone card.
   const renderRowActions = (invoice: CustomerInvoice) => {
+    if (isCancelled(invoice)) {
+      return (
+        <Button
+          size="sm"
+          variant="outline"
+          className="min-h-11"
+          aria-label={`${t("ar.view-photo")} ${invoice.invoiceNumber}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            window.open(`/api/invoices/ar/${invoice.id}/photo`, "_blank")
+          }}
+        >
+          <ImageIcon className="w-4 h-4 me-1" />
+          {t("ar.view-photo")}
+        </Button>
+      )
+    }
     if (isReplaced(invoice)) {
       return mayEta ? (
         <>
@@ -1287,6 +1323,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               <DropdownMenuItem onSelect={() => setRenameInvoice(invoice)}>
                 <Pencil className="w-4 h-4 me-2" />
                 {t("ar.rename-invoice")}
+              </DropdownMenuItem>
+            )}
+            {canCancelMinv(invoice) && (
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setCancelInvoice(invoice)}>
+                <XCircle className="w-4 h-4 me-2" />
+                {t("ar.cancel-invoice")}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -1406,6 +1448,14 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
             loadData()
             etaBadges.reload()
           }}
+        />
+      )}
+      {cancelInvoice && (
+        <CancelMinvDialog
+          invoiceId={cancelInvoice.id}
+          invoiceNumber={cancelInvoice.invoiceNumber}
+          onClose={() => setCancelInvoice(null)}
+          onCancelled={() => loadData()}
         />
       )}
 

@@ -66,7 +66,9 @@ export async function GET() {
     const transformed =
       result?.map((invoice: any) => ({
         id: invoice.invoice_id?.toString() || invoice.id?.toString(),
-        invoiceNumber: invoice.invoice_number,
+        // a cancelled MINV gave its number back; the list still shows the number it had
+        invoiceNumber: invoice.status === "cancelled" && invoice.cancelled_number ? invoice.cancelled_number : invoice.invoice_number,
+        cancelReason: invoice.cancel_reason || null,
         customerId: invoice.customer_id?.toString(),
         customerName: invoice.customers?.customer_name || "",
         soId: invoice.so_id?.toString(),

@@ -373,6 +373,8 @@ export interface AccountsReceivableInvoice {
   vatInvoiceUrl?: string
   /** the invoice that replaced this one (a corrected and reissued invoice); null while still being corrected */
   replacedByInvoiceId?: string | null
+  /** why a maintenance invoice was cancelled (status "cancelled", lib/minv-cancel.ts) */
+  cancelReason?: string | null
 }
 
 export type CustomerInvoice = AccountsReceivableInvoice

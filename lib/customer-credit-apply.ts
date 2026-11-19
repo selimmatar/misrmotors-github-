@@ -17,7 +17,7 @@
 // "Nothing was saved".
 import { mapArInvoice as mapInvoice } from "./ar-payments"
 import { computeArStatus } from "./ar-status"
-import { isReplacedInvoice, REPLACED_PAYMENT_MESSAGE } from "./ar-live"
+import { isCancelledInvoice, isReplacedInvoice, CANCELLED_PAYMENT_MESSAGE, REPLACED_PAYMENT_MESSAGE } from "./ar-live"
 import { CUSTOMER_CREDIT_LEDGER, CUSTOMER_CREDIT_PAYMENT_METHOD, creditMoney as round2, CREDIT_TOLERANCE, parseCreditSelections, reserveCredits, validateCredits } from "./credit-apply"
 
 export { CUSTOMER_CREDIT_PAYMENT_METHOD }
@@ -125,6 +125,7 @@ export async function applyCustomerCredits(supabase: any, body: any): Promise<Cu
     if (readError) return await reject(500, "Could not read the invoice. Nothing was saved.")
     if (!row) return await reject(404, "Invoice not found")
     if (isReplacedInvoice(row)) return await reject(409, REPLACED_PAYMENT_MESSAGE, { code: "AR_REPLACED" })
+    if (isCancelledInvoice(row)) return await reject(409, CANCELLED_PAYMENT_MESSAGE, { code: "AR_CANCELLED" })
     const invoiceAmount = round2(Number(row.amount) || 0)
     const oldCollected = row.collected_amount === null || row.collected_amount === undefined ? null : Number(row.collected_amount)
     const remaining = round2(invoiceAmount - (oldCollected ?? 0))
