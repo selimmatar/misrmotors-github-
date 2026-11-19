@@ -5,6 +5,7 @@ import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 import { replacedPrint } from "@/lib/eta/replaced-print"
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
 import { lineKey } from "@/lib/return-lines"
+import { loadStandaloneLines } from "@/lib/invoicing"
 
 export const dynamic = "force-dynamic"
 
@@ -94,6 +95,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
         `)
         .eq("so_id", invoice.so_id)
       items = sortSoLines(soItems)
+    }
+
+    // A standalone MINV (no sales order, no permits) prints its own lines.
+    if (!replaced && items.length === 0 && !invoice.so_id) {
+      items = (await loadStandaloneLines(supabase, invoice.invoice_id)).map((l) => ({
+        quantity: l.quantity,
+        unit_price: l.unitPrice,
+        total: Math.round(l.quantity * l.unitPrice * 100) / 100,
+        item_type: "outsourced",
+        outsourced_name: l.name,
+        item_name_snapshot: l.name,
+        products: { product_name: l.name },
+      }))
     }
 
     // Fetch company settings

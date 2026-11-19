@@ -970,6 +970,69 @@ export async function createSoInvoice(db: Db, soId: number, options: CreateInvoi
   }
 }
 
+// ---- Standalone maintenance invoice (MINV) -----------------------------------------------------------------
+// Linked to the customer only: no sales order, no delivery permit. Its lines live in ar_invoice_lines.
+export interface StandaloneLine {
+  description: string
+  quantity: number
+  unitPrice: number
+}
+export async function createStandaloneMinv(
+  db: Db,
+  input: { customerId: number; amount: number; lines: StandaloneLine[]; manualNumber?: string | null },
+): Promise<WorkflowResult> {
+  const today = new Date().toISOString().split("T")[0]
+  const row = {
+    customer_id: input.customerId,
+    so_id: null,
+    invoice_date: today,
+    due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    amount: round2(input.amount),
+    collected_amount: 0,
+    payment_terms: "cash",
+    installment_months: 1,
+    months_paid: 0,
+    status: "pending",
+    is_maintenance: true,
+  }
+  let invoice: any
+  try {
+    invoice = await insertInvoice(db, row, input.manualNumber ?? null, "MINV")
+  } catch (error) {
+    if (error instanceof InvoiceNumberTaken) return failure(409, error.message, { code: "NUMBER_TAKEN" })
+    return failure(500, (error as any)?.message || "Failed to create invoice")
+  }
+  const { error: linesError } = await db.from("ar_invoice_lines").insert(
+    input.lines.map((l, i) => ({
+      invoice_id: invoice.invoice_id,
+      line_no: i + 1,
+      description: l.description,
+      quantity: l.quantity,
+      unit_price: l.unitPrice,
+      line_total: round2(l.quantity * l.unitPrice),
+    })),
+  )
+  if (linesError) {
+    await rollbackInvoice(db, invoice.invoice_id)
+    return failure(500, `Could not save the invoice lines: ${linesError.message}`)
+  }
+  return { status: 200, body: invoice }
+}
+
+/** The lines of a standalone invoice (no sales order); empty for any other invoice. */
+export async function loadStandaloneLines(db: Db, invoiceId: number): Promise<{ name: string; quantity: number; unitPrice: number }[]> {
+  const { data, error } = await db
+    .from("ar_invoice_lines")
+    .select("line_no, description, quantity, unit_price")
+    .eq("invoice_id", invoiceId)
+    .order("line_no")
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205") return []
+    throw new Error(`load invoice lines: ${error.message || error}`)
+  }
+  return (data || []).map((l: any) => ({ name: String(l.description), quantity: Number(l.quantity), unitPrice: Number(l.unit_price) }))
+}
+
 // ---- Workflow B: delivery permit(s) -> invoice ------------------------------------------------------------
 export async function createDpInvoices(db: Db, permitIds: number[], manualNumber: string | null = null, options: CreateInvoiceOptions = {}): Promise<WorkflowResult> {
   try {
