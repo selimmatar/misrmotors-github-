@@ -12,6 +12,7 @@ import {
   etaUnitPrice,
   loadEtaGoLiveAt,
   loadSoInvoicingState,
+  loadStandaloneLines,
   orderDiscountRate,
   round2,
   soDiscountBase,
@@ -193,6 +194,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           items = items.filter((item: any) => Number(item.quantity) > 0)
         }
       }
+    }
+
+    // A standalone MINV (no sales order, no permits) prints its own lines.
+    if (!replaced && !isDpBasedInvoice && !invoice.so_id) {
+      items = (await loadStandaloneLines(supabase, invoice.invoice_id)).map((l) => ({
+        quantity: l.quantity,
+        unit_price: l.unitPrice,
+        total: round2(l.quantity * l.unitPrice),
+        item_type: "outsourced",
+        outsourced_name: l.name,
+        products: { product_name: l.name },
+      }))
     }
 
     // Delivery permits listed in the invoice header: only the ones linked to

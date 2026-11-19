@@ -1,16 +1,10 @@
 // Maintenance quick invoice (spec docs/superpowers/specs/2026-11-17-maintenance-quick-invoice-design.md, approach A).
 //
-// One call makes two records: a small maintenance sales order whose lines are service (outsourced) lines typed by
-// name (no product, so no stock moves), and the MINV invoice for the whole order through the normal workflow
-// (createSoInvoice: VAT, e-invoice lines). Maintenance invoices get no delivery permit (2026-11-19). Printing, ETA send, credit notes, correct-and-reissue and payments then
-// work unchanged.
-//
-// There is no database transaction: if a later step fails, the earlier records are deleted again (newest first), so
-// nothing half-made is left. createSoInvoice already takes back its own invoice when it fails.
-import { createSoInvoice, loadEtaGoLiveAt, round2, VAT_RATE } from "./invoicing"
+// Since 2026-11-19 a MINV invoice stands on its own: it is linked to the customer only (tax ID, customer card), with
+// no sales order and no delivery permit. Its lines are stored in ar_invoice_lines (createStandaloneMinv).
+// Quick invoices made earlier through a maintenance sales order still work as before.
+import { createStandaloneMinv, loadEtaGoLiveAt, round2, VAT_RATE } from "./invoicing"
 import { etaLines, isAfterGoLive } from "./eta/totals"
-import { buildSalesOrderPaymentFields } from "./payment-type"
-import { insertWithNumber } from "./doc-number"
 import { QUICK_SO_TYPE, QUICK_SO_NOTE, isMaintenanceNumber } from "./invoice-codes"
 
 type Db = any
@@ -101,39 +95,8 @@ export interface QuickResult {
 const fail = (status: number, error: string, extra: Record<string, any> = {}): QuickResult => ({ status, body: { error, ...extra } })
 const today = () => new Date().toISOString().split("T")[0]
 
-/** Delete what was made so far, newest first. Returns the steps that could not be undone (logged). */
-async function undo(db: Db, made: { soId?: number; permitId?: number }): Promise<string[]> {
-  const steps: [string, () => PromiseLike<any>][] = []
-  if (made.permitId) {
-    steps.push(["delivery permit items", () => db.from("delivery_permit_items").delete().eq("permit_id", made.permitId)])
-    steps.push(["delivery permit", () => db.from("delivery_permits").delete().eq("permit_id", made.permitId)])
-  }
-  if (made.soId) {
-    steps.push(["sales order items", () => db.from("sales_order_items").delete().eq("so_id", made.soId)])
-    steps.push(["sales order", () => db.from("sales_orders").delete().eq("so_id", made.soId)])
-  }
-  const failed: string[] = []
-  for (const [what, run] of steps) {
-    const res = await run()
-    if (res?.error) {
-      failed.push(what)
-      console.error(`[quick-invoice] UNDO FAILED (${what}) so=${made.soId} permit=${made.permitId}: ${res.error.message}. Manual review needed.`)
-    }
-  }
-  return failed
-}
-
-const undone = async (db: Db, made: { soId?: number; permitId?: number }, result: QuickResult): Promise<QuickResult> => {
-  const failed = await undo(db, made)
-  if (failed.length === 0) return result
-  return fail(500, `${result.body?.error || "Failed"} Some records could not be removed (${failed.join(", ")}); contact an administrator.`, {
-    partialFailure: true,
-  })
-}
-
-/** Order and invoice in one go; any failure leaves nothing behind. */
+/** The MINV invoice on its own: linked to the customer only, no sales order and no delivery permit. */
 export async function createQuickMaintenanceInvoice(db: Db, input: QuickInput): Promise<QuickResult> {
-  const made: { soId?: number; permitId?: number } = {}
   try {
     const { data: customer, error: customerError } = await db
       .from("customers")
@@ -143,7 +106,6 @@ export async function createQuickMaintenanceInvoice(db: Db, input: QuickInput): 
     if (customerError) return fail(500, `Could not read the customer: ${customerError.message}`)
     if (!customer) return fail(404, "Customer not found")
 
-    // Price the order the way the invoice will be priced, so the invoice exactly fits the order.
     let goLive: string | null
     try {
       goLive = await loadEtaGoLiveAt(db)
@@ -151,72 +113,15 @@ export async function createQuickMaintenanceInvoice(db: Db, input: QuickInput): 
       return fail(503, `The e-invoice go-live setting could not be read (${error?.message || error}). Nothing was created; please try again.`)
     }
     const totals = quickTotals(input.lines, isAfterGoLive(new Date().toISOString(), goLive))
-    const now = new Date().toISOString()
-    const date = today()
 
-    // 1. The sales order (already delivered: the work is done), service lines only.
-    const nextSoNumber = async () => {
-      const { data, error } = await db.rpc("generate_so_number")
-      if (error) console.error("[quick-invoice] generate_so_number:", error.message)
-      return error ? null : ((data as string) || null)
-    }
-    const so = await insertWithNumber<any>(null, nextSoNumber, (soNumber) =>
-      db
-        .from("sales_orders")
-        .insert({
-          so_number: soNumber,
-          customer_id: input.customerId,
-          entity_type: "sales_order",
-          status: "delivered",
-          fulfillment_status: "DELIVERED",
-          so_type: QUICK_SO_TYPE,
-          notes: QUICK_SO_NOTE,
-          order_date: date,
-          delivery_date: date,
-          subtotal: totals.net,
-          total: totals.total,
-          net_total: totals.total,
-          discount_type: "none",
-          discount_value: 0,
-          discount_amount: 0,
-          ...buildSalesOrderPaymentFields("cash", {}),
-          created_at: now,
-          updated_at: now,
-        })
-        .select()
-        .single(),
-    )
-    if (!so.ok) {
-      const why = so.reason === "error" ? so.error?.message || String(so.error) : "no sales order number"
-      return fail(500, `Could not create the maintenance order (${why}). Nothing was saved.`)
-    }
-    made.soId = so.data.so_id
-    const soNumber: string = so.data.so_number
-
-    const { error: soItemsError } = await db.from("sales_order_items").insert(
-      input.lines.map((l) => ({
-        so_id: made.soId,
-        product_id: null,
-        item_type: "outsourced",
-        item_category: QUICK_SO_TYPE,
-        outsourced_name: l.name,
-        quantity: l.quantity,
-        unit_price: l.unitPrice,
-        total: round2(l.quantity * l.unitPrice),
-      })),
-    )
-    if (soItemsError) return await undone(db, made, fail(500, "Could not save the invoice lines. Nothing was saved."))
-
-    // 2. The invoice for the whole order (no delivery permit for maintenance; takes itself back when it fails).
-    const invoiced = await createSoInvoice(db, made.soId!, { manualNumber: input.invoiceNumber ?? null })
-    const invoice = invoiced.status === 200 ? invoiced.body : null
-    if (!invoice?.invoice_id) {
-      return await undone(db, made, fail(invoiced.status === 200 ? 500 : invoiced.status, `${invoiced.body?.error || "Could not create the invoice."} Nothing was saved.`))
-    }
-
-    // The maintenance flag. Without the column (SQL not applied yet) the order type and note still mark it.
-    const { error: flagError } = await db.from("accounts_receivable").update({ is_maintenance: true }).eq("invoice_id", invoice.invoice_id)
-    if (flagError) console.warn(`[quick-invoice] is_maintenance not set on invoice ${invoice.invoice_id}: ${flagError.message}`)
+    const created = await createStandaloneMinv(db, {
+      customerId: input.customerId,
+      amount: totals.total,
+      manualNumber: input.invoiceNumber ?? null,
+      lines: input.lines.map((l) => ({ description: l.name, quantity: l.quantity, unitPrice: l.unitPrice })),
+    })
+    if (created.status !== 200) return fail(created.status, `${created.body?.error || "Could not create the invoice."} Nothing was saved.`, created.body?.code ? { code: created.body.code } : {})
+    const invoice = created.body
 
     return {
       status: 200,
@@ -225,13 +130,13 @@ export async function createQuickMaintenanceInvoice(db: Db, input: QuickInput): 
         invoiceId: invoice.invoice_id,
         invoiceNumber: invoice.invoice_number,
         amount: Number(invoice.amount),
-        soId: made.soId,
-        soNumber,
+        soId: null,
+        soNumber: null,
         customerName: customer.customer_name,
       },
     }
   } catch (error: any) {
     console.error("[quick-invoice] failed:", error)
-    return await undone(db, made, fail(500, `${error?.message || "Failed to create the invoice"}. Nothing was saved.`))
+    return fail(500, `${error?.message || "Failed to create the invoice"}. Nothing was saved.`)
   }
 }
