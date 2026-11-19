@@ -22,6 +22,8 @@ export interface PhotoRequest {
   geminiSchema: unknown
   /** the JSON shape in words/example, for Groq (its JSON mode is told the shape in the prompt) */
   jsonShape: string
+  /** Time for Google when there is no Groq key. Background readings (worker photos) can wait longer than a screen. */
+  geminiMs?: number
 }
 
 const isTimeout = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
@@ -115,7 +117,7 @@ export async function readPhoto<T>(req: PhotoRequest): Promise<PhotoRead<T>> {
   const start = Date.now()
   let first: PhotoRead<T> | null = null
   if (geminiKey) {
-    first = await viaGemini<T>(req, geminiKey, groqKey ? GEMINI_MS_WITH_BACKUP : 50_000)
+    first = await viaGemini<T>(req, geminiKey, groqKey ? GEMINI_MS_WITH_BACKUP : req.geminiMs ?? 50_000)
     if (!groqKey || (first.ok && first.data !== null)) return first
     console.error(`${req.tag}: Google could not read the photo (${first.ok ? "unreadable answer" : first.kind}) - trying Groq`)
   }

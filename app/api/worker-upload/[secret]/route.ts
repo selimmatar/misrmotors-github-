@@ -14,7 +14,7 @@ import {
 // The maintenance worker's photo upload (spec 2026-11-19, Part 2). Public (no login): the secret in the path is the
 // key, and it can only add a photo draft. lib/auth/permissions.ts PUBLIC_PREFIXES lets it through the middleware.
 export const dynamic = "force-dynamic"
-export const maxDuration = 60
+export const maxDuration = 120
 
 const refuse = (status: number, code: string) => NextResponse.json({ error: code }, { status })
 

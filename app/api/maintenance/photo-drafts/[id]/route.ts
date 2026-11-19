@@ -11,7 +11,7 @@ import { cleanMinvNumber } from "@/lib/invoice-codes"
 // Creating goes through the same createQuickMaintenanceInvoice as the quick maintenance screen. The draft is claimed
 // (waiting -> converting) in one database step first, so two clicks can never make two invoices.
 export const dynamic = "force-dynamic"
-export const maxDuration = 60
+export const maxDuration = 120
 
 const answer = (status: number, error: string) => NextResponse.json({ error }, { status })
 

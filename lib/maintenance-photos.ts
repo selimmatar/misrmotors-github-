@@ -112,6 +112,8 @@ export function photoReadRequest(image: string, mediaType: string): PhotoRequest
     image,
     mediaType,
     geminiSchema: READ_SCHEMA,
+    // Read in the background after the upload, so it can wait for a slow Google (route maxDuration is 120).
+    geminiMs: 100_000,
     jsonShape:
       '{"printedNumber":"MINV265600","cancelled":false,"customerName":"...","date":"...",' +
       '"lines":[{"name":"...","quantity":"1","unitPrice":"250"}],"vat":"35","total":"285"}',
