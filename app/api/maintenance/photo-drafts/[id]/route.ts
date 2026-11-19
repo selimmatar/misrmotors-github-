@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { data: row } = await db.from("maintenance_photo_drafts").select("photo_path, photo_type, status").eq("id", id).maybeSingle()
     if (!row) return answer(404, "Photo not found")
     if (row.status !== "waiting") return answer(409, "This photo was already handled")
-    const file = await get(row.photo_path, { access: "private" })
+    const file = await get(row.photo_path, { access: "public" })
     if (!file || file.statusCode !== 200 || !file.stream) return answer(404, "Photo not found")
     const base64 = Buffer.from(await new Response(file.stream).arrayBuffer()).toString("base64")
     await db.from("maintenance_photo_drafts").update({ read_status: "reading" }).eq("id", id)

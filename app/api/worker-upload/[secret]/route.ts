@@ -51,7 +51,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ sec
   try {
     const bytes = Buffer.from(await photo.arrayBuffer())
     const blob = await put(`maintenance-photos/${link.id}/${Date.now()}.${photoExtension(photo.type)}`, bytes, {
-      access: "private",
+      // The project's Blob store is public; the random suffix keeps the address unguessable, and the app only
+      // shows the photo through the logged-in /api/maintenance/photo-drafts/[id]/photo route.
+      access: "public",
       addRandomSuffix: true,
       contentType: photo.type,
     })
