@@ -21,7 +21,6 @@ const settingText = (value: unknown) => {
 }
 
 const COMPANY_NAME_AR = "شركة مصر للمحركات"
-const COMPANY_NAME_EN = "Misr Motors Co."
 
 // Embedded as a data URL so the logo still prints when the page is saved as PDF for the print shop.
 async function loadLogo(origin: string) {
@@ -60,36 +59,35 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     pages.push(`<section class="page">
   <header>
     <div class="brand">
-      ${logo ? `<img src="${logo}" alt="Misr Motors Co." class="logo">` : ""}
+      ${logo ? `<img src="${logo}" alt="${COMPANY_NAME_AR}" class="logo">` : ""}
       <div>
         <div class="name">${COMPANY_NAME_AR}</div>
-        <div class="small">${COMPANY_NAME_EN}${taxId ? ` · رقم التسجيل الضريبي ${taxId}` : ""}</div>
-        <div class="title">فاتورة صيانة · Maintenance invoice</div>
+        ${taxId ? `<div class="small">رقم التسجيل الضريبي ${taxId}</div>` : ""}
+        <div class="title">فاتورة صيانة</div>
       </div>
     </div>
     <div class="number">${minvNumber(booklet.year2, serial)}</div>
   </header>
   <div class="fields">
-    <div class="field"><span>اسم العميل · Customer</span></div>
+    <div class="field"><span>اسم العميل</span></div>
     <div class="row">
-      <div class="field"><span>التاريخ · Date</span></div>
-      <div class="field"><span>التليفون · Phone</span></div>
+      <div class="field"><span>التاريخ</span></div>
+      <div class="field"><span>التليفون</span></div>
     </div>
   </div>
   <table>
-    <thead><tr><th class="wide">البيان · Description</th><th class="qty">الكمية<br>Qty</th><th class="money">السعر قبل الضريبة<br>Price before VAT</th><th class="money">القيمة<br>Amount</th></tr></thead>
+    <thead><tr><th class="wide">البيان</th><th class="qty">الكمية</th><th class="money">السعر قبل الضريبة</th><th class="money">القيمة</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <table class="totals">
-    <tr><th>الإجمالي قبل الضريبة · Subtotal</th><td></td></tr>
-    <tr><th>+ ضريبة القيمة المضافة 14% · VAT 14%</th><td></td></tr>
-    <tr class="grand"><th>الإجمالي · Total</th><td></td></tr>
+    <tr><th>الإجمالي قبل الضريبة</th><td></td></tr>
+    <tr><th>ضريبة القيمة المضافة ١٤٪؜</th><td></td></tr>
+    <tr class="grand"><th>الإجمالي</th><td></td></tr>
   </table>
   <div class="signs">
-    <div>الفني · Technician${worker ? `: ${worker}` : ""}</div>
-    <div>توقيع العميل · Customer signature</div>
+    <div>الفني${worker ? `: ${worker}` : ""}</div>
+    <div>توقيع العميل</div>
   </div>
-  <footer>نسخة مؤقتة. تصدر الفاتورة الإلكترونية الرسمية بنفس الرقم. · Provisional copy. The official e-invoice follows with the same number.</footer>
 </section>`)
   }
 
@@ -137,7 +135,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 </style>
 </head>
 <body>
-<div class="toolbar"><span>${first} – ${last} · ${pages.length} pages</span><button onclick="window.print()">Print · طباعة</button></div>
+<div class="toolbar"><span>${first} – ${last} · ${pages.length} صفحة</span><button onclick="window.print()">طباعة</button></div>
 ${pages.join("\n")}
 </body>
 </html>`
