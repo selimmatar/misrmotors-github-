@@ -5,6 +5,8 @@
 import { askGemini, geminiFailure, geminiJson } from "./gemini-models"
 
 export const GROQ_MODEL = "qwen/qwen3.8-27b"
+// The owner saved the key in Vercel as `grokAPI`, so both names are accepted.
+export const groqApiKey = () => process.env.GROQ_API_KEY || process.env.grokAPI
 // Under the route's 60-second limit: Google gets the first part when Groq is there to take over.
 const TOTAL_MS = 55_000
 const GEMINI_MS_WITH_BACKUP = 30_000
@@ -22,6 +24,8 @@ export interface PhotoRequest {
   geminiSchema: unknown
   /** the JSON shape in words/example, for Groq (its JSON mode is told the shape in the prompt) */
   jsonShape: string
+  /** Time for Google when there is no Groq key. Background readings (worker photos) can wait longer than a screen. */
+  geminiMs?: number
 }
 
 const isTimeout = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
@@ -110,12 +114,12 @@ async function viaGroq<T>(req: PhotoRequest, apiKey: string, timeoutMs: number):
 /** Read the photo: Gemini, then Groq as the backup. `data` is null when the answer was not usable JSON. */
 export async function readPhoto<T>(req: PhotoRequest): Promise<PhotoRead<T>> {
   const geminiKey = process.env.GEMINI_API_KEY
-  const groqKey = process.env.GROQ_API_KEY
+  const groqKey = groqApiKey()
   if (!geminiKey && !groqKey) return { ok: false, kind: "not_setup", why: "no key" }
   const start = Date.now()
   let first: PhotoRead<T> | null = null
   if (geminiKey) {
-    first = await viaGemini<T>(req, geminiKey, groqKey ? GEMINI_MS_WITH_BACKUP : 50_000)
+    first = await viaGemini<T>(req, geminiKey, groqKey ? GEMINI_MS_WITH_BACKUP : req.geminiMs ?? 50_000)
     if (!groqKey || (first.ok && first.data !== null)) return first
     console.error(`${req.tag}: Google could not read the photo (${first.ok ? "unreadable answer" : first.kind}) - trying Groq`)
   }

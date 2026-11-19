@@ -84,6 +84,11 @@ export const RULES: Rule[] = [
   rule("/api/maintenance", ["accountant", "sales-rep", "warehouse-rep"], ["accountant", "sales-rep"]),
   // Maintenance quick invoice (owner-approved 2026-11-17): the maintenance person's one screen; the accountant too
   rule("/api/maintenance/quick-invoice", QUICK_INVOICE, QUICK_INVOICE),
+  // Maintenance photo drafts (owner-approved 2026-11-19): the accountant reviews them; worker links: admin / CEO only
+  rule("/api/maintenance/photo-drafts", ACCOUNTANT, ACCOUNTANT),
+  rule("/api/maintenance/upload-links", ONLY_TOP, ONLY_TOP),
+  // Carbon booklets (owner request 2026-11-19): only admin / CEO see, print and give them out (Maintenance tab)
+  rule("/api/maintenance/booklets", ONLY_TOP, ONLY_TOP),
   // Reports
   rule("/api/reports", ["accountant", "sales-rep"], ONLY_TOP),
   rule("/api/analytics", ["accountant", "sales-rep", "po-rep"], ONLY_TOP),
@@ -124,6 +129,14 @@ export const PUBLIC_PATHS = [
   "/api/auth/login", "/api/auth/logout", "/api/auth/forgot", "/api/auth/me",
   "/api/eta-signer/next", "/api/eta-signer/signed", "/api/eta-signer/ping", "/api/eta-sync",
 ]
+
+/**
+ * Reachable without logging in, for every path under these. /api/worker-upload/<secret>: the maintenance worker's
+ * photo upload (owner-approved 2026-11-19); the route checks the secret itself and can only add a photo draft.
+ */
+export const PUBLIC_PREFIXES = ["/api/worker-upload/"]
+
+export const isPublicPath = (path: string) => PUBLIC_PATHS.includes(path) || PUBLIC_PREFIXES.some((p) => path.startsWith(p))
 
 export function ruleFor(path: string): Rule | null {
   let best: Rule | null = null

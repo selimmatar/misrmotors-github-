@@ -6,11 +6,11 @@
 // must be free. Every use is written to workflow_events.
 import { cleanManualNumber, numberTakenMessage, isUniqueViolation } from "../doc-number"
 import { knownUserId } from "../po-history"
+import { isMaintenanceNumber } from "../invoice-codes"
 
 type Db = any
 export type RenameInvoiceResult = { ok: true; invoiceNumber: string } | { ok: false; status: number; code: string; error: string }
 
-const MAINTENANCE_PREFIX = /^INV-MNT-/i
 const fail = (status: number, code: string, error: string): RenameInvoiceResult => ({ ok: false, status, code, error })
 
 export async function renameInvoiceNumber(db: Db, invoiceId: number, rawNumber: unknown, userId: unknown): Promise<RenameInvoiceResult> {
@@ -24,8 +24,9 @@ export async function renameInvoiceNumber(db: Db, invoiceId: number, rawNumber: 
   if (!inv) return fail(404, "NOT_FOUND", "Invoice not found.")
   const old = String(inv.invoice_number || "")
   if (inv.status === "replaced") return fail(409, "REPLACED", "This invoice was replaced; its number cannot be changed.")
-  if (MAINTENANCE_PREFIX.test(old) || MAINTENANCE_PREFIX.test(next)) {
-    return fail(409, "MAINTENANCE_NUMBER", "Maintenance invoice numbers (INV-MNT-) cannot be changed or used here.")
+  // MINV numbers too (spec 2026-11-19): renaming one would move it between the Sales and Maintenance tabs
+  if (isMaintenanceNumber(old) || isMaintenanceNumber(next)) {
+    return fail(409, "MAINTENANCE_NUMBER", "Maintenance invoice numbers (MINV, INV-MNT-) cannot be changed or used here.")
   }
   if (next === old) return fail(409, "SAME_NUMBER", "That is already the invoice number.")
 

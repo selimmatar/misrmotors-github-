@@ -47,6 +47,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "metrics-validation", label: "module.metrics-validation", icon: CheckSquare },
     { id: "system-health", label: "module.system-health", icon: Activity },
     { id: "e-invoice-settings", label: "module.e-invoice-settings", icon: Receipt },
+    { id: "maintenance-workers", label: "module.maintenance-workers", icon: Wrench },
   ],
   // The CEO sees every screen and may edit and approve everything (owner, 2026-11-01).
   ceo: [
@@ -75,7 +76,7 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "warehouse-delivery", label: "module.warehouse-delivery", icon: Package },
     { id: "shipment", label: "module.shipping", icon: Truck },
     { id: "operations-management", label: "module.operations-management", icon: Wrench },
-    { id: "maintenance-quick-invoice", label: "module.maintenance-quick-invoice", icon: Wrench },
+    { id: "maintenance-workers", label: "module.maintenance-workers", icon: Wrench },
     { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
     { id: "balance", label: "module.balance", icon: Wallet },
     { id: "finance-reports", label: "module.finance-reports", icon: FileSpreadsheet },

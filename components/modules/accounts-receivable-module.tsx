@@ -46,6 +46,7 @@ import { canDecideCodes } from "@/lib/eta/code-roles"
 import { EtaReissueDialog } from "@/components/accounting/eta-reissue-dialog"
 import { RenameInvoiceDialog } from "@/components/accounting/rename-invoice-dialog"
 import { EtaBadge, EtaSendAll, ReplacementMarks, useEtaBadges } from "@/components/accounting/eta-ar-bits"
+import { MaintenancePhotoDrafts } from "@/components/accounting/maintenance-photo-drafts"
 
 interface PaymentScheduleEntry {
   id: string
@@ -1413,6 +1414,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           </TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {invoiceTab === "maintenance" && <MaintenancePhotoDrafts />}
 
       {/* Filter Buttons */}
       <div className="flex gap-2 flex-wrap">

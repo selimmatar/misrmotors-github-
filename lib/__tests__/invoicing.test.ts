@@ -141,7 +141,7 @@ test("1-2. SO with no invoices -> whole-order invoice at the SO total, no DP lin
   assert.equal(res.body.amount, 1140000)
   assert.equal(res.body.so_id, 1)
   assert.equal(res.body.invoiceNumber, res.body.invoice_number)
-  assert.match(res.body.invoice_number, /^INV-\d{4}-0001$/)
+  assert.match(res.body.invoice_number, /^INV\d{2}5567$/) // spec 2026-11-19: INV + two-digit year, starting at 5567
   assert.equal(linksOf(db).length, 0)
   assert.equal(res.body.source_delivery_permit_id ?? null, null)
   assert.equal(res.body.installment_months, 1) // bank transfer = single payment (Batch 1C)
