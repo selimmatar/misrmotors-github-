@@ -1,17 +1,16 @@
 // Maintenance quick invoice (spec docs/superpowers/specs/2026-11-17-maintenance-quick-invoice-design.md, approach A).
 //
-// One call makes the same three records as invoice 10503: a small maintenance sales order whose lines are service
-// (outsourced) lines typed by name, a delivery permit that is already APPROVED (no stock is taken: no product, no
-// inventory rows), and the customer invoice from that permit through the normal workflow (createDpInvoices: normal
-// invoice numbering, VAT, e-invoice lines). Printing, ETA send, credit notes, correct-and-reissue and payments then
+// One call makes two records: a small maintenance sales order whose lines are service (outsourced) lines typed by
+// name (no product, so no stock moves), and the MINV invoice for the whole order through the normal workflow
+// (createSoInvoice: VAT, e-invoice lines). Maintenance invoices get no delivery permit (2026-11-19). Printing, ETA send, credit notes, correct-and-reissue and payments then
 // work unchanged.
 //
 // There is no database transaction: if a later step fails, the earlier records are deleted again (newest first), so
-// nothing half-made is left. createDpInvoices already takes back its own invoice when it fails.
-import { createDpInvoices, loadEtaGoLiveAt, round2, VAT_RATE } from "./invoicing"
+// nothing half-made is left. createSoInvoice already takes back its own invoice when it fails.
+import { createSoInvoice, loadEtaGoLiveAt, round2, VAT_RATE } from "./invoicing"
 import { etaLines, isAfterGoLive } from "./eta/totals"
 import { buildSalesOrderPaymentFields } from "./payment-type"
-import { highestSerial, insertWithNumber } from "./doc-number"
+import { insertWithNumber } from "./doc-number"
 import { QUICK_SO_TYPE, QUICK_SO_NOTE, isMaintenanceNumber } from "./invoice-codes"
 
 type Db = any
@@ -132,7 +131,7 @@ const undone = async (db: Db, made: { soId?: number; permitId?: number }, result
   })
 }
 
-/** Order, approved permit and invoice in one go; any failure leaves nothing behind. */
+/** Order and invoice in one go; any failure leaves nothing behind. */
 export async function createQuickMaintenanceInvoice(db: Db, input: QuickInput): Promise<QuickResult> {
   const made: { soId?: number; permitId?: number } = {}
   try {
@@ -208,54 +207,11 @@ export async function createQuickMaintenanceInvoice(db: Db, input: QuickInput): 
     )
     if (soItemsError) return await undone(db, made, fail(500, "Could not save the invoice lines. Nothing was saved."))
 
-    // 2. The delivery permit, already approved; no product and no warehouse, so no stock moves.
-    const year = new Date().getFullYear()
-    let skip = 0
-    const nextPermitNumber = async () => {
-      const { data, error } = await db.from("delivery_permits").select("permit_no").like("permit_no", `DP-${year}-%`)
-      if (error) return null
-      const next = highestSerial((data || []).map((p: any) => p.permit_no), "DP", year) + 1 + skip++
-      return `DP-${year}-${String(next).padStart(4, "0")}`
-    }
-    const permit = await insertWithNumber<any>(null, nextPermitNumber, (permitNo) =>
-      db
-        .from("delivery_permits")
-        .insert({
-          permit_no: permitNo,
-          sales_order_id: made.soId,
-          customer_id: input.customerId,
-          recipient_name: customer.customer_name || null,
-          status: "APPROVED",
-          submitted_signed_at: now,
-          approved_at: now,
-          created_at: now,
-          updated_at: now,
-        })
-        .select()
-        .single(),
-    )
-    if (!permit.ok) return await undone(db, made, fail(500, "Could not create the delivery permit. Nothing was saved."))
-    made.permitId = permit.data.permit_id
-
-    const { error: permitItemsError } = await db.from("delivery_permit_items").insert(
-      input.lines.map((l) => ({
-        permit_id: made.permitId,
-        product_id: null,
-        item_name_snapshot: l.name,
-        quantity: l.quantity,
-        allocated_quantity: l.quantity,
-        unit_price: l.unitPrice,
-        total: round2(l.quantity * l.unitPrice),
-      })),
-    )
-    if (permitItemsError) return await undone(db, made, fail(500, "Could not save the delivery permit lines. Nothing was saved."))
-
-    // 3. The invoice from that permit (normal numbering; takes itself back when it fails).
-    const invoiced = await createDpInvoices(db, [made.permitId!], input.invoiceNumber ?? null)
-    const invoice = invoiced.status === 200 ? invoiced.body?.invoices?.[0] : null
-    if (!invoice) {
-      const error = invoiced.body?.requiresSplit ? "The invoice could not be made in one piece." : invoiced.body?.error || "Could not create the invoice."
-      return await undone(db, made, fail(invoiced.status === 200 ? 500 : invoiced.status, `${error} Nothing was saved.`))
+    // 2. The invoice for the whole order (no delivery permit for maintenance; takes itself back when it fails).
+    const invoiced = await createSoInvoice(db, made.soId!, { manualNumber: input.invoiceNumber ?? null })
+    const invoice = invoiced.status === 200 ? invoiced.body : null
+    if (!invoice?.invoice_id) {
+      return await undone(db, made, fail(invoiced.status === 200 ? 500 : invoiced.status, `${invoiced.body?.error || "Could not create the invoice."} Nothing was saved.`))
     }
 
     // The maintenance flag. Without the column (SQL not applied yet) the order type and note still mark it.
@@ -271,8 +227,6 @@ export async function createQuickMaintenanceInvoice(db: Db, input: QuickInput): 
         amount: Number(invoice.amount),
         soId: made.soId,
         soNumber,
-        permitId: made.permitId,
-        permitNo: permit.data.permit_no,
         customerName: customer.customer_name,
       },
     }

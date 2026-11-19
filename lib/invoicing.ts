@@ -656,7 +656,7 @@ export async function loadSoInvoicingState(db: Db, soId: number): Promise<SoInvo
   const so = must(
     await db
       .from("sales_orders")
-      .select("so_id, so_number, customer_id, total, subtotal, discount_amount, payment_type, payment_terms, installments")
+      .select("so_id, so_number, customer_id, total, subtotal, discount_amount, payment_type, payment_terms, installments, so_type, notes")
       .eq("so_id", soId)
       .maybeSingle(),
     "load sales order",
@@ -854,6 +854,8 @@ const reissueRefusal = (error: unknown): WorkflowResult | null =>
 export interface CreateInvoiceOptions {
   /** a reissue whose moved payments exceed the new amount: keep the excess as customer credit (spec §6.5a) */
   confirmOverpaid?: boolean
+  /** a typed invoice number (a maintenance booklet page); used as is, refused when taken */
+  manualNumber?: string | null
 }
 
 async function rollbackInvoice(db: Db, invoiceId: number) {
@@ -921,10 +923,16 @@ export async function createSoInvoice(db: Db, soId: number, options: CreateInvoi
       const overpaid = options.confirmOverpaid === true ? null : overpaidRefusal(correction, priced.amount)
       if (overpaid) return overpaid
     }
+    // A quick maintenance order (no delivery permit) is billed as MINV.
+    const invoiceCode = invoiceCodeForOrders([state.so as any])
+    const manualNumber = options.manualNumber ?? null
     let invoice: any
     try {
-      invoice = correction ? await insertReissue(db, correction, row, [], null, options.confirmOverpaid === true) : await insertInvoice(db, row)
+      invoice = correction
+        ? await insertReissue(db, correction, row, [], manualNumber, options.confirmOverpaid === true, invoiceCode)
+        : await insertInvoice(db, row, manualNumber, invoiceCode)
     } catch (error) {
+      if (error instanceof InvoiceNumberTaken) return failure(409, error.message, { code: "NUMBER_TAKEN" })
       const refused = reissueRefusal(error)
       if (refused) return refused
       throw error

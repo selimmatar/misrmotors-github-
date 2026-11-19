@@ -76,7 +76,6 @@ export const ROLE_MODULES: Record<UserRole, NavItem[]> = {
     { id: "warehouse-delivery", label: "module.warehouse-delivery", icon: Package },
     { id: "shipment", label: "module.shipping", icon: Truck },
     { id: "operations-management", label: "module.operations-management", icon: Wrench },
-    { id: "maintenance-quick-invoice", label: "module.maintenance-quick-invoice", icon: Wrench },
     { id: "maintenance-workers", label: "module.maintenance-workers", icon: Wrench },
     { id: "accounts-receivable", label: "module.accounts-receivable", icon: DollarSign },
     { id: "balance", label: "module.balance", icon: Wallet },
