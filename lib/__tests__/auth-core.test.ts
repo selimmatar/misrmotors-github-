@@ -4,7 +4,7 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 import { ROLE_PRIORITY, isRole } from "../auth/roles"
-import { RULES, PUBLIC_PATHS, ruleFor, allows } from "../auth/permissions"
+import { RULES, PUBLIC_PATHS, isPublicPath, ruleFor, allows } from "../auth/permissions"
 import { authMode, decide, identityFromAuthUser, identityHeaders, isIdle, loginAddress, type Identity } from "../auth/decide"
 
 const ROOT = process.env.REPO_ROOT || process.cwd()
@@ -57,7 +57,7 @@ function apiPaths(dir: string): string[] {
 test("guard: every /api route has a rule or is public", () => {
   const paths = apiPaths(path.join(ROOT, "app/api"))
   assert.ok(paths.length > 100, `found only ${paths.length} routes`)
-  const uncovered = paths.filter((p) => !PUBLIC_PATHS.includes(p) && ruleFor(p) === null)
+  const uncovered = paths.filter((p) => !isPublicPath(p) && ruleFor(p) === null)
   assert.deepEqual(uncovered, [], `routes with no rule: ${uncovered.join(", ")}`)
 })
 

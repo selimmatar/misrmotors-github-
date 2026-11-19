@@ -9,7 +9,7 @@ import path from "node:path"
 import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import { ROLES, isRole } from "../auth/roles"
-import { PUBLIC_PATHS, allows, ruleFor } from "../auth/permissions"
+import { isPublicPath, allows, ruleFor } from "../auth/permissions"
 import { decide } from "../auth/decide"
 import { navItemsForRoles, primaryRole } from "../auth/role-nav"
 import { validateNewUser } from "../auth/users-admin"
@@ -53,7 +53,7 @@ test("M2. the maintenance role reaches only the quick invoice route and its own 
   assert.ok(paths.length > 100)
   const reachable: string[] = []
   for (const p of paths) {
-    if (PUBLIC_PATHS.includes(p)) continue
+    if (isPublicPath(p)) continue
     const rule = ruleFor(p)
     if (!rule) continue
     for (const method of ["GET", "POST", "PUT", "DELETE"]) {

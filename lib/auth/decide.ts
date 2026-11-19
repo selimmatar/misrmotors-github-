@@ -2,7 +2,7 @@
 // Pure functions only; middleware.ts does the cookie and network work around them.
 import type { UserRole } from "@/lib/types"
 import { isRole } from "./roles"
-import { PUBLIC_PATHS, allows, ruleFor } from "./permissions"
+import { allows, isPublicPath, ruleFor } from "./permissions"
 
 export type AuthMode = "off" | "test" | "on"
 
@@ -59,7 +59,7 @@ export type Decision =
 export function decide(input: { mode: AuthMode; path: string; method: string; identity: Identity | null; idle: boolean }): Decision {
   const { mode, path, method, identity, idle } = input
   if (mode === "off" || !(path === "/api" || path.startsWith("/api/"))) return { kind: "allow" }
-  if (PUBLIC_PATHS.includes(path)) return { kind: "allow" }
+  if (isPublicPath(path)) return { kind: "allow" }
 
   let status: 401 | 403 | null = null
   let error = ""
