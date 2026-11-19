@@ -40,3 +40,34 @@ create index if not exists maintenance_photo_drafts_link_idx on public.maintenan
 
 alter table public.maintenance_upload_links enable row level security;
 alter table public.maintenance_photo_drafts enable row level security;
+
+-- Part 3, pre-numbered carbon booklets (owner-approved 2026-11-19). Each booklet holds a block of MINV serials of one
+-- year (MINV<year2><serial>). Office auto numbers skip these blocks; a booklet page becomes an invoice with its printed
+-- number. Cancelled pages are recorded so their number is never used.
+create table if not exists public.maintenance_booklets (
+  id bigserial primary key,
+  link_id bigint not null references public.maintenance_upload_links(id),
+  year2 text not null check (year2 ~ '^[0-9]{2}$'),
+  first_serial int not null,
+  last_serial int not null,
+  status text not null default 'active' check (status in ('active', 'finished')),
+  created_by int,
+  created_at timestamptz not null default now(),
+  check (last_serial >= first_serial),
+  unique (year2, first_serial)
+);
+
+create table if not exists public.maintenance_booklet_voids (
+  id bigserial primary key,
+  booklet_id bigint not null references public.maintenance_booklets(id),
+  invoice_number text not null unique,
+  reason text,
+  draft_id bigint references public.maintenance_photo_drafts(id),
+  created_by int,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists maintenance_booklets_link_idx on public.maintenance_booklets (link_id, created_at desc);
+
+alter table public.maintenance_booklets enable row level security;
+alter table public.maintenance_booklet_voids enable row level security;

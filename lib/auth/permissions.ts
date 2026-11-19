@@ -87,6 +87,8 @@ export const RULES: Rule[] = [
   // Maintenance photo drafts (owner-approved 2026-11-19): the accountant reviews them; worker links: admin / CEO only
   rule("/api/maintenance/photo-drafts", ACCOUNTANT, ACCOUNTANT),
   rule("/api/maintenance/upload-links", ONLY_TOP, ONLY_TOP),
+  // Carbon booklets (owner-approved 2026-11-19): the accountant sees and prints them; giving one out: admin / CEO
+  rule("/api/maintenance/booklets", ACCOUNTANT, ONLY_TOP),
   // Reports
   rule("/api/reports", ["accountant", "sales-rep"], ONLY_TOP),
   rule("/api/analytics", ["accountant", "sales-rep", "po-rep"], ONLY_TOP),

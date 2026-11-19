@@ -25,7 +25,15 @@ interface Draft {
   createdAt: string
   status: "waiting" | "converting"
   readStatus: "reading" | "read" | "failed"
-  read: { customerName: string; date: string; lines: DraftLine[] } | null
+  read: {
+    customerName: string
+    date: string
+    lines: DraftLine[]
+    printedNumber?: string
+    cancelled?: boolean
+    writtenVat?: number
+    writtenTotal?: number
+  } | null
   workerName: string
 }
 interface Customer {
@@ -69,6 +77,14 @@ const TEXT = {
     failed: "Something went wrong",
     pickCustomer: "Pick the customer",
     photoAlt: "Photo of the handwritten invoice",
+    pageNumber: "Number printed on the page",
+    pageNumberHint: "Needed when the worker uses a booklet. Leave empty otherwise.",
+    cancelledPage: "This page looks cancelled",
+    cancelPage: "Cancel page",
+    confirmCancelPage: "Cancel this page number",
+    cancelledDone: (n: string) => `Page ${n} cancelled`,
+    needNumber: "Enter the page number first",
+    mismatch: (vat: string, total: string) => `On the page: VAT ${vat}, total ${total}. Check the lines.`,
   },
   ar: {
     title: "صور من الورشة",
@@ -102,6 +118,14 @@ const TEXT = {
     failed: "حدث خطأ",
     pickCustomer: "اختر العميل",
     photoAlt: "صورة الفاتورة المكتوبة بخط اليد",
+    pageNumber: "الرقم المطبوع على الورقة",
+    pageNumberHint: "مطلوب إذا كان العامل يستخدم دفتر. اتركه فارغاً غير ذلك.",
+    cancelledPage: "هذه الورقة تبدو ملغاة",
+    cancelPage: "إلغاء الورقة",
+    confirmCancelPage: "إلغاء رقم هذه الورقة",
+    cancelledDone: (n: string) => `تم إلغاء الورقة ${n}`,
+    needNumber: "اكتب رقم الورقة أولاً",
+    mismatch: (vat: string, total: string) => `في الورقة: الضريبة ${vat}، الإجمالي ${total}. راجع البنود.`,
   },
 }
 
@@ -150,6 +174,7 @@ export function MaintenancePhotoDrafts() {
                     {d.read?.customerName || `${text.from} ${d.workerName}`}
                   </span>
                   <span className="text-xs text-muted-foreground">
+                    {d.read?.printedNumber ? `${d.read.printedNumber} · ` : ""}
                     {d.workerName} · {formatDate(d.createdAt, language)}
                   </span>
                   <span>{statusBadge(d)}</span>
@@ -197,6 +222,9 @@ function DraftDialog({
   onDone: () => void
 }) {
   const { toast } = useToast()
+  const { language } = useI18n()
+  const [invoiceNumber, setInvoiceNumber] = useState(draft.read?.printedNumber ?? "")
+  const [cancellingPage, setCancellingPage] = useState(false)
   const { data: customerData } = useSWR<{ customers: Customer[] }>("/api/maintenance/quick-invoice", fetcher)
   const customers = customerData?.customers ?? []
   const writtenName = draft.read?.customerName ?? ""
@@ -205,7 +233,7 @@ function DraftDialog({
   const [lines, setLines] = useState<DraftLine[]>(
     draft.read?.lines?.length ? draft.read.lines : [{ name: "", quantity: 1, unitPrice: 0 }],
   )
-  const [busy, setBusy] = useState<"create" | "reject" | "reread" | null>(null)
+  const [busy, setBusy] = useState<"create" | "reject" | "reread" | "void" | null>(null)
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState("")
 
@@ -219,6 +247,10 @@ function DraftDialog({
   const subtotal = lines.reduce((sum, l) => sum + (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0), 0)
   const vat = Math.round(subtotal * VAT_RATE * 100) / 100
   const validLines = lines.filter((l) => l.name.trim() && Number(l.quantity) > 0 && Number(l.unitPrice) > 0)
+  const writtenVat = draft.read?.writtenVat ?? 0
+  const writtenTotal = draft.read?.writtenTotal ?? 0
+  const totalsDiffer =
+    (writtenVat > 0 && Math.abs(writtenVat - vat) > 1) || (writtenTotal > 0 && Math.abs(writtenTotal - (subtotal + vat)) > 1)
 
   const setLine = (i: number, patch: Partial<DraftLine>) =>
     setLines((all) => all.map((l, j) => (j === i ? { ...l, ...patch } : l)))
@@ -234,12 +266,17 @@ function DraftDialog({
     return result
   }
 
-  const run = async (kind: "create" | "reject" | "reread") => {
+  const run = async (kind: "create" | "reject" | "reread" | "void") => {
     setBusy(kind)
     try {
-      if (kind === "create") {
+      if (kind === "void") {
+        if (!invoiceNumber.trim()) throw new Error(text.needNumber)
+        const result = await post({ action: "void", invoiceNumber, reason })
+        toast({ title: text.cancelledDone(result.invoiceNumber) })
+      } else if (kind === "create") {
         const result = await post({
           action: "create",
+          invoiceNumber: invoiceNumber.trim() || undefined,
           customerId,
           lines: validLines.map((l) => ({ name: l.name.trim(), quantity: Number(l.quantity), unitPrice: Number(l.unitPrice) })),
         })
@@ -285,6 +322,25 @@ function DraftDialog({
           </a>
 
           <div className="flex min-w-0 flex-1 flex-col gap-4">
+            {draft.read?.cancelled && (
+              <p role="alert" className="rounded-md border border-destructive bg-destructive/10 p-2 text-sm font-medium text-destructive">
+                {text.cancelledPage}
+              </p>
+            )}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="draft-number">{text.pageNumber}</Label>
+              <Input
+                id="draft-number"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value.toUpperCase())}
+                placeholder="MINV265600"
+                autoCapitalize="characters"
+                autoComplete="off"
+                dir="ltr"
+                className="min-h-11 font-mono text-base"
+              />
+              <p className="text-xs text-muted-foreground text-pretty">{text.pageNumberHint}</p>
+            </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="draft-customer">{text.customer}</Label>
               {writtenName && (
@@ -399,8 +455,13 @@ function DraftDialog({
                 <dd className="tabular-nums">{formatMoney(subtotal + vat, language)}</dd>
               </div>
             </dl>
+            {totalsDiffer && (
+              <p role="alert" className="rounded-md border border-destructive bg-destructive/10 p-2 text-sm text-destructive text-pretty">
+                {text.mismatch(formatMoney(writtenVat, language), formatMoney(writtenTotal, language))}
+              </p>
+            )}
 
-            {rejecting && (
+            {(rejecting || cancellingPage) && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="draft-reason">{text.rejectReason}</Label>
                 <Textarea id="draft-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} className="text-base" />
@@ -414,15 +475,27 @@ function DraftDialog({
             {busy === "reread" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="size-4" aria-hidden="true" />}
             {text.reread}
           </Button>
-          {rejecting ? (
+          {cancellingPage ? (
+            <Button variant="destructive" className="min-h-11" disabled={!!busy} onClick={() => run("void")}>
+              {busy === "void" && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+              {text.confirmCancelPage}
+            </Button>
+          ) : rejecting ? (
             <Button variant="destructive" className="min-h-11" disabled={!!busy} onClick={() => run("reject")}>
               {busy === "reject" && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
               {text.confirmReject}
             </Button>
           ) : (
-            <Button variant="outline" className="min-h-11" disabled={!!busy} onClick={() => setRejecting(true)}>
-              {text.reject}
-            </Button>
+            <>
+              {(draft.read?.cancelled || invoiceNumber.trim()) && (
+                <Button variant="outline" className="min-h-11" disabled={!!busy} onClick={() => setCancellingPage(true)}>
+                  {text.cancelPage}
+                </Button>
+              )}
+              <Button variant="outline" className="min-h-11" disabled={!!busy} onClick={() => setRejecting(true)}>
+                {text.reject}
+              </Button>
+            </>
           )}
           <Button
             className="min-h-11"

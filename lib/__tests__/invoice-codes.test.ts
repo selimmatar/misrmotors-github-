@@ -76,3 +76,47 @@ test("C9. MINV numbers land in the Maintenance tab; INV numbers stay in Sales", 
   assert.equal(isMaintenanceInvoice({ invoice_number: "MINV265567" }), true)
   assert.equal(isMaintenanceInvoice({ invoice_number: "INV265567" }), false)
 })
+
+// Part 3, carbon booklets
+import { BOOKLET_PAGES, cleanMinvNumber, nextBookletRange, parseMinvNumber, skipReserved } from "../invoice-codes"
+import { bookletStats } from "../maintenance-booklets"
+
+test("office MINV numbers skip booklet blocks and ignore booklet numbers", () => {
+  const block = { first: 5600, last: 5899 }
+  assert.equal(nextCodedNumber("MINV", "26", ["MINV265598"], 0, [block]), "MINV265599")
+  assert.equal(nextCodedNumber("MINV", "26", ["MINV265599"], 0, [block]), "MINV265900")
+  // a booklet page already used does not push the office counter forward
+  assert.equal(nextCodedNumber("MINV", "26", ["MINV265570", "MINV265650"], 0, [block]), "MINV265571")
+  // the retry offset also skips the block
+  assert.equal(nextCodedNumber("MINV", "26", ["MINV265598"], 2, [block]), "MINV265901")
+  assert.equal(skipReserved(5600, [block, { first: 5900, last: 5910 }]), 5911)
+})
+
+test("a new booklet takes the next 300 after every number and every block", () => {
+  assert.equal(BOOKLET_PAGES, 300)
+  assert.deepEqual(nextBookletRange("26", [], []), { first: 5567, last: 5866 })
+  assert.deepEqual(nextBookletRange("26", ["MINV265580"], []), { first: 5581, last: 5880 })
+  assert.deepEqual(nextBookletRange("26", ["MINV265580"], [{ first: 5600, last: 5899 }]), { first: 5900, last: 6199 })
+  assert.deepEqual(nextBookletRange("26", ["MINV275999", "INV269999"], []), { first: 5567, last: 5866 })
+})
+
+test("printed numbers are cleaned the way they are read or typed", () => {
+  assert.equal(cleanMinvNumber("minv 26-5600"), "MINV265600")
+  assert.equal(cleanMinvNumber("٢٦٥٦٠٠"), "MINV265600")
+  assert.equal(cleanMinvNumber("INV265600"), "")
+  assert.equal(cleanMinvNumber(""), "")
+  assert.deepEqual(parseMinvNumber("MINV265600"), { year2: "26", serial: 5600 })
+  assert.equal(parseMinvNumber("MINV2"), null)
+})
+
+test("booklet counts used, cancelled, blank and skipped pages", () => {
+  const stats = bookletStats(
+    { year2: "26", first_serial: 5600, last_serial: 5609 },
+    new Set(["MINV265600", "MINV265603"]),
+    new Set(["MINV265601"]),
+  )
+  assert.equal(stats.used, 2)
+  assert.equal(stats.voided, 1)
+  assert.equal(stats.blank, 7)
+  assert.deepEqual(stats.skipped, ["MINV265602"])
+})

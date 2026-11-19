@@ -142,14 +142,25 @@ Logo and company details, tax registration number, the printed number, date, cus
 table (description, qty, price before VAT), signatures. Footer line:
 "Prices before VAT. The official electronic tax invoice with this number will be sent to you."
 
-### Open decisions (owner)
-1. Year in the number: a booklet printed in 2026 may still be in use in 2027. Keep the printed number
-   (`MINV26…`) until the booklet ends? Recommended: yes.
-2. Legal status: the handwritten page is a provisional copy, the e-invoice is the official one. Owner to confirm
-   with the accountant that this wording is acceptable.
+### Owner answers (2026-11-19)
+1. Year: **keep the printed number** (`MINV26…`) until the booklet ends, even in 2027.
+2. Each line is priced before VAT. At the bottom of the page the worker writes the subtotal, **+14% VAT** (the
+   amount) and the **total**. The page template has these three rows. The AI reads them; the accountant is warned
+   when the written VAT or total doesn't match the lines.
+3. Booklet table approved. Old type errors and old test failures elsewhere stay as they are for now.
+4. Still open: the footer wording (provisional copy, official e-invoice follows) to be checked with the accountant.
 
-### New database table (owner approval needed)
-- `maintenance_booklets`: worker, first number, last number, status. Voided pages: a small list per booklet.
+### New database tables (approved)
+- `maintenance_booklets`: worker link, year (two digits), first and last serial, status (active / finished).
+  `unique (year2, first_serial)` stops two booklets being given the same block.
+- `maintenance_booklet_voids`: cancelled page numbers (unique), reason, the photo it came from.
+
+### How numbers stay apart
+- A new booklet takes the next 300 serials after every MINV number already used **and** every booklet block.
+- Office auto `MINV` numbers skip every booklet block of that year, and booklet numbers don't push the office
+  counter forward.
+- A booklet page becomes an invoice only through the photo review, with the page number checked against the
+  worker's booklets. If the worker has no booklet, the invoice gets an auto number (Part 2 as before).
 
 ## Order of work
 1. Part 1 (codes) on its own branch + tests, owner reviews the pull request.

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { formatDate } from "@/lib/format"
+import { WorkerBooklets } from "./worker-booklets"
 
 interface WorkerLink {
   id: number
@@ -183,6 +184,8 @@ export function WorkerLinksManager() {
           ))}
         </ul>
       )}
+
+      <WorkerBooklets links={links} />
     </section>
   )
 }

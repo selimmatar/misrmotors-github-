@@ -3,6 +3,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { readPhoto, type PhotoRequest } from "./photo-reader"
 import { MAX_LINES, MAX_NAME_LENGTH } from "./maintenance-quick-invoice"
+import { cleanMinvNumber } from "./invoice-codes"
 
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024
 /** Photos one link may send in 24 hours: far above a day's work, low enough to stop a leaked link being abused. */
@@ -28,6 +29,13 @@ export interface DraftRead {
   customerName: string
   date: string
   lines: DraftLine[]
+  /** The MINV number printed on a booklet page, "" when none could be read (Part 3). */
+  printedNumber: string
+  /** The page is crossed out or marked cancelled. */
+  cancelled: boolean
+  /** VAT and total as the worker wrote them at the bottom, 0 when not written. */
+  writtenVat: number
+  writtenTotal: number
 }
 
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"
@@ -58,6 +66,10 @@ export function normalizeRead(raw: unknown): DraftRead {
     customerName: String(r.customerName ?? "").trim().slice(0, 200),
     date: String(r.date ?? "").trim().slice(0, 20),
     lines,
+    printedNumber: cleanMinvNumber(r.printedNumber),
+    cancelled: r.cancelled === true || String(r.cancelled).toLowerCase() === "true",
+    writtenVat: Math.round(handNumber(r.vat) * 100) / 100,
+    writtenTotal: Math.round(handNumber(r.total) * 100) / 100,
   }
 }
 
@@ -66,6 +78,10 @@ const READ_SCHEMA = {
   properties: {
     customerName: { type: "STRING", nullable: true },
     date: { type: "STRING", nullable: true },
+    printedNumber: { type: "STRING", nullable: true },
+    cancelled: { type: "BOOLEAN", nullable: true },
+    vat: { type: "STRING", nullable: true },
+    total: { type: "STRING", nullable: true },
     lines: {
       type: "ARRAY",
       items: {
@@ -88,12 +104,17 @@ export function photoReadRequest(image: string, mediaType: string): PhotoRequest
       "Copy exactly what is written; never invent a line, a price or a customer. Leave a field empty when you cannot read it.",
     text:
       "Return the customer name, the date as written, and one line per job or part: name (what was done, as written), " +
-      "quantity (1 when none is written) and unitPrice (the price of one, as written, digits only). " +
-      "Skip total, VAT and subtotal rows.",
+      "quantity (1 when none is written) and unitPrice (the price of one before VAT, as written, digits only). " +
+      "Do not put the subtotal, VAT or total rows in lines. Instead return vat (the VAT amount written at the bottom, " +
+      "digits only) and total (the final total written at the bottom, digits only). " +
+      "printedNumber: the invoice number PRINTED on the page (it starts with MINV), not a handwritten number. " +
+      "cancelled: true only when the page is crossed out or says cancelled / ملغي / ملغاة.",
     image,
     mediaType,
     geminiSchema: READ_SCHEMA,
-    jsonShape: '{"customerName":"...","date":"...","lines":[{"name":"...","quantity":"1","unitPrice":"250"}]}',
+    jsonShape:
+      '{"printedNumber":"MINV265600","cancelled":false,"customerName":"...","date":"...",' +
+      '"lines":[{"name":"...","quantity":"1","unitPrice":"250"}],"vat":"35","total":"285"}',
   }
 }
 
@@ -111,7 +132,7 @@ export async function readDraftPhoto(db: Db, draftId: number, base64: string, me
   }
   const { error } = await db
     .from("maintenance_photo_drafts")
-    .update({ read_status: data && data.lines.length > 0 ? "done" : "failed", read_data: data })
+    .update({ read_status: data && (data.lines.length > 0 || data.cancelled || data.printedNumber) ? "done" : "failed", read_data: data })
     .eq("id", draftId)
   if (error) console.error(`[maintenance-photo] draft ${draftId}: could not save the reading`, error.message)
 }

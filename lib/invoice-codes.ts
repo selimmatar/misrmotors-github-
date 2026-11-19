@@ -20,15 +20,79 @@ export function invoiceYear2(now: Date = new Date()): string {
 }
 
 /** The next free number of a code and year, given the numbers that already start with that code and year. */
-export function nextCodedNumber(code: InvoiceCode, year2: string, existing: Array<string | null | undefined>, attemptOffset = 0): string {
+export function nextCodedNumber(
+  code: InvoiceCode,
+  year2: string,
+  existing: Array<string | null | undefined>,
+  attemptOffset = 0,
+  reserved: SerialRange[] = [],
+): string {
   const pattern = new RegExp(`^${code}${year2}(\\d+)$`)
   let max = 0
   for (const number of existing) {
     const match = pattern.exec(String(number || ""))
+    if (!match) continue
+    const serial = Number.parseInt(match[1], 10)
+    if (!inRanges(serial, reserved)) max = Math.max(max, serial)
+  }
+  let serial = skipReserved(Math.max(max + 1, INVOICE_SERIAL_START), reserved)
+  for (let i = 0; i < attemptOffset; i++) serial = skipReserved(serial + 1, reserved)
+  return `${code}${year2}${serial}`
+}
+
+/** Pages in one carbon booklet (owner, 2026-11-19). */
+export const BOOKLET_PAGES = 300
+
+/** A block of serials held by a booklet, both ends included. */
+export interface SerialRange {
+  first: number
+  last: number
+}
+
+const inRanges = (serial: number, ranges: SerialRange[]) => ranges.some((r) => serial >= r.first && serial <= r.last)
+
+/** The serial itself, or the first one after every booklet block it falls in. */
+export function skipReserved(serial: number, ranges: SerialRange[]): number {
+  let s = serial
+  let moved = true
+  while (moved) {
+    moved = false
+    for (const r of ranges) {
+      if (s >= r.first && s <= r.last) {
+        s = r.last + 1
+        moved = true
+      }
+    }
+  }
+  return s
+}
+
+/** The block for a new booklet: after every MINV number of that year and after every booklet block. */
+export function nextBookletRange(year2: string, existing: Array<string | null | undefined>, reserved: SerialRange[], size = BOOKLET_PAGES): SerialRange {
+  const pattern = new RegExp(`^MINV${year2}(\\d+)$`)
+  let max = INVOICE_SERIAL_START - 1
+  for (const number of existing) {
+    const match = pattern.exec(String(number || ""))
     if (match) max = Math.max(max, Number.parseInt(match[1], 10))
   }
-  const serial = Math.max(max + 1, INVOICE_SERIAL_START) + attemptOffset
-  return `${code}${year2}${serial}`
+  for (const r of reserved) max = Math.max(max, r.last)
+  return { first: max + 1, last: max + size }
+}
+
+/** MINV265600 -> { year2: "26", serial: 5600 }; anything else -> null. */
+export function parseMinvNumber(number: string | null | undefined): { year2: string; serial: number } | null {
+  const match = /^MINV(\d{2})(\d+)$/.exec(String(number || "").trim().toUpperCase())
+  return match ? { year2: match[1], serial: Number.parseInt(match[2], 10) } : null
+}
+
+/** A printed number as read or typed: Arabic digits, spaces and dashes allowed; digits alone get MINV in front. */
+export function cleanMinvNumber(value: unknown): string {
+  const text = String(value ?? "")
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[\s\-_/]/g, "")
+    .toUpperCase()
+  const withCode = /^\d+$/.test(text) ? `MINV${text}` : text
+  return parseMinvNumber(withCode) ? withCode : ""
 }
 
 /** A quick maintenance order: its invoices are maintenance (MINV). */

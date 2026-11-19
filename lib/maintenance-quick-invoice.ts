@@ -28,6 +28,8 @@ export interface QuickLine {
   unitPrice: number
 }
 export interface QuickInput {
+  /** A carbon booklet page number (checked by the photo review route); without it the next MINV number is used. */
+  invoiceNumber?: string | null
   customerId: number
   lines: QuickLine[]
 }
@@ -249,7 +251,7 @@ export async function createQuickMaintenanceInvoice(db: Db, input: QuickInput): 
     if (permitItemsError) return await undone(db, made, fail(500, "Could not save the delivery permit lines. Nothing was saved."))
 
     // 3. The invoice from that permit (normal numbering; takes itself back when it fails).
-    const invoiced = await createDpInvoices(db, [made.permitId!])
+    const invoiced = await createDpInvoices(db, [made.permitId!], input.invoiceNumber ?? null)
     const invoice = invoiced.status === 200 ? invoiced.body?.invoices?.[0] : null
     if (!invoice) {
       const error = invoiced.body?.requiresSplit ? "The invoice could not be made in one piece." : invoiced.body?.error || "Could not create the invoice."
