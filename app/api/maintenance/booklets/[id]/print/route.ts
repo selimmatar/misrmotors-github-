@@ -20,7 +20,21 @@ const settingText = (value: unknown) => {
   }
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+const COMPANY_NAME_AR = "شركة مصر للمحركات"
+const COMPANY_NAME_EN = "Misr Motors Co."
+
+// Embedded as a data URL so the logo still prints when the page is saved as PDF for the print shop.
+async function loadLogo(origin: string) {
+  try {
+    const res = await fetch(`${origin}/images/image.png`)
+    if (!res.ok) return ""
+    return `data:image/png;base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}`
+  } catch {
+    return ""
+  }
+}
+
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const id = Number((await context.params).id)
   if (!Number.isInteger(id) || id <= 0) return new Response("Booklet not found", { status: 404 })
   const db = createAdminClient()
@@ -34,28 +48,36 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const { data: settings } = await db
     .from("company_settings")
     .select("setting_key, setting_value")
-    .in("setting_key", ["company_name", "eta_registered_name", "eta_rin"])
+    .in("setting_key", ["eta_rin"])
   const setting = (key: string) => settingText(settings?.find((s: any) => s.setting_key === key)?.setting_value)
-  const company = escapeHtml(setting("eta_registered_name") || setting("company_name") || "Misr Motors")
   const taxId = escapeHtml(setting("eta_rin"))
   const worker = escapeHtml(String((booklet as any).link?.worker_name || ""))
+  const logo = await loadLogo(new URL(request.url).origin)
 
   const rows = Array.from({ length: LINE_ROWS }, () => "<tr><td></td><td></td><td></td><td></td></tr>").join("")
   const pages: string[] = []
   for (let serial = booklet.first_serial; serial <= booklet.last_serial; serial++) {
     pages.push(`<section class="page">
   <header>
-    <div><strong>${company}</strong>${taxId ? `<br><span class="small">Tax ID / رقم التسجيل: ${taxId}</span>` : ""}</div>
+    <div class="brand">
+      ${logo ? `<img src="${logo}" alt="Misr Motors Co." class="logo">` : ""}
+      <div>
+        <div class="name">${COMPANY_NAME_AR}</div>
+        <div class="small">${COMPANY_NAME_EN}${taxId ? ` · رقم التسجيل الضريبي ${taxId}` : ""}</div>
+        <div class="title">فاتورة صيانة · Maintenance invoice</div>
+      </div>
+    </div>
     <div class="number">${minvNumber(booklet.year2, serial)}</div>
   </header>
-  <h1>فاتورة صيانة · Maintenance invoice</h1>
   <div class="fields">
-    <div class="field"><span>التاريخ · Date</span></div>
     <div class="field"><span>اسم العميل · Customer</span></div>
-    <div class="field"><span>التليفون · Phone</span></div>
+    <div class="row">
+      <div class="field"><span>التاريخ · Date</span></div>
+      <div class="field"><span>التليفون · Phone</span></div>
+    </div>
   </div>
   <table>
-    <thead><tr><th class="wide">البيان · Description</th><th>الكمية · Qty</th><th>السعر قبل الضريبة · Price before VAT</th><th>القيمة · Amount</th></tr></thead>
+    <thead><tr><th class="wide">البيان · Description</th><th class="qty">الكمية<br>Qty</th><th class="money">السعر قبل الضريبة<br>Price before VAT</th><th class="money">القيمة<br>Amount</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <table class="totals">
@@ -85,22 +107,30 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   body { margin: 0; font-family: Arial, "Segoe UI", Tahoma, sans-serif; color: #111; font-size: 12px; }
   .toolbar { position: sticky; top: 0; display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 16px; background: #f3f4f6; border-bottom: 1px solid #d1d5db; font-size: 14px; }
   .toolbar button { min-height: 44px; padding: 0 20px; font-size: 16px; border-radius: 8px; border: 0; background: #111; color: #fff; cursor: pointer; }
-  .page { width: 128mm; min-height: 190mm; margin: 12px auto; padding: 4mm; display: flex; flex-direction: column; gap: 4mm; page-break-after: always; break-after: page; }
-  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; border-bottom: 2px solid #111; padding-bottom: 3mm; }
-  .number { font-size: 22px; font-weight: 700; letter-spacing: 1px; direction: ltr; border: 2px solid #111; padding: 2px 8px; }
-  .small { font-size: 10px; }
-  h1 { margin: 0; font-size: 15px; text-align: center; }
-  .fields { display: flex; flex-direction: column; gap: 3mm; }
+  .page { width: 128mm; min-height: 190mm; margin: 12px auto; padding: 3mm; display: flex; flex-direction: column; gap: 2.5mm; page-break-after: always; break-after: page; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 2px solid #111; padding-bottom: 2.5mm; }
+  .brand { display: flex; align-items: center; gap: 3mm; }
+  .logo { width: 17mm; height: 17mm; object-fit: contain; }
+  .name { font-size: 17px; font-weight: 700; }
+  .title { font-size: 12px; font-weight: 700; margin-top: 1mm; }
+  .number { font-size: 20px; font-weight: 700; letter-spacing: 1px; direction: ltr; border: 2px solid #111; padding: 2px 8px; white-space: nowrap; }
+  .small { font-size: 9.5px; color: #333; }
+  .fields { display: flex; flex-direction: column; gap: 2mm; }
+  .fields .row { display: flex; gap: 6mm; }
+  .fields .row .field { flex: 1; }
   .field { border-bottom: 1px dotted #555; min-height: 8mm; display: flex; align-items: flex-end; }
   .field span { font-size: 11px; color: #333; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #111; padding: 2mm; font-size: 10px; text-align: center; }
-  td { height: 9mm; }
-  th.wide { width: 46%; }
-  .totals { width: 70%; margin-inline-start: auto; }
-  .totals th { text-align: start; width: 65%; }
+  th, td { border: 1px solid #111; padding: 1.5mm; font-size: 9.5px; text-align: center; }
+  td { height: 11mm; }
+  th.wide { width: 58%; font-size: 11px; }
+  th.qty { width: 10%; }
+  th.money { width: 16%; }
+  .totals { width: 62%; margin-inline-start: auto; }
+  .totals th { text-align: start; width: 62%; }
+  .totals td { height: 7mm; }
   .totals .grand th, .totals .grand td { font-size: 12px; font-weight: 700; }
-  .signs { display: flex; justify-content: space-between; gap: 8mm; margin-top: auto; padding-top: 8mm; }
+  .signs { display: flex; justify-content: space-between; gap: 8mm; margin-top: auto; padding-top: 6mm; }
   .signs div { flex: 1; border-top: 1px solid #111; padding-top: 1mm; font-size: 10px; }
   footer { font-size: 9px; text-align: center; color: #333; }
   @media print { .toolbar { display: none; } .page { margin: 0; } }
