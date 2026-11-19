@@ -4,7 +4,7 @@
 import { matchCode, type CodeState, type MatchContext } from "./codes"
 import { loadMatchContext, readEtaSettings } from "./store"
 import { etaLines, isAfterGoLive, type EtaLineIn, type EtaLineOut, type EtaTotals } from "./totals"
-import { billedLinesForInvoice, loadSoInvoicingState, orderDiscountRate, round2 } from "../invoicing"
+import { billedLinesForInvoice, loadSoInvoicingState, loadStandaloneLines, orderDiscountRate, round2 } from "../invoicing"
 import { loadCustomerIdentities, loadInvoiceIdentityId, pickIdentity, type TaxIdentity } from "./identities"
 
 type Db = any
@@ -116,6 +116,11 @@ export async function buildEtaPreview(
       lines: billedLinesForInvoice(state, inv).filter((b) => Number(b.line.quantity) > 0),
       rate: orderDiscountRate(state.soItems, state.so.subtotal, state.so.discount_amount),
     })
+  }
+  // A standalone MINV (no sales order, no permits) carries its own lines.
+  if (soIds.length === 0) {
+    const own = await loadStandaloneLines(db, invoiceId)
+    if (own.length > 0) groups.push({ lines: own.map((l) => ({ line: l, productId: null })), rate: 0 })
   }
 
   const productIds = [...new Set(groups.flatMap((g) => g.lines.map((b) => b.productId)).filter((id): id is number => id != null))]
