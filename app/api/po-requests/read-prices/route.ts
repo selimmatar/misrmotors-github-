@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { brandsByItem, codesByItem, pricesByItem, sameRequestNumber, sortRequestItems, type ReadRow } from "@/lib/po-requests/read-prices"
-import { readPhoto } from "@/lib/photo-reader"
+import { groqApiKey, readPhoto } from "@/lib/photo-reader"
 import { failed } from "@/lib/photo-read-failure"
 
 export const dynamic = "force-dynamic"
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     if (image.length > MAX_IMAGE_BASE64) {
       return NextResponse.json({ error: "The photo is too large" }, { status: 413 })
     }
-    if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY) {
+    if (!process.env.GEMINI_API_KEY && !groqApiKey()) {
       return NextResponse.json({ error: "Reading photos is not set up yet (GEMINI_API_KEY or GROQ_API_KEY is missing)" }, { status: 503 })
     }
 
