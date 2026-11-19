@@ -24,7 +24,7 @@ import { isSinglePayment } from "@/lib/payment-type"
 import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
 import { invoicesForTab, type ArTab } from "@/lib/ar-tabs"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal, Pencil } from "lucide-react"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal, Pencil, Image as ImageIcon } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/erp/page-header"
@@ -1267,6 +1267,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               <FileText className="w-4 h-4 me-2" />
               {t("action.print-invoice")}
             </DropdownMenuItem>
+            {invoice.invoiceNumber?.startsWith("MINV") && (
+              <DropdownMenuItem onSelect={() => window.open(`/api/invoices/ar/${invoice.id}/photo`, "_blank")}>
+                <ImageIcon className="w-4 h-4 me-2" />
+                {t("ar.view-photo")}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => handleViewSchedule(invoice)}>
               <Calendar className="w-4 h-4 me-2" />
               {t("a11y.finance.payment-schedule")}

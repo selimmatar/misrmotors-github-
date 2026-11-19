@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { hashSecret, isSecretShape } from "@/lib/maintenance-photos"
+import { nextMinvForWorker } from "@/lib/maintenance-booklets"
 import { WorkerUploadScreen } from "@/components/worker-upload/worker-upload-screen"
 import { WorkerLinkInactive } from "@/components/worker-upload/worker-link-inactive"
 
@@ -9,14 +10,23 @@ export const dynamic = "force-dynamic"
 
 type Props = { params: Promise<{ secret: string }> }
 
-async function findWorker(secret: string): Promise<string | null> {
+async function findWorker(secret: string): Promise<{ id: number; name: string } | null> {
   if (!isSecretShape(secret)) return null
   const { data } = await createAdminClient()
     .from("maintenance_upload_links")
-    .select("worker_name, active")
+    .select("id, worker_name, active")
     .eq("secret_hash", hashSecret(secret))
     .maybeSingle()
-  return data?.active ? data.worker_name : null
+  return data?.active ? { id: Number(data.id), name: data.worker_name } : null
+}
+
+async function findNextNumber(linkId: number): Promise<string | null> {
+  try {
+    return await nextMinvForWorker(createAdminClient(), linkId)
+  } catch (error: any) {
+    console.error("[worker-page] next number:", error?.message || error)
+    return null
+  }
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -43,7 +53,8 @@ export const viewport: Viewport = {
 
 export default async function WorkerPage({ params }: Props) {
   const { secret } = await params
-  const workerName = await findWorker(secret)
-  if (!workerName) return <WorkerLinkInactive />
-  return <WorkerUploadScreen secret={secret} workerName={workerName} />
+  const worker = await findWorker(secret)
+  if (!worker) return <WorkerLinkInactive />
+  const nextNumber = await findNextNumber(worker.id)
+  return <WorkerUploadScreen secret={secret} workerName={worker.name} nextNumber={nextNumber} />
 }
