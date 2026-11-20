@@ -1,12 +1,18 @@
 // Invoice codes (spec docs/superpowers/specs/2026-11-19-invoice-codes-and-maintenance-photos-design.md, part 1).
 // Sales invoices are INV, maintenance invoices are MINV, each followed by the last two digits of the year and its own
-// serial, no dashes: INV265567, MINV265567. Each code and year starts at 5567. Older numbers (INV-2026-0001, 10503,
-// INV-MNT-...) never match these patterns, so they do not move the new counters.
+// serial, no dashes: INV26001, MINV26001. Each code and year starts at serial 001 (owner, 2026-11-20), written with
+// at least 3 digits. Older numbers (INV-2026-0001, 10503, INV-MNT-...) never match these patterns, so they do not move
+// the new counters.
 // No imports on purpose: lib/invoicing.ts, lib/maintenance-quick-invoice.ts and client code all use this file.
 
 export type InvoiceCode = "INV" | "MINV"
 
-export const INVOICE_SERIAL_START = 5567
+export const INVOICE_SERIAL_START = 1
+export const SERIAL_MIN_DIGITS = 3
+
+/** INV + "26" + 1 -> INV26001 */
+export const codedNumber = (code: InvoiceCode, year2: string, serial: number) =>
+  `${code}${year2}${String(serial).padStart(SERIAL_MIN_DIGITS, "0")}`
 
 /** Sales order type of a quick maintenance order (an allowed value of sales_orders.so_type). */
 export const QUICK_SO_TYPE = "MAINTENANCE_PARTS"
@@ -37,7 +43,7 @@ export function nextCodedNumber(
   }
   let serial = skipReserved(Math.max(max + 1, INVOICE_SERIAL_START), reserved)
   for (let i = 0; i < attemptOffset; i++) serial = skipReserved(serial + 1, reserved)
-  return `${code}${year2}${serial}`
+  return codedNumber(code, year2, serial)
 }
 
 /** Pages in one carbon booklet (owner, 2026-11-19). */
@@ -91,8 +97,8 @@ export function cleanMinvNumber(value: unknown): string {
     .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
     .replace(/[\s\-_/]/g, "")
     .toUpperCase()
-  const withCode = /^\d+$/.test(text) ? `MINV${text}` : text
-  return parseMinvNumber(withCode) ? withCode : ""
+  const parsed = parseMinvNumber(/^\d+$/.test(text) ? `MINV${text}` : text)
+  return parsed ? codedNumber("MINV", parsed.year2, parsed.serial) : ""
 }
 
 /** A quick maintenance order: its invoices are maintenance (MINV). */

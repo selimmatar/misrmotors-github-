@@ -1,13 +1,13 @@
 // Pre-numbered carbon booklets (spec 2026-11-19, Part 3). A booklet holds a block of MINV serials of one year; a page
 // becomes an invoice with exactly its printed number, a cancelled page's number is recorded and never used.
-import { BOOKLET_PAGES, invoiceYear2, nextBookletRange, parseMinvNumber, type SerialRange } from "./invoice-codes"
+import { BOOKLET_PAGES, codedNumber, invoiceYear2, nextBookletRange, parseMinvNumber, type SerialRange } from "./invoice-codes"
 
 type Db = any
 
 export const MAX_VOID_REASON = 200
 
 const missingTable = (error: any) => error?.code === "42P01" || error?.code === "PGRST205"
-export const minvNumber = (year2: string, serial: number) => `MINV${year2}${serial}`
+export const minvNumber = (year2: string, serial: number) => codedNumber("MINV", year2, serial)
 
 export interface BookletRow {
   id: number
