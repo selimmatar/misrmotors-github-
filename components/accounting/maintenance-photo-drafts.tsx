@@ -345,7 +345,7 @@ function DraftDialog({
                 id="draft-number"
                 value={invoiceNumber}
                 onChange={(e) => setInvoiceNumber(e.target.value.toUpperCase())}
-                placeholder="MINV265600"
+                placeholder="MINV26001"
                 autoCapitalize="characters"
                 autoComplete="off"
                 dir="ltr"
