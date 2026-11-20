@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateText } from "@/lib/ai-client"
+import { aiReady, generateText, NOT_SETUP_MESSAGE } from "@/lib/ai-providers"
 
 export async function POST(request: NextRequest) {
   try {
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     const systemPrompt = `
 You are the AI CEO Assistant for Misr Motors, a motor vehicle distribution company in Egypt.
 Your role is to provide executive-level insights, analysis, and answers based on the company's real-time data.
-You are powered by Google Gemini.
+You are powered by Claude.
 
 **Company Context:**
 - Name: Misr Motors
@@ -180,24 +180,10 @@ You are powered by Google Gemini.
 6. If the data is good (positive cash flow, low debt), be encouraging. If bad, be cautionary.
 `
 
-    // Call Gemini via native client
-    try {
-      const { text } = await generateText({
-        model: "google-vertex/gemini-1.5-pro",
-        system: systemPrompt,
-        prompt: message,
-      })
-      return NextResponse.json({ answer: text, content: text })
-    } catch (geminiError) {
-      console.warn("Gemini failed, falling back to GPT-4o:", geminiError)
-      // Fallback to OpenAI if Gemini fails
-      const { text } = await generateText({
-        model: "openai/gpt-4o",
-        system: systemPrompt + "\n(Note: Running on backup model due to primary model unavailability)",
-        prompt: message,
-      })
-      return NextResponse.json({ answer: text, content: text })
-    }
+    // Claude answers; the backup (Grok / Groq) answers when Claude cannot.
+    if (!aiReady()) return NextResponse.json({ error: NOT_SETUP_MESSAGE }, { status: 503 })
+    const { text } = await generateText({ system: systemPrompt, prompt: message })
+    return NextResponse.json({ answer: text, content: text })
   } catch (error: any) {
     console.error("CEO Assistant error:", error)
     return NextResponse.json({ error: error.message || "Analysis failed" }, { status: 500 })

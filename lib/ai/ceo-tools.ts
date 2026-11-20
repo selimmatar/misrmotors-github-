@@ -313,43 +313,43 @@ export interface ToolContext {
 }
 type Exec = (db: Db, args: any, ctx: ToolContext) => Promise<unknown>
 
-const STRING = { type: "STRING" }
-const NUMBER = { type: "NUMBER" }
+const STRING = { type: "string" }
+const NUMBER = { type: "number" }
 
 export const LOOKUP_TOOLS: Record<string, { description: string; parameters?: any; run: Exec }> = {
   find_sales_orders: {
     description: "Search sales orders by number or customer name (Arabic or English). Empty query = latest orders.",
-    parameters: { type: "OBJECT", properties: { query: STRING } },
+    parameters: { type: "object", properties: { query: STRING } },
     run: (db, a) => findSalesOrders(db, a),
   },
   order_overview: {
     description: "Everything about one sales order: money (paid / invoiced / delivered), each line from ordered to delivered, its delivery permits and purchase orders, what is left to do, latest events.",
-    parameters: { type: "OBJECT", properties: { so_number: STRING }, required: ["so_number"] },
+    parameters: { type: "object", properties: { so_number: STRING }, required: ["so_number"] },
     run: (db, a, c) => orderOverview(db, a, c),
   },
   find_purchase_orders: {
     description: "Search purchase orders by number or supplier name. Shows status, total, closed (has a supplier bill) and what is still owed.",
-    parameters: { type: "OBJECT", properties: { query: STRING } },
+    parameters: { type: "object", properties: { query: STRING } },
     run: (db, a) => findPurchaseOrders(db, a),
   },
   purchase_order_details: {
     description: "One purchase order's lines (item, quantity, cost, received, which sales order) and its bills.",
-    parameters: { type: "OBJECT", properties: { po_number: STRING }, required: ["po_number"] },
+    parameters: { type: "object", properties: { po_number: STRING }, required: ["po_number"] },
     run: (db, a) => purchaseOrderDetails(db, a),
   },
   customer_balance: {
     description: "What a customer still owes us: open invoices and overdue amount.",
-    parameters: { type: "OBJECT", properties: { name: STRING }, required: ["name"] },
+    parameters: { type: "object", properties: { name: STRING }, required: ["name"] },
     run: (db, a) => partyBalance(db, a, "customer"),
   },
   supplier_balance: {
     description: "What we still owe a supplier: open bills and overdue amount.",
-    parameters: { type: "OBJECT", properties: { name: STRING }, required: ["name"] },
+    parameters: { type: "object", properties: { name: STRING }, required: ["name"] },
     run: (db, a) => partyBalance(db, a, "supplier"),
   },
   stock_lookup: {
     description: "Stock of a product per warehouse, reorder point and selling price.",
-    parameters: { type: "OBJECT", properties: { product: STRING }, required: ["product"] },
+    parameters: { type: "object", properties: { product: STRING }, required: ["product"] },
     run: (db, a, c) => stockLookup(db, a, c),
   },
   orders_needing_po: {
@@ -361,18 +361,18 @@ export const LOOKUP_TOOLS: Record<string, { description: string; parameters?: an
 export const PROPOSAL_TOOLS: Record<string, { description: string; parameters: any; run: (db: Db, args: any) => Promise<Proposal | { error: string }> }> = {
   propose_note: {
     description: "Propose adding a note to a sales order (so), purchase order (po) or quotation. Shown to the user to confirm; nothing is saved until they confirm.",
-    parameters: { type: "OBJECT", properties: { target: { type: "STRING", enum: ["so", "po", "quotation"] }, number: STRING, text: STRING }, required: ["target", "number", "text"] },
+    parameters: { type: "object", properties: { target: { type: "string", enum: ["so", "po", "quotation"] }, number: STRING, text: STRING }, required: ["target", "number", "text"] },
     run: proposeNote,
   },
   propose_purchase_order: {
     description:
       "Propose a new purchase order (it will be pending approval) to one supplier. When it is for a sales order, give so_number and use the item names of that order's outsourced lines so they are linked. unit_cost is the cost per unit (if left out, the cost written on the sales order line is used). Shown to the user to confirm.",
     parameters: {
-      type: "OBJECT",
+      type: "object",
       properties: {
         supplier: STRING,
         so_number: STRING,
-        lines: { type: "ARRAY", items: { type: "OBJECT", properties: { item: STRING, quantity: NUMBER, unit_cost: NUMBER }, required: ["item", "quantity"] } },
+        lines: { type: "array", items: { type: "object", properties: { item: STRING, quantity: NUMBER, unit_cost: NUMBER }, required: ["item", "quantity"] } },
       },
       required: ["supplier", "lines"],
     },
@@ -381,11 +381,11 @@ export const PROPOSAL_TOOLS: Record<string, { description: string; parameters: a
   propose_quotation: {
     description: "Propose a new sales quotation for a customer (saved in Sales Quotations, waiting for approval). unit_price is the selling price; if left out, the product's selling price is used. Shown to the user to confirm.",
     parameters: {
-      type: "OBJECT",
+      type: "object",
       properties: {
         customer: STRING,
         notes: STRING,
-        lines: { type: "ARRAY", items: { type: "OBJECT", properties: { product: STRING, quantity: NUMBER, unit_price: NUMBER }, required: ["product", "quantity"] } },
+        lines: { type: "array", items: { type: "object", properties: { product: STRING, quantity: NUMBER, unit_price: NUMBER }, required: ["product", "quantity"] } },
       },
       required: ["customer", "lines"],
     },
@@ -393,11 +393,17 @@ export const PROPOSAL_TOOLS: Record<string, { description: string; parameters: a
   },
 }
 
-/** The tools in Gemini's format. */
-export function geminiToolDeclarations() {
+/** Every tool as name + description + JSON Schema of its input (no input = empty object). */
+export function toolSpecs() {
   const all = { ...LOOKUP_TOOLS, ...PROPOSAL_TOOLS }
-  return [{ functionDeclarations: Object.entries(all).map(([name, t]) => ({ name, description: t.description, ...(t.parameters ? { parameters: t.parameters } : {}) })) }]
+  return Object.entries(all).map(([name, t]) => ({ name, description: t.description, schema: t.parameters ?? { type: "object", properties: {} } }))
 }
+
+/** The tools in Claude's format. */
+export const claudeTools = () => toolSpecs().map((t) => ({ name: t.name, description: t.description, input_schema: t.schema }))
+
+/** The tools in the chat-completions format the backup (Grok / Groq) uses. */
+export const backupTools = () => toolSpecs().map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.schema } }))
 
 /** Runs one tool the model asked for: lookups return data; proposals return the card (never write). */
 export async function runTool(db: Db, name: string, args: any, ctx: ToolContext): Promise<{ result: unknown; proposal?: Proposal }> {

@@ -1,18 +1,21 @@
-// Reads one photo into JSON (PO request prices, quotation items). Google Gemini first; when Google is busy, over its
-// free limit, too slow, refuses the key or answers something that is not JSON, the same photo goes to Groq's free
-// photo model as a backup (owner, 2026-11-04: "google api is ... very bad, i want another free way").
-// Groq is used only when GROQ_API_KEY is set in Vercel; without it nothing changes.
-import { askGemini, geminiFailure, geminiJson } from "./gemini-models"
+// Reads one photo into JSON (PO request prices, quotation items, worker maintenance invoices). Claude first; when
+// Claude is busy, over its limit, too slow, refuses the key or answers something that is not JSON, the same photo
+// goes to the backup (Grok or Groq, lib/ai-providers.ts).
+import { askBackup, askClaude, backup, claudeKey, claudeText, failureKind, failureWhy, isTimeout, parseJsonText, type AiFailure, type Backup } from "./ai-providers"
 
-export const GROQ_MODEL = "qwen/qwen3.8-27b"
-// The owner saved the key in Vercel as `grokAPI`, so both names are accepted.
-export const groqApiKey = () => process.env.GROQ_API_KEY || process.env.grokAPI
-// Under the route's 60-second limit: Google gets the first part when Groq is there to take over.
+export { parseJsonText } from "./ai-providers"
+
+/** True when some service can read photos (Claude or the backup has a key). */
+export const photoReaderReady = () => Boolean(claudeKey() || backup())
+
+// Under the route's 60-second limit: Claude gets the first part when the backup is there to take over.
 const TOTAL_MS = 55_000
-const GEMINI_MS_WITH_BACKUP = 30_000
+const CLAUDE_MS_WITH_BACKUP = 30_000
+// Claude reads these photo types; anything else goes straight to the backup.
+const CLAUDE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 
-export type ReadFailure = "not_setup" | "key_rejected" | "limit" | "failed" | "timeout"
-export type PhotoRead<T> = { ok: true; data: T | null; via: "gemini" | "groq" } | { ok: false; kind: ReadFailure; why: string }
+export type ReadFailure = AiFailure
+export type PhotoRead<T> = { ok: true; data: T | null; via: "claude" | "grok" | "groq" } | { ok: false; kind: ReadFailure; why: string }
 
 export interface PhotoRequest {
   tag: string
@@ -20,70 +23,54 @@ export interface PhotoRequest {
   text: string
   image: string // base64, no data: prefix
   mediaType: string
-  /** Gemini responseSchema */
-  geminiSchema: unknown
-  /** the JSON shape in words/example, for Groq (its JSON mode is told the shape in the prompt) */
+  /** the JSON shape in words/example; every reader is told to answer in exactly this shape */
   jsonShape: string
-  /** Time for Google when there is no Groq key. Background readings (worker photos) can wait longer than a screen. */
-  geminiMs?: number
+  /** Time for Claude when there is no backup. Background readings (worker photos) can wait longer than a screen. */
+  claudeMs?: number
 }
 
-const isTimeout = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
+const systemWithShape = (req: PhotoRequest) => `${req.system}\n\nAnswer with JSON only, no other text, in exactly this shape:\n${req.jsonShape}`
 
-/** The JSON text of an answer: drops a ```json fence or a <think> block a model may add around it. */
-export function parseJsonText<T>(text: string): T | null {
-  const cleaned = String(text || "")
-    .replace(/<think>[\s\S]*?<\/think>/g, "")
-    .replace(/^\s*```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/, "")
-    .trim()
+async function viaClaude<T>(req: PhotoRequest, timeoutMs: number): Promise<PhotoRead<T>> {
+  if (!CLAUDE_TYPES.includes(req.mediaType)) return { ok: false, kind: "failed", why: `claude cannot read ${req.mediaType}` }
   try {
-    return JSON.parse(cleaned) as T
-  } catch {
-    return null
-  }
-}
-
-async function viaGemini<T>(req: PhotoRequest, apiKey: string, totalMs: number): Promise<PhotoRead<T>> {
-  const payload = JSON.stringify({
-    systemInstruction: { parts: [{ text: req.system }] },
-    contents: [{ role: "user", parts: [{ inline_data: { mime_type: req.mediaType, data: req.image } }, { text: req.text }] }],
-    generationConfig: {
-      temperature: 0,
-      responseMimeType: "application/json",
-      responseSchema: req.geminiSchema,
-      // Copying text out of a photo needs little reasoning; low thinking answers much faster.
-      thinkingConfig: { thinkingLevel: "low" },
-    },
-  })
-  try {
-    const response = await askGemini(payload, apiKey, req.tag, totalMs)
-    if (response.ok) return { ok: true, data: await geminiJson<T>(response), via: "gemini" }
-    const { reason, why } = await geminiFailure(response)
-    console.error(`${req.tag}: Gemini error`, response.status, reason)
-    if (reason === "API_KEY_INVALID" || response.status === 401 || response.status === 403) return { ok: false, kind: "key_rejected", why }
-    if (response.status === 429) return { ok: false, kind: "limit", why }
-    return { ok: false, kind: "failed", why }
+    const response = await askClaude(
+      {
+        system: systemWithShape(req),
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: req.mediaType, data: req.image } },
+              { type: "text", text: req.text },
+            ],
+          },
+        ],
+      },
+      timeoutMs,
+    )
+    if (!response.ok) {
+      const why = await failureWhy("claude", response)
+      console.error(`${req.tag}: Claude error`, why)
+      return { ok: false, kind: failureKind(response.status), why }
+    }
+    return { ok: true, data: parseJsonText<T>(claudeText(await response.json())), via: "claude" }
   } catch (error) {
-    if (isTimeout(error)) return { ok: false, kind: "timeout", why: "google timeout" }
-    console.error(`${req.tag}: Gemini request failed`, error)
-    return { ok: false, kind: "failed", why: "google unreachable" }
+    if (isTimeout(error)) return { ok: false, kind: "timeout", why: "claude timeout" }
+    console.error(`${req.tag}: Claude request failed`, error)
+    return { ok: false, kind: "failed", why: "claude unreachable" }
   }
 }
 
-async function viaGroq<T>(req: PhotoRequest, apiKey: string, timeoutMs: number): Promise<PhotoRead<T>> {
-  const base = process.env.GROQ_BASE_URL || "https://api.groq.com"
+async function viaBackup<T>(req: PhotoRequest, b: Backup, timeoutMs: number): Promise<PhotoRead<T>> {
   try {
-    const response = await fetch(`${base}/openai/v1/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(Math.max(1_000, timeoutMs)),
-      body: JSON.stringify({
-        model: process.env.GROQ_MODEL || GROQ_MODEL,
+    const response = await askBackup(
+      b,
+      {
         temperature: 0,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: `${req.system}\n\nAnswer with JSON only, in exactly this shape:\n${req.jsonShape}` },
+          { role: "system", content: systemWithShape(req) },
           {
             role: "user",
             content: [
@@ -92,41 +79,38 @@ async function viaGroq<T>(req: PhotoRequest, apiKey: string, timeoutMs: number):
             ],
           },
         ],
-      }),
-    })
+      },
+      timeoutMs,
+    )
     if (!response.ok) {
-      const detail = await response.json().catch(() => null)
-      const why = `groq ${response.status} ${String(detail?.error?.code || "")} ${String(detail?.error?.message || "").slice(0, 200)}`.trim()
-      console.error(`${req.tag}: Groq error`, response.status, detail?.error?.code)
-      if (response.status === 401 || response.status === 403) return { ok: false, kind: "key_rejected", why }
-      if (response.status === 429) return { ok: false, kind: "limit", why }
-      return { ok: false, kind: "failed", why }
+      const why = await failureWhy(b.name, response)
+      console.error(`${req.tag}: ${b.name} error`, why)
+      return { ok: false, kind: failureKind(response.status), why }
     }
     const data = await response.json().catch(() => null)
-    return { ok: true, data: parseJsonText<T>(data?.choices?.[0]?.message?.content || ""), via: "groq" }
+    return { ok: true, data: parseJsonText<T>(data?.choices?.[0]?.message?.content || ""), via: b.name }
   } catch (error) {
-    if (isTimeout(error)) return { ok: false, kind: "timeout", why: "groq timeout" }
-    console.error(`${req.tag}: Groq request failed`, error)
-    return { ok: false, kind: "failed", why: "groq unreachable" }
+    if (isTimeout(error)) return { ok: false, kind: "timeout", why: `${b.name} timeout` }
+    console.error(`${req.tag}: ${b.name} request failed`, error)
+    return { ok: false, kind: "failed", why: `${b.name} unreachable` }
   }
 }
 
-/** Read the photo: Gemini, then Groq as the backup. `data` is null when the answer was not usable JSON. */
+/** Read the photo: Claude, then the backup. `data` is null when the answer was not usable JSON. */
 export async function readPhoto<T>(req: PhotoRequest): Promise<PhotoRead<T>> {
-  const geminiKey = process.env.GEMINI_API_KEY
-  const groqKey = groqApiKey()
-  if (!geminiKey && !groqKey) return { ok: false, kind: "not_setup", why: "no key" }
+  const b = backup()
+  if (!claudeKey() && !b) return { ok: false, kind: "not_setup", why: "no key" }
   const start = Date.now()
   let first: PhotoRead<T> | null = null
-  if (geminiKey) {
-    first = await viaGemini<T>(req, geminiKey, groqKey ? GEMINI_MS_WITH_BACKUP : req.geminiMs ?? 50_000)
-    if (!groqKey || (first.ok && first.data !== null)) return first
-    console.error(`${req.tag}: Google could not read the photo (${first.ok ? "unreadable answer" : first.kind}) - trying Groq`)
+  if (claudeKey()) {
+    first = await viaClaude<T>(req, b ? CLAUDE_MS_WITH_BACKUP : req.claudeMs ?? 50_000)
+    if (!b || (first.ok && first.data !== null)) return first
+    console.error(`${req.tag}: Claude could not read the photo (${first.ok ? "unreadable answer" : first.kind}) - trying ${b.name}`)
   }
-  const second = await viaGroq<T>(req, groqKey!, TOTAL_MS - (Date.now() - start))
+  const second = await viaBackup<T>(req, b!, TOTAL_MS - (Date.now() - start))
   if (second.ok || !first) return second
-  if (first.ok) return { ok: true, data: null, via: "gemini" } // Google answered, Groq failed: treat as unreadable
-  // Both failed: "limit" wins (it tells the person to wait), otherwise Groq's reason.
+  if (first.ok) return { ok: true, data: null, via: "claude" } // Claude answered, the backup failed: treat as unreadable
+  // Both failed: "limit" wins (it tells the person to wait), otherwise the backup's reason.
   const kind = first.kind === "limit" || second.kind === "limit" ? "limit" : second.kind
-  return { ok: false, kind, why: `google: ${first.why}; ${second.why}` }
+  return { ok: false, kind, why: `${first.why}; ${second.why}` }
 }

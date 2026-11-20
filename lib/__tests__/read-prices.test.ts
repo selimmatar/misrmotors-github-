@@ -1,6 +1,6 @@
 // Hand-written prices on the printed price request (owner request, 2026-10-29): the PR print has a price box per
 // row; a photo of the filled sheet is read row by row and fills the "Quote received" screen for a person to check.
-// The reader is never called for real here: a local stand-in answers on GEMINI_BASE_URL.
+// The reader is never called for real here: a local stand-in answers on ANTHROPIC_BASE_URL (and the backup's base URL).
 import "./route-harness"
 import test from "node:test"
 import assert from "node:assert/strict"
@@ -82,25 +82,33 @@ async function withReader(reply: (seen: Seen) => { status: number; json: any }, 
     })
   })
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r))
-  const before = { url: process.env.GEMINI_BASE_URL, key: process.env.GEMINI_API_KEY }
-  process.env.GEMINI_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
-  process.env.GEMINI_API_KEY = "test-key"
+  const before = Object.fromEntries(AI_ENV.map((name) => [name, process.env[name]]))
+  for (const name of AI_ENV) delete process.env[name]
+  process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+  process.env.CLAUDE_API_KEY = "test-key"
   try {
     await fn(seen)
   } finally {
-    if (before.url === undefined) delete process.env.GEMINI_BASE_URL
-    else process.env.GEMINI_BASE_URL = before.url
-    if (before.key === undefined) delete process.env.GEMINI_API_KEY
-    else process.env.GEMINI_API_KEY = before.key
+    for (const name of AI_ENV) {
+      if (before[name] === undefined) delete process.env[name]
+      else process.env[name] = before[name]
+    }
     await new Promise((r) => server.close(r))
   }
 }
-const message = (sheet: unknown) => ({
-  status: 200,
-  json: {
-    candidates: [{ content: { role: "model", parts: [{ text: JSON.stringify(sheet) }] }, finishReason: "STOP" }],
-  },
-})
+// Every AI setting is cleared for each stand-in so a real key in the environment is never used.
+const AI_ENV = ["CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "CLAUDE_MODEL", "grokAPI", "GROQ_API_KEY", "GROQ_BASE_URL", "GROQ_MODEL", "XAI_API_KEY", "XAI_BASE_URL", "XAI_MODEL"]
+const CLAUDE_URL = "/v1/messages"
+const claudeAnswer = (text: string) => ({ status: 200, json: { type: "message", role: "assistant", content: [{ type: "text", text }], stop_reason: "end_turn" } })
+const message = (sheet: unknown) => claudeAnswer(JSON.stringify(sheet))
+const overloaded = { status: 529, json: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } } }
+const rateLimited = { status: 429, json: { type: "error", error: { type: "rate_limit_error", message: "rate limit" } } }
+const badKey = { status: 401, json: { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } } }
+/** Runs `fn` with no Claude key (inside withReader, which restores it). */
+async function withoutClaude(fn: () => Promise<void>) {
+  delete process.env.CLAUDE_API_KEY
+  await fn()
+}
 function mkDb() {
   const db = new FakeDb({
     po_requests: [{ request_id: 5, request_number: "PR-2026-005", status: "pending" }],
@@ -125,14 +133,15 @@ test("reader route: prices come back per item (row 1 = lowest item id), nothing 
       assert.equal(r.status, 200, JSON.stringify(r.body))
       assert.deepEqual(r.body, { prices: { 11: 1250 }, brands: {}, codes: {}, read: 1, total: 2, request_number_matches: true })
       const sent = seen[0].body
-      assert.equal(seen[0].headers["x-goog-api-key"], "test-key")
-      assert.match(seen[0].url, /^\/v1beta\/models\/gemini-3\.8-flash:generateContent$/)
-      const parts = sent.contents[0].parts
-      assert.deepEqual(parts[0].inline_data, { mime_type: "image/jpeg", data: "aGVsbG8=" })
+      assert.equal(seen.length, 1)
+      assert.equal(seen[0].url, CLAUDE_URL)
+      assert.equal(seen[0].headers["x-api-key"], "test-key")
+      assert.equal(seen[0].headers["anthropic-version"], "2023-06-01")
+      assert.equal(sent.model, "claude-sonnet-5-5")
+      const parts = sent.messages[0].content
+      assert.deepEqual(parts[0], { type: "image", source: { type: "base64", media_type: "image/jpeg", data: "aGVsbG8=" } })
       assert.match(parts[1].text, /1\. Valve \(× 4\)\n2\. Pump \(× 2 pcs\)/)
-      assert.equal(sent.generationConfig.responseMimeType, "application/json")
-      assert.equal(sent.generationConfig.temperature, 0)
-      assert.deepEqual(sent.generationConfig.thinkingConfig, { thinkingLevel: "low" })
+      assert.match(sent.system, /Answer with JSON only/)
       assert.ok(db.tables.po_request_items.every((i) => i.unit_price === null), "no price saved")
     },
   )
@@ -159,91 +168,88 @@ test("reader route: bad input, missing key, rejected key, free limit, blocked", 
     assert.equal((await read({ ...PHOTO, request_id: 99 })).status, 404)
   })
   await withReader(
-    () => ({ status: 400, json: { error: { code: 400, status: "INVALID_ARGUMENT", message: "API key not valid", details: [{ reason: "API_KEY_INVALID" }] } } }),
+    () => badKey,
     async () => {
       const r = await read(PHOTO)
       assert.equal(r.status, 503)
       assert.match(r.body.error, /API key was rejected/)
-      assert.match(r.body.detail, /API_KEY_INVALID/)
+      assert.match(r.body.detail, /authentication_error/)
     },
   )
   await withReader(
-    () => ({ status: 429, json: { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota" } } }),
+    () => rateLimited,
     async () => {
       const r = await read(PHOTO)
       assert.equal(r.status, 429)
       assert.match(r.body.error, /free photo-reading limit/)
     },
   )
-  await withReader(
-    () => ({ status: 200, json: { promptFeedback: { blockReason: "SAFETY" } } }),
-    async () => assert.equal((await read(PHOTO)).status, 422),
+  await withReader(() => claudeAnswer(""), async () => assert.equal((await read(PHOTO)).status, 422))
+  await withReader(() => claudeAnswer("not json"), async () => assert.equal((await read(PHOTO)).status, 422))
+  await withReader(() => message({}), async () =>
+    withoutClaude(async () => {
+      const r = await read(PHOTO)
+      assert.equal(r.status, 503)
+      assert.match(r.body.error, /CLAUDE_API_KEY/)
+    }),
   )
-  await withReader(
-    () => ({ status: 200, json: { candidates: [{ content: { parts: [{ text: "not json" }] } }] } }),
-    async () => assert.equal((await read(PHOTO)).status, 422),
-  )
-  const before = process.env.GEMINI_API_KEY
-  delete process.env.GEMINI_API_KEY
-  const r = await read(PHOTO)
-  if (before !== undefined) process.env.GEMINI_API_KEY = before
-  assert.equal(r.status, 503)
-  assert.match(r.body.error, /GEMINI_API_KEY/)
 })
 
-test("reader route: when the main model is busy, the backup model reads the photo", async () => {
+test("reader route: when Claude is busy, the backup reads the same photo", async () => {
   mkDb()
-  const busy = { status: 503, json: { error: { code: 503, status: "UNAVAILABLE", message: "high demand" } } }
   await withReader(
-    (s) => (s.url.includes("gemini-3.8-flash") ? busy : message({ request_number: null, rows: [{ row: 1, written: "50" }] })),
+    (s) => (isGroq(s) ? groqAnswer({ request_number: null, rows: [{ row: 1, written: "50" }] }) : overloaded),
+    async (seen) =>
+      withGroq(async () => {
+        const r = await read(PHOTO)
+        assert.equal(r.status, 200, JSON.stringify(r.body))
+        assert.deepEqual(r.body.prices, { 11: 50 })
+        assert.deepEqual(seen.map((s) => s.url), [CLAUDE_URL, "/openai/v1/chat/completions"])
+        assert.equal(seen[1].body.messages[0].content, seen[0].body.system, "same instructions sent to the backup")
+      }),
+  )
+  // Both over their limit: the limit message, after two tries.
+  await withReader(() => rateLimited, async (seen) =>
+    withGroq(async () => {
+      assert.equal((await read(PHOTO)).status, 429)
+      assert.equal(seen.length, 2)
+    }),
+  )
+  // No backup key: Claude alone, one try.
+  await withReader(() => overloaded, async (seen) => {
+    assert.equal((await read(PHOTO)).status, 502)
+    assert.equal(seen.length, 1)
+  })
+  // CLAUDE_MODEL in Vercel replaces the Claude model.
+  await withReader(() => message({ request_number: null, rows: [] }), async (seen) => {
+    process.env.CLAUDE_MODEL = "claude-custom"
+    await read(PHOTO)
+    assert.equal(seen[0].body.model, "claude-custom")
+  })
+})
+
+test("backup reader: an xAI key in grokAPI uses Grok; any other key uses Groq", async () => {
+  mkDb()
+  await withReader(
+    (s) => (s.url === "/v1/chat/completions" ? groqAnswer({ request_number: null, rows: [{ row: 2, written: "9" }] }) : overloaded),
     async (seen) => {
+      process.env.XAI_BASE_URL = process.env.ANTHROPIC_BASE_URL
+      process.env.grokAPI = "xai-test-key"
       const r = await read(PHOTO)
       assert.equal(r.status, 200, JSON.stringify(r.body))
-      assert.deepEqual(r.body.prices, { 11: 50 })
-      assert.deepEqual(seen.map((s) => s.url), [
-        "/v1beta/models/gemini-3.8-flash:generateContent",
-        "/v1beta/models/gemini-3.6-flash:generateContent",
-      ])
-      assert.deepEqual(seen[1].body, seen[0].body, "same photo and rows sent to the backup")
+      assert.deepEqual(r.body.prices, { 12: 9 })
+      const grok = seen.find((s) => s.url === "/v1/chat/completions")!
+      assert.equal(grok.headers.authorization, "Bearer xai-test-key")
+      assert.equal(grok.body.model, "grok-4.3")
     },
   )
-  // Both models over their free limit: the limit message, after two tries.
-  await withReader(
-    () => ({ status: 429, json: { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota" } } }),
-    async (seen) => {
-      const r = await read(PHOTO)
-      assert.equal(r.status, 429)
-      assert.equal(seen.length, 2)
-    },
-  )
-  // A rejected key is not "busy": no second try.
-  await withReader(
-    () => ({ status: 400, json: { error: { code: 400, status: "INVALID_ARGUMENT", details: [{ reason: "API_KEY_INVALID" }] } } }),
-    async (seen) => {
-      assert.equal((await read(PHOTO)).status, 503)
-      assert.equal(seen.length, 1)
-    },
-  )
-  // GEMINI_MODEL in Vercel replaces the main model; the backup stays.
-  process.env.GEMINI_MODEL = "gemini-custom"
-  try {
-    await withReader(
-      () => busy,
-      async (seen) => {
-        assert.equal((await read(PHOTO)).status, 502)
-        assert.deepEqual(seen.map((s) => s.url.split("/").pop()), ["gemini-custom:generateContent", "gemini-3.6-flash:generateContent"])
-      },
-    )
-  } finally {
-    delete process.env.GEMINI_MODEL
-  }
 })
 
-test("CEO assistant: tries the backup model when the main one is busy", () => {
-  // since 2026-11-14 through the shared askGemini (main model, then the backup when busy or slow)
+test("CEO assistant: Claude first, the backup when Claude cannot answer", () => {
   const chat = src("app/api/ai/ceo-chat/route.ts")
-  assert.match(chat, /await askGemini\(/)
-  assert.match(src("lib/gemini-models.ts"), /if \(response\.ok \|\| last \|\| !geminiBusy\(response\.status\)\) break/)
+  assert.match(chat, /await askClaude\(/)
+  assert.match(chat, /await askBackup\(/)
+  assert.doesNotMatch(chat, /gemini/i)
 })
 
 // ------------------------------------------------------------------------------------------------- the print
@@ -325,11 +331,10 @@ test("item photo route: name and quantity per row come back, nothing is saved", 
       assert.equal(r.status, 200, JSON.stringify(r.body))
       assert.deepEqual(r.body, { items: [{ productName: "Pump P-10", quantity: 2 }, { productName: "Valve", quantity: 1 }], skipped: 1 })
       const sent = seen[0].body
-      assert.match(seen[0].url, /^\/v1beta\/models\/gemini-3\.8-flash:generateContent$/)
-      assert.deepEqual(sent.contents[0].parts[0].inline_data, { mime_type: "image/jpeg", data: "aGVsbG8=" })
-      assert.deepEqual(Object.keys(sent.generationConfig.responseSchema.properties.rows.items.properties), ["name", "quantity"])
-      assert.equal(sent.generationConfig.temperature, 0)
-      assert.match(sent.systemInstruction.parts[0].text, /table or plain lines/)
+      assert.equal(seen[0].url, CLAUDE_URL)
+      assert.deepEqual(sent.messages[0].content[0].source, { type: "base64", media_type: "image/jpeg", data: "aGVsbG8=" })
+      assert.match(sent.system, /table or plain lines/)
+      assert.match(sent.system, /"name"[\s\S]*"quantity"/)
       assert.deepEqual(db.tables, {}, "nothing written")
     },
   )
@@ -340,33 +345,25 @@ test("item photo route: bad input, busy main model, limit, unreadable answer, mi
   for (const bad of [{}, { ...LIST_PHOTO, media_type: "application/pdf" }, { ...LIST_PHOTO, image: "" }]) {
     assert.equal((await readItems(bad)).status, 400, JSON.stringify(bad))
   }
-  const busy = { status: 503, json: { error: { code: 503, status: "UNAVAILABLE", message: "high demand" } } }
   await withReader(
-    (s) => (s.url.includes("gemini-3.8-flash") ? busy : message({ rows: [{ name: "Hose", quantity: "3" }] })),
-    async (seen) => {
-      const r = await readItems(LIST_PHOTO)
-      assert.equal(r.status, 200, JSON.stringify(r.body))
-      assert.deepEqual(r.body.items, [{ productName: "Hose", quantity: 3 }])
-      assert.equal(seen.length, 2)
-    },
+    (s) => (isGroq(s) ? groqAnswer({ rows: [{ name: "Hose", quantity: "3" }] }) : overloaded),
+    async (seen) =>
+      withGroq(async () => {
+        const r = await readItems(LIST_PHOTO)
+        assert.equal(r.status, 200, JSON.stringify(r.body))
+        assert.deepEqual(r.body.items, [{ productName: "Hose", quantity: 3 }])
+        assert.equal(seen.length, 2)
+      }),
   )
-  await withReader(
-    () => ({ status: 429, json: { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota" } } }),
-    async () => {
-      const r = await readItems(LIST_PHOTO)
-      assert.equal(r.status, 429)
-      assert.match(r.body.error, /add the items by hand/)
-    },
+  await withReader(() => rateLimited, async () => {
+    const r = await readItems(LIST_PHOTO)
+    assert.equal(r.status, 429)
+    assert.match(r.body.error, /add the items by hand/)
+  })
+  await withReader(() => claudeAnswer("not json"), async () => assert.equal((await readItems(LIST_PHOTO)).status, 422))
+  await withReader(() => message({}), async () =>
+    withoutClaude(async () => assert.equal((await readItems(LIST_PHOTO)).status, 503)),
   )
-  await withReader(
-    () => ({ status: 200, json: { candidates: [{ content: { parts: [{ text: "not json" }] } }] } }),
-    async () => assert.equal((await readItems(LIST_PHOTO)).status, 422),
-  )
-  const before = process.env.GEMINI_API_KEY
-  delete process.env.GEMINI_API_KEY
-  const r = await readItems(LIST_PHOTO)
-  if (before !== undefined) process.env.GEMINI_API_KEY = before
-  assert.equal(r.status, 503)
 })
 
 test("item photo button sits next to Import Excel and adds rows like the Excel import", () => {
@@ -407,11 +404,12 @@ test("reader route: the brand comes back per item next to the price; nothing is 
       assert.equal(r.status, 200, JSON.stringify(r.body))
       assert.deepEqual(r.body.brands, { 11: "SKF" })
       assert.deepEqual(r.body.codes, { 11: "6204-2RS" })
-      assert.ok(seen[0].body.generationConfig.responseSchema.properties.rows.items.properties.code, "the reader is asked for the code")
-      assert.match(seen[0].body.systemInstruction.parts[0].text, /الكود/)
+      const system = seen[0].body.system
+      assert.match(system, /"code"/, "the reader is asked for the code")
+      assert.match(system, /الكود/)
       assert.deepEqual(r.body.prices, { 11: 50, 12: 70 })
-      assert.ok(seen[0].body.generationConfig.responseSchema.properties.rows.items.properties.brand, "the reader is asked for the brand")
-      assert.match(seen[0].body.systemInstruction.parts[0].text, /الماركة/)
+      assert.match(system, /"brand"/, "the reader is asked for the brand")
+      assert.match(system, /الماركة/)
       assert.ok(db.tables.po_request_items.every((i) => i.product_name === "Pump" || i.product_name === "Valve"), "no name changed")
     },
   )
@@ -518,26 +516,21 @@ test("all photos are saved: several become one PDF with one page per photo; one 
   assert.ok(handlePhoto.indexOf("setPhotos(") < handlePhoto.indexOf('postPhotoRead("/api/po-requests/read-prices"'), "a photo is kept even when reading it fails")
 })
 
-// ------------------------------------------------------------- the free backup reader (Groq), owner 2026-11-04
+// ------------------------------------------------- the backup reader (Groq here; Grok with an xai- key), owner 2026-11-21
 const groqAnswer = (sheet: unknown) => ({ status: 200, json: { choices: [{ message: { role: "assistant", content: JSON.stringify(sheet) } }] } })
-const isGroq = (s: Seen) => s.url === "/openai/v1/chat/completions"
-async function withGroq(fn: () => Promise<void>, geminiKey = true) {
-  const before = { url: process.env.GROQ_BASE_URL, key: process.env.GROQ_API_KEY, gem: process.env.GEMINI_API_KEY }
-  process.env.GROQ_BASE_URL = process.env.GEMINI_BASE_URL
-  process.env.GROQ_API_KEY = "groq-test-key"
-  if (!geminiKey) delete process.env.GEMINI_API_KEY
-  try {
-    await fn()
-  } finally {
-    for (const [name, value] of [["GROQ_BASE_URL", before.url], ["GROQ_API_KEY", before.key], ["GEMINI_API_KEY", before.gem]] as const) {
-      if (value === undefined) delete process.env[name]
-      else process.env[name] = value
-    }
-  }
+function isGroq(s: Seen) {
+  return s.url === "/openai/v1/chat/completions"
 }
-const limit = { status: 429, json: { error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "quota" } } }
+/** Adds a Groq backup key on the stand-in (inside withReader, which restores everything). */
+async function withGroq(fn: () => Promise<void>, withClaudeKey = true) {
+  process.env.GROQ_BASE_URL = process.env.ANTHROPIC_BASE_URL
+  process.env.GROQ_API_KEY = "groq-test-key"
+  if (!withClaudeKey) delete process.env.CLAUDE_API_KEY
+  await fn()
+}
+const limit = rateLimited
 
-test("backup reader: when Google is over its free limit, Groq reads the photo (same rows, photo sent as an image)", async () => {
+test("backup reader: when Claude is over its limit, the backup reads the photo (same rows, photo sent as an image)", async () => {
   mkDb()
   await withReader(
     (s) => (isGroq(s) ? groqAnswer({ request_number: "PR-2026-005", rows: [{ row: 2, written: "75", brand: "SKF", code: null }] }) : limit),
@@ -569,7 +562,7 @@ test("backup reader: works alone with only a Groq key; thinking text and code fe
         const r = await read(PHOTO)
         assert.equal(r.status, 200, JSON.stringify(r.body))
         assert.deepEqual(r.body.prices, { 11: 10 })
-        assert.ok(seen.every(isGroq), "Google not called without its key")
+        assert.ok(seen.every(isGroq), "Claude not called without its key")
       }, false),
   )
 })
@@ -589,12 +582,13 @@ test("backup reader: both at their limit gives the limit message; a rejected Gro
   await withReader(() => ({ status: 401, json: { error: { message: "Invalid API Key" } } }), async () =>
     withGroq(async () => assert.equal((await read(PHOTO)).status, 503), false),
   )
-  const before = process.env.GEMINI_API_KEY
-  delete process.env.GEMINI_API_KEY
-  const r = await read(PHOTO)
-  if (before !== undefined) process.env.GEMINI_API_KEY = before
-  assert.equal(r.status, 503)
-  assert.match(r.body.error, /GEMINI_API_KEY or GROQ_API_KEY/)
+  await withReader(() => limit, async () =>
+    withoutClaude(async () => {
+      const r = await read(PHOTO)
+      assert.equal(r.status, 503)
+      assert.match(r.body.error, /CLAUDE_API_KEY or the grokAPI backup key/)
+    }),
+  )
 })
 
 test("backup reader: the item photo on quotations also falls back to Groq", async () => {

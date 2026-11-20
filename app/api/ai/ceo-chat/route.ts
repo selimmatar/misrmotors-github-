@@ -1,11 +1,11 @@
 // The CEO chat (owner request, 2026-11-14). A short, correct summary goes in front of every question; for anything
 // specific the model calls lookup tools (lib/ai/ceo-tools.ts) and answers from what they return. It can only PROPOSE
 // actions: proposals come back as cards ("p:" lines) and are saved only when the person presses Confirm
-// (./confirm/route.ts). Same Gemini free models as before (main, then backup when busy).
+// (./confirm/route.ts). Claude answers; when Claude cannot, the backup (Grok / Groq) answers (owner, 2026-11-21).
 // Answer format (unchanged for text): lines `0:"<text>"`; plus `p:{proposal}` lines for the cards.
 import { createAdminClient } from "@/lib/supabase/admin"
-import { askGemini, geminiFailure } from "@/lib/gemini-models"
-import { businessSummary, geminiToolDeclarations, runTool, type Proposal } from "@/lib/ai/ceo-tools"
+import { askBackup, askClaude, backup, claudeKey, failureWhy, isTimeout, NOT_SETUP_MESSAGE, type Backup } from "@/lib/ai-providers"
+import { backupTools, businessSummary, claudeTools, runTool, type Proposal } from "@/lib/ai/ceo-tools"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -26,9 +26,89 @@ Rules:
 - If the user's request is unclear (which supplier, which order, quantities, prices), ask before proposing.`
 }
 
+type Msg = { role: "user" | "assistant"; text: string }
+type Ctx = { db: ReturnType<typeof createAdminClient>; tool: { seesProfit: boolean }; system: string; deadline: number }
+
+/** A service that did not answer; `status` is the HTTP status it gave (0 = timeout / unreachable). */
+class ServiceFailed extends Error {
+  constructor(public why: string, public status: number) {
+    super(why)
+  }
+}
+
+async function callTool(c: Ctx, name: string, args: unknown, proposals: Proposal[]) {
+  const { result, proposal } = await runTool(c.db, name, args ?? {}, c.tool)
+  if (proposal) proposals.push(proposal)
+  let text = JSON.stringify(result ?? null)
+  if (text.length > MAX_RESULT_CHARS) text = JSON.stringify({ note: "result shortened", data: text.slice(0, MAX_RESULT_CHARS) })
+  return text
+}
+
+const left = (c: Ctx) => c.deadline - Date.now()
+
+async function withClaude(c: Ctx, history: Msg[], timeoutMs: number) {
+  const messages: any[] = history.map((m) => ({ role: m.role, content: m.text }))
+  const proposals: Proposal[] = []
+  const until = Date.now() + timeoutMs
+  for (let step = 0; step < MAX_STEPS; step++) {
+    let response: Response
+    try {
+      response = await askClaude({ system: c.system, messages, tools: claudeTools(), temperature: 0.3 }, until - Date.now())
+    } catch (error) {
+      throw new ServiceFailed(isTimeout(error) ? "claude timeout" : "claude unreachable", 0)
+    }
+    if (!response.ok) throw new ServiceFailed(await failureWhy("claude", response), response.status)
+    const data = await response.json()
+    const blocks: any[] = Array.isArray(data?.content) ? data.content : []
+    const calls = blocks.filter((b) => b?.type === "tool_use")
+    const text = blocks.filter((b) => b?.type === "text").map((b) => b.text || "").join("").trim()
+    if (calls.length === 0 || data?.stop_reason !== "tool_use") return { answer: text, proposals }
+    messages.push({ role: "assistant", content: blocks })
+    const results = []
+    for (const call of calls.slice(0, 5)) {
+      results.push({ type: "tool_result", tool_use_id: call.id, content: await callTool(c, call.name, call.input, proposals) })
+    }
+    messages.push({ role: "user", content: results })
+  }
+  return { answer: "", proposals }
+}
+
+async function withBackup(c: Ctx, b: Backup, history: Msg[]) {
+  const messages: any[] = [{ role: "system", content: c.system }, ...history.map((m) => ({ role: m.role, content: m.text }))]
+  const proposals: Proposal[] = []
+  for (let step = 0; step < MAX_STEPS; step++) {
+    let response: Response
+    try {
+      response = await askBackup(b, { messages, tools: backupTools(), temperature: 0.3, max_tokens: 4096 }, left(c))
+    } catch (error) {
+      throw new ServiceFailed(isTimeout(error) ? `${b.name} timeout` : `${b.name} unreachable`, 0)
+    }
+    if (!response.ok) throw new ServiceFailed(await failureWhy(b.name, response), response.status)
+    const message = (await response.json())?.choices?.[0]?.message || {}
+    const calls: any[] = Array.isArray(message.tool_calls) ? message.tool_calls : []
+    const text = String(message.content || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim()
+    if (calls.length === 0) return { answer: text, proposals }
+    messages.push({ role: "assistant", content: message.content ?? "", tool_calls: calls })
+    for (const call of calls.slice(0, 5)) {
+      let args: unknown = {}
+      try {
+        args = JSON.parse(call?.function?.arguments || "{}")
+      } catch {}
+      messages.push({ role: "tool", tool_call_id: call.id, content: await callTool(c, call?.function?.name, args, proposals) })
+    }
+  }
+  return { answer: "", proposals }
+}
+
+function failedResponse(error: ServiceFailed) {
+  if (error.status === 429) return json({ error: "Rate limit exceeded. Please wait a moment and try again." }, 429)
+  if (error.status === 401 || error.status === 403) return json({ error: "The AI key was refused. Please check CLAUDE_API_KEY / grokAPI in Vercel." }, 503)
+  return json({ error: "The AI service is temporarily unavailable. Please try again in a few minutes." }, 503)
+}
+
 export async function POST(req: Request) {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
-  if (!key) return json({ error: "Gemini API key not configured. Please add GEMINI_API_KEY in Vercel." }, 503)
+  const b = backup()
+  if (!claudeKey() && !b) return json({ error: NOT_SETUP_MESSAGE }, 503)
 
   let messages: any[]
   try {
@@ -36,65 +116,53 @@ export async function POST(req: Request) {
   } catch {
     return json({ error: "Invalid JSON body" }, 400)
   }
-  const history = (Array.isArray(messages) ? messages : [])
-    .map((m) => ({ role: m?.role === "user" ? "user" : "model", text: String(m?.content ?? "").trim() }))
+  const history: Msg[] = (Array.isArray(messages) ? messages : [])
+    .map((m): Msg => ({ role: m?.role === "user" ? "user" : "assistant", text: String(m?.content ?? "").trim() }))
     .filter((m) => m.text)
     .slice(-20)
+  // Claude needs the conversation to start with the person, not the assistant.
+  while (history.length && history[0].role !== "user") history.shift()
   if (!history.length || history[history.length - 1].role !== "user") return json({ error: "Please enter a message to continue." }, 400)
 
   try {
     const db = createAdminClient()
     const roles = (req.headers.get("x-mm-roles") || "").split(",")
-    const ctx = { seesProfit: roles.includes("ceo") || roles.includes("admin") }
-    const contents: any[] = history.map((m) => ({ role: m.role, parts: [{ text: m.text }] }))
-    const system = systemPrompt(await businessSummary(db))
-    const proposals: Proposal[] = []
-    let answer = ""
-
-    for (let step = 0; step < MAX_STEPS; step++) {
-      const response = await askGemini(
-        JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents,
-          tools: geminiToolDeclarations(),
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-        }),
-        key,
-        "CEO chat",
-      )
-      if (!response.ok) {
-        const { why } = await geminiFailure(response)
-        console.error("CEO chat: Gemini", why)
-        const status = response.status === 429 ? 429 : response.status >= 500 ? 503 : response.status
-        const error = status === 429 ? "Rate limit exceeded. Please wait a moment and try again." : status === 503 ? "Gemini service is temporarily unavailable. Please try again in a few minutes." : `Gemini API error (${response.status}).`
-        return json({ error }, status)
-      }
-      const data = await response.json()
-      const parts: any[] = data?.candidates?.[0]?.content?.parts || []
-      const calls = parts.filter((p) => p?.functionCall?.name)
-      if (calls.length === 0) {
-        answer = parts.map((p) => p?.text || "").join("").trim()
-        break
-      }
-      contents.push({ role: "model", parts })
-      const replies = []
-      for (const call of calls.slice(0, 5)) {
-        const { result, proposal } = await runTool(db, call.functionCall.name, call.functionCall.args, ctx)
-        if (proposal) proposals.push(proposal)
-        let text = JSON.stringify(result ?? null)
-        if (text.length > MAX_RESULT_CHARS) text = JSON.stringify({ note: "result shortened", data: text.slice(0, MAX_RESULT_CHARS) })
-        replies.push({ functionResponse: { name: call.functionCall.name, response: { result: JSON.parse(text) } } })
-      }
-      contents.push({ role: "user", parts: replies })
+    const c: Ctx = {
+      db,
+      tool: { seesProfit: roles.includes("ceo") || roles.includes("admin") },
+      system: systemPrompt(await businessSummary(db)),
+      deadline: Date.now() + 55_000,
     }
 
-    if (!answer && proposals.length) answer = "Please check the card below and press Confirm to save it."
+    let out: { answer: string; proposals: Proposal[] } | null = null
+    let lastFailure: ServiceFailed | null = null
+    if (claudeKey()) {
+      try {
+        out = await withClaude(c, history, b ? Math.round(left(c) * 0.6) : left(c))
+      } catch (error) {
+        if (!(error instanceof ServiceFailed)) throw error
+        lastFailure = error
+        console.error("CEO chat: Claude did not answer -", error.why, b ? "- trying the backup" : "")
+      }
+    }
+    if (!out && b) {
+      try {
+        out = await withBackup(c, b, history)
+      } catch (error) {
+        if (!(error instanceof ServiceFailed)) throw error
+        console.error("CEO chat: backup did not answer -", error.why)
+        lastFailure = error
+      }
+    }
+    if (!out) return failedResponse(lastFailure ?? new ServiceFailed("no answer", 503))
+
+    let answer = out.answer
+    if (!answer && out.proposals.length) answer = "Please check the card below and press Confirm to save it."
     if (!answer) answer = "I could not finish that. Please ask in a simpler way or try again."
-    const body = [`0:${JSON.stringify(answer)}`, ...proposals.map((p) => `p:${JSON.stringify(p)}`), "0:"].join("\n") + "\n"
+    const body = [`0:${JSON.stringify(answer)}`, ...out.proposals.map((p) => `p:${JSON.stringify(p)}`), "0:"].join("\n") + "\n"
     return new Response(body, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-cache" } })
   } catch (error) {
     console.error("CEO chat error:", error)
-    const timeout = error instanceof Error && error.name === "TimeoutError"
-    return json({ error: timeout ? "Gemini service is temporarily unavailable. Please try again in a few minutes." : "AI service error. Please try again." }, 503)
+    return json({ error: "AI service error. Please try again." }, 503)
   }
 }
