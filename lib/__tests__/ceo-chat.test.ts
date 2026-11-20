@@ -94,8 +94,8 @@ test("C3. proposals only build a card (nothing written); a PO line is linked to 
   assert.equal(JSON.stringify(db.tables), before)
 })
 
-// a stand-in for Google: each call returns the next prepared answer
-function fakeGemini(answers: any[]) {
+// a stand-in for Claude: each call returns the next prepared answer
+function fakeClaude(answers: any[]) {
   const sent: any[] = []
   const real = globalThis.fetch
   globalThis.fetch = (async (_url: any, init: any) => {
@@ -104,20 +104,22 @@ function fakeGemini(answers: any[]) {
   }) as any
   return { sent, restore: () => (globalThis.fetch = real) }
 }
-const say = (text: string) => ({ candidates: [{ content: { role: "model", parts: [{ text }] } }] })
-const ask = (name: string, args: any) => ({ candidates: [{ content: { role: "model", parts: [{ functionCall: { name, args } }] } }] })
+const say = (text: string) => ({ type: "message", role: "assistant", content: [{ type: "text", text }], stop_reason: "end_turn" })
+let toolCallId = 0
+const ask = (name: string, input: any) => ({ type: "message", role: "assistant", content: [{ type: "tool_use", id: `t${++toolCallId}`, name, input }], stop_reason: "tool_use" })
 
 test("C4. the chat looks things up step by step and answers from them; a proposal comes back as a card line", async () => {
-  process.env.GEMINI_API_KEY = "test-key"
+  process.env.CLAUDE_API_KEY = "test-key"
+  for (const name of ["grokAPI", "GROQ_API_KEY", "XAI_API_KEY"]) delete process.env[name]
   const db = seed()
-  const g = fakeGemini([ask("customer_balance", { name: "bostanji" }), say("Bostanji still owes 2,000 EGP."), ask("propose_note", { target: "so", number: "SO-2026-507661", text: "Call about the 5 تزجه" }), say("I prepared a note; please confirm.")])
+  const g = fakeClaude([ask("customer_balance", { name: "bostanji" }), say("Bostanji still owes 2,000 EGP."), ask("propose_note", { target: "so", number: "SO-2026-507661", text: "Call about the 5 تزجه" }), say("I prepared a note; please confirm.")])
   try {
     const r = await chatRoute.POST(new Request("http://test.local/api/ai/ceo-chat", { method: "POST", headers: { "x-mm-roles": "ceo" }, body: JSON.stringify({ messages: [{ role: "user", content: "How much does Bostanji owe?" }] }) }))
     const body = await r.text()
     assert.match(body, /^0:"Bostanji still owes 2,000 EGP\."/)
     // the lookup result went back to the model
-    assert.match(JSON.stringify(g.sent[1].contents.at(-1)), /"still_owed":2000/)
-    assert.match(g.sent[0].systemInstruction.parts[0].text, /Customers still owe: 2000/)
+    assert.match(JSON.stringify(g.sent[1].messages.at(-1)), /still_owed[\\"]*:2000/)
+    assert.match(g.sent[0].system, /Customers still owe: 2000/)
     const r2 = await chatRoute.POST(new Request("http://test.local/api/ai/ceo-chat", { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: "add a note" }] }) }))
     const lines = (await r2.text()).split("\n")
     const card = JSON.parse(lines.find((l) => l.startsWith("p:"))!.slice(2))

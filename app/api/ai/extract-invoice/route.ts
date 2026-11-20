@@ -1,10 +1,14 @@
-// This avoids the AI SDK v6 dependency issues
-
+// Reads a supplier invoice photo into structured data. Claude reads it; the backup (Grok / Groq) reads it when Claude
+// cannot (owner, 2026-11-21: Claude for all AI operations, Grok as the backup).
 import { z } from "zod"
+import { photoReaderReady, readPhoto } from "@/lib/photo-reader"
+import { failed, NOT_SETUP_PHOTOS } from "@/lib/photo-read-failure"
+
+export const maxDuration = 60
 
 const invoiceDataSchema = z.object({
   supplierName: z.string(),
-  invoiceNumber: z.string().optional(),
+  invoiceNumber: z.string().nullish(),
   invoiceDate: z.string(),
   totalAmount: z.number(),
   items: z.array(
@@ -15,99 +19,42 @@ const invoiceDataSchema = z.object({
       totalPrice: z.number(),
     }),
   ),
-  paymentTerms: z.string().optional(),
-  dueDate: z.string().optional(),
+  paymentTerms: z.string().nullish(),
+  dueDate: z.string().nullish(),
 })
 
-export async function POST(req: Request) {
-  try {
-    const { fileData, mediaType } = await req.json()
-
-    if (!process.env.OPENAI_API_KEY) {
-      return Response.json(
-        { error: "OpenAI API key not configured. Please add OPENAI_API_KEY in the Vars section." },
-        { status: 503 },
-      )
-    }
-
-    // Use OpenAI with vision capabilities to extract invoice data
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You are an invoice data extraction assistant. Extract invoice information and return it as a JSON object with the following structure:
-{
+const INVOICE_SHAPE = `{
   "supplierName": "string",
   "invoiceNumber": "string or null",
   "invoiceDate": "YYYY-MM-DD",
   "totalAmount": number,
-  "items": [
-    {
-      "productName": "string",
-      "quantity": number,
-      "unitPrice": number,
-      "totalPrice": number
-    }
-  ],
+  "items": [{ "productName": "string", "quantity": number, "unitPrice": number, "totalPrice": number }],
   "paymentTerms": "string or null",
   "dueDate": "YYYY-MM-DD or null"
-}
+}`
 
-Only return the JSON object, no other text.`,
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Extract all invoice information from this document. Focus on supplier name, invoice details, line items with quantities and prices.",
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mediaType || "image/png"};base64,${fileData}`,
-                },
-              },
-            ],
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 2048,
-      }),
+export async function POST(req: Request) {
+  try {
+    const { fileData, mediaType } = await req.json()
+    if (!fileData || typeof fileData !== "string") return Response.json({ error: "No invoice image was sent" }, { status: 400 })
+    if (!photoReaderReady()) return Response.json({ error: NOT_SETUP_PHOTOS }, { status: 503 })
+
+    const read = await readPhoto<unknown>({
+      tag: "Invoice extraction",
+      system: "You are an invoice data extraction assistant. Extract the invoice information from the photo. Only return the JSON object, no other text.",
+      text: "Extract all invoice information from this document. Focus on supplier name, invoice details, line items with quantities and prices.",
+      image: fileData.replace(/^data:[^,]*,/, ""),
+      mediaType: mediaType || "image/png",
+      jsonShape: INVOICE_SHAPE,
     })
+    if (!read.ok) return failed(read.kind, read.why, "enter the invoice by hand")
 
-    if (!response.ok) {
-      const error = await response.text()
-      console.error("OpenAI API error:", error)
-      return Response.json({ error: "Failed to process invoice image" }, { status: 500 })
-    }
-
-    const data = await response.json()
-    const content = data.choices[0]?.message?.content || ""
-
-    // Parse the JSON response
-    try {
-      // Extract JSON from the response (in case there's extra text)
-      const jsonMatch = content.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        throw new Error("No JSON found in response")
-      }
-
-      const parsed = JSON.parse(jsonMatch[0])
-      const validated = invoiceDataSchema.parse(parsed)
-
-      return Response.json({ extractedData: validated })
-    } catch (parseError) {
-      console.error("Failed to parse invoice response:", parseError, content)
+    const validated = invoiceDataSchema.safeParse(read.data)
+    if (!validated.success) {
+      console.error("Invoice extraction: answer did not match the shape", validated.error.issues.slice(0, 3))
       return Response.json({ error: "Failed to parse invoice data" }, { status: 500 })
     }
+    return Response.json({ extractedData: validated.data })
   } catch (error) {
     console.error("Invoice extraction error:", error)
     return Response.json({ error: "Failed to extract invoice data" }, { status: 500 })

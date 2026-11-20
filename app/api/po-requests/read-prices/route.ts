@@ -2,8 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { brandsByItem, codesByItem, pricesByItem, sameRequestNumber, sortRequestItems, type ReadRow } from "@/lib/po-requests/read-prices"
-import { groqApiKey, readPhoto } from "@/lib/photo-reader"
-import { failed } from "@/lib/photo-read-failure"
+import { photoReaderReady, readPhoto } from "@/lib/photo-reader"
+import { failed, NOT_SETUP_PHOTOS } from "@/lib/photo-read-failure"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -12,22 +12,6 @@ const MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as co
 // The phone shrinks the photo well below this before sending.
 const MAX_IMAGE_BASE64 = 7_000_000
 
-// JSON shape the reader must answer in (Gemini's schema format).
-const SHEET_SCHEMA = {
-  type: "OBJECT",
-  required: ["request_number", "rows"],
-  properties: {
-    request_number: { type: "STRING", nullable: true },
-    rows: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        required: ["row", "written"],
-        properties: { row: { type: "INTEGER" }, written: { type: "STRING", nullable: true }, brand: { type: "STRING", nullable: true }, code: { type: "STRING", nullable: true } },
-      },
-    },
-  },
-}
 const SYSTEM = `You read photos of a printed price request from Misr Motors. The sheet has a table with numbered rows (column "م"), an item name, and a "سعر الوحدة" box (older sheets label it "سعر الوحدة / Unit Price") where the supplier hand-writes one unit price per row.
 For every row number you are given, copy exactly what is hand-written in that row's price box, digit by digit, in the same digits the supplier used (Arabic-Indic like ١٢٥٠ or English like 1250), keeping any commas or dots. Do not convert, round or calculate.
 Use null when the box is empty, crossed out, or you cannot read every digit with confidence. Never guess a digit, and never take a number from another column (quantity, code, row number).
@@ -35,7 +19,7 @@ Newer sheets also have a "الماركة" (brand) box in each row. Copy the bran
 Newer sheets also have a "الكود" (code) box in each row where the supplier writes the part or item code. Copy it character by character as written (letters, digits, dashes), or null when it is empty or you cannot read every character. Never put a code into "written" or "brand".
 Also copy the request number printed on the sheet (رقم الطلب), or null if you cannot see it.`
 
-// The same shape in words, for the backup reader (Groq), which is told the shape in the prompt.
+// The JSON shape every reader (Claude, then the backup) is told to answer in.
 const SHEET_SHAPE = `{"request_number": string or null, "rows": [{"row": number, "written": string or null, "brand": string or null, "code": string or null}]}`
 
 // POST { request_id, image (base64, no data: prefix), media_type } -> { prices: {item_id: price}, brands: {item_id: brand}, codes: {item_id: code}, read, total, request_number_matches }
@@ -52,9 +36,7 @@ export async function POST(request: NextRequest) {
     if (image.length > MAX_IMAGE_BASE64) {
       return NextResponse.json({ error: "The photo is too large" }, { status: 413 })
     }
-    if (!process.env.GEMINI_API_KEY && !groqApiKey()) {
-      return NextResponse.json({ error: "Reading photos is not set up yet (GEMINI_API_KEY or GROQ_API_KEY is missing)" }, { status: 503 })
-    }
+    if (!photoReaderReady()) return NextResponse.json({ error: NOT_SETUP_PHOTOS }, { status: 503 })
 
     const supabase = createAdminClient()
     const { data: pr, error } = await supabase
@@ -73,7 +55,6 @@ export async function POST(request: NextRequest) {
       text: `Price request ${pr.request_number}. Rows on the sheet:\n${rowList}`,
       image,
       mediaType,
-      geminiSchema: SHEET_SCHEMA,
       jsonShape: SHEET_SHAPE,
     })
     if (!answer.ok) return failed(answer.kind, answer.why, "type the prices")

@@ -73,29 +73,6 @@ export function normalizeRead(raw: unknown): DraftRead {
   }
 }
 
-const READ_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    customerName: { type: "STRING", nullable: true },
-    date: { type: "STRING", nullable: true },
-    printedNumber: { type: "STRING", nullable: true },
-    cancelled: { type: "BOOLEAN", nullable: true },
-    vat: { type: "STRING", nullable: true },
-    total: { type: "STRING", nullable: true },
-    lines: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          name: { type: "STRING", nullable: true },
-          quantity: { type: "STRING", nullable: true },
-          unitPrice: { type: "STRING", nullable: true },
-        },
-      },
-    },
-  },
-}
-
 export function photoReadRequest(image: string, mediaType: string): PhotoRequest {
   return {
     tag: "[maintenance-photo]",
@@ -111,9 +88,8 @@ export function photoReadRequest(image: string, mediaType: string): PhotoRequest
       "cancelled: true only when the page is crossed out or says cancelled / ملغي / ملغاة.",
     image,
     mediaType,
-    geminiSchema: READ_SCHEMA,
-    // Read in the background after the upload, so it can wait for a slow Google (route maxDuration is 120).
-    geminiMs: 100_000,
+    // Read in the background after the upload, so it can wait for a slow Claude (route maxDuration is 120).
+    claudeMs: 100_000,
     jsonShape:
       '{"printedNumber":"MINV265600","cancelled":false,"customerName":"...","date":"...",' +
       '"lines":[{"name":"...","quantity":"1","unitPrice":"250"}],"vat":"35","total":"285"}',
