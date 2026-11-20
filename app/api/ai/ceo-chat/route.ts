@@ -53,7 +53,7 @@ async function withClaude(c: Ctx, history: Msg[], timeoutMs: number) {
   for (let step = 0; step < MAX_STEPS; step++) {
     let response: Response
     try {
-      response = await askClaude({ system: c.system, messages, tools: claudeTools(), temperature: 0.3 }, until - Date.now())
+      response = await askClaude({ system: c.system, messages, tools: claudeTools() }, until - Date.now())
     } catch (error) {
       throw new ServiceFailed(isTimeout(error) ? "claude timeout" : "claude unreachable", 0)
     }
