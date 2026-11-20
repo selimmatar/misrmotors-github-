@@ -29,7 +29,16 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
   generator: "v0.app",
   icons: {
-    icon: "/icon.svg",
+    icon: [
+      { url: "/icons/app-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Misr Motors",
+    statusBarStyle: "default",
   },
 }
 
