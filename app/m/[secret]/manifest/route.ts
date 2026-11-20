@@ -22,8 +22,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ sec
       background_color: "#ffffff",
       theme_color: "#3b82f6",
       icons: [
-        { src: "/icons/worker-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-        { src: "/icons/worker-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: "/icons/app-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: "/icons/app-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: "/icons/app-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
       ],
     },
     { headers: { "Content-Type": "application/manifest+json", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } },

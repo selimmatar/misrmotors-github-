@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     referrer: "no-referrer",
     alternates: { canonical: null },
     appleWebApp: { capable: true, title: "مصر موتورز", statusBarStyle: "default" },
-    icons: { icon: "/icons/worker-192.png", apple: "/apple-icon.png" },
+    icons: { icon: "/icons/app-192.png", apple: "/apple-icon.png" },
   }
 }
 
