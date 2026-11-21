@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { hashSecret, isSecretShape } from "@/lib/maintenance-photos"
 import { nextMinvNumber } from "@/lib/maintenance-booklets"
+import { workerNumberState } from "@/lib/shared-invoice-numbers"
 import { WorkerUploadScreen } from "@/components/worker-upload/worker-upload-screen"
 import { WorkerLinkInactive } from "@/components/worker-upload/worker-link-inactive"
 
@@ -55,6 +56,10 @@ export default async function WorkerPage({ params }: Props) {
   const { secret } = await params
   const worker = await findWorker(secret)
   if (!worker) return <WorkerLinkInactive />
-  const nextNumber = await findNextNumber(worker.id)
-  return <WorkerUploadScreen secret={secret} workerName={worker.name} nextNumber={nextNumber} />
+  const numbers = await workerNumberState(createAdminClient(), worker.id).catch((error: any) => {
+    console.error("[worker-page] shared numbers:", error?.message || error)
+    return null
+  })
+  const nextNumber = numbers?.enabled ? null : await findNextNumber(worker.id)
+  return <WorkerUploadScreen secret={secret} workerName={worker.name} nextNumber={nextNumber} numbers={numbers} />
 }
