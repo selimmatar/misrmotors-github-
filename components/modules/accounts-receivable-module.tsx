@@ -48,6 +48,7 @@ import { RenameInvoiceDialog } from "@/components/accounting/rename-invoice-dial
 import { CancelMinvDialog } from "@/components/accounting/cancel-minv-dialog"
 import { EtaBadge, EtaSendAll, ReplacementMarks, useEtaBadges } from "@/components/accounting/eta-ar-bits"
 import { MaintenancePhotoDrafts } from "@/components/accounting/maintenance-photo-drafts"
+import { SharedInvoiceNumbers } from "@/components/accounting/shared-invoice-numbers"
 
 interface PaymentScheduleEntry {
   id: string
@@ -1471,7 +1472,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         </TabsList>
       </Tabs>
 
-      {invoiceTab === "maintenance" && <MaintenancePhotoDrafts />}
+      {invoiceTab === "maintenance" && (
+        <>
+          <SharedInvoiceNumbers />
+          <MaintenancePhotoDrafts />
+        </>
+      )}
 
       {/* Filter Buttons */}
       <div className="flex gap-2 flex-wrap">

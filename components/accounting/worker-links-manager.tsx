@@ -11,7 +11,6 @@ import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { formatDate } from "@/lib/format"
 import { WorkerBooklets } from "./worker-booklets"
-import { SharedInvoiceNumbers } from "./shared-invoice-numbers"
 
 interface WorkerLink {
   id: number
@@ -186,7 +185,6 @@ export function WorkerLinksManager() {
         </ul>
       )}
 
-      <SharedInvoiceNumbers />
       <WorkerBooklets />
     </section>
   )
