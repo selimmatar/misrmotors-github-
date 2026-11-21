@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react"
 import { AlertCircle, Camera, Check, ImageUp, Loader2 } from "lucide-react"
 import { WORKER_TEXT, useWorkerLanguage, type WorkerErrorCode } from "./worker-text"
+import { WorkerCancelNumber, WorkerReservedCard, WorkerStartCard } from "./worker-number-card"
+import type { WorkerNumberState } from "@/lib/shared-invoice-numbers"
 
 type Stage = { kind: "idle" } | { kind: "sending" } | { kind: "done" } | { kind: "error"; code: WorkerErrorCode }
 
@@ -36,16 +38,41 @@ export function WorkerUploadScreen({
   secret,
   workerName,
   nextNumber: initialNext,
+  numbers: initialNumbers,
 }: {
   secret: string
   workerName: string
   nextNumber: string | null
+  numbers: WorkerNumberState | null
 }) {
   const { lang, toggle } = useWorkerLanguage()
   const text = WORKER_TEXT[lang]
   const input = useRef<HTMLInputElement>(null)
   const [stage, setStage] = useState<Stage>({ kind: "idle" })
   const [nextNumber, setNextNumber] = useState(initialNext)
+  const [numbers, setNumbers] = useState(initialNumbers)
+  const [busy, setBusy] = useState(false)
+  const shared = numbers?.enabled ? numbers : null
+  const reserved = shared?.reserved ?? null
+
+  const numberAction = async (action: "take" | "cancel" | "undo") => {
+    setBusy(true)
+    try {
+      const response = await fetch(`/api/worker-upload/${secret}/number`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      const data = await response.json().catch(() => null)
+      if (data?.state) setNumbers(data.state)
+      if (response.ok) setStage({ kind: "idle" })
+      else setStage({ kind: "error", code: response.status === 404 ? "inactive" : response.status === 409 ? "taken" : "failed" })
+    } catch {
+      setStage({ kind: "error", code: "offline" })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const nextNumberCard = nextNumber ? (
     <section
@@ -91,8 +118,9 @@ export function WorkerUploadScreen({
       const response = await fetch(`/api/worker-upload/${secret}`, { method: "POST", body: form })
       if (response.ok) {
         setStage({ kind: "done" })
-        setNextNumber(bumpMinv)
-      }
+        if (shared) setNumbers({ ...shared, reserved: null, crossOut: [], undoable: null })
+        else setNextNumber(bumpMinv)
+      } else if (response.status === 409) setStage({ kind: "error", code: "no_number" })
       else setStage({ kind: "error", code: CODE_BY_STATUS[response.status] ?? "failed" })
     } catch {
       setStage({ kind: "error", code: "offline" })
@@ -146,20 +174,40 @@ export function WorkerUploadScreen({
               <h1 className="text-4xl font-extrabold text-balance">{text.received}</h1>
               <p className="text-xl leading-relaxed text-muted-foreground text-pretty">{text.receivedHint}</p>
             </div>
-            {nextNumberCard}
-            <button
-              type="button"
-              onClick={openCamera}
-              className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl border-2 border-primary px-6 text-2xl font-bold text-primary"
-            >
-              <Camera className="size-7" aria-hidden="true" />
-              {text.another}
-            </button>
-            {uploadButton}
+            {shared ? (
+              <WorkerStartCard lang={lang} numbers={shared} busy={busy} next onAction={numberAction} />
+            ) : (
+              <>
+                {nextNumberCard}
+                <button
+                  type="button"
+                  onClick={openCamera}
+                  className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl border-2 border-primary px-6 text-2xl font-bold text-primary"
+                >
+                  <Camera className="size-7" aria-hidden="true" />
+                  {text.another}
+                </button>
+                {uploadButton}
+              </>
+            )}
+          </div>
+        ) : shared && !reserved ? (
+          <div className="flex w-full max-w-sm flex-col items-center gap-6">
+            <WorkerStartCard lang={lang} numbers={shared} busy={busy} onAction={numberAction} />
+            {stage.kind === "error" ? (
+              <div role="alert" className="flex w-full items-start gap-3 rounded-2xl bg-destructive/10 p-4 text-start text-destructive">
+                <AlertCircle className="mt-1 size-7 shrink-0" aria-hidden="true" />
+                <p className="text-lg leading-relaxed">{text.errors[stage.code]}</p>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="flex w-full max-w-sm flex-col items-center gap-6">
-            {nextNumberCard}
+            {shared && reserved ? (
+              <WorkerReservedCard lang={lang} numbers={{ ...shared, reserved }} busy={busy} onAction={numberAction} />
+            ) : (
+              nextNumberCard
+            )}
             <button
               type="button"
               onClick={openCamera}
@@ -186,6 +234,7 @@ export function WorkerUploadScreen({
             ) : (
               <p className="text-xl leading-relaxed text-muted-foreground text-pretty">{text.hint}</p>
             )}
+            {shared && reserved && stage.kind !== "sending" ? <WorkerCancelNumber lang={lang} busy={busy} onAction={numberAction} /> : null}
           </div>
         )}
       </main>

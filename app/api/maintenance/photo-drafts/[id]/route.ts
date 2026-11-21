@@ -6,6 +6,7 @@ import { createQuickMaintenanceInvoice, validateQuickInvoice } from "@/lib/maint
 import { MAX_REJECT_REASON, readDraftPhoto } from "@/lib/maintenance-photos"
 import { MAX_VOID_REASON, checkBookletPage, hasActiveBooklet } from "@/lib/maintenance-booklets"
 import { cleanMinvNumber } from "@/lib/invoice-codes"
+import { isSharedNumber, releaseSlot } from "@/lib/shared-invoice-numbers"
 
 // One photo draft: create the MINV invoice from it, reject it, or read the photo again (spec 2026-11-19, Part 2).
 // Creating goes through the same createQuickMaintenanceInvoice as the quick maintenance screen. The draft is claimed
@@ -33,6 +34,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .select("id")
     if (error) return answer(500, "Could not reject the photo")
     if (!data?.length) return answer(409, "This photo was already handled")
+    // The paper page still carries its number: it stays the worker's, so he can send a better photo of it.
+    await db.from("invoice_number_slots").update({ draft_id: null, updated_at: new Date().toISOString() }).eq("draft_id", id).eq("status", "reserved")
     return NextResponse.json({ ok: true })
   }
 
@@ -50,9 +53,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   if (action === "void") {
     // A spoiled booklet page: the draft is closed and its printed number recorded, so it is never used.
-    const { data: row } = await db.from("maintenance_photo_drafts").select("link_id, status").eq("id", id).maybeSingle()
+    const { data: row } = await db.from("maintenance_photo_drafts").select("link_id, status, invoice_number").eq("id", id).maybeSingle()
     if (!row) return answer(404, "Photo not found")
     if (row.status !== "waiting") return answer(409, "This photo was already handled")
+    if (isSharedNumber(row.invoice_number)) {
+      // Shared numbering: the spoiled page's number goes to the next sales invoice when the portal order allows.
+      const reason = String(body?.reason ?? "").trim().slice(0, MAX_VOID_REASON) || "Cancelled page"
+      const { data: closed } = await db
+        .from("maintenance_photo_drafts")
+        .update({ status: "rejected", reject_reason: `${reason} (${row.invoice_number})`, reviewed_by: reviewer, reviewed_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("status", "waiting")
+        .select("id")
+      if (!closed?.length) return answer(409, "This photo was already handled")
+      await releaseSlot(db, Number(row.invoice_number), "spoiled")
+      return NextResponse.json({ ok: true, invoiceNumber: row.invoice_number })
+    }
     const number = cleanMinvNumber(body?.invoiceNumber)
     const page = await checkBookletPage(db, Number(row.link_id), number)
     if (!page.ok) return answer(400, page.error)
@@ -80,11 +96,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!checked.ok) return answer(400, checked.error)
 
   // A worker with a booklet: the invoice takes exactly the number printed on his page (Part 3).
-  const { data: draftRow } = await db.from("maintenance_photo_drafts").select("link_id").eq("id", id).maybeSingle()
+  const { data: draftRow } = await db.from("maintenance_photo_drafts").select("link_id, invoice_number").eq("id", id).maybeSingle()
   if (!draftRow) return answer(404, "Photo not found")
   const typed = cleanMinvNumber(body?.invoiceNumber)
   let invoiceNumber: string | null = null
-  if (typed || (await hasActiveBooklet(db))) {
+  if (isSharedNumber(draftRow.invoice_number)) {
+    // Shared numbering: the number the worker reserved before writing the page.
+    invoiceNumber = String(draftRow.invoice_number)
+  } else if (typed || (await hasActiveBooklet(db))) {
     if (!typed) return answer(400, "Enter the MINV number printed on the page")
     const page = await checkBookletPage(db, Number(draftRow.link_id), typed)
     if (!page.ok) return answer(400, page.error)

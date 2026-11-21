@@ -40,6 +40,14 @@ export interface DraftRead {
 
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩"
 
+/** The number printed on the page: an old MINV number, or a plain number of the shared sequence (2026-11-21). */
+export function cleanPrintedNumber(value: unknown): string {
+  const text = String(value ?? "").trim()
+  if (/^\s*MINV/i.test(text)) return cleanMinvNumber(text)
+  const digits = text.replace(/[٠-٩]/g, (d) => String(ARABIC_DIGITS.indexOf(d))).replace(/[\s,٬.\-]/g, "")
+  return /^[1-9]\d{3,11}$/.test(digits) ? digits : ""
+}
+
 /** A number written by hand, Arabic or Western digits, "1,250" or "1٬250": 0 when it is not a positive number. */
 export function handNumber(value: unknown): number {
   const text = String(value ?? "")
@@ -66,7 +74,7 @@ export function normalizeRead(raw: unknown): DraftRead {
     customerName: String(r.customerName ?? "").trim().slice(0, 200),
     date: String(r.date ?? "").trim().slice(0, 20),
     lines,
-    printedNumber: cleanMinvNumber(r.printedNumber),
+    printedNumber: cleanPrintedNumber(r.printedNumber),
     cancelled: r.cancelled === true || String(r.cancelled).toLowerCase() === "true",
     writtenVat: Math.round(handNumber(r.vat) * 100) / 100,
     writtenTotal: Math.round(handNumber(r.total) * 100) / 100,
@@ -84,14 +92,14 @@ export function photoReadRequest(image: string, mediaType: string): PhotoRequest
       "quantity (1 when none is written) and unitPrice (the price of one before VAT, as written, digits only). " +
       "Do not put the subtotal, VAT or total rows in lines. Instead return vat (the VAT amount written at the bottom, " +
       "digits only) and total (the final total written at the bottom, digits only). " +
-      "printedNumber: the invoice number PRINTED on the page (it starts with MINV), not a handwritten number. " +
+      "printedNumber: the invoice number PRINTED on the page (usually red digits next to the word فاتورة, or starting with MINV on old pages), not a handwritten number. " +
       "cancelled: true only when the page is crossed out or says cancelled / ملغي / ملغاة.",
     image,
     mediaType,
     // Read in the background after the upload, so it can wait for a slow Claude (route maxDuration is 120).
     claudeMs: 100_000,
     jsonShape:
-      '{"printedNumber":"MINV265600","cancelled":false,"customerName":"...","date":"...",' +
+      '{"printedNumber":"10558","cancelled":false,"customerName":"...","date":"...",' +
       '"lines":[{"name":"...","quantity":"1","unitPrice":"250"}],"vat":"35","total":"285"}',
   }
 }

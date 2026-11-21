@@ -16,6 +16,7 @@ import { excludeReplaced } from "./ar-live"
 import { numberTakenMessage } from "./doc-number"
 import { invoiceCodeForOrders, invoiceYear2, nextCodedNumber, type InvoiceCode } from "./invoice-codes"
 import { pendingMinvNumbers } from "./maintenance-booklets"
+import { loadSharedStart, manualNumberHolder, markSlotUsed, recordManualNumber, releaseSlot, releaseSlotOfInvoice, takeSharedNumber } from "./shared-invoice-numbers"
 import {
   DELIVERED_PERMIT_STATUSES,
   invoiceablePool,
@@ -772,13 +773,55 @@ class InvoiceNumberTaken extends Error {
   }
 }
 
+// The shared plain-number sequence (lib/shared-invoice-numbers.ts), once its starting number is set: every new invoice
+// takes its number there under one lock, so a worker's booklet page and an office invoice never get the same number.
+const slotKind = (code: InvoiceCode) => (code === "MINV" ? "maintenance" : "sales")
+
+async function refuseHeldManualNumber(db: Db, manualNumber: string, code: InvoiceCode) {
+  const holder = await manualNumberHolder(db, manualNumber)
+  // A worker's photographed page is turned into its invoice with exactly that number.
+  if (holder && !(code === "MINV" && holder.kind === "maintenance" && holder.status === "reserved" && holder.draft_id != null)) {
+    throw new InvoiceNumberTaken(manualNumber)
+  }
+}
+
+async function withSharedNumber<T extends { invoice_id: number }>(db: Db, code: InvoiceCode, create: (number: string) => Promise<T | "taken">): Promise<T | null> {
+  if (!(await loadSharedStart(db))) return null
+  for (let attempt = 0; attempt < MAX_NUMBER_ATTEMPTS; attempt++) {
+    const number = await takeSharedNumber(db, slotKind(code), null, true)
+    if (number == null) return null
+    let created: T | "taken"
+    try {
+      created = await create(String(number))
+    } catch (error) {
+      await releaseSlot(db, number, "invoice not created")
+      throw error
+    }
+    if (created !== "taken") {
+      await markSlotUsed(db, number, created.invoice_id)
+      return created
+    }
+    await markSlotUsed(db, number, null)
+  }
+  throw new Error("create invoice: no free invoice number")
+}
+
 async function insertInvoice(db: Db, row: Record<string, any>, manualNumber: string | null = null, code: InvoiceCode = "INV") {
   if (manualNumber) {
+    await refuseHeldManualNumber(db, manualNumber, code)
     const { data, error } = await db.from("accounts_receivable").insert({ ...row, invoice_number: manualNumber }).select().single()
     if (error?.code === "23505") throw new InvoiceNumberTaken(manualNumber)
     if (error) throw new Error(`create invoice: ${error.message || error}`)
+    await recordManualNumber(db, manualNumber, slotKind(code), data.invoice_id)
     return data
   }
+  const shared = await withSharedNumber(db, code, async (number) => {
+    const { data, error } = await db.from("accounts_receivable").insert({ ...row, invoice_number: number }).select().single()
+    if (error?.code === "23505") return "taken"
+    if (error) throw new Error(`create invoice: ${error.message || error}`)
+    return data
+  })
+  if (shared) return shared
   let lastError: any = null
   for (let attempt = 0; attempt < MAX_NUMBER_ATTEMPTS; attempt++) {
     const invoiceNumber = await nextInvoiceNumber(db, attempt, code)
@@ -795,13 +838,25 @@ async function insertInvoice(db: Db, row: Record<string, any>, manualNumber: str
 // number is chosen exactly as insertInvoice does.
 async function insertReissue(db: Db, correction: OpenCorrection, row: Record<string, any>, permitIds: number[], manualNumber: string | null, confirmOverpaid: boolean, code: InvoiceCode = "INV") {
   if (manualNumber) {
+    await refuseHeldManualNumber(db, manualNumber, code)
     try {
-      return await reissueInvoice(db, correction.invoiceId, { ...row, invoice_number: manualNumber }, permitIds, confirmOverpaid)
+      const created = await reissueInvoice(db, correction.invoiceId, { ...row, invoice_number: manualNumber }, permitIds, confirmOverpaid)
+      await recordManualNumber(db, manualNumber, slotKind(code), (created as any).invoice_id)
+      return created
     } catch (error) {
       if (error instanceof ReissueNumberTaken) throw new InvoiceNumberTaken(manualNumber)
       throw error
     }
   }
+  const shared = await withSharedNumber(db, code, async (number) => {
+    try {
+      return (await reissueInvoice(db, correction.invoiceId, { ...row, invoice_number: number }, permitIds, confirmOverpaid)) as any
+    } catch (error) {
+      if (error instanceof ReissueNumberTaken) return "taken"
+      throw error
+    }
+  })
+  if (shared) return shared
   let last: unknown = null
   for (let attempt = 0; attempt < MAX_NUMBER_ATTEMPTS; attempt++) {
     const invoiceNumber = await nextInvoiceNumber(db, attempt, code)
@@ -861,6 +916,7 @@ async function rollbackInvoice(db: Db, invoiceId: number) {
   for (const [what, res] of steps) {
     if (res.error) console.error(`[invoicing] ROLLBACK FAILED (${what}) for invoice ${invoiceId}: ${res.error.message}. Manual review needed.`)
   }
+  await releaseSlotOfInvoice(db, invoiceId)
 }
 
 export interface WorkflowResult {
