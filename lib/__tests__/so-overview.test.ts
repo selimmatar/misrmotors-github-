@@ -79,7 +79,7 @@ test("O1. each line: steps, delivered net of returns, state and its documents", 
   )
   assert.equal(by["Forklift 3 ton"].state, "delivered")
   assert.deepEqual(by["Forklift 3 ton"].dpNumbers, ["DP-1"])
-  assert.deepEqual({ rec: by["Socket set"].received, state: by["Socket set"].state }, { rec: 10, state: "ready" })
+  assert.deepEqual({ rec: by["Socket set"].received, state: by["Socket set"].state }, { rec: 10, state: "on_dp" }) // all 10 are on the unsigned DP-3 (2026-11-22)
   assert.deepEqual({ onPo: by.Jack.onPo, state: by.Jack.state }, { onPo: 0, state: "no_po" }) // the cancelled PO does not count
   assert.deepEqual({ onPo: by["Forklift 5 ton"].onPo, rec: by["Forklift 5 ton"].received, state: by["Forklift 5 ton"].state, pos: by["Forklift 5 ton"].poNumbers }, { onPo: 1, rec: 0, state: "waiting_supplier", pos: ["PO-1"] })
 })
@@ -94,7 +94,6 @@ test("O3. what is left: missing PO, waiting supplier, ready, to deliver, unsigne
   const { todo } = (await buildSoOverview(seed(), 1))!
   assert.deepEqual(todo, [
     { kind: "to_deliver", name: "Drill", quantity: 12 },
-    { kind: "ready", name: "Socket set", quantity: 10 },
     { kind: "no_po", name: "Jack", quantity: 4 },
     { kind: "waiting_supplier", name: "Forklift 5 ton", quantity: 1, po: "PO-1", expected: "2026-11-20" },
     { kind: "not_invoiced", dp: "DP-2", value: 2000 },

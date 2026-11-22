@@ -26,7 +26,7 @@ import { creditInvoicedReturn } from "./return-credit"
 import { computePoTotals } from "./po-items"
 import { syncPoStatus } from "./po-edit"
 import { exchangeOnPo, type Pair, type Undo as PoUndo } from "./po-exchange"
-import { billHasPayments, billedByItem, billsOf, createPoBill, relinkCredits, removePoBills } from "./po-bill"
+import { billHasPayments, billedByItem, billsOf, createPoBill, relinkCredits, removePoBills, removedBillDates } from "./po-bill"
 import { closingBillOf } from "./po-bill-number"
 import { PO_CLOSED_NO_BILL, isClosedWithoutBill, writeCloseMarker } from "./po-closed-marker"
 import { undoMoves, type StockMove } from "./dp-stock"
@@ -1347,7 +1347,7 @@ export async function exchangeReturnedItem(db: Db, input: any): Promise<Workflow
       await logPoEvent(db, f.po.po_id, {
         event_type: "PO_REOPENED",
         old_value: f.bills.map((b: any) => b.invoice_number).join(", "),
-        new_value: JSON.stringify({ unlinkedCreditIds }),
+        new_value: JSON.stringify({ unlinkedCreditIds, removedBill: removedBillDates(f.bills[0]) }),
         notes: `${f.po.po_number} reopened to exchange a returned item`,
         userId: input?.userId,
       })

@@ -5,7 +5,8 @@ import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
 import { escapeHtml } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle, infoBox, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
-import { lineKey } from "@/lib/return-lines"
+import { lineKey, loadReturnLines, returnedByKey } from "@/lib/return-lines"
+import { NOT_DELIVERED_AR, NOT_DELIVERED_EN, permitPrintLines } from "@/lib/dp-print-lines"
 
 export const dynamic = "force-dynamic"
 
@@ -162,6 +163,33 @@ export async function GET(request: NextRequest) {
       "item_id",
     )
 
+    // Returned / not received lines (owner request, 2026-11-22): every print of the permit shows them as not delivered,
+    // with the quantity, and the total counts only what was delivered. A permit with no returns prints as before.
+    const returnLines = await loadReturnLines(supabase, [Number.parseInt(permitId)])
+    // (a failed read of the returns stops the print: printing returned items as delivered is what must not happen)
+    const printed = permitPrintLines(
+      (items || []).map((row: any) => ({ key: lineKey(row.product_id, row.item_name_snapshot), quantity: Number(row.quantity) || 0 })),
+      returnedByKey(returnLines, { permitId: Number.parseInt(permitId) }),
+    )
+    const anyReturned = printed.lines.some((l) => l.notDelivered > 0)
+    const qtyCell = (item: any, index: number) => {
+      const l = printed.lines[index]
+      if (!anyReturned || !l || l.notDelivered <= 0) return escapeHtml(toArabicNumbers(item.quantity))
+      return l.delivered > 0
+        ? `${escapeHtml(toArabicNumbers(l.delivered))}<div class="pm-nd">من ${escapeHtml(toArabicNumbers(l.quantity))}</div>`
+        : `<s>${escapeHtml(toArabicNumbers(l.quantity))}</s>`
+    }
+    const noteCell = (index: number) => {
+      const l = printed.lines[index]
+      if (!anyReturned || !l || l.notDelivered <= 0) return ""
+      return l.delivered > 0
+        ? `<span class="pm-nd">${NOT_DELIVERED_AR} / ${NOT_DELIVERED_EN}: ${escapeHtml(toArabicNumbers(l.notDelivered))}</span><div>تم التسليم / Delivered: ${escapeHtml(toArabicNumbers(l.delivered))}</div>`
+        : `<span class="pm-nd">${NOT_DELIVERED_AR} / ${NOT_DELIVERED_EN} (${escapeHtml(toArabicNumbers(l.notDelivered))})</span>`
+    }
+    const totalsRow = anyReturned
+      ? `<tfoot><tr class="pm-total"><td></td><td class="pm-num">${escapeHtml(toArabicNumbers(printed.deliveredTotal))}</td><td colspan="3">إجمالي المُسلَّم / Total delivered${printed.notDeliveredTotal > 0 ? ` · ${NOT_DELIVERED_AR} / ${NOT_DELIVERED_EN}: ${escapeHtml(toArabicNumbers(printed.notDeliveredTotal))}` : ""}</td></tr></tfoot>`
+      : ""
+
     // Generate HTML for PDF (Arabic RTL)
     const html = `
 <!DOCTYPE html>
@@ -172,7 +200,9 @@ export async function GET(request: NextRequest) {
   <style>
     ${PRINT_CSS}
     .pm-table td.description { text-align: start; }
-    .pm-sign { font-size: 13px; color: #000; }
+    .pm-sign { font-size: 13px; color: #000; }${anyReturned ? `
+    .pm-nd { color: #b91c1c; font-weight: 700; font-size: 12px; }
+    .pm-total td { font-weight: 700; border-top: 2px solid #000; }` : ""}
     .print-button { position: fixed; top: 10px; left: 10px; padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; z-index: 1000; }
   </style>
 </head>
@@ -220,15 +250,15 @@ export async function GET(request: NextRequest) {
           (item: any, index: number) => `
         <tr>
           <td>${toArabicNumbers(index + 1)}</td>
-          <td class="pm-num">${escapeHtml(toArabicNumbers(item.quantity))}</td>
+          <td class="pm-num">${qtyCell(item, index)}</td>
           <td class="description">${escapeHtml(item.item_name_snapshot || "-")}</td>
           <td>${escapeHtml(item.sku_snapshot || "-")}</td>
-          <td></td>
+          <td>${noteCell(index)}</td>
         </tr>
       `,
         )
         .join("")}
-    </tbody>
+    </tbody>${totalsRow}
   </table>
   
   <!-- Footer Section -->

@@ -8,7 +8,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { logPoEvent } from "@/lib/po-history"
-import { PO_CLOSABLE_STATUSES, billDetails, closesWithoutBill, createBill, isMissingRelation, loadPoBilling, relinkUnlinkedCredits } from "@/lib/po-bill"
+import { PO_CLOSABLE_STATUSES, billDetails, closesWithoutBill, createBill, isMissingRelation, loadPoBilling, relinkUnlinkedCredits, reopenedBillDates } from "@/lib/po-bill"
 import { PO_CLOSED_NO_BILL, writeCloseMarker } from "@/lib/po-closed-marker"
 
 export const dynamic = "force-dynamic"
@@ -93,7 +93,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, noBill: true, invoiceNumber: null, amount: 0 })
     }
 
-    const { error: billError, invoice } = await createBill(db, fresh, rest, { final: true, ...details })
+    // closing again after a reopen: the bill keeps the removed closing bill's date and due date (owner request,
+    // 2026-11-22); a date typed now wins
+    const kept = await reopenedBillDates(db, poId)
+    const { error: billError, invoice } = await createBill(db, fresh, rest, {
+      final: true,
+      supplierInvoiceNumber: details.supplierInvoiceNumber ?? kept?.supplierInvoiceNumber ?? null,
+      invoiceDate: details.invoiceDate || kept?.invoiceDate || null,
+      dueDate: details.invoiceDate ? null : kept?.dueDate || null,
+    })
     if (billError) {
       for (const r of restore) await db.from("purchase_order_items").update({ quantity_not_coming: r.was }).eq("po_item_id", r.id)
       console.error("Close PO: the supplier bill could not be made", billError)

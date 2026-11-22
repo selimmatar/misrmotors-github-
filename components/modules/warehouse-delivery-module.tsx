@@ -94,9 +94,12 @@ export function WarehouseDeliveryModule() {
     }
   }
 
-  const draftPermits = permits.filter((p) => p.status === "DRAFT")
+  // A printed permit the warehouse has not prepared yet still waits here (owner rule, 2026-11-22): printing does not
+  // replace the warehouse preparation, except for a permit that goes straight from the supplier to the customer.
+  const printedUnprepared = (p: DeliveryPermit) => p.status === "PRINTED" && p.needsPreparation !== false && !p.prepared
+  const draftPermits = permits.filter((p) => p.status === "DRAFT" || printedUnprepared(p))
   const readyForShipmentPermits = permits.filter((p) => p.status === "READY_FOR_SHIPMENT")
-  const readyPermits = permits.filter((p) => p.status === "READY_FOR_PICKUP" || p.status === "PRINTED")
+  const readyPermits = permits.filter((p) => p.status === "READY_FOR_PICKUP" || (p.status === "PRINTED" && !printedUnprepared(p)))
   const completedPermits = permits.filter(
     (p) => p.status === "OUT_FOR_DELIVERY" || p.status === "SUBMITTED_SIGNED" || p.status === "APPROVED",
   )
@@ -253,7 +256,7 @@ export function WarehouseDeliveryModule() {
         alert(t("message.success"))
       } else {
         const error = await response.json()
-        alert(error.error || t("message.error"))
+        alert((language === "ar" && error.errorAr) || error.error || t("message.error"))
       }
     } catch (error) {
       alert(t("message.error"))
@@ -365,7 +368,14 @@ export function WarehouseDeliveryModule() {
                         <ul className="space-y-1">
                           {(permit.items || []).slice(0, 3).map((item: any, idx: number) => (
                             <li key={idx} className="text-sm flex justify-between">
-                              <span>{item.itemNameSnapshot}</span>
+                              <span>
+                                {item.itemNameSnapshot}
+                                {item.deliveryRoute === "direct" && (
+                                  <span className="ms-2 inline-block rounded-full bg-sky-500/15 text-sky-800 dark:text-sky-300 px-2 py-0.5 text-xs font-semibold">
+                                    {t("permit.direct-from-supplier")}
+                                  </span>
+                                )}
+                              </span>
                               <span className="font-medium">
                                 {formatNumber(item.quantity)} {item.unitSnapshot}
                               </span>

@@ -3,7 +3,7 @@
 // purchase orders, and one timeline with the notes. Read-only. Delivered follows the same rule as the prints and the
 // fulfilment check: quantities on signed / approved permits, less valid returns. Profit is built separately
 // (soProfit) because only the CEO and admins may see what the goods cost.
-import { lineKey, loadReturnLines, returnedByKey, returnedTotalsByPermit } from "./return-lines"
+import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTotalsByPermit } from "./return-lines"
 import { lineDeliveryStates, DP_DELIVERED_STATUSES } from "./delivery-status"
 import { loadSoInvoicingState } from "./invoicing"
 import { excludeReplaced } from "./ar-live"
@@ -17,7 +17,7 @@ const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const num = (v: unknown) => Number(v) || 0
 const EPS = 1e-6
 
-export type OverviewLineState = "delivered" | "partial" | "ready" | "waiting_supplier" | "no_po" | "to_deliver"
+export type OverviewLineState = "delivered" | "partial" | "ready" | "waiting_supplier" | "no_po" | "to_deliver" | "on_dp" | "out_for_delivery"
 
 export interface OverviewLine {
   id: number
@@ -31,6 +31,10 @@ export interface OverviewLine {
   received: number | null
   delivered: number
   returned: number
+  /** on permits that are out for delivery and not signed yet (net of what the driver brought back) */
+  outForDelivery: number
+  /** on any permit not signed yet and not rejected (draft, prepared, printed, ready, out), net of returns */
+  onOpenDp: number
   unitPrice: number
   state: OverviewLineState
   poNumbers: string[]
@@ -92,6 +96,8 @@ export interface SoOverview {
 }
 
 const STOCK_OUT = new Set(DP_DELIVERED_STATUSES)
+/** the goods left our hands on these permits (out for delivery, signed, approved) */
+const LEFT_WAREHOUSE = new Set([...DP_DELIVERED_STATUSES, "OUT_FOR_DELIVERY"])
 
 /** Everything the overview needs, except costs. null when the sales order does not exist. */
 export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview | null> {
@@ -150,6 +156,25 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
   const lineKeys = soItems.map((i) => lineKey(i.product_id, i.outsourced_name))
   const states = lineDeliveryStates(soItems.map((i, idx) => ({ key: lineKeys[idx], quantity: num(i.quantity) })), confirmed)
 
+  // Permits not signed yet (owner request, 2026-11-22): what is on them is not "ready to deliver" any more. Net of what
+  // the driver brought back. And what physically left on a permit (out, signed, approved), gross: a returned unit the
+  // PO still counts as received is not available again (see the lines below).
+  const openByKey = new Map<string, number>()
+  const outByKey = new Map<string, number>()
+  const leftGrossByKey = new Map<string, number>()
+  for (const p of permits) {
+    const id = Number(p.permit_id)
+    const its = dpItems.filter((it) => Number(it.permit_id) === id)
+    const keyed = its.map((it) => ({ key: lineKey(it.product_id, it.item_name_snapshot), quantity: num(it.quantity) }))
+    if (LEFT_WAREHOUSE.has(p.status)) for (const k of keyed) leftGrossByKey.set(k.key, (leftGrossByKey.get(k.key) || 0) + k.quantity)
+    if (STOCK_OUT.has(p.status)) continue
+    const net = netLineQuantities(keyed, returnedByKey(returnLines, { permitId: id }))
+    keyed.forEach((k, i) => {
+      openByKey.set(k.key, (openByKey.get(k.key) || 0) + net[i])
+      if (p.status === "OUT_FOR_DELIVERY") outByKey.set(k.key, (outByKey.get(k.key) || 0) + net[i])
+    })
+  }
+
   // returns and permit numbers per line (first line with the key takes them)
   const returnedLeft = returnedByKey(returnLines)
   const dpNumbersByKey = new Map<string, Set<string>>()
@@ -186,7 +211,8 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
   for (const r of receipts) receivedByPoItem.set(Number(r.po_item_id), (receivedByPoItem.get(Number(r.po_item_id)) || 0) + num(r.quantity_received))
   const poNumber = new Map(poRows.map((po) => [Number(po.po_id), po.po_number || `#${po.po_id}`]))
 
-  // ---- lines
+  // ---- lines (and, per line, what is left to do: plan)
+  const plan = new Map<number, { missing: number; waiting: number; ready: number; toDeliver: number }>()
   const lines: OverviewLine[] = soItems.map((i, idx) => {
     const key = lineKeys[idx]
     const ordered = num(i.quantity)
@@ -198,13 +224,31 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
     const delivered = states[idx].deliveredQuantity
     const returned = returnedLeft.get(key) || 0
     if (returned > 0) returnedLeft.set(key, 0)
+    // what is on unsigned permits for this line (several lines with the same key: each takes up to what it still needs)
+    const remaining = Math.max(0, ordered - delivered)
+    const onOpenDp = Math.min(remaining, openByKey.get(key) || 0)
+    if (onOpenDp > 0) openByKey.set(key, (openByKey.get(key) || 0) - onOpenDp)
+    const outForDelivery = Math.min(onOpenDp, outByKey.get(key) || 0)
+    if (outForDelivery > 0) outByKey.set(key, (outByKey.get(key) || 0) - outForDelivery)
+    // A unit the customer gave back still counts as received on the PO unless the PO already took it off (exchanged
+    // with the supplier, or returned to the supplier: the PO line went down). Such a unit is not ready to deliver
+    // again: it needs a new purchase order (or adding to one); an exchange shows as waiting for the supplier instead.
+    const leftGross = leftGrossByKey.get(key) || 0
+    const absorbed = isPo ? Math.min(returned, Math.max(0, leftGross - (received || 0))) : 0
+    const stillCounted = isPo ? Math.max(0, returned - absorbed) : 0
+    const coverOnPo = isPo ? Math.max(0, (onPo || 0) - stillCounted) : 0
+    const usableReceived = isPo ? Math.max(0, (received || 0) - stillCounted) : 0
+    const readyQty = isPo ? Math.max(0, Math.min(usableReceived - delivered - onOpenDp, remaining - onOpenDp)) : 0
+    const pendingState: OverviewLineState = outForDelivery > EPS ? "out_for_delivery" : "on_dp"
     let state: OverviewLineState
     if (ordered <= EPS || delivered >= ordered - EPS) state = "delivered"
-    else if (!isPo) state = delivered > EPS ? "partial" : "to_deliver"
-    else if ((received || 0) > delivered + EPS) state = "ready"
-    else if ((onPo || 0) > (received || 0) + EPS) state = "waiting_supplier"
-    else if ((onPo || 0) < ordered - EPS) state = "no_po"
+    else if (!isPo) state = remaining - onOpenDp <= EPS ? pendingState : delivered > EPS ? "partial" : "to_deliver"
+    else if (readyQty > EPS) state = "ready"
+    else if (coverOnPo > usableReceived + EPS) state = "waiting_supplier"
+    else if (coverOnPo < ordered - EPS) state = "no_po"
+    else if (onOpenDp > EPS) state = pendingState
     else state = delivered > EPS ? "partial" : "to_deliver"
+    plan.set(Number(i.so_item_id), { missing: isPo ? ordered - coverOnPo : 0, waiting: isPo ? coverOnPo - usableReceived : 0, ready: readyQty, toDeliver: isPo ? 0 : remaining - onOpenDp })
     return {
       id: Number(i.so_item_id),
       name: nameOf(i),
@@ -214,6 +258,8 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
       received,
       delivered,
       returned,
+      outForDelivery,
+      onOpenDp,
       unitPrice: ordered > 0 ? money(num(i.total) / ordered) || num(i.unit_price) : num(i.unit_price),
       state,
       // POs still holding a quantity for this line first (a line lowered to 0 — the item went back — comes last), so
@@ -329,18 +375,17 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
   const todo: OverviewTodo[] = []
   for (const l of lines) {
     if (l.state === "delivered") continue
+    const p = plan.get(l.id)!
     if (l.source === "po") {
-      const missing = l.ordered - (l.onPo || 0)
-      if (missing > EPS) todo.push({ kind: "no_po", name: l.name, quantity: missing })
-      const waiting = (l.onPo || 0) - (l.received || 0)
-      if (waiting > EPS) {
-        const po = pos.find((p) => l.poNumbers.includes(p.number))
-        todo.push({ kind: "waiting_supplier", name: l.name, quantity: waiting, po: po?.number || l.poNumbers[0] || "", expected: po?.expected || null })
+      if (p.missing > EPS) todo.push({ kind: "no_po", name: l.name, quantity: money(p.missing) })
+      if (p.waiting > EPS) {
+        const po = pos.find((x) => l.poNumbers.includes(x.number))
+        todo.push({ kind: "waiting_supplier", name: l.name, quantity: money(p.waiting), po: po?.number || l.poNumbers[0] || "", expected: po?.expected || null })
       }
-      const ready = (l.received || 0) - l.delivered
-      if (ready > EPS) todo.push({ kind: "ready", name: l.name, quantity: Math.min(ready, l.ordered - l.delivered) })
-    } else if (l.ordered - l.delivered > EPS) {
-      todo.push({ kind: "to_deliver", name: l.name, quantity: l.ordered - l.delivered })
+      // only what is not on an unsigned permit yet can go on a new one
+      if (p.ready > EPS) todo.push({ kind: "ready", name: l.name, quantity: money(p.ready) })
+    } else if (p.toDeliver > EPS) {
+      todo.push({ kind: "to_deliver", name: l.name, quantity: money(p.toDeliver) })
     }
   }
   for (const p of permitList) {

@@ -104,7 +104,7 @@ async function replacementDp(db: FakeDb, upTo: "DRAFT" | "SUBMITTED_SIGNED" | "A
   })
   assert.equal(created.status, 200, JSON.stringify(created.body))
   const permitId = Number(created.body.id)
-  const steps = upTo === "DRAFT" ? [] : upTo === "SUBMITTED_SIGNED" ? ["MARK_READY_FOR_PICKUP", "MARK_OUT_FOR_DELIVERY", "MARK_SUBMITTED_SIGNED"] : ["MARK_READY_FOR_PICKUP", "MARK_OUT_FOR_DELIVERY", "MARK_SUBMITTED_SIGNED", "APPROVE"]
+  const steps = upTo === "DRAFT" ? [] : upTo === "SUBMITTED_SIGNED" ? ["ALLOCATE_WAREHOUSES", "MARK_READY_FOR_PICKUP", "MARK_OUT_FOR_DELIVERY", "MARK_SUBMITTED_SIGNED"] : ["ALLOCATE_WAREHOUSES", "MARK_READY_FOR_PICKUP", "MARK_OUT_FOR_DELIVERY", "MARK_SUBMITTED_SIGNED", "APPROVE"]
   for (const action of steps) {
     const res = await call(dpRoute.PUT, "PUT", { permitId: String(permitId), action, userId: "1", driverName: "Driver" })
     assert.equal(res.status, 200, `${action}: ${JSON.stringify(res.body)}`)

@@ -497,6 +497,15 @@ export interface DeliveryPermit {
   files?: DeliveryPermitFile[]
   /** set while the permit's invoice is open for correction (Correct and reissue) */
   openCorrection?: { invoiceNumber: string | null } | null
+  /** some line comes from our warehouse, so the warehouse must prepare it before shipping (2026-11-22) */
+  needsPreparation?: boolean
+  /** allocated by the warehouse (READY_FOR_SHIPMENT and on, or printed after allocation) */
+  prepared?: boolean
+  /** every line goes straight from the supplier to the customer */
+  directFromSupplier?: boolean
+  /** the actions the server allows next (lib/dp-transitions.ts allowedDpActions) */
+  nextActions?: string[]
+  allocatedAt?: string | null
 }
 
 export interface DeliveryPermitItem {
@@ -510,6 +519,8 @@ export interface DeliveryPermitItem {
   unitPrice?: number
   total?: number
   returnedQuantity?: number
+  /** "direct" = shipped straight from the supplier to the customer (never in our warehouse) */
+  deliveryRoute?: "warehouse" | "direct"
 }
 
 export interface DeliveryPermitFile {

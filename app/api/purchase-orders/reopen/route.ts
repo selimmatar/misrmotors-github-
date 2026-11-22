@@ -9,7 +9,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { logPoEvent } from "@/lib/po-history"
-import { billHasPayments, billsOf, lastBillOf, removePoBills } from "@/lib/po-bill"
+import { billHasPayments, billsOf, lastBillOf, removePoBills, removedBillDates } from "@/lib/po-bill"
 import { closingBillOf, isPartialBill } from "@/lib/po-bill-number"
 import { PO_CLOSED_NO_BILL, isClosedWithoutBill, writeCloseMarker } from "@/lib/po-closed-marker"
 
@@ -39,7 +39,10 @@ export async function POST(request: Request) {
     if (!last) return NextResponse.json({ error: "This purchase order is already open", code: "PO_ALREADY_OPEN" }, { status: 409 })
     if (await billHasPayments(db, [last])) {
       return NextResponse.json(
-        { error: `A payment is already recorded on the last supplier bill of this purchase order (${last.invoice_number}), so it cannot be removed`, code: "PO_PAID" },
+        {
+          error: `A payment is already recorded on the supplier bill ${last.invoice_number}, so it stays as it is and the purchase order cannot be reopened. To send an item back, use "Return to supplier" on the closed PO: it gives a supplier credit.`,
+          code: "PO_PAID",
+        },
         { status: 409 },
       )
     }
@@ -48,8 +51,9 @@ export async function POST(request: Request) {
     await logPoEvent(db, poId, {
       event_type: closing ? "PO_REOPENED" : "PO_BILL_REMOVED",
       old_value: last.invoice_number,
-      // supplier credits that pointed at the removed bill: the next close links them to the new one
-      new_value: JSON.stringify({ unlinkedCreditIds }),
+      // supplier credits that pointed at the removed bill: the next close links them to the new one; the removed
+      // closing bill's number and dates: the next close makes it again with the same date (owner request, 2026-11-22)
+      new_value: JSON.stringify(closing ? { unlinkedCreditIds, removedBill: removedBillDates(last) } : { unlinkedCreditIds }),
       userId: body?.userId,
       notes: closing ? `${po.po_number} reopened; supplier bill ${last.invoice_number} removed` : `${po.po_number}: bill ${last.invoice_number} removed`,
     })

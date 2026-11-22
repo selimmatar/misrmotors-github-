@@ -521,8 +521,13 @@ test("RS2. return refused, nothing changes: not enough in that warehouse, more t
   assert.equal((await giveBack({ items: [{ fromItemId: "7", quantity: 3, warehouseId: null }] })).body.code, "RETURN_TOO_MANY")
   assert.equal((await giveBack({ items: [] })).status, 400)
   assert.equal(snap(), before)
-  mk({ accounts_payable: [bill()] })
-  assert.equal((await giveBack({ items: [{ fromItemId: "7", quantity: 1, warehouseId: null }] })).body.code, "PO_CLOSED")
+  // a closed PO takes the return as a supplier credit; its lines and bill stay (owner rule, 2026-11-22)
+  const closed = mk({ accounts_payable: [bill()] })
+  receive(closed, 7, 2)
+  const credited = await giveBack({ items: [{ fromItemId: "7", quantity: 1, warehouseId: null }] })
+  assert.equal(credited.status, 200, JSON.stringify(credited.body))
+  assert.equal(credited.body.creditTotal, 50)
+  assert.equal(closed.tables.purchase_order_items[0].quantity, 2)
 })
 
 test("N1. number boxes take Arabic or English digits and decimals, and can be emptied", () => {

@@ -52,19 +52,67 @@ export async function isPoClosed(db: Db, po: { po_id: number; po_number?: string
   return !!closingBillOf(await billsOf(db, po.po_id), po.po_number) || (await isClosedWithoutBill(db, po.po_id))
 }
 
-/** True when money has been paid on any of these bills (not counting what the bill itself took off). */
+/** Bill statuses that mean money was paid on it. */
+const PAID_STATUSES = new Set(["paid", "partially_paid", "partial"])
+
+/**
+ * True when money has been paid on any of these bills (not counting what the bill itself took off): a payment row the
+ * bill did not write, a paid schedule entry, months paid, a paid amount above the credits / advances the bill took off
+ * itself, or a paid status those do not explain (owner rule, 2026-11-22: a bill with any payment is never deleted or
+ * replaced by Reopen / Remove last bill / an exchange).
+ */
 export async function billHasPayments(db: Db, bills: any[]): Promise<boolean> {
   for (const bill of bills) {
     if ((Number(bill.months_paid) || 0) > 0) return true
-    const { data: payments, error } = await db.from("supplier_payments").select("payment_id, reference_number, payment_method").eq("invoice_id", bill.invoice_id)
+    const { data: payments, error } = await db.from("supplier_payments").select("payment_id, reference_number, payment_method, amount").eq("invoice_id", bill.invoice_id)
     if (error) throw new Error(`read supplier payments: ${error.message}`)
     // anything the bill did not write counts as paid, a credit applied by hand from Accounts Payable included
     if ((payments || []).some((p: any) => !isClosePayment(p, bill.invoice_number))) return true
+    const own = money((payments || []).filter((p: any) => isClosePayment(p, bill.invoice_number)).reduce((s: number, p: any) => s + num(p.amount), 0))
+    if (num(bill.paid_amount) > own + 0.005) return true
+    if (PAID_STATUSES.has(String(bill.status || "").toLowerCase()) && own <= 0.005) return true
     const { data: schedules, error: schedulesError } = await db.from("payment_schedules").select("schedule_id, paid_amount, status").eq("invoice_id", bill.invoice_id)
     if (schedulesError) throw new Error(`read payment schedule: ${schedulesError.message}`)
     if ((schedules || []).some((s: any) => (Number(s.paid_amount) || 0) > 0 || s.status === "paid" || s.status === "partial")) return true
   }
   return false
+}
+
+/** What a reopen keeps of a removed unpaid closing bill, so closing again makes it with the same number and dates. */
+export interface RemovedBillDates {
+  invoiceNumber: string
+  invoiceDate: string | null
+  dueDate: string | null
+  supplierInvoiceNumber: string | null
+}
+
+export const removedBillDates = (bill: any): RemovedBillDates => ({
+  invoiceNumber: String(bill.invoice_number || ""),
+  invoiceDate: bill.invoice_date ? String(bill.invoice_date).slice(0, 10) : null,
+  dueDate: bill.due_date ? String(bill.due_date).slice(0, 10) : null,
+  supplierInvoiceNumber: bill.supplier_invoice_number ?? null,
+})
+
+/**
+ * The dates of the closing bill the latest reopen removed (owner request, 2026-11-22), while the PO is still open after
+ * that reopen; null otherwise. Kept as `removedBill` in the PO_REOPENED event's new_value JSON.
+ */
+export async function reopenedBillDates(db: Db, poId: number): Promise<RemovedBillDates | null> {
+  const { data, error } = await db
+    .from("workflow_events")
+    .select("event_id, event_type, new_value")
+    .eq("entity_type", "PURCHASE_ORDER")
+    .eq("entity_id", poId)
+    .in("event_type", ["PO_CLOSED", "PO_REOPENED"])
+  if (error) return null
+  const latest = [...(data || [])].sort((a: any, b: any) => num(b.event_id) - num(a.event_id))[0]
+  if (!latest || latest.event_type !== "PO_REOPENED") return null
+  try {
+    const kept = JSON.parse(latest.new_value || "{}").removedBill
+    return kept && kept.invoiceDate ? kept : null
+  } catch {
+    return null
+  }
 }
 
 /** True when the error says a table / column does not exist yet (the migration is not applied). */
@@ -190,6 +238,23 @@ export async function belowBilledRefusal(db: Db, po: any, newQtyById: Map<number
   return null
 }
 
+/**
+ * How a return to the supplier is taken from each PO line (owner rule, 2026-11-22): on an open PO the part not billed
+ * yet comes off the line (the bill made at close is then the final one); what a supplier bill already charged — and
+ * everything on a closed PO — stays on the PO and its bill and comes back as a supplier credit instead.
+ */
+export function returnSplit(
+  lines: { id: number; taken: number; quantity: number; billed: number }[],
+  closed: boolean,
+): Map<number, { lower: number; credit: number }> {
+  const out = new Map<number, { lower: number; credit: number }>()
+  for (const l of lines) {
+    const lower = closed ? 0 : money(Math.min(l.taken, Math.max(0, l.quantity - l.billed)))
+    out.set(l.id, { lower, credit: money(l.taken - lower) })
+  }
+  return out
+}
+
 /** What the PO's earlier bills already took from each reserved advance (by credit id) and from the return credits. */
 async function creditsTakenBefore(db: Db, bills: any[]): Promise<{ advances: Map<number, number>; returns: number }> {
   const advances = new Map<number, number>()
@@ -222,6 +287,8 @@ export interface BillOptions {
   final: boolean
   supplierInvoiceNumber?: string | null
   invoiceDate?: string | null
+  /** the bill's due date (a re-close keeps the removed bill's); default: the PO's first due date, else today */
+  dueDate?: string | null
 }
 
 /**
@@ -308,7 +375,7 @@ export async function createBill(
     supplier_id: po.supplier_id,
     po_id: po.po_id,
     invoice_date: opts.invoiceDate || today(),
-    due_date: po.down_payment_due_date || po.payment_start_date || today(),
+    due_date: opts.dueDate || po.down_payment_due_date || po.payment_start_date || today(),
     amount,
     paid_amount: credited.paid_amount,
     status: credited.status,
@@ -429,6 +496,8 @@ export const lastBillOf = (bills: any[]) => {
 export async function removePoBills(db: Db, bills: any[]): Promise<{ unlinkedCreditIds: number[] }> {
   const undo: (() => PromiseLike<unknown>)[] = []
   const unlinkedCreditIds: number[] = []
+  // never a bill with a payment on it (owner rule, 2026-11-22), whatever the caller checked
+  if (await billHasPayments(db, bills)) throw Object.assign(new Error("A supplier bill with a payment on it cannot be removed"), { code: "PO_PAID" })
   try {
     for (const bill of bills) {
       const { data: linked, error: linkedError } = await db.from("supplier_credits").select("credit_id").eq("invoice_id", bill.invoice_id)

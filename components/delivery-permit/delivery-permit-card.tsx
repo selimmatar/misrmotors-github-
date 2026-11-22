@@ -20,7 +20,7 @@ interface DeliveryPermitCardProps {
 }
 
 export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh }: DeliveryPermitCardProps) {
-  const { t, formatDate } = useI18n()
+  const { t, formatDate, language } = useI18n()
   const { user } = useAppContext()
   const [isLoading, setIsLoading] = useState(false)
 
@@ -43,6 +43,7 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
         const errorData = await response.json()
         console.error("DeliveryPermitCard - Update failed:", errorData)
         // Always show the server's reason (not enough stock, already approved, not allowed in this status, ...)
+        if (language === "ar" && errorData.errorAr) errorData.error = errorData.errorAr
         alert(errorData.error || t("message.error"))
         return
       }
@@ -72,6 +73,14 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
   const handleMarkSubmittedSigned = () => updatePermitStatus("MARK_SUBMITTED_SIGNED")
   const handleApprove = () => updatePermitStatus("APPROVE")
   const handleReject = (reason: string) => updatePermitStatus("REJECT", { rejectionReason: reason })
+
+  // the next steps the server allows (lib/dp-transitions.ts); an older response without them keeps the old buttons
+  const allows = (action: string) =>
+    permit?.nextActions
+      ? permit.nextActions.includes(action)
+      : action === "MARK_READY_FOR_PICKUP"
+        ? permit?.status === "DRAFT"
+        : permit?.status === "READY_FOR_PICKUP" || permit?.status === "PRINTED"
 
   const canPrint =
     userRole === "accountant" || userRole === "admin" || userRole === "ceo" || userRole === "warehouse-rep"
@@ -153,6 +162,11 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
                 <div key={idx} className="flex justify-between text-sm bg-muted/50 p-2 rounded">
                   <span>
                     {item.itemNameSnapshot} {item.skuSnapshot && `(${item.skuSnapshot})`}
+                    {item.deliveryRoute === "direct" && (
+                      <span className="ms-2 inline-block rounded-full bg-sky-500/15 text-sky-800 dark:text-sky-300 px-2 py-0.5 text-xs font-semibold">
+                        {t("permit.direct-from-supplier")}
+                      </span>
+                    )}
                   </span>
                   <span className="font-medium text-end">
                     × {item.quantity}
@@ -209,7 +223,12 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
             </Button>
           )}
 
-          {canMarkReadyForPickup && permit.status === "DRAFT" && (
+          {/* Warehouse preparation before shipping (owner rule, 2026-11-22): only the steps the server allows */}
+          {permit.needsPreparation && !permit.prepared && ["DRAFT", "PRINTED"].includes(permit.status) && (
+            <p className="text-sm rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-300 px-3 py-2">{t("permit.needs-preparation")}</p>
+          )}
+
+          {canMarkReadyForPickup && ["DRAFT", "PRINTED"].includes(permit.status) && allows("MARK_READY_FOR_PICKUP") && (
             <Button
               onClick={handleMarkReadyForPickup}
               disabled={isLoading}
@@ -220,7 +239,7 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
             </Button>
           )}
 
-          {canMarkOutForDelivery && (permit.status === "READY_FOR_PICKUP" || permit.status === "PRINTED") && (
+          {canMarkOutForDelivery && ["READY_FOR_PICKUP", "PRINTED", "DRAFT"].includes(permit.status) && allows("MARK_OUT_FOR_DELIVERY") && (
             <Button onClick={handleMarkOutForDelivery} disabled={isLoading} className="w-full">
               <Truck className="h-4 w-4 mr-2" />
               {t("permit.mark-out-for-delivery")}

@@ -9,7 +9,8 @@ import { parsePositiveId } from "@/lib/parse-id"
 import { logPoEvent, knownUserId } from "@/lib/po-history"
 import { computePoTotals, poMoney } from "@/lib/po-items"
 import { editBlocker, receivedByItem, syncPoStatus } from "@/lib/po-edit"
-import { belowBilledRefusal } from "@/lib/po-bill"
+import { billedByItem, billsOf, returnSplit } from "@/lib/po-bill"
+import { closingBillOf, sortBills } from "@/lib/po-bill-number"
 import { reservedCreditTotal } from "@/lib/supplier-credit-apply"
 import { undoMoves, type StockMove } from "@/lib/dp-stock"
 import { logHandedBack, takeLineFromStock } from "@/lib/po-stock-out"
@@ -59,8 +60,11 @@ export async function POST(request: Request) {
     const { data: po, error } = await db.from("purchase_orders").select("*").eq("po_id", poId).maybeSingle()
     if (error) throw error
     if (!po) return refuse(404, "NOT_FOUND", "Purchase order not found")
+    // A CLOSED PO can take returns too (owner rule, 2026-11-22): its lines and its bill stay as they are and the
+    // supplier owes us a credit instead, so the PO never has to be reopened (and a paid bill never replaced).
     const blocker = await editBlocker(db, po)
-    if (blocker) return refuse(409, blocker.code, blocker.error)
+    if (blocker && blocker.code !== "PO_CLOSED") return refuse(409, blocker.code, blocker.error)
+    const closed = blocker?.code === "PO_CLOSED"
 
     const ids = [...new Set(rows.map((r) => r.fromItemId as number))]
     const { data: lines, error: linesError } = await db.from("purchase_order_items").select("*").eq("po_id", poId).in("po_item_id", ids)
@@ -76,9 +80,13 @@ export async function POST(request: Request) {
       const l = lineById.get(id)
       if (taken > (Number(l.quantity) || 0) + 1e-9) return refuse(409, "RETURN_TOO_MANY", `Only ${l.quantity} of "${nameOf(l)}" are on the purchase order`)
     }
-    // what a supplier bill already charged stays on the PO (bill received items, 2026-11-17)
-    const billedBlock = await belowBilledRefusal(db, po, new Map([...takenById].map(([id, taken]) => [id, poMoney((Number(lineById.get(id).quantity) || 0) - taken)])))
-    if (billedBlock) return refuse(409, billedBlock.code, billedBlock.error)
+    // What a supplier bill already charged stays on the PO and on the bill (bill received items, 2026-11-17): that part
+    // of a return becomes a supplier credit (owner rule, 2026-11-22). Only the unbilled part of an open PO's line goes down.
+    const billed = await billedByItem(db, po)
+    const split = returnSplit(
+      [...takenById].map(([id, taken]) => ({ id, taken, quantity: Number(lineById.get(id).quantity) || 0, billed: billed.get(id) || 0 })),
+      closed,
+    )
     // Only what was received can go back (owner rule, 2026-11-12); what was not received yet is removed with Edit.
     const received = await receivedByItem(db, ids)
     const sentBack = await returnedSoFar(db, poId)
@@ -108,31 +116,74 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. The PO lines go down.
-    for (const [id, taken] of takenById) {
+    // 2. The unbilled part of each open PO line goes down.
+    let lowered = false
+    for (const [id] of takenById) {
+      const lower = split.get(id)!.lower
+      if (!(lower > 0)) continue
+      lowered = true
       const l = lineById.get(id)
-      const left = poMoney((Number(l.quantity) || 0) - taken)
+      const left = poMoney((Number(l.quantity) || 0) - lower)
       const { error: e } = await db.from("purchase_order_items").update({ quantity: left, total: poMoney(left * (Number(l.unit_price) || 0)) }).eq("po_item_id", id)
       if (e) throw e
       undo.push(() => db.from("purchase_order_items").update({ quantity: l.quantity, total: l.total }).eq("po_item_id", id))
     }
 
     // 3. The PO total (VAT as the PO had it), never below the advances / credits on it; the receiving status follows.
-    const { data: all, error: allError } = await db.from("purchase_order_items").select("total").eq("po_id", poId)
-    if (allError) throw allError
-    const vatOn = Number(po.tax_amount) > 0
-    const totals = computePoTotals(all || [], vatOn)
-    const reserved = await reservedCreditTotal(db, poId)
-    if (reserved.error) throw new Error(reserved.error)
-    if (reserved.total > totals.total + 0.005) {
-      for (const step of undo.reverse()) await step()
-      await undoMoves(db, moves)
-      return refuse(409, "CREDIT_EXCEEDS_TOTAL", `The new total (${totals.total.toFixed(2)}) would be less than the advances and credits on this PO (${reserved.total.toFixed(2)})`)
+    let total = Number(po.total) || 0
+    if (lowered) {
+      const { data: all, error: allError } = await db.from("purchase_order_items").select("total").eq("po_id", poId)
+      if (allError) throw allError
+      const vatOn = Number(po.tax_amount) > 0
+      const totals = computePoTotals(all || [], vatOn)
+      const reserved = await reservedCreditTotal(db, poId)
+      if (reserved.error) throw new Error(reserved.error)
+      if (reserved.total > totals.total + 0.005) {
+        for (const step of undo.reverse()) await step()
+        await undoMoves(db, moves)
+        return refuse(409, "CREDIT_EXCEEDS_TOTAL", `The new total (${totals.total.toFixed(2)}) would be less than the advances and credits on this PO (${reserved.total.toFixed(2)})`)
+      }
+      const { error: totalError } = await db.from("purchase_orders").update({ total: totals.total, tax_amount: vatOn ? totals.tax : null }).eq("po_id", poId)
+      if (totalError) throw totalError
+      undo.push(() => db.from("purchase_orders").update({ total: po.total, tax_amount: po.tax_amount }).eq("po_id", poId))
+      await syncPoStatus(db, po, undo)
+      total = totals.total
     }
-    const { error: totalError } = await db.from("purchase_orders").update({ total: totals.total, tax_amount: vatOn ? totals.tax : null }).eq("po_id", poId)
-    if (totalError) throw totalError
-    undo.push(() => db.from("purchase_orders").update({ total: po.total, tax_amount: po.tax_amount }).eq("po_id", poId))
-    await syncPoStatus(db, po, undo)
+
+    // 3b. What was already on a supplier bill comes back as a supplier credit; the bill itself is never changed.
+    const credits: { creditId: number; poItemId: number; quantity: number; amount: number }[] = []
+    const bills = sortBills(await billsOf(db, poId))
+    const linkBill = closingBillOf(bills, po.po_number) || (bills.length === 1 ? bills[0] : null)
+    for (const r of rows) {
+      const id = r.fromItemId as number
+      const part = split.get(id)!
+      if (!(part.credit > 0)) continue
+      // each row's share of its line's credit quantity (several rows can take from one line)
+      const qty = poMoney(Math.min(r.qty, part.credit - credits.filter((c) => c.poItemId === id).reduce((s, c) => s + c.quantity, 0)))
+      if (!(qty > 0)) continue
+      const l = lineById.get(id)
+      const amount = poMoney(qty * (Number(l.unit_price) || 0))
+      if (!(amount > 0)) continue
+      const { data: credit, error: creditError } = await db
+        .from("supplier_credits")
+        .insert({
+          supplier_id: po.supplier_id,
+          amount,
+          credit_type: "return",
+          invoice_id: linkBill?.invoice_id ?? null,
+          reference_type: "purchase_order",
+          reference_id: poId,
+          description: `Return of ${nameOf(l)} (Qty: ${qty} @ ${Number(l.unit_price) || 0}) to the supplier | PO ${po.po_number}`,
+          notes: `Already on supplier bill ${linkBill?.invoice_number || "(several bills)"}: credited instead of changing the bill${r.reason ? `; ${r.reason}` : ""}`,
+          status: "active",
+          created_at: new Date().toISOString(),
+        })
+        .select("credit_id")
+        .single()
+      if (creditError) throw creditError
+      undo.push(() => db.from("supplier_credits").delete().eq("credit_id", credit.credit_id))
+      credits.push({ creditId: credit.credit_id, poItemId: id, quantity: qty, amount })
+    }
 
     // 4. Stock log (catalogue items) and PO history.
     await logHandedBack(db, po, moves, await knownUserId(db, body?.userId), "Returned to the supplier")
@@ -142,13 +193,18 @@ export async function POST(request: Request) {
       await logPoEvent(db, poId, {
         event_type: "PO_ITEM_SENT_BACK",
         old_value: JSON.stringify({ poItemId: l.po_item_id, name: nameOf(l), quantity: r.qty, unitPrice: unit, total: poMoney(r.qty * unit), warehouseId: r.warehouseId }),
-        new_value: null,
-        notes: r.reason ? `Returned to the supplier: ${r.reason}` : "Returned to the supplier",
+        new_value: credits.some((c) => c.poItemId === l.po_item_id)
+          ? JSON.stringify({ credits: credits.filter((c) => c.poItemId === l.po_item_id) })
+          : null,
+        notes:
+          (r.reason ? `Returned to the supplier: ${r.reason}` : "Returned to the supplier") +
+          (credits.some((c) => c.poItemId === l.po_item_id) ? " (already billed: supplier credit)" : ""),
         userId: body?.userId,
       })
     }
     const value = poMoney(rows.reduce((s, r) => s + r.qty * (Number(lineById.get(r.fromItemId as number).unit_price) || 0), 0))
-    return NextResponse.json({ ok: true, total: totals.total, returnedValue: value, stockMoved: moves.length > 0 })
+    const creditTotal = poMoney(credits.reduce((s, c) => s + c.amount, 0))
+    return NextResponse.json({ ok: true, total, returnedValue: value, stockMoved: moves.length > 0, credits, creditTotal })
   } catch (error) {
     console.error("Return to supplier: failed", error)
     for (const step of undo.reverse()) {
