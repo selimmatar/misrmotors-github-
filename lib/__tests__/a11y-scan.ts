@@ -34,8 +34,10 @@ export const OWNED: Record<Area, string[]> = {
     "components/parties/",
   ],
   finance: [
-    ...mods(["accounts-receivable", "accounts-payable", "payment-schedule", "balance", "maintenance-invoices", "maintenance-quick-invoice", "accountant", "finance-reports", "e-invoice-settings"]),
+    ...mods(["accounts-receivable", "accounts-payable", "payment-schedule", "balance", "maintenance-invoices", "maintenance-quick-invoice", "maintenance-workers", "accountant", "finance-reports", "e-invoice-settings"]),
     "components/accounting/", "components/maintenance/",
+    // the maintenance worker's photo upload page (owner, 2026-11-19)
+    "components/worker-upload/", "app/m/",
   ],
   purchasing: [
     ...mods(["supplier", "product", "po-request", "purchase-order", "pricing-review", "reorder-suggestions"]),

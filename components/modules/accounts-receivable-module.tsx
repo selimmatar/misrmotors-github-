@@ -1472,7 +1472,8 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         </TabsList>
       </Tabs>
 
-      {invoiceTab === "maintenance" && (
+      {/* accountant-only routes (lib/auth/permissions.ts); a sales rep would only see an empty, failing panel */}
+      {invoiceTab === "maintenance" && (userRole === "ceo" || userRole === "accountant" || userRole === "admin") && (
         <>
           <SharedInvoiceNumbers />
           <MaintenancePhotoDrafts />

@@ -1514,9 +1514,24 @@ export const UNFILTERED_READERS: Record<string, string[]> = {
     "next invoice number must see replaced invoice numbers (unique)",
     "insert with the typed number",
     "insert with the generated number",
+    "insert with the number taken from the shared sequence",
     "rollback delete of an invoice just inserted, by id",
   ],
-  "lib/maintenance-quick-invoice.ts": ["sets the maintenance flag on the invoice it just created, by id"],
+  // v0 maintenance booklets / MINV cancel / shared numbers (owner, 2026-11-19..21): number lookups and by-id reads
+  "app/api/maintenance/booklets/route.ts": [
+    "booklet page stats: every MINV number of the year counts as used (cancelled ones are renamed X<id>-)",
+    "void-page check: a page already on any invoice cannot be voided",
+  ],
+  "lib/maintenance-booklets.ts": [
+    "a typed page number already on any invoice is refused (numbers are unique)",
+    "next MINV number must see every MINV number of the year",
+    "new booklet block starts after every MINV number of the year",
+  ],
+  "lib/minv-cancel.ts": [
+    "reads one invoice by id; refuses replaced and already-cancelled invoices itself",
+    "guarded update of that one invoice by id, number and status",
+  ],
+  "lib/shared-invoice-numbers.ts": ["the shared plain-number sequence must see every plain number already used (unique)"],
   "lib/sales-orders/on-approved.ts": [
     "down-payment invoice number is unique: a replaced one still holds it",
     "inserts the down-payment invoice",
@@ -1592,18 +1607,19 @@ const ar6 = (id: number, status: string | null, extra: Row = {}): Row => ({
   installment_months: 1, due_date: "2026-01-01", invoice_date: "2026-01-01", status, created_at: "2026-01-01T00:00:00Z", ...extra,
 })
 
-test("F29. excludeReplaced keeps every live status and a missing status; only replaced drops out", async () => {
-  const db = new FakeDb({ accounts_receivable: [ar6(1, "pending"), ar6(2, "partially_paid"), ar6(3, "paid"), ar6(4, "overdue"), ar6(5, null), ar6(6, "replaced")] })
+// a cancelled maintenance invoice (lib/minv-cancel.ts, owner 2026-11-20) drops out exactly like a replaced one
+test("F29. excludeReplaced keeps every live status and a missing status; only replaced and cancelled drop out", async () => {
+  const db = new FakeDb({ accounts_receivable: [ar6(1, "pending"), ar6(2, "partially_paid"), ar6(3, "paid"), ar6(4, "overdue"), ar6(5, null), ar6(6, "replaced"), ar6(7, "cancelled")] })
   const { data } = await excludeReplaced(db.from("accounts_receivable").select("invoice_id"))
   assert.deepEqual(data.map((r: any) => r.invoice_id), [1, 2, 3, 4, 5])
   // composes with the other filters and the sums that follow
-  const some = await excludeReplaced(db.from("accounts_receivable").select("invoice_id").in("invoice_id", [5, 6]))
+  const some = await excludeReplaced(db.from("accounts_receivable").select("invoice_id").in("invoice_id", [5, 6, 7]))
   assert.deepEqual(some.data.map((r: any) => r.invoice_id), [5])
   assert.equal(isReplacedInvoice({ status: "replaced" }), true)
   assert.equal(isReplacedInvoice({ status: null }), false)
   assert.equal(isReplacedInvoice(null), false)
   // the real FakeDb check for the PostgREST text: a null status is kept
-  assert.equal(excludeReplaced({ or: (e: string) => e } as any), "status.is.null,status.neq.replaced")
+  assert.equal(excludeReplaced({ or: (e: string) => e } as any), "status.is.null,status.not.in.(replaced,cancelled)")
 })
 
 function soDb6(arRows: Row[], links: Row[] = []) {

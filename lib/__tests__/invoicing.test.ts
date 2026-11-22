@@ -5,6 +5,7 @@
 //     --module commonjs --target es2020 --skipLibCheck --esModuleInterop && node --test /tmp/inv-test/__tests__/invoicing.test.js
 import test from "node:test"
 import assert from "node:assert/strict"
+import { orFilter } from "./fake-db"
 import { computeInvoiceAmount, createDpInvoices, createSoInvoice, dpInvoicePrintTotals, round2, soDiscountBase } from "../invoicing"
 
 // ---------------------------------------------------------------------------------------------------------
@@ -42,16 +43,8 @@ class Query {
   eq(c: string, v: any) { this.filters.push((r) => r[c] === v); return this }
   neq(c: string, v: any) { this.filters.push((r) => r[c] !== v); return this }
   in(c: string, vs: any[]) { this.filters.push((r) => vs.includes(r[c])); return this }
-  /** PostgREST `or`: the "col.is.null" / "col.neq.value" terms of excludeReplaced (lib/ar-live.ts) */
-  or(expr: string) {
-    const terms = expr.split(",").map((t) => {
-      const [col, op, ...rest] = t.split(".")
-      const val = rest.join(".")
-      return (r: Row) => (op === "is" ? (r[col] ?? null) === null : op === "neq" ? String(r[col]) !== val : String(r[col]) === val)
-    })
-    this.filters.push((r) => terms.some((f) => f(r)))
-    return this
-  }
+  /** PostgREST `or`: excludeReplaced (lib/ar-live.ts) uses "status.is.null,status.not.in.(replaced,cancelled)" */
+  or(expr: string) { this.filters.push(orFilter(expr)); return this }
   like(c: string, pattern: string) {
     const re = new RegExp("^" + pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$")
     this.filters.push((r) => re.test(String(r[c] ?? "")))
@@ -141,7 +134,7 @@ test("1-2. SO with no invoices -> whole-order invoice at the SO total, no DP lin
   assert.equal(res.body.amount, 1140000)
   assert.equal(res.body.so_id, 1)
   assert.equal(res.body.invoiceNumber, res.body.invoice_number)
-  assert.match(res.body.invoice_number, /^INV\d{2}5567$/) // spec 2026-11-19: INV + two-digit year, starting at 5567
+  assert.match(res.body.invoice_number, /^INV\d{2}001$/) // INV + two-digit year, serial from 001 (owner, 2026-11-20, lib/invoice-codes.ts)
   assert.equal(linksOf(db).length, 0)
   assert.equal(res.body.source_delivery_permit_id ?? null, null)
   assert.equal(res.body.installment_months, 1) // bank transfer = single payment (Batch 1C)

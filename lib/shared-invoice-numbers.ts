@@ -41,6 +41,11 @@ export async function loadSharedStart(db: Db): Promise<number | null> {
 /** The next number under one database lock. Null when the starting number is not set. */
 export async function takeSharedNumber(db: Db, kind: SlotKind, linkId: number | null, reuse: boolean): Promise<number | null> {
   const { data, error } = await db.rpc("take_invoice_number", { p_kind: kind, p_link_id: linkId, p_reuse: reuse })
+  // The starting number saved but scripts/sql/2026-11-21-shared-invoice-numbers.sql not applied: keep the old numbering.
+  if (error && missing(error)) {
+    console.error(`[shared-numbers] take_invoice_number is missing (${error.message}); using the INV/MINV numbering`)
+    return null
+  }
   if (error) throw new Error(`take invoice number: ${error.message}`)
   return data == null ? null : Number(data)
 }

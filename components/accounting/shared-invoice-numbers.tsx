@@ -34,6 +34,7 @@ const TEXT = {
     saved: "Shared numbering is on",
     empty: "No numbers handed out yet.",
     failed: "Something went wrong",
+    loading: "Loading",
   },
   ar: {
     title: "أرقام الفواتير المشتركة",
@@ -55,6 +56,7 @@ const TEXT = {
     saved: "الترقيم المشترك اشتغل",
     empty: "لسه مفيش أرقام اتصرفت.",
     failed: "حصل خطأ",
+    loading: "جارٍ التحميل",
   },
 }
 
@@ -99,7 +101,7 @@ export function SharedInvoiceNumbers() {
       </div>
 
       {isLoading ? (
-        <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="Loading" />
+        <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label={text.loading} />
       ) : !data ? (
         <p className="text-sm text-destructive">{text.failed}</p>
       ) : !data.start ? (
