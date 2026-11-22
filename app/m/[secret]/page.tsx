@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { hashSecret, isSecretShape } from "@/lib/maintenance-photos"
 import { nextMinvNumber } from "@/lib/maintenance-booklets"
 import { workerNumberState } from "@/lib/shared-invoice-numbers"
+import { workerSentList } from "@/lib/worker-sent-list"
 import { WorkerUploadScreen } from "@/components/worker-upload/worker-upload-screen"
 import { WorkerLinkInactive } from "@/components/worker-upload/worker-link-inactive"
 
@@ -61,5 +62,9 @@ export default async function WorkerPage({ params }: Props) {
     return null
   })
   const nextNumber = numbers?.enabled ? null : await findNextNumber(worker.id)
-  return <WorkerUploadScreen secret={secret} workerName={worker.name} nextNumber={nextNumber} numbers={numbers} />
+  const sent = await workerSentList(createAdminClient(), worker.id).catch((error: any) => {
+    console.error("[worker-page] sent list:", error?.message || error)
+    return null
+  })
+  return <WorkerUploadScreen secret={secret} workerName={worker.name} nextNumber={nextNumber} numbers={numbers} sent={sent} />
 }

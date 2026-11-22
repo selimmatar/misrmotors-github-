@@ -51,9 +51,43 @@ export async function pendingMinvNumbers(db: Db, year2: string): Promise<string[
   return [...(voids.data || []), ...(drafts.data || [])].map((row: any) => String(row.invoice_number))
 }
 
-export type PageCheck = { ok: true; bookletId: number | null; number: string } | { ok: false; error: string }
+const bySerial = (a: string, b: string) => (parseMinvNumber(a)?.serial ?? 0) - (parseMinvNumber(b)?.serial ?? 0)
 
-/** Any MINV number is accepted unless it was cancelled or is on an invoice already; linked to a booklet when one holds it. */
+/**
+ * MINV numbers of the year that were handed out and then cancelled BEFORE an invoice existed (a cancelled booklet
+ * page, a rejected photo): free again, lowest first (owner, 2026-11-22). A number that was ever on an invoice (also one
+ * cancelled later, kept as "X<id>-<number>") is never in this list.
+ */
+export async function freedMinvNumbers(db: Db, year2: string): Promise<string[]> {
+  const [voids, drafts, invoices, cancelled] = await Promise.all([
+    db.from("maintenance_booklet_voids").select("invoice_number").like("invoice_number", `MINV${year2}%`),
+    db.from("maintenance_photo_drafts").select("invoice_number, status, invoice_id").like("invoice_number", `MINV${year2}%`),
+    db.from("accounts_receivable").select("invoice_number").like("invoice_number", `MINV${year2}%`),
+    db.from("accounts_receivable").select("invoice_number").like("invoice_number", `X%-MINV${year2}%`),
+  ])
+  for (const result of [voids, drafts, invoices, cancelled]) {
+    if (result.error && !missingTable(result.error)) throw new Error(`load MINV numbers: ${result.error.message}`)
+  }
+  const onInvoice = new Set<string>([
+    ...(invoices.data || []).map((r: any) => String(r.invoice_number)),
+    ...(cancelled.data || []).map((r: any) => String(r.invoice_number).replace(/^X\d+-/, "")),
+  ])
+  const draftRows = (drafts.data || []) as Array<{ invoice_number: string; status: string; invoice_id: number | null }>
+  const stillPending = new Set(draftRows.filter((d) => d.status !== "rejected").map((d) => String(d.invoice_number)))
+  const candidates = [
+    ...(voids.data || []).map((r: any) => String(r.invoice_number)),
+    ...draftRows.filter((d) => d.status === "rejected" && d.invoice_id == null).map((d) => String(d.invoice_number)),
+  ]
+  const freed = new Set(candidates.filter((n) => parseMinvNumber(n)?.year2 === year2 && !onInvoice.has(n) && !stillPending.has(n)))
+  return [...freed].sort(bySerial)
+}
+
+export type PageCheck ={ ok: true; bookletId: number | null; number: string } | { ok: false; error: string }
+
+/**
+ * Any MINV number is accepted unless it is on an invoice already; linked to a booklet when one holds it. A cancelled
+ * page's number is free again (owner, 2026-11-22), so it is accepted too.
+ */
 export async function checkBookletPage(db: Db, linkId: number, number: string): Promise<PageCheck> {
   const parsed = parseMinvNumber(number)
   if (!parsed) return { ok: false, error: "Enter the MINV number printed on the page" }
@@ -66,25 +100,26 @@ export async function checkBookletPage(db: Db, linkId: number, number: string): 
   if (error && !missingTable(error)) throw new Error(`load booklets: ${error.message}`)
   const holder = (booklets || []).find((b: any) => Number(b.link_id) === linkId) ?? (booklets || [])[0]
 
-  const { data: voided } = await db.from("maintenance_booklet_voids").select("id").eq("invoice_number", number).limit(1)
-  if (voided?.length) return { ok: false, error: `Page ${number} was cancelled` }
   const { data: used } = await db.from("accounts_receivable").select("invoice_id").eq("invoice_number", number).limit(1)
   if (used?.length) return { ok: false, error: `${number} is already on an invoice` }
   return { ok: true, bookletId: holder ? Number(holder.id) : null, number }
 }
 
 /**
- * The next MINV number in the one system sequence, the same for every worker and for the office: one after the
- * highest number on an invoice, cancelled, or on a photo still waiting. With no number yet, the open booklet's first page.
+ * The next MINV number in the one system sequence, the same for every worker and for the office: the lowest number
+ * freed before its invoice was made (freedMinvNumbers), else one after the highest number on an invoice, cancelled, or
+ * on a photo still waiting. With no number yet, the open booklet's first page.
  */
 export async function nextMinvNumber(db: Db): Promise<string | null> {
   const year2 = invoiceYear2()
-  const [invoices, pending, booklet] = await Promise.all([
+  const [invoices, pending, booklet, freed] = await Promise.all([
     db.from("accounts_receivable").select("invoice_number").like("invoice_number", `MINV${year2}%`),
     pendingMinvNumbers(db, year2),
     db.from("maintenance_booklets").select("first_serial").eq("year2", year2).eq("status", "active").limit(1),
+    freedMinvNumbers(db, year2),
   ])
   if (invoices.error) throw new Error(`load invoice numbers: ${invoices.error.message}`)
+  if (freed.length) return freed[0]
   const serials = [...(invoices.data || []).map((row: any) => row.invoice_number), ...pending]
     .map((number) => parseMinvNumber(number))
     .filter((p): p is { year2: string; serial: number } => !!p && p.year2 === year2)

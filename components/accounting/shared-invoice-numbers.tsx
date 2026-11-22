@@ -29,8 +29,10 @@ const TEXT = {
     released: "free again",
     photo: "photo sent",
     overdue: (list: string) => `Reserved since before today with no photo: ${list}. Call the worker, or cancel the number.`,
+    next: (n: number) => `Next number: ${n}`,
+    nextHint: "A number cancelled before its invoice was made is free again and goes out first.",
     cancel: "Cancel",
-    cancelled: (n: number) => `${n} cancelled. The next sales invoice takes it.`,
+    cancelled: (n: number) => `${n} cancelled. It is free again: the next invoice takes it.`,
     saved: "Shared numbering is on",
     empty: "No numbers handed out yet.",
     failed: "Something went wrong",
@@ -51,8 +53,10 @@ const TEXT = {
     released: "رجع فاضي",
     photo: "الصورة وصلت",
     overdue: (list: string) => `محجوز من قبل النهارده ومفيش صورة: ${list}. كلّم العامل أو ألغي الرقم.`,
+    next: (n: number) => `الرقم الجاي: ${n}`,
+    nextHint: "أي رقم اتلغى قبل ما الفاتورة تتعمل بيرجع فاضي وبيطلع الأول.",
     cancel: "إلغاء",
-    cancelled: (n: number) => `تم إلغاء ${n}. فاتورة المبيعات الجاية هتاخده.`,
+    cancelled: (n: number) => `تم إلغاء ${n}. رجع فاضي والفاتورة الجاية هتاخده.`,
     saved: "الترقيم المشترك اشتغل",
     empty: "لسه مفيش أرقام اتصرفت.",
     failed: "حصل خطأ",
@@ -142,6 +146,14 @@ export function SharedInvoiceNumbers() {
           <Badge variant="secondary" className="self-start">
             {text.on(data.start)}
           </Badge>
+          {data.nextNumber ? (
+            <p className="flex flex-col gap-0.5 text-sm">
+              <span className="font-semibold">
+                {text.next(data.nextNumber)}
+              </span>
+              <span className="text-muted-foreground text-pretty">{text.nextHint}</span>
+            </p>
+          ) : null}
 
           {data.overdue.length ? (
             <div role="alert" className="flex items-start gap-2 rounded-lg bg-warning/15 p-3 text-sm leading-relaxed">

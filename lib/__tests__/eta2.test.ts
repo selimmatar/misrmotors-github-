@@ -1523,6 +1523,8 @@ export const UNFILTERED_READERS: Record<string, string[]> = {
     "void-page check: a page already on any invoice cannot be voided",
   ],
   "lib/maintenance-booklets.ts": [
+    "freed MINV numbers: a number on any invoice is never free again (numbers are unique)",
+    "freed MINV numbers: a cancelled invoice (X<id>-<number>) keeps its number out of the free list",
     "a typed page number already on any invoice is refused (numbers are unique)",
     "next MINV number must see every MINV number of the year",
     "new booklet block starts after every MINV number of the year",
@@ -1531,7 +1533,13 @@ export const UNFILTERED_READERS: Record<string, string[]> = {
     "reads one invoice by id; refuses replaced and already-cancelled invoices itself",
     "guarded update of that one invoice by id, number and status",
   ],
-  "lib/shared-invoice-numbers.ts": ["the shared plain-number sequence must see every plain number already used (unique)"],
+  "lib/shared-invoice-numbers.ts": [
+    "the shared plain-number sequence must see every plain number already used (unique)",
+    "freed plain numbers: a number on any invoice is never handed out again (unique)",
+    "freed plain numbers: a cancelled invoice's number is never handed out again",
+  ],
+  "lib/worker-sent-list.ts": ["the worker's own sent photos show the invoice made from each, by id, replaced or not"],
+  "app/api/worker-upload/[secret]/route.ts": ["number-taken check for the MINV number the page showed: any invoice holds it"],
   "lib/sales-orders/on-approved.ts": [
     "down-payment invoice number is unique: a replaced one still holds it",
     "inserts the down-payment invoice",

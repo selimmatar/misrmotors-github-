@@ -15,7 +15,7 @@ import { resolveInstallmentCount } from "./payment-type"
 import { excludeReplaced } from "./ar-live"
 import { numberTakenMessage } from "./doc-number"
 import { invoiceCodeForOrders, invoiceYear2, nextCodedNumber, type InvoiceCode } from "./invoice-codes"
-import { pendingMinvNumbers } from "./maintenance-booklets"
+import { freedMinvNumbers, pendingMinvNumbers } from "./maintenance-booklets"
 import { loadSharedStart, manualNumberHolder, markSlotUsed, recordManualNumber, releaseSlot, releaseSlotOfInvoice, takeSharedNumber } from "./shared-invoice-numbers"
 import {
   DELIVERED_PERMIT_STATUSES,
@@ -760,7 +760,12 @@ async function nextInvoiceNumber(db: Db, attemptOffset: number, code: InvoiceCod
   // MINV is one sequence shared by the office and the workers' booklet (owner, 2026-11-19): cancelled pages and
   // photos still waiting with a number count as taken, so the office takes the next page after them.
   const existing = rows.map((row) => row.invoice_number)
-  if (code === "MINV") existing.push(...(await pendingMinvNumbers(db, year2)))
+  if (code !== "MINV") return nextCodedNumber(code, year2, existing, attemptOffset)
+  existing.push(...(await pendingMinvNumbers(db, year2)))
+  // A number freed before its invoice was made goes out first, lowest first (owner, 2026-11-22); UNIQUE(invoice_number)
+  // makes sure two people never both get it: the loser reads the list again (the winner's number is gone from it).
+  const freed = await freedMinvNumbers(db, year2)
+  if (freed.length) return freed[0]
   return nextCodedNumber(code, year2, existing, attemptOffset)
 }
 

@@ -6,7 +6,7 @@ import { createQuickMaintenanceInvoice, validateQuickInvoice } from "@/lib/maint
 import { MAX_REJECT_REASON, readDraftPhoto } from "@/lib/maintenance-photos"
 import { MAX_VOID_REASON, checkBookletPage, hasActiveBooklet } from "@/lib/maintenance-booklets"
 import { cleanMinvNumber } from "@/lib/invoice-codes"
-import { isSharedNumber, releaseSlot } from "@/lib/shared-invoice-numbers"
+import { isSharedNumber, releaseSlot, releaseSlotOfDraft } from "@/lib/shared-invoice-numbers"
 
 // One photo draft: create the MINV invoice from it, reject it, or read the photo again (spec 2026-11-19, Part 2).
 // Creating goes through the same createQuickMaintenanceInvoice as the quick maintenance screen. The draft is claimed
@@ -34,8 +34,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .select("id")
     if (error) return answer(500, "Could not reject the photo")
     if (!data?.length) return answer(409, "This photo was already handled")
-    // The paper page still carries its number: it stays the worker's, so he can send a better photo of it.
-    await db.from("invoice_number_slots").update({ draft_id: null, updated_at: new Date().toISOString() }).eq("draft_id", id).eq("status", "reserved")
+    // Rejected before its invoice was made: the number is free again and the next worker number starts from it
+    // (owner, 2026-11-22). The worker who sends a better photo takes a number again and is offered it first.
+    await releaseSlotOfDraft(db, id, "photo rejected")
     return NextResponse.json({ ok: true })
   }
 
@@ -84,9 +85,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { error: voidError } = await db
       .from("maintenance_booklet_voids")
       .insert({ booklet_id: page.bookletId, invoice_number: number, reason, draft_id: id, created_by: reviewer })
+    // Already on the cancelled list (cancelled once, freed, written again and spoiled again): it stays free.
+    if (voidError?.code === "23505") return NextResponse.json({ ok: true, invoiceNumber: number })
     if (voidError) {
       await db.from("maintenance_photo_drafts").update({ status: "waiting", reject_reason: null, reviewed_by: null, reviewed_at: null }).eq("id", id)
-      return answer(voidError.code === "23505" ? 409 : 500, voidError.code === "23505" ? `Page ${number} was already cancelled` : "Could not cancel the page")
+      return answer(500, "Could not cancel the page")
     }
     return NextResponse.json({ ok: true, invoiceNumber: number })
   }
