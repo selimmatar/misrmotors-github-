@@ -157,6 +157,13 @@ test("O2. a returned unit: not delivered, needs a PO (no 'ready'); exchanged wit
   rs.tables.delivery_permits[0].status = "SUBMITTED_SIGNED"
   rs.tables.purchase_order_items[0].quantity = 3
   assert.deepEqual((await buildSoOverview(rs, 1))!.todo.filter((t: any) => t.name === "Charger"), [{ kind: "no_po", name: "Charger", quantity: 1 }])
+  // the returned unit was put back in our warehouse for this order (Bostanji's gloves): ready to deliver, not "needs a PO"
+  const back = liveOrder(ret)
+  back.tables.delivery_permits[0].status = "SUBMITTED_SIGNED"
+  back.tables.inventory = [{ inventory_id: 9, product_id: null, outsourced_name: "Charger", quantity: 1, so_number: "SO-2026-860593", is_outsourced: true }]
+  const b = (await buildSoOverview(back, 1))!
+  assert.equal(b.lines[0].state, "ready")
+  assert.deepEqual(b.todo.filter((t: any) => t.name === "Charger"), [{ kind: "ready", name: "Charger", quantity: 1 }])
 })
 
 // ------------------------------------------------------------------------------------------------ B. supplier bills
