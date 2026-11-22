@@ -3,8 +3,8 @@
 // Since 2026-11-19 a MINV invoice stands on its own: it is linked to the customer only (tax ID, customer card), with
 // no sales order and no delivery permit. Its lines are stored in ar_invoice_lines (createStandaloneMinv).
 // Quick invoices made earlier through a maintenance sales order still work as before.
-import { createStandaloneMinv, loadEtaGoLiveAt, round2, VAT_RATE } from "./invoicing"
-import { etaLines, isAfterGoLive } from "./eta/totals"
+import { createStandaloneMinv, round2 } from "./invoicing"
+import { vatPerLine } from "./vat-lines"
 import { QUICK_SO_TYPE, QUICK_SO_NOTE, isMaintenanceNumber } from "./invoice-codes"
 
 type Db = any
@@ -61,17 +61,12 @@ export interface QuickTotals {
 }
 
 /**
- * The totals the invoice will carry: prices are before VAT and 14% VAT is added. After the e-invoice go-live VAT is
- * rounded per line (as the portal adds it up); before it, on the total (lib/invoicing.ts, unchanged rules).
+ * The totals the invoice will carry: prices are before VAT and 14% VAT is added, rounded per line (lib/vat-lines.ts,
+ * as the e-invoice adds it up): VAT = sum of the line VATs, total = sum of the line nets + VATs.
  */
-export function quickTotals(lines: QuickLine[], perLine = true): QuickTotals {
-  if (perLine) {
-    const { totals } = etaLines(lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPrice: l.unitPrice })), 0)
-    return { net: totals.net, vat: totals.vat, total: totals.total }
-  }
-  const net = round2(lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0))
-  const total = round2(net * (1 + VAT_RATE))
-  return { net, vat: round2(total - net), total }
+export function quickTotals(lines: QuickLine[]): QuickTotals {
+  const { net, vat, total } = vatPerLine(lines.map((l) => ({ quantity: l.quantity, unitPrice: l.unitPrice })))
+  return { net, vat, total }
 }
 
 /** Whether a customer invoice counts as maintenance (the Maintenance tab of Accounts Receivable). */
@@ -106,17 +101,9 @@ export async function createQuickMaintenanceInvoice(db: Db, input: QuickInput): 
     if (customerError) return fail(500, `Could not read the customer: ${customerError.message}`)
     if (!customer) return fail(404, "Customer not found")
 
-    let goLive: string | null
-    try {
-      goLive = await loadEtaGoLiveAt(db)
-    } catch (error: any) {
-      return fail(503, `The e-invoice go-live setting could not be read (${error?.message || error}). Nothing was created; please try again.`)
-    }
-    const totals = quickTotals(input.lines, isAfterGoLive(new Date().toISOString(), goLive))
-
+    // the amount is the per-line total (quickTotals), computed by createStandaloneMinv from the lines
     const created = await createStandaloneMinv(db, {
       customerId: input.customerId,
-      amount: totals.total,
       manualNumber: input.invoiceNumber ?? null,
       lines: input.lines.map((l) => ({ description: l.name, quantity: l.quantity, unitPrice: l.unitPrice })),
     })

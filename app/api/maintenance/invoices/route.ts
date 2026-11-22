@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
-import { VAT_RATE } from "@/lib/invoicing"
+import { vatPerLine } from "@/lib/vat-lines"
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -17,8 +17,10 @@ export async function POST(request: Request) {
     if (!Number.isFinite(netAmount) || netAmount <= 0) {
       return NextResponse.json({ error: "Enter the price before VAT (a number above 0)." }, { status: 400 })
     }
-    const amount = round2(netAmount * (1 + VAT_RATE))
-    const taxAmount = round2(amount - netAmount)
+    // one line: VAT rounded on the line, as on every invoice (lib/vat-lines.ts)
+    const priced = vatPerLine([{ quantity: 1, unitPrice: netAmount }])
+    const amount = priced.total
+    const taxAmount = priced.vat
 
     // Get work order details for invoice number
     const { data: workOrder } = await adminClient

@@ -206,22 +206,25 @@ function etaDb(lines: [number, number][], permitQty: (number | "all")[], opts: {
 }
 const UP_LINES: [number, number][] = [[1, 10.05], [1, 10.12], [1, 10.19]] // VAT per line rounds up: 3 x 1.41 vs 4.22 on the total
 
-test("E6. go-live off changes nothing", async () => {
-  const today = computeInvoiceAmount(30.36, 30.36, 0)
-  assert.equal(today, 34.61) // total-level VAT
+test("E6. go-live off: new invoices are priced per line all the same (owner, 2026-11-22: VAT row by row)", async () => {
+  const earlier = computeInvoiceAmount(30.36, 30.36, 0)
+  assert.equal(earlier, 34.61) // total-level VAT: the rule of invoices stored before 2026-11-22
+  const perLine = etaLines(UP_LINES.map(([q, p], i) => L(`item ${i}`, q, p)), 0).totals.total
+  assert.equal(perLine, 34.62)
   for (const goLive of [undefined, null, "", "not a date", "2099-01-01T00:00:00Z"]) {
     const db = etaDb(UP_LINES, [1], { goLive, extraSettings: [{ setting_key: "company_name", setting_value: "x" }] })
     const state = await loadSoInvoicingState(db, 1)
     assert.ok(state)
     const verdict = evaluateDpInvoice(state!, [1])
     assert.ok(verdict.ok)
-    // exactly today's formula (not rounded, as before)
-    assert.equal((verdict as any).newValue, netInvoiceValue(30.36, 30.36, 0), `goLive=${goLive}`)
+    // was netInvoiceValue(30.36, 30.36, 0) = 34.6104 before 2026-11-22
+    assert.equal((verdict as any).newValue, perLine, `goLive=${goLive}`)
+    // the earlier rule stays for recounting older invoices (the order total, unchanged without returns)
     const whole = computeWholeOrderAmount(state!)
     assert.ok(whole.ok && whole.amount === 34.61, `goLive=${goLive}`)
     const res = await createDpInvoices(db, [1])
     assert.equal(res.status, 200, JSON.stringify(res.body))
-    assert.equal(db.tables.accounts_receivable[0].amount, today, `goLive=${goLive}`)
+    assert.equal(db.tables.accounts_receivable[0].amount, perLine, `goLive=${goLive}`)
   }
   // no company_settings table at all / the settings query fails -> not live (today's rule)
   const bare = etaDb(UP_LINES, [1])

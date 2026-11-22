@@ -27,7 +27,8 @@ import {
   toMs,
   type ReturnLine,
 } from "./return-lines"
-import { etaLines, etaTolerance, isAfterGoLive, type EtaLineIn } from "./eta/totals"
+import { etaLines, etaTolerance, type EtaLineIn } from "./eta/totals"
+import { pricedPerLine, VAT_RATE, vatPerLine, vatPrintTotals } from "./vat-lines"
 import {
   correctionOfPermits, openCorrectionsForOrder, reissueInvoice, ReissueNumberTaken, ReissueRefused, REISSUE_OVERPAID, undoReissue,
   type OpenCorrection,
@@ -40,7 +41,7 @@ import {
 // whole-order invoice leaves out the returned quantity. Returns never touch existing invoices; they only change
 // what may be invoiced from now on.
 
-export const VAT_RATE = 0.14
+export { VAT_RATE }
 // Rounding slack when comparing cumulative invoiced value with the sales order total.
 export const MONEY_TOLERANCE = 0.05
 const QTY_EPSILON = 1e-6
@@ -49,12 +50,13 @@ const MAX_NUMBER_ATTEMPTS = 4
 export const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
 
 // Value of a set of items (pre-discount, pre-VAT `rawItemsTotal`) once the sales order's discount rate and
-// 14% VAT are applied. This is the existing rule from create-from-dps, unchanged.
+// 14% VAT are applied ON THE TOTAL: the rule of invoices stored before VAT was rounded per line (lib/vat-lines.ts).
+// Still used to recompute the value of those older invoices and for return credits; new invoices are priced per line.
 export function netInvoiceValue(rawItemsTotal: number, soSubtotal: number, soDiscountAmount: number) {
   const discountRate = soSubtotal > 0 ? soDiscountAmount / soSubtotal : 0
   return rawItemsTotal * (1 - discountRate) * (1 + VAT_RATE)
 }
-// The stored invoice amount, and what the invoice document prints, for a delivery-permit invoice.
+// The amount a delivery-permit invoice stored before VAT was rounded per line (VAT on the total).
 export const computeInvoiceAmount = (rawItemsTotal: number, soSubtotal: number, soDiscountAmount: number) =>
   round2(netInvoiceValue(rawItemsTotal, soSubtotal, soDiscountAmount))
 
@@ -69,9 +71,8 @@ export function soDiscountBase(soItems: { total?: any; quantity?: any; unit_pric
   return gross > 0 ? gross : Number(soSubtotal) || 0
 }
 
-// Totals printed on a delivery-permit invoice. The printed total must equal the stored invoice amount: when the
-// stored amount differs from today's price (an invoice created under the earlier discount rule), the document
-// prints the stored amount and splits it into pre-VAT and VAT.
+// Totals of a delivery-permit invoice under the earlier rule (VAT on the total). The invoice print now uses
+// vatPrintTotals (lib/vat-lines.ts: per-line VAT, the stored amount printed when it differs); kept for older callers.
 export function dpInvoicePrintTotals(rawItemsTotal: number, discountBase: number, soDiscountAmount: number, storedAmount: number | null | undefined) {
   const computed = computeInvoiceAmount(rawItemsTotal, discountBase, soDiscountAmount)
   const stored = storedAmount == null ? NaN : Number(storedAmount)
@@ -86,10 +87,10 @@ export function dpInvoicePrintTotals(rawItemsTotal: number, discountBase: number
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// E-invoice (ETA) go-live switch - spec §6. An invoice created at or after company_settings.eta_go_live_at is priced
-// line by line (lib/eta/totals.ts: VAT rounded per line, totals = sums of the rounded lines) and the over-invoicing
-// checks use etaCheckTolerance (the e-invoice lines involved). Invoices created before go-live, and everything while the setting
-// is empty, keep today's rule (netInvoiceValue / computeInvoiceAmount / MONEY_TOLERANCE) unchanged.
+// VAT per line (owner, 2026-11-22) - every invoice created from VAT_PER_LINE_FROM on (and any created after the
+// e-invoice go-live, company_settings.eta_go_live_at) is priced line by line (lib/vat-lines.ts: VAT rounded per line,
+// totals = sums of the rounded lines) and the over-invoicing checks use etaCheckTolerance (the lines involved). Invoices
+// stored earlier keep their stored amount and are recounted with the earlier rule (netInvoiceValue / MONEY_TOLERANCE).
 // ---------------------------------------------------------------------------------------------------------
 export const ETA_GO_LIVE_KEY = "eta_go_live_at"
 const nowIso = () => new Date().toISOString()
@@ -115,14 +116,8 @@ export function etaUnitPrice(item: { total?: any; quantity?: any; unit_price?: a
  * and split into pre-VAT and VAT, as dpInvoicePrintTotals does.
  */
 export function etaInvoicePrintTotals(lines: EtaLineIn[], discountRate: number, storedAmount: number | null | undefined) {
-  const { totals } = etaLines(lines, discountRate)
-  const stored = storedAmount == null ? NaN : Number(storedAmount)
-  if (Number.isFinite(stored) && Math.abs(stored - totals.total) > 0.005) {
-    const totalWithVat = round2(stored)
-    const subtotalBeforeVat = round2(totalWithVat / (1 + VAT_RATE))
-    return { totalWithVat, subtotalBeforeVat, vatAmount: round2(totalWithVat - subtotalBeforeVat) }
-  }
-  return { totalWithVat: totals.total, subtotalBeforeVat: totals.net, vatAmount: totals.vat }
+  const { totalWithVat, subtotalBeforeVat, vatAmount } = vatPrintTotals(lines, discountRate, storedAmount)
+  return { totalWithVat, subtotalBeforeVat, vatAmount }
 }
 
 // Postgres "relation does not exist" / PostgREST "table not in the schema cache": no settings table = not live.
@@ -230,7 +225,7 @@ const ownPermitIds = (state: SoInvoicingState) => new Set(state.permits.map((p) 
 function invoiceShare(state: SoInvoicingState, inv: SoInvoicingState["invoices"][number]) {
   const own = ownPermitIds(state)
   if (inv.permit_ids.length > 0 && inv.permit_ids.some((id) => !own.has(id))) {
-    if (isAfterGoLive(inv.created_at, state.etaGoLiveAt)) {
+    if (pricedPerLine(inv.created_at, state.etaGoLiveAt)) {
       return etaLines(dpInvoiceEtaLines(state, inv.permit_ids, invoiceAsOf(inv)), stateDiscountRate(state)).totals.total
     }
     const raw = state.permits
@@ -427,7 +422,7 @@ function postGoLiveEtaLineCount(
   createdAt: (inv: SoInvoicingState["invoices"][number]) => string | null | undefined = (inv) => inv.created_at,
 ) {
   return invoices
-    .filter((inv) => isAfterGoLive(createdAt(inv), state.etaGoLiveAt))
+    .filter((inv) => pricedPerLine(createdAt(inv), state.etaGoLiveAt))
     .reduce((n, inv) => n + (isSoLevelInvoice(inv) ? state.soItems.length : countedLines(dpInvoiceEtaLines(state, inv.permit_ids, invoiceAsOf(inv)))), 0)
 }
 
@@ -573,8 +568,8 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
   }
 
   const priorValue = state.invoices.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
-  // The invoice is created now: after go-live it is priced line by line (spec §6), before it as always.
-  const eta = isAfterGoLive(nowIso(), state.etaGoLiveAt)
+  // The invoice is created now: priced line by line (lib/vat-lines.ts).
+  const eta = pricedPerLine(nowIso(), state.etaGoLiveAt)
   const newLines = eta ? newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])).map((b) => b.line) : []
   const newValue = eta
     ? etaLines(newLines, stateDiscountRate(state)).totals.total
@@ -634,7 +629,7 @@ export function evaluateAfterInsert(state: SoInvoicingState, myInvoiceId: number
   const returnsBefore = mine ? returnsKnownAt(state, mine) : []
   // The rule of the invoice being checked: its own created_at (now when the row carries none).
   const mineAt = mine?.created_at || nowIso()
-  const eta = isAfterGoLive(mineAt, state.etaGoLiveAt)
+  const eta = pricedPerLine(mineAt, state.etaGoLiveAt)
   const tolerance = eta
     ? etaCheckTolerance(state.soItems.length, postGoLiveEtaLineCount(state, considered, (inv) => (inv === mine ? mineAt : inv.created_at))) + ETA_COMPARE_EPSILON
     : MONEY_TOLERANCE
@@ -941,8 +936,8 @@ export async function createSoInvoice(db: Db, soId: number, options: CreateInvoi
 
     // Return-aware: quantity returned against the order's delivery permits is not billed (existing invoices are
     // never touched - there can be none here, evaluateSoInvoice just checked).
-    // A whole-order invoice created now after go-live is priced line by line.
-    const priced = computeWholeOrderAmount(state, { eta: isAfterGoLive(nowIso(), state.etaGoLiveAt) })
+    // A whole-order invoice created now is priced line by line (lib/vat-lines.ts).
+    const priced = computeWholeOrderAmount(state, { eta: pricedPerLine(nowIso(), state.etaGoLiveAt) })
     if (!priced.ok) {
       const open = isNothingToInvoice(priced.error) ? (await openCorrectionsForOrder(db, soId))[0] : null
       return open ? nothingLeftRefusal(open) : failure(priced.status, priced.error)
@@ -954,7 +949,7 @@ export async function createSoInvoice(db: Db, soId: number, options: CreateInvoi
       so_id: state.so.so_id,
       invoice_date: new Date().toISOString().split("T")[0],
       due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-      amount: priced.amount, // the SO total (discount + VAT already applied), less any returned quantity
+      amount: priced.amount, // the order lines less any returned quantity, discount and VAT applied per line
       collected_amount: 0,
       payment_terms: paymentType,
       installment_months: resolveInstallmentCount(paymentType, state.so.installments) || 1,
@@ -1034,7 +1029,7 @@ export interface StandaloneLine {
 }
 export async function createStandaloneMinv(
   db: Db,
-  input: { customerId: number; amount: number; lines: StandaloneLine[]; manualNumber?: string | null },
+  input: { customerId: number; lines: StandaloneLine[]; manualNumber?: string | null },
 ): Promise<WorkflowResult> {
   const today = new Date().toISOString().split("T")[0]
   const row = {
@@ -1042,7 +1037,8 @@ export async function createStandaloneMinv(
     so_id: null,
     invoice_date: today,
     due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-    amount: round2(input.amount),
+    // VAT per line: the sum of the line totals (lib/vat-lines.ts)
+    amount: vatPerLine(input.lines.map((l) => ({ quantity: l.quantity, unitPrice: l.unitPrice }))).total,
     collected_amount: 0,
     payment_terms: "cash",
     installment_months: 1,
