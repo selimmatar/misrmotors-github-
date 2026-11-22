@@ -128,6 +128,42 @@ export class FakeDb {
   }
 }
 
+/** PostgREST `or` expression -> row predicate. Only the terms the routes use: "col.is.null", "col.eq.value",
+ *  "col.neq.value" and "col.[not.]in.(a,b)" (excludeReplaced in lib/ar-live.ts). */
+export function orFilter(expr: string): (r: Row) => boolean {
+  // split on the commas between terms, not the ones inside an in.(...) list
+  const parts: string[] = []
+  let depth = 0
+  let current = ""
+  for (const ch of expr) {
+    if (ch === "(") depth++
+    if (ch === ")") depth--
+    if (ch === "," && depth === 0) {
+      parts.push(current)
+      current = ""
+    } else current += ch
+  }
+  parts.push(current)
+  const terms = parts.map((t) => {
+    const [col, first, ...tail] = t.split(".")
+    const negate = first === "not"
+    const op = negate ? tail.shift() : first
+    const val = tail.join(".")
+    return (r: Row): boolean => {
+      const v = r[col] ?? null
+      if (op === "in") {
+        // SQL: NULL IN (...) and NULL NOT IN (...) are both unknown -> no match
+        if (v === null) return false
+        const hit = val.replace(/^\(|\)$/g, "").split(",").includes(String(v))
+        return negate ? !hit : hit
+      }
+      const hit = op === "is" ? (val === "null" ? v === null : String(v) === val) : op === "neq" ? String(v) !== val : String(v) === val
+      return negate ? !hit : hit
+    }
+  })
+  return (r) => terms.some((f) => f(r))
+}
+
 class Query {
   op = "select"
   payload: any
@@ -161,15 +197,10 @@ class Query {
   is(c: string, v: any) { this.filters.push((r) => (r[c] ?? null) === v); return this }
   /** PostgREST `not`: only `not(col, "is", null)` */
   not(c: string, op: string, v: any) { this.filters.push((r) => (op === "is" ? (r[c] ?? null) !== v : r[c] !== v)); return this }
-  /** PostgREST `or`: only the "col.is.null" / "col.eq.value" / "col.neq.value" terms the routes use */
+  /** PostgREST `or` (orFilter above) */
   or(expr: string) {
-    const terms = expr.split(",").map((t) => {
-      const [col, op, ...rest] = t.split(".")
-      const val = rest.join(".")
-      return (r: Row) =>
-        op === "is" ? (val === "null" ? (r[col] ?? null) === null : String(r[col]) === val) : op === "neq" ? String(r[col]) !== val : String(r[col]) === val
-    })
-    this.filters.push((r) => terms.some((f) => f(r)))
+    const match = orFilter(expr)
+    this.filters.push(match)
     return this
   }
   like(c: string, pattern: string) {

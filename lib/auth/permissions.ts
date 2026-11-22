@@ -89,6 +89,9 @@ export const RULES: Rule[] = [
   rule("/api/maintenance/upload-links", ONLY_TOP, ONLY_TOP),
   // Carbon booklets (owner request 2026-11-19): only admin / CEO see, print and give them out (Maintenance tab)
   rule("/api/maintenance/booklets", ONLY_TOP, ONLY_TOP),
+  // The shared invoice number sequence (owner, 2026-11-21): the accountant's panel on the AR Maintenance tab. Without
+  // this it fell under /api/maintenance, so a sales rep could set the starting number or free a worker's number.
+  rule("/api/maintenance/shared-numbers", ACCOUNTANT, ACCOUNTANT),
   // Reports
   rule("/api/reports", ["accountant", "sales-rep"], ONLY_TOP),
   rule("/api/analytics", ["accountant", "sales-rep", "po-rep"], ONLY_TOP),

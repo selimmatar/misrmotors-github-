@@ -24,6 +24,8 @@ export async function renameInvoiceNumber(db: Db, invoiceId: number, rawNumber: 
   if (!inv) return fail(404, "NOT_FOUND", "Invoice not found.")
   const old = String(inv.invoice_number || "")
   if (inv.status === "replaced") return fail(409, "REPLACED", "This invoice was replaced; its number cannot be changed.")
+  // a cancelled MINV keeps "X<id>-<number>" so its page number can be used again (lib/minv-cancel.ts)
+  if (inv.status === "cancelled") return fail(409, "CANCELLED", "This invoice was cancelled; its number cannot be changed.")
   // MINV numbers too (spec 2026-11-19): renaming one would move it between the Sales and Maintenance tabs
   if (isMaintenanceNumber(old) || isMaintenanceNumber(next)) {
     return fail(409, "MAINTENANCE_NUMBER", "Maintenance invoice numbers (MINV, INV-MNT-) cannot be changed or used here.")

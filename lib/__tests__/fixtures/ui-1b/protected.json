@@ -194,6 +194,8 @@
       "'/api/accounts-receivable",
       "'/api/upload",
       "`/api/delivery-permits?so_id=${soId}",
+      "`/api/invoices/ar/${invoice.id}/photo",
+      "`/api/invoices/ar/${invoice.id}/photo",
       "`/api/invoices/ar/${invoiceId}/pdf",
       "`/api/payment-schedules?invoiceId=${invoiceId}",
       "`/api/payment-schedules?soId=${soId}"

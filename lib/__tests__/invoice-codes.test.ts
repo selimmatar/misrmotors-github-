@@ -15,6 +15,12 @@ import {
 } from "../invoice-codes"
 import { tabOf } from "../ar-tabs"
 import { isMaintenanceInvoice } from "../maintenance-quick-invoice"
+import { FakeDb } from "./fake-db"
+import { takeSharedNumber } from "../shared-invoice-numbers"
+import { createStandaloneMinv } from "../invoicing"
+import { allows, ruleFor } from "../auth/permissions"
+import { renameInvoiceNumber } from "../eta/rename-invoice"
+import { excludeReplaced } from "../ar-live"
 
 test("C1. the first number of each code and year is 001, no dashes", () => {
   assert.equal(INVOICE_SERIAL_START, 1)
@@ -130,4 +136,47 @@ test("booklet counts used, cancelled, blank and skipped pages", () => {
   assert.equal(stats.voided, 1)
   assert.equal(stats.blank, 7)
   assert.deepEqual(stats.skipped, ["MINV26003"])
+})
+
+// ---- v0 follow-up fixes (2026-11-22) ----------------------------------------------------------------------
+test("shared numbers: a missing take_invoice_number function falls back to the INV/MINV numbering", async () => {
+  const db = new FakeDb({ company_settings: [{ setting_key: "shared_invoice_start", setting_value: "1000" }], accounts_receivable: [] })
+  db.jitter = false
+  assert.equal(await takeSharedNumber(db, "sales", null, true), null) // FakeDb answers 42883 for an unknown rpc
+  const made = await createStandaloneMinv(db, { customerId: 1, amount: 114, lines: [{ description: "x", quantity: 1, unitPrice: 100 }] })
+  assert.equal(made.status, 200, JSON.stringify(made.body))
+  assert.match(made.body.invoice_number, /^MINV\d{2}001$/)
+  // any other failure still stops the invoice
+  db.rpcHandlers.take_invoice_number = () => {
+    throw { code: "XX000", message: "locked" }
+  }
+  await assert.rejects(takeSharedNumber(db, "sales", null, true), /locked/)
+})
+
+test("permissions: only the accountant (and admin / CEO) reach the shared invoice number panel", () => {
+  const r = ruleFor("/api/maintenance/shared-numbers")!
+  assert.equal(r.prefix, "/api/maintenance/shared-numbers")
+  for (const role of ["sales-rep", "warehouse-rep", "maintenance", "po-rep"] as const) {
+    assert.equal(allows(r, "GET", [role]), false, role)
+    assert.equal(allows(r, "POST", [role]), false, role)
+  }
+  assert.equal(allows(r, "POST", ["accountant"]), true)
+  assert.equal(allows(r, "POST", ["ceo"]), true)
+})
+
+test("a cancelled MINV drops out of every live list and its number cannot be changed", async () => {
+  const db = new FakeDb({
+    accounts_receivable: [
+      { invoice_id: 1, invoice_number: "X1-MINV26001", cancelled_number: "MINV26001", status: "cancelled", amount: 10 },
+      { invoice_id: 2, invoice_number: "MINV26002", status: "pending", amount: 10 },
+    ],
+    eta_documents: [],
+  })
+  db.jitter = false
+  const { data } = await excludeReplaced(db.from("accounts_receivable").select("invoice_id"))
+  assert.deepEqual(data.map((r: any) => r.invoice_id), [2])
+  const r = await renameInvoiceNumber(db, 1, "777", null)
+  assert.equal(r.ok, false)
+  assert.equal((r as any).code, "CANCELLED")
+  assert.equal(db.tables.accounts_receivable[0].invoice_number, "X1-MINV26001")
 })

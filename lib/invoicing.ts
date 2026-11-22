@@ -1047,7 +1047,15 @@ export async function createStandaloneMinv(
   }
   let invoice: any
   try {
-    invoice = await insertInvoice(db, row, input.manualNumber ?? null, "MINV")
+    try {
+      invoice = await insertInvoice(db, row, input.manualNumber ?? null, "MINV")
+    } catch (error) {
+      // Without accounts_receivable.is_maintenance (scripts/sql/2026-11-17-maintenance-role.sql not applied) the
+      // invoice is still made: its MINV number alone marks it as maintenance (isMaintenanceNumber).
+      if (error instanceof InvoiceNumberTaken || !/is_maintenance/.test(String((error as any)?.message || ""))) throw error
+      const { is_maintenance: _flag, ...withoutFlag } = row
+      invoice = await insertInvoice(db, withoutFlag, input.manualNumber ?? null, "MINV")
+    }
   } catch (error) {
     if (error instanceof InvoiceNumberTaken) return failure(409, error.message, { code: "NUMBER_TAKEN" })
     return failure(500, (error as any)?.message || "Failed to create invoice")

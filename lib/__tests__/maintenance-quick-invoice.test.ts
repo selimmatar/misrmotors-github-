@@ -1,6 +1,6 @@
 // Maintenance quick invoice (spec docs/superpowers/specs/2026-11-17-maintenance-quick-invoice-design.md): the new
-// "maintenance" login role reaches only its own route, the route makes order + approved permit + invoice in one call
-// (undoing earlier steps on failure), and Accounts Receivable splits invoices into Sales and Maintenance tabs.
+// "maintenance" login role reaches only its own route, the route makes one standalone MINV invoice with its lines
+// (since 2026-11-19; undone on failure), and Accounts Receivable splits invoices into Sales and Maintenance tabs.
 import "./route-harness"
 import test from "node:test"
 import assert from "node:assert/strict"
@@ -15,7 +15,7 @@ import { navItemsForRoles, primaryRole } from "../auth/role-nav"
 import { validateNewUser } from "../auth/users-admin"
 import { ROLE_MODULES, ROLE_DISPLAY_NAMES } from "../../components/layout/nav-config"
 import { groupFor } from "../nav-groups"
-import { isMaintenanceInvoice, quickTotals, validateQuickInvoice, MAX_LINES, QUICK_SO_NOTE, QUICK_SO_TYPE } from "../maintenance-quick-invoice"
+import { createQuickMaintenanceInvoice, isMaintenanceInvoice, quickTotals, validateQuickInvoice, MAX_LINES, QUICK_SO_NOTE, QUICK_SO_TYPE } from "../maintenance-quick-invoice"
 import { invoicesForTab, tabOf } from "../ar-tabs"
 import * as quickRoute from "../../app/api/maintenance/quick-invoice/route"
 import * as arRoute from "../../app/api/accounts-receivable/route"
@@ -127,63 +127,56 @@ const counts = (db: FakeDb) =>
   )
 const EMPTY = counts(quickDb())
 
-test("M4. happy path: order, approved permit and invoice, the same shape as invoice 10503", async () => {
+// Since 2026-11-19 (owner, v0 "Make MINV invoices standalone") a quick maintenance invoice is an MINV invoice linked
+// to the customer only: no sales order, no delivery permit; its lines are in ar_invoice_lines.
+const LINES = "ar_invoice_lines"
+test("M4. happy path: one standalone MINV invoice with its lines, the same amounts as invoice 10503", async () => {
   const db = quickDb()
   const res = await post(db, { customerId: 6, lines: LINES_10503 })
   assert.equal(res.status, 200, JSON.stringify(res.body))
   assert.equal(res.body.amount, 2850, "2,500 before VAT + 14%")
-  assert.equal(res.body.invoiceNumber, `INV-${YEAR}-0001`)
+  assert.equal(res.body.invoiceNumber, `MINV${String(YEAR).slice(-2)}001`)
   assert.equal(res.body.customerName, "Al Maamoun")
+  assert.equal(res.body.soId, null)
 
-  const so = db.tables.sales_orders[0]
-  assert.equal(so.customer_id, 6)
-  assert.equal(so.so_type, QUICK_SO_TYPE)
-  assert.equal(so.notes, QUICK_SO_NOTE)
-  assert.equal(so.status, "delivered")
-  assert.equal(so.subtotal, 2500)
-  assert.equal(so.total, 2850)
-  assert.equal(so.payment_type, "cash")
-  assert.equal(so.payment_terms, "prepaid", "the only allowed values are prepaid / installment")
-  assert.equal(db.tables.sales_order_items.length, 4)
-  for (const it of db.tables.sales_order_items) {
-    assert.equal(it.item_type, "outsourced")
-    assert.equal(it.product_id, null)
-    assert.equal(it.item_category, "MAINTENANCE_PARTS")
+  // no order, no permit, no stock moved
+  for (const t of ["sales_orders", "sales_order_items", "delivery_permits", "delivery_permit_items", "invoice_delivery_permits", "inventory", "inventory_transactions"]) {
+    assert.equal(db.tables[t].length, 0, t)
   }
-  const dp = db.tables.delivery_permits[0]
-  assert.equal(dp.status, "APPROVED")
-  assert.equal(dp.sales_order_id, so.so_id)
-  assert.match(dp.permit_no, new RegExp(`^DP-${YEAR}-0001$`))
-  assert.deepEqual(db.tables.delivery_permit_items.map((i) => [i.item_name_snapshot, i.quantity, i.unit_price, i.product_id]), [
-    ["Air lacquer", 2, 950, null], ["Sensor maintenance", 1, 200, null], ["Micro switch maintenance", 1, 200, null], ["Air fittings", 1, 200, null],
-  ])
   const inv = db.tables.accounts_receivable[0]
-  assert.equal(inv.so_id, so.so_id)
-  assert.equal(inv.source_delivery_permit_id, dp.permit_id)
+  assert.equal(inv.so_id, null)
+  assert.equal(inv.customer_id, 6)
+  assert.equal(inv.amount, 2850)
   assert.equal(inv.is_maintenance, true)
   assert.equal(inv.status, "pending")
-  assert.deepEqual(db.tables.invoice_delivery_permits, [{ invoice_id: inv.invoice_id, permit_id: dp.permit_id }])
-  // no stock moved
-  assert.equal(db.tables.inventory.length, 0)
-  assert.equal(db.tables.inventory_transactions.length, 0)
+  assert.deepEqual(db.tables[LINES].map((l) => [l.invoice_id, l.line_no, l.description, l.quantity, l.unit_price, l.line_total]), [
+    [inv.invoice_id, 1, "Air lacquer", 2, 950, 1900],
+    [inv.invoice_id, 2, "Sensor maintenance", 1, 200, 200],
+    [inv.invoice_id, 3, "Micro switch maintenance", 1, 200, 200],
+    [inv.invoice_id, 4, "Air fittings", 1, 200, 200],
+  ])
 })
 
-test("M5. numbering: the normal invoice and permit numbers continue", async () => {
+test("M5. numbering: MINV numbers continue on their own; older INV / work-order / plain numbers do not move them", async () => {
+  const y2 = String(YEAR).slice(-2)
   const db = quickDb({
     accounts_receivable: [
-      { invoice_id: 40, invoice_number: `INV-${YEAR}-0007`, so_id: null, amount: 10, status: "pending" },
+      { invoice_id: 40, invoice_number: `INV${y2}007`, so_id: null, amount: 10, status: "pending" },
       { invoice_id: 41, invoice_number: "INV-MNT-WO-3", so_id: null, amount: 10, status: "pending" },
       { invoice_id: 42, invoice_number: "10503", so_id: null, amount: 10, status: "pending" },
+      { invoice_id: 43, invoice_number: `MINV${y2}004`, so_id: null, amount: 10, status: "pending" },
     ],
-    delivery_permits: [{ permit_id: 3, permit_no: `DP-${YEAR}-0012`, sales_order_id: 99, status: "DRAFT" }],
   })
   const a = await post(db, { customerId: 7, lines: [{ name: "Service", quantity: 1, unitPrice: 100 }] })
   assert.equal(a.status, 200, JSON.stringify(a.body))
-  assert.equal(a.body.invoiceNumber, `INV-${YEAR}-0008`)
-  assert.equal(a.body.permitNo, `DP-${YEAR}-0013`)
+  assert.equal(a.body.invoiceNumber, `MINV${y2}005`)
   const b = await post(db, { customerId: 7, lines: [{ name: "Service", quantity: 1, unitPrice: 100 }] })
-  assert.equal(b.body.invoiceNumber, `INV-${YEAR}-0009`)
-  assert.notEqual(a.body.soNumber, b.body.soNumber)
+  assert.equal(b.body.invoiceNumber, `MINV${y2}006`)
+  // a typed (booklet) number that is already taken is refused, nothing saved
+  const before = db.tables.accounts_receivable.length
+  const taken = await createQuickMaintenanceInvoice(db, { customerId: 7, invoiceNumber: `MINV${y2}005`, lines: [{ name: "x", quantity: 1, unitPrice: 1 }] })
+  assert.equal(taken.status, 409)
+  assert.equal(db.tables.accounts_receivable.length, before)
 })
 
 test("M6. VAT math: 14% on prices before VAT; per line after the e-invoice go-live", async () => {
@@ -201,13 +194,13 @@ test("M6. VAT math: 14% on prices before VAT; per line after the e-invoice go-li
   const r1 = await post(before, { customerId: 6, lines })
   assert.equal(r1.status, 200, JSON.stringify(r1.body))
   assert.equal(r1.body.amount, 34.61)
-  assert.equal(before.tables.sales_orders[0].total, 34.61)
+  assert.equal(before.tables.accounts_receivable[0].amount, 34.61)
 
   const live = quickDb({ company_settings: [{ setting_key: "eta_go_live_at", setting_value: "2026-01-01T00:00:00Z" }] })
   const r2 = await post(live, { customerId: 6, lines })
   assert.equal(r2.status, 200, JSON.stringify(r2.body))
   assert.equal(r2.body.amount, 34.62)
-  assert.equal(live.tables.sales_orders[0].total, 34.62, "the order total fits the invoice exactly")
+  assert.equal(live.tables.accounts_receivable[0].amount, 34.62, "the stored amount is the per-line total")
 })
 
 test("M7. validation: nothing is created for a bad request", async () => {
@@ -241,43 +234,38 @@ test("M7. validation: nothing is created for a bad request", async () => {
 })
 
 test("M8. undo: a failure at any step leaves nothing behind", async () => {
-  const steps = [
-    "sales_orders:insert",
-    "sales_order_items:insert",
-    "delivery_permits:insert",
-    "delivery_permit_items:insert",
-    "accounts_receivable:insert",
-    "invoice_delivery_permits:insert",
-    "delivery_permits:update", // createDpInvoices marks the permit invoiced
-  ]
-  for (const step of steps) {
+  for (const step of ["accounts_receivable:insert", `${LINES}:insert`]) {
     const db = quickDb()
     db.failOn[step] = "boom"
     const res = await post(db, { customerId: 6, lines: LINES_10503 })
     assert.ok(res.status >= 400, `${step}: ${res.status}`)
-    assert.ok(!res.body.partialFailure, step)
     assert.match(res.body.error, /Nothing was saved/, step)
     assert.deepEqual(counts(db), EMPTY, step)
+    assert.equal((db.tables[LINES] || []).length, 0, step)
   }
-  // a failing undo is reported, never hidden
-  const db = quickDb()
-  db.failOn["accounts_receivable:insert"] = "boom"
-  db.failOn["delivery_permits:delete"] = "locked"
-  const res = await post(db, { customerId: 6, lines: LINES_10503 })
-  assert.equal(res.status, 500)
-  assert.equal(res.body.partialFailure, true)
-  assert.match(res.body.error, /delivery permit/)
 })
 
 test("M9. without the is_maintenance column the invoice is still made and still counts as maintenance", async () => {
   const db = quickDb()
-  db.failOn["accounts_receivable:update"] = 'column "is_maintenance" does not exist'
+  // PostgREST answer for a column the database does not have (scripts/sql/2026-11-17-maintenance-role.sql not applied)
+  const realFrom = db.from.bind(db)
+  db.from = ((table: string) => {
+    const q: any = realFrom(table)
+    if (table !== "accounts_receivable") return q
+    const insert = q.insert.bind(q)
+    q.insert = (payload: any) => {
+      if (!("is_maintenance" in payload)) return insert(payload)
+      const refused: any = { select: () => refused, single: () => refused, then: (ok: any, ko: any) => Promise.resolve({ data: null, error: { code: "PGRST204", message: "Could not find the 'is_maintenance' column of 'accounts_receivable' in the schema cache" } }).then(ok, ko) }
+      return refused
+    }
+    return q
+  }) as any
   const res = await post(db, { customerId: 6, lines: LINES_10503 })
   assert.equal(res.status, 200, JSON.stringify(res.body))
   const inv = db.tables.accounts_receivable[0]
   assert.equal(inv.is_maintenance, undefined)
-  const so = db.tables.sales_orders[0]
-  assert.equal(isMaintenanceInvoice({ is_maintenance: inv.is_maintenance, invoice_number: inv.invoice_number, so_type: so.so_type, so_notes: so.notes }), true)
+  assert.equal(db.tables[LINES].length, 4)
+  assert.equal(isMaintenanceInvoice({ is_maintenance: inv.is_maintenance, invoice_number: inv.invoice_number }), true, "the MINV number marks it")
 })
 
 test("M10. GET lists the customers (id and name only)", async () => {

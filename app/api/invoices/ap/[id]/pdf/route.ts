@@ -173,7 +173,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         <span class="pm-label">الحالة:</span>
         <span class="pm-value status-badge status-${escapeHtml(invoice.status)}">${
           invoice.status === "pending"
-            ? "قيد الا��تظار"
+            ? "قيد الانتظار"
             : invoice.status === "paid"
               ? "مدفوعة"
               : invoice.status === "partially_paid"
