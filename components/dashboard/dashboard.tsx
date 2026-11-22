@@ -104,7 +104,7 @@ export function Dashboard({ user: account, onLogout }: DashboardProps) {
   const roles = account.roles?.length ? account.roles : [account.role]
   const mainRole = primaryRole(roles) ?? account.role
   // A person without the Dashboard screen (the accountant, since 2026-11-14) opens on their first screen instead.
-  const [activeModule, setActiveModule] = useState<ModuleType>(() => {
+  const [initialModule] = useState<ModuleType>(() => {
     if (mainRole === "shipment") return "shipment"
     if (mainRole === "maintenance") return "maintenance-quick-invoice"
     if (mainRole === "admin") return "user-management"
@@ -113,6 +113,13 @@ export function Dashboard({ user: account, onLogout }: DashboardProps) {
     const first = items.find((i) => !i.id.startsWith("approve-")) || items[0]
     return (items.some((i) => i.id === "dashboard") ? "dashboard" : first?.id || "dashboard") as ModuleType
   })
+  // Back / forward between the screens opened in this session (owner request, 2026-11-22)
+  const [history, setHistory] = useState<{ stack: ModuleType[]; index: number }>({ stack: [initialModule], index: 0 })
+  const activeModule = history.stack[history.index]
+  const setActiveModule = (next: ModuleType) =>
+    setHistory((h) => (h.stack[h.index] === next ? h : { stack: [...h.stack.slice(0, h.index + 1), next], index: h.index + 1 }))
+  const goBack = () => setHistory((h) => (h.index > 0 ? { ...h, index: h.index - 1 } : h))
+  const goForward = () => setHistory((h) => (h.index < h.stack.length - 1 ? { ...h, index: h.index + 1 } : h))
   const user: User = { ...account, role: effectiveRoleFor(activeModule, roles) }
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const { refreshLists } = useAppContext()
@@ -274,6 +281,8 @@ case "po-requests":
           onLogout={onLogout}
           onMenuClick={() => setMobileSidebarOpen(true)}
           activeModule={activeModule}
+          onBack={history.index > 0 ? goBack : undefined}
+          onForward={history.index < history.stack.length - 1 ? goForward : undefined}
         />
         <main className="flex-1 overflow-auto p-4 md:p-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6">
           {renderModule()}
