@@ -5,6 +5,8 @@ import { AlertCircle, Camera, Check, ImageUp, Loader2 } from "lucide-react"
 import { WORKER_TEXT, useWorkerLanguage, type WorkerErrorCode } from "./worker-text"
 import { WorkerCancelNumber, WorkerReservedCard, WorkerStartCard } from "./worker-number-card"
 import type { WorkerNumberState } from "@/lib/shared-invoice-numbers"
+import type { SentItem } from "@/lib/worker-sent-list"
+import { WorkerSentList } from "./worker-sent-list"
 
 type Stage = { kind: "idle" } | { kind: "sending" } | { kind: "done" } | { kind: "error"; code: WorkerErrorCode }
 
@@ -39,12 +41,31 @@ export function WorkerUploadScreen({
   workerName,
   nextNumber: initialNext,
   numbers: initialNumbers,
+  sent: initialSent = null,
 }: {
   secret: string
   workerName: string
   nextNumber: string | null
   numbers: WorkerNumberState | null
+  sent?: SentItem[] | null
 }) {
+  const [sent, setSent] = useState<SentItem[] | null>(initialSent)
+  const [sentLoading, setSentLoading] = useState(false)
+  const [sentFailed, setSentFailed] = useState(initialSent == null)
+  const refreshSent = async () => {
+    setSentLoading(true)
+    try {
+      const response = await fetch(`/api/worker-upload/${secret}/sent`, { cache: "no-store" })
+      const data = await response.json().catch(() => null)
+      if (response.ok && Array.isArray(data?.items)) {
+        setSent(data.items)
+        setSentFailed(false)      } else setSentFailed(true)
+    } catch {
+      setSentFailed(true)
+    } finally {
+      setSentLoading(false)
+    }
+  }
   const { lang, toggle } = useWorkerLanguage()
   const text = WORKER_TEXT[lang]
   const input = useRef<HTMLInputElement>(null)
@@ -115,11 +136,15 @@ export function WorkerUploadScreen({
       const photo = await shrinkPhoto(file)
       const form = new FormData()
       form.append("photo", photo, photo === file ? file.name : "invoice.jpg")
+      if (!shared && nextNumber) form.append("number", nextNumber)
       const response = await fetch(`/api/worker-upload/${secret}`, { method: "POST", body: form })
       if (response.ok) {
+        const data = await response.json().catch(() => null)
         setStage({ kind: "done" })
+        void refreshSent()
         if (shared) setNumbers({ ...shared, reserved: null, crossOut: [], undoable: null })
-        else setNextNumber(bumpMinv)
+        // The server's next number (a freed number goes first, so it is not always +1); +1 when it has none.
+        else setNextNumber(typeof data?.nextNumber === "string" && data.nextNumber && data.nextNumber !== nextNumber ? data.nextNumber : bumpMinv(nextNumber))
       } else if (response.status === 409) setStage({ kind: "error", code: "no_number" })
       else setStage({ kind: "error", code: CODE_BY_STATUS[response.status] ?? "failed" })
     } catch {
@@ -237,6 +262,8 @@ export function WorkerUploadScreen({
             {shared && reserved && stage.kind !== "sending" ? <WorkerCancelNumber lang={lang} busy={busy} onAction={numberAction} /> : null}
           </div>
         )}
+
+        <WorkerSentList lang={lang} items={sent} loading={sentLoading} failed={sentFailed} onRefresh={refreshSent} />
       </main>
     </div>
   )

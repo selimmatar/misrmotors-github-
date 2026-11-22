@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { actorUserId } from "@/lib/auth/actor"
 import { cleanMinvNumber } from "@/lib/invoice-codes"
-import { BookletStillOpen, MAX_VOID_REASON, bookletStats, createBooklet, minvNumber, type BookletRow } from "@/lib/maintenance-booklets"
+import { BookletStillOpen, MAX_VOID_REASON, bookletStats, createBooklet, minvNumber, nextMinvNumber, type BookletRow } from "@/lib/maintenance-booklets"
 
 // Pre-numbered carbon booklets (spec 2026-11-19, Part 3). GET: the accountant; POST / PATCH: admin and CEO.
 export const dynamic = "force-dynamic"
@@ -33,7 +33,13 @@ export async function GET() {
     for (const r of rows || []) voided.add(String(r.invoice_number))
   }
 
+  // The same "next number" the workers see: the lowest number freed before its invoice was made goes first.
+  const nextNumber = await nextMinvNumber(db).catch((error: any) => {
+    console.error("[booklets] next number:", error?.message || error)
+    return null
+  })
   return NextResponse.json({
+    nextNumber,
     booklets: booklets.map((b) => ({
       id: b.id,
       linkId: b.link_id,

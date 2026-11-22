@@ -43,6 +43,7 @@ const TEXT = {
     confirmLost: "Cancel page",
     cancelled: (n: string) => `Page ${n} cancelled`,
     made: (a: string, b: string) => `Booklet ${a} – ${b} made`,
+    next: (n: string) => `Next number: ${n} (a number cancelled before its invoice was made is free again and goes first)`,
     failed: "Something went wrong",
   },
   ar: {
@@ -62,6 +63,7 @@ const TEXT = {
     confirmLost: "إلغاء الورقة",
     cancelled: (n: string) => `تم إلغاء الورقة ${n}`,
     made: (a: string, b: string) => `تم إنشاء الدفتر ${a} – ${b}`,
+    next: (n: string) => `الرقم التالي: ${n} (الرقم الملغى قبل إنشاء فاتورته يرجع متاحاً ويُستخدم أولاً)`,
     failed: "حدث خطأ",
   },
 }
@@ -70,7 +72,7 @@ export function WorkerBooklets() {
   const { language } = useI18n()
   const text = TEXT[language === "ar" ? "ar" : "en"]
   const { toast } = useToast()
-  const { data, mutate } = useSWR<{ booklets: Booklet[] } | null>("/api/maintenance/booklets", fetcher)
+  const { data, mutate } = useSWR<{ booklets: Booklet[]; nextNumber?: string | null } | null>("/api/maintenance/booklets", fetcher)
   const [busy, setBusy] = useState<string | null>(null)
   const [lostFor, setLostFor] = useState<number | null>(null)
   const [lostNumber, setLostNumber] = useState("")
@@ -107,6 +109,7 @@ export function WorkerBooklets() {
           {text.title}
         </h3>
         <p className="text-sm text-muted-foreground text-pretty">{text.hint}</p>
+        {data.nextNumber ? <p className="text-sm font-semibold text-pretty">{text.next(data.nextNumber)}</p> : null}
       </div>
 
       {!hasOpenBooklet && (

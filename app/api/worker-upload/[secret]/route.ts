@@ -11,6 +11,8 @@ import {
   readDraftPhoto,
 } from "@/lib/maintenance-photos"
 import { attachPhotoToReservation, loadSharedStart, workerHoldsNumber } from "@/lib/shared-invoice-numbers"
+import { nextMinvNumber } from "@/lib/maintenance-booklets"
+import { cleanMinvNumber, invoiceYear2, parseMinvNumber } from "@/lib/invoice-codes"
 
 // The maintenance worker's photo upload (spec 2026-11-19, Part 2). Public (no login): the secret in the path is the
 // key, and it can only add a photo draft. lib/auth/permissions.ts PUBLIC_PREFIXES lets it through the middleware.
@@ -18,6 +20,18 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 120
 
 const refuse = (status: number, code: string) => NextResponse.json({ error: code }, { status })
+
+/** The MINV number the page showed, kept only when it is of this year and not on an invoice or another photo. */
+async function usableShownNumber(db: any, raw: unknown): Promise<string | null> {
+  const number = cleanMinvNumber(typeof raw === "string" ? raw : "")
+  if (parseMinvNumber(number)?.year2 !== invoiceYear2()) return null
+  const [onInvoice, onPhoto] = await Promise.all([
+    db.from("accounts_receivable").select("invoice_id").eq("invoice_number", number).limit(1),
+    db.from("maintenance_photo_drafts").select("id").eq("invoice_number", number).neq("status", "rejected").limit(1),
+  ])
+  if (onInvoice.error || onPhoto.error || onInvoice.data?.length || onPhoto.data?.length) return null
+  return number
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ secret: string }> }) {
   const { secret } = await params
@@ -69,16 +83,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ sec
       .single()
     if (error || !draft) throw new Error(error?.message || "draft not saved")
     let number: number | null = null
+    let nextNumber: string | null = null
     if (shared) {
       number = await attachPhotoToReservation(db, link.id, draft.id)
       if (number) await db.from("maintenance_photo_drafts").update({ invoice_number: String(number) }).eq("id", draft.id)
+    } else {
+      // Old MINV numbering (2026-11-22): the photo keeps the number the page told him to write, so the counter counts
+      // it as pending (a freed number is not offered twice) and frees it again if the photo is rejected.
+      const shown = await usableShownNumber(db, form?.get("number"))
+      if (shown) await db.from("maintenance_photo_drafts").update({ invoice_number: shown }).eq("id", draft.id)
+      nextNumber = await nextMinvNumber(db).catch(() => null)
     }
     await db.from("maintenance_upload_links").update({ last_used_at: new Date().toISOString() }).eq("id", link.id)
 
     // The worker gets "Received" at once; the reading continues after the answer is sent.
     const base64 = bytes.toString("base64")
     after(() => readDraftPhoto(db, draft.id, base64, photo.type))
-    return NextResponse.json({ ok: true, number })
+    return NextResponse.json({ ok: true, number, nextNumber })
   } catch (error: any) {
     console.error("[worker-upload] failed:", error?.message || error)
     return refuse(500, "failed")
