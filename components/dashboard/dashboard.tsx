@@ -119,6 +119,8 @@ export function Dashboard({ user: account, onLogout }: DashboardProps) {
   const setActiveModule = (next: ModuleType) =>
     setHistory((h) => (h.stack[h.index] === next ? h : { stack: [...h.stack.slice(0, h.index + 1), next], index: h.index + 1 }))
   const goBack = () => setHistory((h) => (h.index > 0 ? { ...h, index: h.index - 1 } : h))
+  // Refresh (owner request, 2026-11-22): re-read the shared lists and reload the open screen
+  const [refreshKey, setRefreshKey] = useState(0)
   const goForward = () => setHistory((h) => (h.index < h.stack.length - 1 ? { ...h, index: h.index + 1 } : h))
   const user: User = { ...account, role: effectiveRoleFor(activeModule, roles) }
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -283,9 +285,13 @@ case "po-requests":
           activeModule={activeModule}
           onBack={history.index > 0 ? goBack : undefined}
           onForward={history.index < history.stack.length - 1 ? goForward : undefined}
+          onRefresh={() => {
+            refreshLists()
+            setRefreshKey((k) => k + 1)
+          }}
         />
         <main className="flex-1 overflow-auto p-4 md:p-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6">
-          {renderModule()}
+          <div key={refreshKey} className="contents">{renderModule()}</div>
         </main>
       </div>
       <MobileTabs

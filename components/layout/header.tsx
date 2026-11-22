@@ -4,7 +4,7 @@ import { LanguageToggle } from "./language-toggle"
 import { useI18n } from "@/lib/i18n-context"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { ChevronLeft, ChevronRight, Menu } from "lucide-react"
+import { ChevronLeft, ChevronRight, Menu, RotateCw } from "lucide-react"
 import { ROLE_DISPLAY_NAMES, ROLE_MODULES } from "@/components/layout/nav-config"
 import { pageFor } from "@/lib/nav-groups"
 import { initials } from "@/lib/format"
@@ -17,11 +17,13 @@ interface HeaderProps {
   /** back / forward between the screens opened in this session; undefined = nothing to go back / forward to */
   onBack?: () => void
   onForward?: () => void
+  /** reload the open screen */
+  onRefresh?: () => void
 }
 
 // Dark slate bar on a phone (menu, page title), white on a laptop (group label). Language and the user chip
 // sit at the end.
-export function Header({ user, onMenuClick, activeModule, onBack, onForward }: HeaderProps) {
+export function Header({ user, onMenuClick, activeModule, onBack, onForward, onRefresh }: HeaderProps) {
   const { t } = useI18n()
   const page = pageFor(activeModule, ROLE_MODULES[user.role] || [])
   const roleLabel = t(ROLE_DISPLAY_NAMES[user.role])
@@ -44,6 +46,11 @@ export function Header({ user, onMenuClick, activeModule, onBack, onForward }: H
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onForward} disabled={!onForward} aria-label={t("a11y.forward")} title={t("a11y.forward")}>
           <ChevronRight className="w-4 h-4 rtl:rotate-180" />
         </Button>
+        {onRefresh && (
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onRefresh} aria-label={t("a11y.refresh")} title={t("a11y.refresh")}>
+            <RotateCw className="w-4 h-4" />
+          </Button>
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-base font-bold md:hidden">{t(page.labelKey)}</p>
