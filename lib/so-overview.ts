@@ -159,6 +159,16 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
   // Permits not signed yet (owner request, 2026-11-22): what is on them is not "ready to deliver" any more. Net of what
   // the driver brought back. And what physically left on a permit (out, signed, approved), gross: a returned unit the
   // PO still counts as received is not available again (see the lines below).
+  // goods held in our warehouse for this order (an outsourced row stored for it, e.g. a customer return put back)
+  const stockForOrder = new Map<string, number>()
+  if (so.so_number) {
+    const held = await db.from("inventory").select("product_id, outsourced_name, quantity, so_number").eq("so_number", so.so_number)
+    if (!held.error) for (const r of (held.data || []) as any[]) {
+      if (num(r.quantity) <= 0 || r.product_id) continue
+      const k = lineKey(null, r.outsourced_name)
+      stockForOrder.set(k, (stockForOrder.get(k) || 0) + num(r.quantity))
+    }
+  }
   const openByKey = new Map<string, number>()
   const outByKey = new Map<string, number>()
   const leftGrossByKey = new Map<string, number>()
@@ -235,7 +245,12 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
     // again: it needs a new purchase order (or adding to one); an exchange shows as waiting for the supplier instead.
     const leftGross = leftGrossByKey.get(key) || 0
     const absorbed = isPo ? Math.min(returned, Math.max(0, leftGross - (received || 0))) : 0
-    const stillCounted = isPo ? Math.max(0, returned - absorbed) : 0
+    // a returned unit that is back in our warehouse for this order is ready to deliver again, not "needs a PO"
+    // (stock held for the order beyond what never left = what came back)
+    const neverLeft = isPo ? Math.max(0, (received || 0) - leftGross) : 0
+    const backInStock = isPo ? Math.min(Math.max(0, returned - absorbed), Math.max(0, (stockForOrder.get(key) || 0) - neverLeft)) : 0
+    if (backInStock > 0) stockForOrder.set(key, (stockForOrder.get(key) || 0) - backInStock)
+    const stillCounted = isPo ? Math.max(0, returned - absorbed - backInStock) : 0
     const coverOnPo = isPo ? Math.max(0, (onPo || 0) - stillCounted) : 0
     const usableReceived = isPo ? Math.max(0, (received || 0) - stillCounted) : 0
     const readyQty = isPo ? Math.max(0, Math.min(usableReceived - delivered - onOpenDp, remaining - onOpenDp)) : 0
