@@ -143,7 +143,7 @@ test("shared numbers: a missing take_invoice_number function falls back to the I
   const db = new FakeDb({ company_settings: [{ setting_key: "shared_invoice_start", setting_value: "1000" }], accounts_receivable: [] })
   db.jitter = false
   assert.equal(await takeSharedNumber(db, "sales", null, true), null) // FakeDb answers 42883 for an unknown rpc
-  const made = await createStandaloneMinv(db, { customerId: 1, amount: 114, lines: [{ description: "x", quantity: 1, unitPrice: 100 }] })
+  const made = await createStandaloneMinv(db, { customerId: 1, lines: [{ description: "x", quantity: 1, unitPrice: 100 }] })
   assert.equal(made.status, 200, JSON.stringify(made.body))
   assert.match(made.body.invoice_number, /^MINV\d{2}001$/)
   // any other failure still stops the invoice

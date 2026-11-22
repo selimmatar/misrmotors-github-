@@ -5,7 +5,8 @@
 // (soProfit) because only the CEO and admins may see what the goods cost.
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTotalsByPermit } from "./return-lines"
 import { lineDeliveryStates, DP_DELIVERED_STATUSES } from "./delivery-status"
-import { loadSoInvoicingState } from "./invoicing"
+import { dpInvoiceEtaLines, loadSoInvoicingState, orderDiscountRate } from "./invoicing"
+import { vatPerLine } from "./vat-lines"
 import { excludeReplaced } from "./ar-live"
 
 type Db = any
@@ -47,6 +48,8 @@ export interface OverviewPermit {
   status: string
   date: string | null
   value: number
+  /** what an invoice of this permit stores now: its lines net of returns, the order's discount and VAT per line (lib/vat-lines.ts) */
+  invoiceValue: number
   returned: number
   /** "dp" invoiced on its own, "so" covered by an invoice for the whole order, null not invoiced */
   invoiced: "dp" | "so" | null
@@ -315,6 +318,9 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
         status: p.status,
         date: p.submitted_signed_at || p.created_at || null,
         value: money(value),
+        invoiceValue: invoicing
+          ? vatPerLine(dpInvoiceEtaLines(invoicing, [id]), orderDiscountRate(invoicing.soItems, invoicing.so.subtotal, invoicing.so.discount_amount)).total
+          : 0,
         returned: returnedByPermit.get(id) || 0,
         invoiced: invoicedPermits.has(id) ? ("dp" as const) : soLevelInvoice ? ("so" as const) : null,
       }

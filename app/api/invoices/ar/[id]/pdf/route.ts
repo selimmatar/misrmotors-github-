@@ -7,17 +7,13 @@ import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print
 import {
   VAT_RATE,
   computeWholeOrderAmount,
-  dpInvoicePrintTotals,
-  etaInvoicePrintTotals,
   etaUnitPrice,
-  loadEtaGoLiveAt,
   loadSoInvoicingState,
   loadStandaloneLines,
   orderDiscountRate,
   round2,
-  soDiscountBase,
 } from "@/lib/invoicing"
-import { isAfterGoLive } from "@/lib/eta/totals"
+import { vatPrintTotals } from "@/lib/vat-lines"
 import { replacedPrint } from "@/lib/eta/replaced-print"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
@@ -218,19 +214,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }))
       : []
 
-    // Calculate totals - ensure proper numeric conversion
-    // Do all math calculations FIRST with JavaScript numbers, then convert to Arabic for display
-    const rawItemsTotal = items.reduce((sum: number, item: any) => {
-      const unitPrice = Number(item.unit_price) || 0
-      const quantity = Number(item.quantity) || 0
-      const itemTotal = Number(item.total) || (unitPrice * quantity)
-      return sum + itemTotal
-    }, 0)
-
-    // The printed total must equal the stored invoice amount.
-    //  - Delivery-permit invoice: priced from the linked permits' items with the sales order's discount rate
-    //    and 14% VAT - the same shared function create-from-dps stores (lib/invoicing.ts).
-    //  - Whole-sales-order invoice: the stored amount (the sales order total) is authoritative.
+    // VAT per line (lib/vat-lines.ts, owner 2026-11-22): the printed VAT is the sum of the line VATs (each line's net
+    // after the order's discount x 14 %, rounded on the line) and the total the sum of the line nets + VATs, as the
+    // e-invoice adds it up. The printed total must equal the stored invoice amount: when the per-line sum differs from
+    // it (an invoice stored before VAT was rounded per line, or an order edited after invoicing) the stored amount is
+    // printed as the total, split into before-VAT and VAT - legal amounts never change silently.
     const soSubtotal = Number(so.subtotal) || 0
     const soDiscount = Number(so.discount_amount) || 0
     const VAT_RATE_PDF = 1 + VAT_RATE
@@ -238,34 +226,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let totalWithVat: number
     let subtotalBeforeVat: number
     let vatAmount: number
-    // E-invoice go-live (spec §6): an invoice created at or after company_settings.eta_go_live_at was priced line by
-    // line, so it prints the per-line totals of its printed lines. Earlier invoices print exactly as before.
-    // Soft fallback for the print only: an unreadable setting prints as before (creating invoices refuses instead).
-    const etaGoLiveAt = await loadEtaGoLiveAt(supabase).catch((error: any) => {
-      console.warn("AR Invoice PDF - e-invoice go-live setting unreadable:", error?.message || error)
-      return null
-    })
     if (replaced) {
       // the sent document's totals; without one, the stored amount
       totalWithVat = replaced.totals ? round2(replaced.totals.total) : round2(Number(invoice.amount) || 0)
       subtotalBeforeVat = replaced.totals ? round2(replaced.totals.net) : round2(totalWithVat / VAT_RATE_PDF)
       vatAmount = replaced.totals ? round2(replaced.totals.vat) : round2(totalWithVat - subtotalBeforeVat)
-    } else if (isAfterGoLive(invoice.created_at, etaGoLiveAt)) {
-      const lines = items.map((item: any) => ({
-        name: item.item_type === "outsourced" ? item.outsourced_name || "" : item.products?.product_name || "",
-        quantity: Number(item.quantity) || 0,
-        unitPrice: etaUnitPrice(item),
-      }))
-      const printed = etaInvoicePrintTotals(lines, orderDiscountRate(so.sales_order_items || [], soSubtotal, soDiscount), invoice.amount)
-      ;({ totalWithVat, subtotalBeforeVat, vatAmount } = printed)
-    } else if (isDpBasedInvoice) {
-      const printed = dpInvoicePrintTotals(rawItemsTotal, soDiscountBase(so.sales_order_items || [], soSubtotal), soDiscount, invoice.amount)
-      ;({ totalWithVat, subtotalBeforeVat, vatAmount } = printed)
     } else {
-      totalWithVat = round2(Number(invoice.amount) || 0)
-      // Rounded to cents so the piastre column never shows 100 (e.g. 899.9999 -> "899 / 100").
-      subtotalBeforeVat = round2(totalWithVat / VAT_RATE_PDF)
-      vatAmount = round2(totalWithVat - subtotalBeforeVat)
+      const discountRate = invoice.so_id ? orderDiscountRate(so.sales_order_items || [], soSubtotal, soDiscount) : 0
+      const printed = vatPrintTotals(
+        items.map((item: any) => ({ quantity: Number(item.quantity) || 0, unitPrice: etaUnitPrice(item) })),
+        discountRate,
+        invoice.amount,
+      )
+      ;({ totalWithVat, subtotalBeforeVat, vatAmount } = printed)
     }
 
     // Fetch logo and convert to base64 for embedding in HTML

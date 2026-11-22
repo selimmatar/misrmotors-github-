@@ -277,8 +277,9 @@ test("O12. orders to invoice: ready when everything is delivered and every DP ap
   })
   const list = await ordersToInvoice(db)
   assert.deepEqual(list.map((o) => [o.soNumber, o.ready, o.value, o.toInvoice.map((p) => p.number)]), [
-    ["SO-READY", true, 300, ["DP-1"]],
-    ["SO-OPEN", false, 200, ["DP-2"]],
+    // 2026-11-22: what an invoice of those permits stores (VAT per line); was 300 / 200 before VAT
+    ["SO-READY", true, 342, ["DP-1"]],
+    ["SO-OPEN", false, 228, ["DP-2"]],
   ])
   assert.deepEqual(list[1].reasons, [
     { kind: "not_delivered", name: "C", quantity: 2, state: "no_po" },

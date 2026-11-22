@@ -179,22 +179,23 @@ test("M5. numbering: MINV numbers continue on their own; older INV / work-order 
   assert.equal(db.tables.accounts_receivable.length, before)
 })
 
-test("M6. VAT math: 14% on prices before VAT; per line after the e-invoice go-live", async () => {
+test("M6. VAT math: 14% on prices before VAT, rounded per line (go-live or not; owner 2026-11-22)", async () => {
   const lines = [
     { name: "a", quantity: 1, unitPrice: 10.05 },
     { name: "b", quantity: 1, unitPrice: 10.12 },
     { name: "c", quantity: 1, unitPrice: 10.19 },
   ]
-  assert.deepEqual(quickTotals(lines, false), { net: 30.36, vat: 4.25, total: 34.61 })
-  assert.deepEqual(quickTotals(lines, true), { net: 30.36, vat: 4.26, total: 34.62 })
+  // VAT on the total would give 4.25 / 34.61; per line 1.41 + 1.42 + 1.43 = 4.26
+  assert.deepEqual(quickTotals(lines), { net: 30.36, vat: 4.26, total: 34.62 })
   assert.deepEqual(quickTotals(LINES_10503), { net: 2500, vat: 350, total: 2850 })
-  assert.deepEqual(quickTotals([{ name: "x", quantity: 3, unitPrice: 33.33 }], false), { net: 99.99, vat: 14, total: 113.99 })
+  assert.deepEqual(quickTotals([{ name: "x", quantity: 3, unitPrice: 33.33 }]), { net: 99.99, vat: 14, total: 113.99 })
 
+  // 2026-11-22: without a go-live the stored amount is the per-line total too (was 34.61, VAT on the total)
   const before = quickDb()
   const r1 = await post(before, { customerId: 6, lines })
   assert.equal(r1.status, 200, JSON.stringify(r1.body))
-  assert.equal(r1.body.amount, 34.61)
-  assert.equal(before.tables.accounts_receivable[0].amount, 34.61)
+  assert.equal(r1.body.amount, 34.62)
+  assert.equal(before.tables.accounts_receivable[0].amount, 34.62)
 
   const live = quickDb({ company_settings: [{ setting_key: "eta_go_live_at", setting_value: "2026-01-01T00:00:00Z" }] })
   const r2 = await post(live, { customerId: 6, lines })

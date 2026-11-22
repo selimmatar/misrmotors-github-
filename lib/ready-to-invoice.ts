@@ -25,6 +25,7 @@ export interface OrderToInvoice {
   ready: boolean
   /** approved permits not invoiced yet: what an invoice can take now */
   toInvoice: { permitId: number; number: string; value: number }[]
+  /** what an invoice of those permits would store (discount and VAT per line, lib/vat-lines.ts) */
   value: number
   /** permits of the order already invoiced */
   invoiced: string[]
@@ -39,7 +40,7 @@ export async function ordersToInvoice(db: Db): Promise<OrderToInvoice[]> {
   for (const soId of soIds) {
     const ov = await buildSoOverview(db, soId)
     if (!ov) continue
-    const toInvoice = ov.permits.filter((p) => p.status === "APPROVED" && !p.invoiced).map((p) => ({ permitId: p.id, number: p.number, value: p.value }))
+    const toInvoice = ov.permits.filter((p) => p.status === "APPROVED" && !p.invoiced).map((p) => ({ permitId: p.id, number: p.number, value: p.invoiceValue }))
     if (toInvoice.length === 0) continue
     const reasons: NotReadyReason[] = []
     for (const l of ov.lines) {

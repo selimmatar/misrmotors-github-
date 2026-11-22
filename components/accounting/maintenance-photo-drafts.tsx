@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { formatDate, formatMoney } from "@/lib/format"
+import { vatPerLine } from "@/lib/vat-lines"
 
 interface DraftLine {
   name: string
@@ -41,7 +42,6 @@ interface Customer {
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(r)))
-const VAT_RATE = 0.14
 
 const TEXT = {
   en: {
@@ -256,8 +256,10 @@ function DraftDialog({
   }, [customers, search])
   const chosen = customers.find((c) => c.id === customerId) ?? null
 
-  const subtotal = lines.reduce((sum, l) => sum + (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0), 0)
-  const vat = Math.round(subtotal * VAT_RATE * 100) / 100
+  // VAT per line, as the invoice will store it (lib/vat-lines.ts)
+  const perLine = vatPerLine(lines.map((l) => ({ quantity: Number(l.quantity) || 0, unitPrice: Number(l.unitPrice) || 0 })))
+  const subtotal = perLine.net
+  const vat = perLine.vat
   const validLines = lines.filter((l) => l.name.trim() && Number(l.quantity) > 0 && Number(l.unitPrice) > 0)
   const writtenVat = draft.read?.writtenVat ?? 0
   const writtenTotal = draft.read?.writtenTotal ?? 0

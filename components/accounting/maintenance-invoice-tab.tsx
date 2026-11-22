@@ -17,6 +17,7 @@ import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { useI18n } from "@/lib/i18n-context"
 import { formatDate } from "@/lib/format"
 import { fill } from "@/lib/i18n-format"
+import { vatPerLine } from "@/lib/vat-lines"
 
 interface ApprovedWorkOrder {
   work_order_id: number
@@ -100,10 +101,9 @@ export function MaintenanceInvoiceTab({ showHeading = true }: { showHeading?: bo
     }
   }
 
-  // Same rounding as the server: price before VAT + 14% VAT
-  const previewNet = Math.round((parseFloat(invoiceAmount) || 0) * 100) / 100
-  const previewTotal = Math.round(previewNet * 1.14 * 100) / 100
-  const invoicePreview = { net: previewNet, vat: Math.round((previewTotal - previewNet) * 100) / 100, total: previewTotal }
+  // Same rule as the server: one line, price before VAT + 14% VAT rounded on the line (lib/vat-lines.ts)
+  const previewLine = vatPerLine([{ quantity: 1, unitPrice: Math.round((parseFloat(invoiceAmount) || 0) * 100) / 100 }])
+  const invoicePreview = { net: previewLine.net, vat: previewLine.vat, total: previewLine.total }
 
   const pendingInvoice = workOrders.filter(wo => !wo.has_invoice)
   const invoiced = workOrders.filter(wo => wo.has_invoice)
