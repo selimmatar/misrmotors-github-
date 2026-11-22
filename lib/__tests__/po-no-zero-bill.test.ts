@@ -106,7 +106,7 @@ test("NZ2. reopen clears only the marker (no bill removed); 'Remove last bill' a
   assert.equal(c2.status, 200, JSON.stringify(c2.body))
   assert.equal(c2.body.invoiceNumber, "APINV-PO-1")
   assert.equal(c2.body.amount, 228) // 2 x 100 x 1.14
-  assert.equal((await reopen()).body.removed, "APINV-PO-1")
+  assert.equal((await reopen()).body.kept, "APINV-PO-1", "the closing bill is kept (2026-11-22)")
   const removed = await reopen()
   assert.deepEqual([removed.body.reopened, removed.body.removed], [false, "APINV-PO-1-B2"], "Remove last bill unchanged")
 })
@@ -159,7 +159,7 @@ test("NZ5. closed = the latest PO_CLOSED / PO_REOPENED event; a normal close and
 
 test("NZ6. screens: the PO list and the close dialog know a no-bill close; strings in both languages", () => {
   const module = src("components/modules/purchase-order-module.tsx")
-  assert.match(module, /isClosedPO = \(order: PurchaseOrder\) => !!closingBillOf\(poBills\(order\), order\.poNumber\) \|\| !!order\.closedWithoutBill/)
+  assert.match(module, /isClosedPO = \(order: PurchaseOrder\) => \(!!closingBillOf\(poBills\(order\), order\.poNumber\) && !order\.reopenedKeptBillId\) \|\| !!order\.closedWithoutBill/)
   const dialog = src("components/purchase-order/po-bill-dialog.tsx")
   assert.match(dialog, /res\?\.noBill \? t\("po\.closed-done-no-bill"\)/)
   assert.match(dialog, /po\.close-no-bill-note/)

@@ -26,9 +26,9 @@ import { creditInvoicedReturn } from "./return-credit"
 import { computePoTotals } from "./po-items"
 import { syncPoStatus } from "./po-edit"
 import { exchangeOnPo, type Pair, type Undo as PoUndo } from "./po-exchange"
-import { billHasPayments, billedByItem, billsOf, createPoBill, relinkCredits, removePoBills } from "./po-bill"
+import { billHasPayments, billedByItem, billsOf, isPoClosed, reopenKeepingBill } from "./po-bill"
 import { closingBillOf } from "./po-bill-number"
-import { PO_CLOSED_NO_BILL, isClosedWithoutBill, writeCloseMarker } from "./po-closed-marker"
+import { PO_CLOSED_NO_BILL, isClosedWithoutBill, keptBillId, writeCloseMarker } from "./po-closed-marker"
 import { undoMoves, type StockMove } from "./dp-stock"
 import { computeTotals } from "./print-totals"
 import { logPoEvent } from "./po-history"
@@ -1043,7 +1043,11 @@ async function decideReturnCredit(db: Db, inventoryId: number, input: any): Prom
   let lowerBy = 0
   // Several bills per PO (2026-11-17): an open PO may already have bills for received items. The line is lowered only
   // when enough of it is not billed yet; what was billed goes back as a supplier credit, as on a closed PO.
-  const closedPo = !!receipt && !!closingBillOf(receipt.apInvoiceNumbers.map((n) => ({ invoice_number: n })), receipt.poNumber)
+  // (a PO reopened with its closing bill kept, 2026-11-22, is open again)
+  const closedPo =
+    !!receipt &&
+    !!closingBillOf(receipt.apInvoiceNumbers.map((n) => ({ invoice_number: n })), receipt.poNumber) &&
+    (await isPoClosed(db, { po_id: receipt.poId, po_number: receipt.poNumber }))
   if (!noCredit && receipt && receipt.poItemId && !closedPo) {
     const po = must(await db.from("purchase_orders").select("po_id, po_number, status, cost_finalized, total").eq("po_id", receipt.poId).maybeSingle(), "purchase order of the returned item")
     const line = must(await db.from("purchase_order_items").select("quantity").eq("po_item_id", receipt.poItemId).maybeSingle(), "purchase order line of the returned item")
@@ -1267,8 +1271,10 @@ async function exchangeFacts(db: Db, inventoryId: number) {
   if (!po || !line) return { error: failure(409, "The purchase order line of this item is gone.", { code: "NO_PO" }) }
   const product = row.product_id ? must(await db.from("products").select("product_name").eq("product_id", row.product_id).maybeSingle(), "load product") : null
   const name = product?.product_name || line.outsourced_name || line.item_name_snapshot || productName || "item"
-  // only the closing bill is taken off to reopen the PO; bills for received items stay (several bills, 2026-11-17)
-  const closing = closingBillOf(await billsOf(db, po.po_id), po.po_number)
+  // A closed PO is reopened KEEPING its closing bill (owner decision, 2026-11-22): closing it again updates that bill.
+  // `bills` = the closing bill of a PO that is closed now (not one a reopen already kept).
+  const closingRow = closingBillOf(await billsOf(db, po.po_id), po.po_number)
+  const closing = closingRow && (await keptBillId(db, po.po_id)) !== Number(closingRow.invoice_id) ? closingRow : null
   const bills = closing ? [closing] : []
   // closed without a closing bill (nothing was left to bill, 2026-11-18): reopened by clearing the marker only
   const closedNoBill = !closing && (await isClosedWithoutBill(db, po.po_id))
@@ -1330,9 +1336,7 @@ export async function exchangeReturnedItem(db: Db, input: any): Promise<Workflow
     if (f.error) return f.error
     if (f.po.status === "rejected") return failure(409, "The purchase order of this item was rejected.", { code: "PO_NOT_EDITABLE" })
     if (f.po.cost_finalized) return failure(409, "The cost of this item's purchase order is finalized, so it can no longer be exchanged. Remove it and credit the supplier instead.", { code: "PO_COST_FINALIZED" })
-    if (f.paid) {
-      return failure(409, `A payment is already recorded on the supplier bill of ${f.po.po_number}, so it cannot be exchanged. Remove the item and credit the supplier, and put the new item on a new purchase order with that credit.`, { code: "PO_PAID" })
-    }
+    // a paid bill no longer blocks it (owner decision, 2026-11-22): the bill is kept and updated when the PO is closed
     if (!(f.quantity > 0)) return failure(409, `Nothing of this item is left on ${f.po.po_number} to exchange.`, { code: "EXCHANGE_TOO_MANY" })
 
     // 1. The returned item goes back to the supplier: it leaves the returned-items list (guarded, only once).
@@ -1340,17 +1344,10 @@ export async function exchangeReturnedItem(db: Db, input: any): Promise<Workflow
     if (!claim.ok) return claim.result
     claimedRow = claim.row
 
-    // 2. A closed PO with nothing paid is reopened first (its bill is made again when it is closed).
+    // 2. A closed PO is reopened first, keeping its closing bill (closing it again updates that same bill).
     if (f.bills.length > 0) {
-      const { unlinkedCreditIds } = await removePoBills(db, f.bills)
-      reopened = { po: f.po, unlinked: unlinkedCreditIds, bill: f.bills[0] }
-      await logPoEvent(db, f.po.po_id, {
-        event_type: "PO_REOPENED",
-        old_value: f.bills.map((b: any) => b.invoice_number).join(", "),
-        new_value: JSON.stringify({ unlinkedCreditIds }),
-        notes: `${f.po.po_number} reopened to exchange a returned item`,
-        userId: input?.userId,
-      })
+      await reopenKeepingBill(db, f.po, f.bills[0], `${f.po.po_number} reopened to exchange a returned item; bill ${f.bills[0].invoice_number} kept`, input?.userId)
+      reopened = { po: f.po, unlinked: [], bill: f.bills[0] }
     } else if (f.closedNoBill) {
       await writeCloseMarker(db, f.po.po_id, {
         event_type: "PO_REOPENED",
@@ -1421,9 +1418,12 @@ export async function exchangeReturnedItem(db: Db, input: any): Promise<Workflow
         console.error("[returns] exchange: could not mark the PO closed again after a failure", errText(e))
       }
     } else if (reopened) {
-      const billError = await createPoBill(db, reopened.po, { supplierInvoiceNumber: reopened.bill?.supplier_invoice_number ?? null, invoiceDate: reopened.bill?.invoice_date ?? null })
-      if (billError) console.error("[returns] exchange: could not make the bill again after a failure", billError)
-      else await relinkCredits(db, reopened.po.po_id, reopened.unlinked)
+      // the bill was kept: closing the PO again only needs the close event back
+      try {
+        await writeCloseMarker(db, reopened.po.po_id, { event_type: "PO_CLOSED", new_value: reopened.bill?.invoice_number ?? null, notes: `${reopened.po.po_number} closed again after a failed exchange (bill unchanged)` })
+      } catch (e) {
+        console.error("[returns] exchange: could not mark the PO closed again after a failure", errText(e))
+      }
     }
     if (claimedRow && !(await restoreHoldingRow(db, claimedRow))) {
       return failure(500, "The exchange failed and the returned item could not be put back. Contact an administrator.", { partialFailure: true, inventoryId })

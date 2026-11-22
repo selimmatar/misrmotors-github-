@@ -49,9 +49,11 @@ const LINE_TONE: Record<OverviewLine["state"], keyof typeof tone> = {
   waiting_supplier: "info",
   no_po: "bad",
   to_deliver: "grey",
+  on_dp: "info",
+  out_for_delivery: "info",
 }
 
-/** Ordered → On PO / Stock → Received → Delivered, as four dots. */
+/** Ordered → On PO / Stock → Received → Out for delivery → Delivered, as five dots. */
 function Steps({ line }: { line: OverviewLine }) {
   const { t } = useI18n()
   const full = (n: number | null) => (line.source === "stock" ? "done" : n !== null && n >= line.ordered - 1e-6 ? "done" : n && n > 0 ? "part" : "none")
@@ -59,10 +61,14 @@ function Steps({ line }: { line: OverviewLine }) {
     { label: t("ov.step-ordered"), state: "done" },
     { label: line.source === "stock" ? t("ov.step-stock") : t("ov.step-po"), state: full(line.onPo) },
     { label: t("ov.step-received"), state: full(line.received) },
+    {
+      label: t("ov.step-out"),
+      state: line.delivered + line.outForDelivery >= line.ordered - 1e-6 ? "done" : line.delivered + line.outForDelivery > 0 ? "part" : "none",
+    },
     { label: t("ov.step-delivered"), state: line.delivered >= line.ordered - 1e-6 ? "done" : line.delivered > 0 ? "part" : "none" },
   ]
   return (
-    <div className="grid grid-cols-4 mt-2 min-w-[220px]" aria-hidden="true">
+    <div className="grid grid-cols-5 mt-2 min-w-[260px]" aria-hidden="true">
       {steps.map((s, i) => (
         <div key={i} className="relative grid justify-items-center gap-1 text-[10px] text-muted-foreground">
           {i > 0 && <span className={`absolute top-[7px] end-1/2 w-full h-0.5 ${s.state !== "none" ? "bg-primary" : "bg-border"}`} />}
@@ -198,7 +204,7 @@ export function OrderOverviewDialog({
     e.kind === "note" ? "bg-amber-500" : e.kind === "returned" ? "bg-red-500" : e.kind === "paid" || e.kind === "dp_signed" || e.kind === "invoiced" ? "bg-emerald-500" : "bg-primary"
 
   const lineStatus = (l: OverviewLine) => {
-    if (l.state === "partial" || l.state === "to_deliver") return fill(t("ov.state-left"), { qty: qty(l.ordered - l.delivered) })
+    if (l.state === "partial" || l.state === "to_deliver") return fill(t("ov.state-left"), { qty: qty(l.ordered - l.delivered - l.onOpenDp) })
     return t(`ov.state-${l.state}`)
   }
 
@@ -336,6 +342,7 @@ export function OrderOverviewDialog({
                       <th className="text-start font-semibold p-2">{t("ov.item")}</th>
                       <th className="text-center font-semibold p-2">{t("ov.step-ordered")}</th>
                       <th className="text-center font-semibold p-2">{t("ov.step-received")}</th>
+                      <th className="text-center font-semibold p-2">{t("ov.out-for-delivery")}</th>
                       <th className="text-center font-semibold p-2">{t("ov.step-delivered")}</th>
                       <th className="text-start font-semibold p-2">{t("ov.status")}</th>
                       <th className="text-start font-semibold p-2">{t("ov.documents")}</th>
@@ -350,6 +357,12 @@ export function OrderOverviewDialog({
                         </td>
                         <td className="p-2 text-center">{qty(l.ordered)}</td>
                         <td className="p-2 text-center">{l.received === null ? t("ov.step-stock") : qty(l.received)}</td>
+                        <td className="p-2 text-center">
+                          {l.outForDelivery > 0 ? qty(l.outForDelivery) : "—"}
+                          {l.onOpenDp - l.outForDelivery > 1e-6 && (
+                            <div className="text-xs text-muted-foreground">{fill(t("ov.on-dp-n"), { qty: qty(l.onOpenDp - l.outForDelivery) })}</div>
+                          )}
+                        </td>
                         <td className="p-2 text-center">
                           {qty(l.delivered)}
                           {l.returned > 0 && <div className="text-xs text-destructive">{fill(t("ov.returned-n"), { qty: qty(l.returned) })}</div>}

@@ -115,7 +115,13 @@ export function ShippingModule() {
     fetchOperationsEmployees()
   }, [])
 
-  const readyForPickup = permits.filter((p) => p.status === "READY_FOR_PICKUP" || p.status === "PRINTED")
+  // Only what may go out (owner rule, 2026-11-22): ready for pickup, or a draft / printed permit whose lines all go
+  // straight from the supplier. A printed permit the warehouse has not prepared stays with the warehouse.
+  const readyForPickup = permits.filter((p) =>
+    p.nextActions
+      ? p.nextActions.includes("MARK_OUT_FOR_DELIVERY")
+      : p.status === "READY_FOR_PICKUP" || p.status === "PRINTED",
+  )
   const outForDelivery = permits.filter((p) => p.status === "OUT_FOR_DELIVERY")
   const delivered = permits.filter((p) => p.status === "SUBMITTED_SIGNED" || p.status === "APPROVED")
 
@@ -157,7 +163,7 @@ export function ShippingModule() {
         fetchPermits()
       } else {
         const error = await response.json()
-        alert(error.error || t("message.error"))
+        alert((language === "ar" && error.errorAr) || error.error || t("message.error"))
       }
     } catch (error) {
       console.error("Error marking out for delivery:", error)

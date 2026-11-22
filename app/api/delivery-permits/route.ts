@@ -5,7 +5,7 @@ import { checkIdempotency, completeIdempotency, generateDPApprovalIdempotencyKey
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { isSOFullyDelivered, DP_DELIVERED_STATUSES } from "@/lib/delivery-status"
 import { planAllocation } from "@/lib/dp-allocate"
-import { isAllowedDpTransition } from "@/lib/dp-transitions"
+import { allowedDpActions, isAllowedDpTransition, isPrepared, lineRoute, needsPreparation, permitLineRoutes, preparationRefusal, warehouseNamesBySo } from "@/lib/dp-transitions"
 import { abortDeduction, deductStockForPermit, finishDeduction, reverseDeduction, type StockMove } from "@/lib/dp-stock"
 import { knownUserId } from "@/lib/po-history"
 import { asUuid } from "@/lib/idempotency"
@@ -205,6 +205,16 @@ export async function GET(request: NextRequest) {
     }
     const returnedTotals = returnedTotalsByPermit(returnLines)
 
+    // Where each line comes from (warehouse / direct from the supplier) and the next steps the server allows (owner
+    // rule, 2026-11-22: warehouse preparation before shipping). A failed read shows every line as warehouse (the safe side).
+    let namesBySo = new Map<number, Set<string>>()
+    try {
+      namesBySo = await warehouseNamesBySo(supabase, (permits || []).map((p: any) => Number(p.sales_order_id)).filter(Boolean))
+    } catch (routeError: any) {
+      console.error("Delivery Permits GET: could not read the stored outsourced items:", routeError?.message)
+    }
+    const rawById = new Map((permits || []).map((p: any) => [Number(p.permit_id), p]))
+
     const finalPermits = permitsWithItems.map((permit: any) => {
       const permitNumericId = Number(permit.id)
       const keyed = (permit.items || []).map((item: any) => ({
@@ -212,10 +222,25 @@ export async function GET(request: NextRequest) {
         quantity: Number(item.quantity) || 0,
       }))
       const net = netLineQuantities(keyed, returnedByKey(returnLines, { permitId: permitNumericId }))
+      const raw: any = rawById.get(permitNumericId) || {}
+      const names = namesBySo.get(Number(raw.sales_order_id)) || null
+      const routes = (permit.items || []).map((item: any) =>
+        names ? lineRoute({ product_id: item.productId, item_name_snapshot: item.itemNameSnapshot, warehouse_id: item.warehouseId }, names) : "warehouse",
+      )
+      const needsWarehouse = needsPreparation(routes)
       return {
         ...permit,
         returnedQuantity: returnedTotals.get(permitNumericId) || 0,
-        items: (permit.items || []).map((item: any, idx: number) => ({ ...item, returnedQuantity: keyed[idx].quantity - net[idx] })),
+        allocatedAt: raw.allocated_at ?? null,
+        needsPreparation: needsWarehouse,
+        prepared: isPrepared(raw),
+        directFromSupplier: routes.length > 0 && !needsWarehouse,
+        nextActions: allowedDpActions(raw, needsWarehouse),
+        items: (permit.items || []).map((item: any, idx: number) => ({
+          ...item,
+          returnedQuantity: keyed[idx].quantity - net[idx],
+          deliveryRoute: routes[idx],
+        })),
       }
     })
 
@@ -486,12 +511,27 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         {
           error: `Action ${action} is not allowed on a delivery permit in status ${currentPermit.status}.`,
+          errorAr: `هذه الخطوة غير مسموحة لإذن التسليم في حالته الحالية (${currentPermit.status}).`,
           code: "DP_INVALID_TRANSITION",
           from: currentPermit.status,
           action,
         },
         { status: 409 },
       )
+    }
+
+    // Warehouse preparation before shipping (owner rule, 2026-11-22; lib/dp-transitions.ts): only a permit whose lines
+    // all come straight from the supplier may skip it.
+    if (action === "MARK_READY_FOR_PICKUP" || action === "MARK_OUT_FOR_DELIVERY") {
+      let routes: Awaited<ReturnType<typeof permitLineRoutes>>
+      try {
+        routes = await permitLineRoutes(supabase, currentPermit)
+      } catch (routeError: any) {
+        console.error("Delivery Permits PUT - could not read where the permit lines come from:", routeError?.message)
+        return NextResponse.json({ error: "Could not read the permit items. Nothing was changed.", errorAr: "تعذّرت قراءة أصناف الإذن. لم يتغيّر شيء." }, { status: 500 })
+      }
+      const refusal = preparationRefusal(currentPermit, action, needsPreparation(routes))
+      if (refusal) return NextResponse.json({ ...refusal, from: currentPermit.status, action }, { status: 409 })
     }
 
     const updates: any = { updated_at: new Date().toISOString() }

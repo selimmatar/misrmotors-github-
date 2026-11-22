@@ -20,6 +20,7 @@ import { formatDate } from "@/lib/format"
 import { PO_CLOSABLE_STATUSES, PO_CLOSE_ROLES } from "@/lib/po-edit"
 import { toEnglishDigits } from "@/lib/po-requests/read-prices"
 import { typedNumber } from "@/lib/typed-number"
+import { isPartialBill } from "@/lib/po-bill-number"
 import type { PurchaseOrder } from "@/lib/types"
 import { BillReceivedDialog, ClosePoDialog } from "./po-bill-dialog"
 
@@ -96,9 +97,13 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
   const canReopen = may && closed
   const canAdvance = may && !closed && !["rejected", "draft"].includes(order.status)
   const canBill = may && !closed && BILLABLE_STATUSES.includes(order.status)
-  const lastBill = bills.length > 0 ? bills[bills.length - 1] : null
+  // the closing bill a reopen kept is never removed (2026-11-22): closing again updates it
+  const removable = order.reopenedKeptBillId ? bills.filter((b) => isPartialBill(b, order.poNumber)) : bills
+  const lastBill = removable.length > 0 ? removable[removable.length - 1] : null
   const canRemoveLast = may && !closed && !!lastBill
-  if (!canEdit && !canClose && !canReopen && !canAdvance && !canBill && !canRemoveLast) return null
+  // a closed PO takes returns too: what was billed comes back as a supplier credit, no reopen needed (2026-11-22)
+  const canReturn = canEdit || (may && closed && BILLABLE_STATUSES.includes(order.status))
+  if (!canEdit && !canReturn && !canClose && !canReopen && !canAdvance && !canBill && !canRemoveLast) return null
 
   const run = async (url: string, body: unknown, confirmText: string, done: string) => {
     if (!confirm(confirmText)) return
@@ -129,7 +134,7 @@ export function PoOpenMenu({ order, closed, canEdit, role, userId, products, inv
               <ArrowLeftRight className="w-4 h-4 me-2" /> {t("po.exchange-item")}
             </DropdownMenuItem>
           )}
-          {canEdit && (
+          {canReturn && (
             <DropdownMenuItem onSelect={() => setDialog("return")}>
               <Undo2 className="w-4 h-4 me-2" /> {t("po.return-to-supplier")}
             </DropdownMenuItem>
@@ -436,12 +441,15 @@ function ReturnDialog({
     }
     setSaving(true)
     try {
-      await post("/api/purchase-orders/return-to-supplier", {
+      const saved = await post("/api/purchase-orders/return-to-supplier", {
         id: order.id,
         userId,
         items: rows.map((r) => ({ fromItemId: r.fromId, quantity: typedNumber(r.qty), warehouseId: r.warehouseId === "none" ? null : r.warehouseId, reason: r.reason })),
       })
-      alert(fill(t("po.return-saved"), { n: rows.length }))
+      alert(
+        fill(t("po.return-saved"), { n: rows.length }) +
+          (Number(saved?.creditTotal) > 0 ? `\n${fill(t("po.return-credited"), { amount: Number(saved.creditTotal).toFixed(2) })}` : ""),
+      )
       onClose()
       await onDone()
     } catch (error) {
