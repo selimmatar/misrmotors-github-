@@ -255,14 +255,27 @@ function EtaActions({
   }
 
   const printout = async (docId: number) => {
+    // Phones (iOS Safari above all) block a tab opened after an await, so the tab is opened on the tap itself and
+    // the PDF is loaded into it once it arrives (owner report, 2026-11-22: "print portal invoice does nothing").
+    const tab = window.open("", "_blank")
     setBusy(true)
     try {
       const res = await fetch(`/api/eta/printout?docId=${docId}`)
       if (!res.ok) throw new Error(await readApiError(res, t("message.error"), language, t))
       const url = URL.createObjectURL(await res.blob())
-      window.open(url, "_blank")
+      if (tab && !tab.closed) tab.location.href = url
+      else {
+        // no tab could be opened: download the file instead
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `eta-${docId}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } catch (e) {
+      if (tab && !tab.closed) tab.close()
       toast({ title: t("message.error"), description: e instanceof Error ? e.message : String(e), variant: "destructive" })
     } finally {
       setBusy(false)
