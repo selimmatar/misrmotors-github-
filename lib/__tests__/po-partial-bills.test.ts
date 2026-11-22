@@ -128,7 +128,7 @@ test("PB5. close with nothing billed before and nothing left out: one bill of th
   assert.deepEqual(bills(db).map((b) => [b.invoice_number, b.amount]), [["APINV-PO-1", 1368]])
 })
 
-test("PB6. reopen removes only the LAST bill, only while unpaid; earlier bills stay", async () => {
+test("PB6. reopen KEEPS the closing bill (2026-11-22); Remove last bill takes only an unpaid bill for received items", async () => {
   const db = mk({ supplier_credits: [{ credit_id: 3, supplier_id: 1, amount: 100, status: "used", used_in_po_id: 1, credit_type: "advance", notes: "method=cash" }] })
   receive(db, 7, 10)
   await bill([{ poItemId: 7, quantity: 4 }])
@@ -136,20 +136,20 @@ test("PB6. reopen removes only the LAST bill, only while unpaid; earlier bills s
   assert.equal(bills(db).length, 2)
   const r = await reopen()
   assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(r.body.reopened, true)
-  assert.deepEqual(bills(db).map((b) => b.invoice_number), ["APINV-PO-1-B1"], "the first bill stays; the PO is open again")
-  assert.equal(db.tables.ap_invoice_lines.every((l) => l.ap_invoice_id === bills(db)[0].invoice_id), true, "the removed bill's lines are gone")
+  assert.deepEqual([r.body.reopened, r.body.kept], [true, "APINV-PO-1"])
+  assert.deepEqual(bills(db).map((b) => b.invoice_number), ["APINV-PO-1-B1", "APINV-PO-1"], "no bill is deleted; the PO is open again")
+  assert.equal((await info()).closed, false)
   assert.equal(db.tables.supplier_payments.length, 1, "the first bill keeps the advance it took")
-  // a payment on the last bill blocks removing it
+  // a payment on the last bill for received items blocks removing it
   db.tables.supplier_payments.push({ payment_id: 99, invoice_id: bills(db)[0].invoice_id, amount: 10, payment_method: "cash", reference_number: "R1" })
   assert.equal((await reopen()).body.code, "PO_PAID")
-  assert.equal(bills(db).length, 1)
+  assert.equal(bills(db).length, 2)
   db.tables.supplier_payments.pop()
   const removed = await reopen()
   assert.equal(removed.status, 200)
-  assert.equal(removed.body.reopened, false, "a bill for received items only goes; the PO was open already")
-  assert.equal(bills(db).length, 0)
-  assert.equal((await reopen()).body.code, "PO_ALREADY_OPEN")
+  assert.deepEqual([removed.body.reopened, removed.body.removed], [false, "APINV-PO-1-B1"], "a bill for received items only goes")
+  assert.deepEqual(bills(db).map((b) => b.invoice_number), ["APINV-PO-1"])
+  assert.equal((await reopen()).body.code, "PO_ALREADY_OPEN", "the kept closing bill is never removed")
 })
 
 test("PB7. an old PO with one bill and no lines: closed, the whole PO counts as billed, reopen works as before", async () => {
@@ -160,7 +160,7 @@ test("PB7. an old PO with one bill and no lines: closed, the whole PO counts as 
   assert.deepEqual(i.lines.map((l: any) => l.billed), [10, 5])
   assert.equal((await bill([{ poItemId: 7, quantity: 1 }])).body.code, "PO_CLOSED")
   assert.equal((await reopen()).status, 200)
-  assert.equal(bills(db).length, 0)
+  assert.equal(bills(db).length, 1, "the bill is kept (2026-11-22)")
 })
 
 test("PB8. before the migration: bill-lines table missing -> partial bills refused, a whole-PO close still works", async () => {

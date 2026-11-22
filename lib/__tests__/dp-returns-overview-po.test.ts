@@ -2,8 +2,8 @@
 //  P  delivery-permit prints show returned / not received lines as not delivered, and their totals leave them out;
 //  O  order overview: what is on unsigned permits is not "ready, Create DP"; an "Out for delivery" column; a returned
 //     unit needs a PO unless it was exchanged with the supplier;
-//  B  a supplier bill with a payment is never deleted or replaced by reopen; return to supplier on a closed / billed
-//     PO gives a supplier credit; re-closing after a reopen keeps the bill's date;
+//  B  a reopen never deletes the closing bill: re-closing updates that same row (paid above the new amount -> supplier
+//     credit); a paid part bill is never removed; return to supplier on a closed / billed PO gives a supplier credit;
 //  W  every permit goes through warehouse preparation before shipping, except lines straight from the supplier.
 import "./route-harness"
 import test from "node:test"
@@ -168,14 +168,14 @@ function safetyHouse(bill: Row = {}) {
     products: [],
     purchase_orders: [{ po_id: 1, po_number: SH, supplier_id: 1, status: "received", total: 46426.5, tax_amount: 5701.5, payment_type: "cash", order_date: "2026-11-01" }],
     purchase_order_items: [
-      { po_item_id: 7, po_id: 1, product_id: null, outsourced_name: "Helmet", item_name_snapshot: "Helmet", quantity: 10, unit_price: 3250, total: 32500, item_type: "outsourced" },
-      { po_item_id: 8, po_id: 1, product_id: null, outsourced_name: "Gloves", item_name_snapshot: "Gloves", quantity: 25, unit_price: 329, total: 8225, item_type: "outsourced" },
+      { po_item_id: 7, po_id: 1, product_id: null, outsourced_name: "Helmet", item_name_snapshot: "Helmet", quantity: 10, unit_price: 4000, total: 40000, item_type: "outsourced" },
+      { po_item_id: 8, po_id: 1, product_id: null, outsourced_name: "Gloves", item_name_snapshot: "Gloves", quantity: 1, unit_price: 725, total: 725, item_type: "outsourced" },
     ],
     accounts_payable: [{ invoice_id: 50, invoice_number: `APINV-${SH}`, po_id: 1, supplier_id: 1, amount: 46426.5, paid_amount: 46426.5, status: "paid", months_paid: 0, invoice_date: "2026-11-05", due_date: "2026-11-05", ...bill }],
     ap_invoice_lines: [], supplier_payments: [], payment_schedules: [], supplier_credits: [],
     goods_receipts: [], goods_receipt_lines: [
       { line_id: 1, receipt_id: 1, po_item_id: 7, quantity_received: 10 },
-      { line_id: 2, receipt_id: 1, po_item_id: 8, quantity_received: 25 },
+      { line_id: 2, receipt_id: 1, po_item_id: 8, quantity_received: 1 },
     ],
     sales_order_items: [], balance_entries: [], workflow_events: [], users: [], inventory: [], inventory_transactions: [],
   })
@@ -183,14 +183,78 @@ function safetyHouse(bill: Row = {}) {
   return db
 }
 
-test("B1. live case: a bill marked paid (no payment rows) is never deleted by reopen; it stays exactly as it was", async () => {
+test("B1. live case: paid 46,426.50 -> reopen keeps the bill -> return 2 helmets -> re-close: same row at 37,306.50, 9,120 credit", async () => {
   const db = safetyHouse()
+  const before = { ...db.tables.accounts_payable[0] }
+  const r = await call(reopenRoute.POST as any, "POST", { id: "1" })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.deepEqual([r.body.reopened, r.body.kept], [true, `APINV-${SH}`])
+  assert.deepEqual(db.tables.accounts_payable, [before], "the bill row is untouched while the PO is open again")
+  // edits are allowed while reopened: the returned helmets come off the PO line (no credit: it is not billed now)
+  const back = await call(returnRoute.POST as any, "POST", { id: "1", items: [{ fromItemId: "7", quantity: 2, warehouseId: null }] })
+  assert.equal(back.status, 200, JSON.stringify(back.body))
+  assert.equal(back.body.creditTotal, 0)
+  assert.equal(db.tables.purchase_orders[0].total, 37306.5)
+  assert.equal((await call(reopenRoute.POST as any, "POST", { id: "1" })).body.code, "PO_ALREADY_OPEN", "Remove last bill never takes the kept bill")
+  const c = await call(closeRoute.POST as any, "POST", { id: "1" })
+  assert.equal(c.status, 200, JSON.stringify(c.body))
+  assert.deepEqual([c.body.updated, c.body.supplierCredit], [true, 9120])
+  assert.equal(db.tables.accounts_payable.length, 1)
+  const b = db.tables.accounts_payable[0]
+  assert.deepEqual(
+    [b.invoice_id, b.invoice_number, b.invoice_date, b.due_date, b.amount, b.paid_amount, b.status],
+    [50, `APINV-${SH}`, "2026-11-05", "2026-11-05", 37306.5, 37306.5, "paid"],
+  )
+  assert.deepEqual(db.tables.supplier_credits.map((x) => [x.supplier_id, x.amount, x.credit_type, x.invoice_id, x.status]), [[1, 9120, "overpayment", 50, "active"]])
+  assert.deepEqual(db.tables.ap_invoice_lines.map((l) => [l.ap_invoice_id, l.po_item_id, l.quantity]), [[50, 7, 8], [50, 8, 1]])
+  assert.equal((await call(closeRoute.POST as any, "POST", { id: "1" })).body.code, "PO_ALREADY_CLOSED")
+})
+
+test("B2. return to supplier on the CLOSED paid PO: a supplier credit, the bill and PO lines unchanged; no second bill", async () => {
+  const db = safetyHouse()
+  const bills = JSON.stringify(db.tables.accounts_payable)
+  const lines = JSON.stringify(db.tables.purchase_order_items)
+  const r = await call(returnRoute.POST as any, "POST", { id: "1", items: [{ fromItemId: "7", quantity: 2, warehouseId: null, reason: "damaged" }] })
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.equal(r.body.creditTotal, 8000)
+  assert.equal(JSON.stringify(db.tables.accounts_payable), bills)
+  assert.equal(JSON.stringify(db.tables.purchase_order_items), lines)
+  assert.deepEqual(db.tables.supplier_credits.map((c) => [c.supplier_id, c.amount, c.credit_type, c.invoice_id, c.status]), [[1, 8000, "return", 50, "active"]])
+  assert.equal((await call(closeRoute.POST as any, "POST", { id: "1" })).body.code, "PO_ALREADY_CLOSED", "re-closing makes no other bill")
+  assert.equal(db.tables.accounts_payable.length, 1)
+  // the split: an open PO lowers only the unbilled part
+  assert.deepEqual([...returnSplit([{ id: 7, taken: 3, quantity: 10, billed: 8 }], false)], [[7, { lower: 2, credit: 1 }]])
+  assert.deepEqual([...returnSplit([{ id: 7, taken: 3, quantity: 10, billed: 8 }], true)], [[7, { lower: 0, credit: 3 }]])
+  assert.match(src("components/purchase-order/po-open-actions.tsx"), /const canReturn = canEdit \|\| \(may && closed/)
+})
+
+test("B3. unpaid bill: reopen keeps it; re-close updates the same row (id, number, dates) and it stays unpaid; partly paid above", async () => {
+  const db = safetyHouse({ paid_amount: 0, status: "pending", invoice_date: "2026-11-05", due_date: "2026-12-05" })
+  assert.equal((await call(reopenRoute.POST as any, "POST", { id: "1" })).status, 200)
+  assert.equal(db.tables.accounts_payable.length, 1)
+  await call(returnRoute.POST as any, "POST", { id: "1", items: [{ fromItemId: "7", quantity: 2, warehouseId: null }] })
+  assert.equal((await call(closeRoute.POST as any, "POST", { id: "1" })).status, 200)
+  assert.deepEqual(
+    db.tables.accounts_payable.map((b) => [b.invoice_id, b.invoice_number, b.invoice_date, b.due_date, b.amount, b.paid_amount, b.status]),
+    [[50, `APINV-${SH}`, "2026-11-05", "2026-12-05", 37306.5, 0, "pending"]],
+  )
+  assert.equal(db.tables.supplier_credits.length, 0)
+  // paid 30,000: the new amount is above it -> partly paid, no credit
+  const part = safetyHouse({ paid_amount: 30000, status: "partially_paid" })
+  await call(reopenRoute.POST as any, "POST", { id: "1" })
+  await call(returnRoute.POST as any, "POST", { id: "1", items: [{ fromItemId: "7", quantity: 2, warehouseId: null }] })
+  await call(closeRoute.POST as any, "POST", { id: "1" })
+  assert.deepEqual(part.tables.accounts_payable.map((b) => [b.invoice_id, b.amount, b.paid_amount, b.status]), [[50, 37306.5, 30000, "partially_paid"]])
+  assert.equal(part.tables.supplier_credits.length, 0)
+})
+
+test("B4. a bill with any payment is never deleted: Remove last bill on a paid part bill is refused; every way money shows counts", async () => {
+  const db = safetyHouse({ invoice_number: `APINV-${SH}-B1`, paid_amount: 100, status: "partially_paid" })
   const before = JSON.stringify(db.tables.accounts_payable)
   const r = await call(reopenRoute.POST as any, "POST", { id: "1" })
-  assert.equal(r.status, 409)
   assert.equal(r.body.code, "PO_PAID")
-  assert.equal(JSON.stringify(db.tables.accounts_payable), before, "same id, number, date, amount and paid amount")
-  // every way money can be on a bill counts; what the bill took off itself (credits / advances) does not
+  assert.match(r.body.errorAr, /دفعة/)
+  assert.equal(JSON.stringify(db.tables.accounts_payable), before)
   const bill = (x: Row) => ({ invoice_id: 50, invoice_number: "APINV-X", paid_amount: 0, status: "pending", months_paid: 0, ...x })
   assert.equal(await billHasPayments(db, [bill({ paid_amount: 10 })]), true)
   assert.equal(await billHasPayments(db, [bill({ status: "partially_paid" })]), true)
@@ -201,36 +265,6 @@ test("B1. live case: a bill marked paid (no payment rows) is never deleted by re
   // removePoBills refuses a paid bill whoever calls it
   await assert.rejects(() => removePoBills(db, [db.tables.accounts_payable[0]]), /payment/)
   assert.equal(db.tables.accounts_payable.length, 1)
-})
-
-test("B2. return to supplier on the CLOSED paid PO: a supplier credit, the bill and PO lines unchanged; no second bill", async () => {
-  const db = safetyHouse()
-  const bills = JSON.stringify(db.tables.accounts_payable)
-  const lines = JSON.stringify(db.tables.purchase_order_items)
-  const r = await call(returnRoute.POST as any, "POST", { id: "1", items: [{ fromItemId: "7", quantity: 2, warehouseId: null, reason: "damaged" }] })
-  assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(r.body.creditTotal, 6500)
-  assert.equal(JSON.stringify(db.tables.accounts_payable), bills)
-  assert.equal(JSON.stringify(db.tables.purchase_order_items), lines)
-  assert.deepEqual(db.tables.supplier_credits.map((c) => [c.supplier_id, c.amount, c.credit_type, c.invoice_id, c.status]), [[1, 6500, "return", 50, "active"]])
-  assert.equal((await call(closeRoute.POST as any, "POST", { id: "1" })).body.code, "PO_ALREADY_CLOSED", "re-closing makes no other bill")
-  assert.equal(db.tables.accounts_payable.length, 1)
-  // the split: an open PO lowers only the unbilled part
-  assert.deepEqual([...returnSplit([{ id: 7, taken: 3, quantity: 10, billed: 8 }], false)], [[7, { lower: 2, credit: 1 }]])
-  assert.deepEqual([...returnSplit([{ id: 7, taken: 3, quantity: 10, billed: 8 }], true)], [[7, { lower: 0, credit: 3 }]])
-  assert.match(src("components/purchase-order/po-open-actions.tsx"), /const canReturn = canEdit \|\| \(may && closed/)
-})
-
-test("B3. an UNPAID closing bill removed by reopen comes back on re-close with the same number, invoice date and due date", async () => {
-  const db = safetyHouse({ paid_amount: 0, status: "pending", invoice_date: "2026-11-05", due_date: "2026-12-05" })
-  const r = await call(reopenRoute.POST as any, "POST", { id: "1" })
-  assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(db.tables.accounts_payable.length, 0)
-  const ev = db.tables.workflow_events.find((e) => e.event_type === "PO_REOPENED")!
-  assert.deepEqual(JSON.parse(ev.new_value).removedBill, { invoiceNumber: `APINV-${SH}`, invoiceDate: "2026-11-05", dueDate: "2026-12-05", supplierInvoiceNumber: null })
-  const c = await call(closeRoute.POST as any, "POST", { id: "1" })
-  assert.equal(c.status, 200, JSON.stringify(c.body))
-  assert.deepEqual(db.tables.accounts_payable.map((b) => [b.invoice_number, b.invoice_date, b.due_date, b.paid_amount]), [[`APINV-${SH}`, "2026-11-05", "2026-12-05", 0]])
 })
 
 // ------------------------------------------------------------------------------------------------ W. preparation

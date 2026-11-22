@@ -17,7 +17,7 @@
 import { SUPPLIER_CREDIT_PAYMENT_METHOD, creditedInvoiceFields } from "./supplier-credit-apply"
 import { receivedByItem } from "./po-edit"
 import { closingBillNumber, closingBillOf, partialBillNo, partialBillNumber, sortBills } from "./po-bill-number"
-import { PO_CLOSED_NO_BILL, isClosedWithoutBill, writeCloseMarker } from "./po-closed-marker"
+import { KEPT_BILL_KEY, PO_CLOSED_NO_BILL, isClosedWithoutBill, keptBillId, writeCloseMarker } from "./po-closed-marker"
 
 type Db = any
 
@@ -49,7 +49,10 @@ export async function billsOf(db: Db, poId: number): Promise<any[]> {
  * received items already took everything (lib/po-closed-marker.ts). Partial bills alone leave it open.
  */
 export async function isPoClosed(db: Db, po: { po_id: number; po_number?: string | null }): Promise<boolean> {
-  return !!closingBillOf(await billsOf(db, po.po_id), po.po_number) || (await isClosedWithoutBill(db, po.po_id))
+  const closing = closingBillOf(await billsOf(db, po.po_id), po.po_number)
+  // reopened while keeping its closing bill (2026-11-22): open
+  if (closing && (await keptBillId(db, po.po_id)) !== num(closing.invoice_id)) return true
+  return await isClosedWithoutBill(db, po.po_id)
 }
 
 /** Bill statuses that mean money was paid on it. */
@@ -76,43 +79,6 @@ export async function billHasPayments(db: Db, bills: any[]): Promise<boolean> {
     if ((schedules || []).some((s: any) => (Number(s.paid_amount) || 0) > 0 || s.status === "paid" || s.status === "partial")) return true
   }
   return false
-}
-
-/** What a reopen keeps of a removed unpaid closing bill, so closing again makes it with the same number and dates. */
-export interface RemovedBillDates {
-  invoiceNumber: string
-  invoiceDate: string | null
-  dueDate: string | null
-  supplierInvoiceNumber: string | null
-}
-
-export const removedBillDates = (bill: any): RemovedBillDates => ({
-  invoiceNumber: String(bill.invoice_number || ""),
-  invoiceDate: bill.invoice_date ? String(bill.invoice_date).slice(0, 10) : null,
-  dueDate: bill.due_date ? String(bill.due_date).slice(0, 10) : null,
-  supplierInvoiceNumber: bill.supplier_invoice_number ?? null,
-})
-
-/**
- * The dates of the closing bill the latest reopen removed (owner request, 2026-11-22), while the PO is still open after
- * that reopen; null otherwise. Kept as `removedBill` in the PO_REOPENED event's new_value JSON.
- */
-export async function reopenedBillDates(db: Db, poId: number): Promise<RemovedBillDates | null> {
-  const { data, error } = await db
-    .from("workflow_events")
-    .select("event_id, event_type, new_value")
-    .eq("entity_type", "PURCHASE_ORDER")
-    .eq("entity_id", poId)
-    .in("event_type", ["PO_CLOSED", "PO_REOPENED"])
-  if (error) return null
-  const latest = [...(data || [])].sort((a: any, b: any) => num(b.event_id) - num(a.event_id))[0]
-  if (!latest || latest.event_type !== "PO_REOPENED") return null
-  try {
-    const kept = JSON.parse(latest.new_value || "{}").removedBill
-    return kept && kept.invoiceDate ? kept : null
-  } catch {
-    return null
-  }
 }
 
 /** True when the error says a table / column does not exist yet (the migration is not applied). */
@@ -153,6 +119,8 @@ export interface PoBilling {
   factor: number
   billedAmount: number
   billedPercent: number
+  /** the closing bill kept by a reopen (2026-11-22): left out of `bills`; re-closing updates this same row */
+  kept: any | null
 }
 
 /** Bill lines of these bills; `ready` false when the table does not exist yet (then there are no lines). */
@@ -167,7 +135,12 @@ export async function billLinesOf(db: Db, billIds: number[]): Promise<{ ready: b
 
 /** Everything about the billing of a PO: its bills, what each line ordered / received / billed, and what is left. */
 export async function loadPoBilling(db: Db, po: any): Promise<PoBilling> {
-  const bills = sortBills(await billsOf(db, po.po_id))
+  const all = sortBills(await billsOf(db, po.po_id))
+  // reopened while keeping its closing bill (owner decision, 2026-11-22): that bill does not count as billing the PO
+  // while it is open again; closing again updates it in place
+  const keptId = closingBillOf(all, po.po_number) ? await keptBillId(db, po.po_id) : null
+  const kept = keptId ? all.find((b) => num(b.invoice_id) === keptId) || null : null
+  const bills = kept ? all.filter((b) => b !== kept) : all
   const closing = closingBillOf(bills, po.po_number)
   const { data: itemRows, error: itemsError } = await db.from("purchase_order_items").select("*").eq("po_id", po.po_id)
   if (itemsError) throw new Error(`read PO lines: ${itemsError.message}`)
@@ -211,7 +184,7 @@ export async function loadPoBilling(db: Db, po: any): Promise<PoBilling> {
   const billedAmount = money(bills.reduce((s, b) => s + num(b.amount), 0))
   const billedPercent = closing ? 100 : num(po.total) > 0 ? Math.min(100, Math.round((billedAmount / num(po.total)) * 100)) : 0
   const closedWithoutBill = !closing && (await isClosedWithoutBill(db, po.po_id))
-  return { po, items, bills, closing, closedWithoutBill, closed: !!closing || closedWithoutBill, ready, linesByBill, lines, factor, billedAmount, billedPercent }
+  return { po, items, bills, closing, closedWithoutBill, closed: !!closing || closedWithoutBill, ready, linesByBill, lines, factor, billedAmount, billedPercent, kept }
 }
 
 /** Quantity billed so far per PO line (only lines with something billed). */
@@ -338,6 +311,8 @@ export async function createBill(
       total: money(qty * line.unitPrice),
     }))
   const { amount, coversAll } = billAmount(billing, qtyById, opts.final)
+  // closing again after a reopen that kept the closing bill: that same row is updated (2026-11-22)
+  if (opts.final && billing.kept) return await updateKeptBill(db, billing, billRows, amount, opts)
   // the one bill of the whole PO, as before 2026-11-17: possible without the bill-lines table
   const single = opts.final && billing.bills.length === 0 && coversAll
   if (!billing.ready && !single) {
@@ -455,6 +430,82 @@ export async function createBill(
 }
 
 /**
+ * Re-closing a PO whose reopen KEPT its closing bill (owner decision, 2026-11-22): the same accounts_payable row (same
+ * invoice_id, number, invoice date, due date and payments) takes the new amount and lines. What was paid above the new
+ * amount becomes a supplier credit (credit_type "overpayment", as an overpayment in Accounts Payable does) and the bill
+ * shows fully paid; paid below it, the bill is partly paid. Everything it changed is put back on a failure.
+ */
+async function updateKeptBill(
+  db: Db,
+  billing: PoBilling,
+  billRows: any[],
+  amount: number,
+  opts: BillOptions,
+): Promise<{ error: { message: string } | null; invoice?: any; excessCredit?: number }> {
+  const kept = billing.kept
+  const paid = money(num(kept.paid_amount))
+  const newPaid = money(Math.min(paid, Math.max(0, amount)))
+  const excess = money(paid - newPaid)
+  const status = newPaid <= 0 && amount > 0 ? "pending" : newPaid >= amount - 0.005 ? "paid" : "partially_paid"
+  const patch: any = { amount, paid_amount: newPaid, status }
+  if (billing.ready && opts.supplierInvoiceNumber) patch.supplier_invoice_number = opts.supplierInvoiceNumber
+  const undo: (() => PromiseLike<unknown>)[] = []
+  const fail = async (message: string) => {
+    for (const step of undo.reverse()) {
+      try {
+        await step()
+      } catch (e) {
+        console.error("PO bill: could not undo a re-close step", e)
+      }
+    }
+    return { error: { message } }
+  }
+  const { error: updateError } = await db.from("accounts_payable").update(patch).eq("invoice_id", kept.invoice_id)
+  if (updateError) return { error: updateError }
+  undo.push(() => db.from("accounts_payable").update({ amount: kept.amount, paid_amount: kept.paid_amount, status: kept.status, supplier_invoice_number: kept.supplier_invoice_number ?? null }).eq("invoice_id", kept.invoice_id))
+  if (billing.ready) {
+    const { lines: oldLines } = await billLinesOf(db, [kept.invoice_id])
+    if (oldLines.length > 0) {
+      const { error } = await db.from("ap_invoice_lines").delete().eq("ap_invoice_id", kept.invoice_id)
+      if (error) return await fail(`replace bill lines: ${error.message}`)
+      undo.push(() => db.from("ap_invoice_lines").insert(oldLines))
+    }
+    if (billRows.length > 0) {
+      const { error } = await db.from("ap_invoice_lines").insert(billRows.map((r) => ({ ...r, ap_invoice_id: kept.invoice_id })))
+      if (error) return await fail(`replace bill lines: ${error.message}`)
+      undo.push(() => db.from("ap_invoice_lines").delete().eq("ap_invoice_id", kept.invoice_id))
+    }
+  }
+  if (excess > 0.005) {
+    const note = `${kept.invoice_number} was paid ${paid.toFixed(2)}; after the PO was reopened and closed again it is ${money(amount).toFixed(2)}: the ${excess.toFixed(2)} paid above it is a supplier credit`
+    const { error } = await db.from("supplier_credits").insert({
+      supplier_id: billing.po.supplier_id ?? kept.supplier_id ?? null,
+      amount: excess,
+      status: "active",
+      credit_type: "overpayment",
+      reference_type: "po_reclose",
+      reference_id: kept.invoice_id,
+      invoice_id: kept.invoice_id,
+      description: note,
+      notes: note,
+    })
+    if (error) return await fail(`record the supplier credit: ${error.message}`)
+  }
+  return { error: null, invoice: { ...kept, ...patch }, excessCredit: excess > 0.005 ? excess : 0 }
+}
+
+/** The PO_REOPENED marker of a reopen that keeps the closing bill (lib/po-closed-marker.ts). */
+export async function reopenKeepingBill(db: Db, po: any, bill: any, notes: string, userId?: unknown): Promise<void> {
+  await writeCloseMarker(db, po.po_id, {
+    event_type: "PO_REOPENED",
+    old_value: bill.invoice_number,
+    new_value: JSON.stringify({ unlinkedCreditIds: [], [KEPT_BILL_KEY]: num(bill.invoice_id) }),
+    notes,
+    userId,
+  })
+}
+
+/**
  * Makes the closing bill of a PO unless it is closed already: everything not billed yet, less what is marked
  * "not coming" on its lines. Returns the error, or null when the PO is closed afterwards.
  */
@@ -468,7 +519,7 @@ export async function createPoBill(db: Db, po: any, opts: Omit<BillOptions, "fin
   if (billing.closed) return null
   const rest = new Map(billing.lines.map((l) => [l.poItemId, l.rest]))
   // nothing left to bill after its bills for received items: closed without a 0 bill (owner request, 2026-11-18)
-  if (closesWithoutBill(billing, rest)) {
+  if (!billing.kept && closesWithoutBill(billing, rest)) {
     try {
       await writeCloseMarker(db, po.po_id, { event_type: "PO_CLOSED", new_value: PO_CLOSED_NO_BILL, notes: `${po.po_number} closed; everything was already billed, so no closing bill` })
       return null

@@ -213,25 +213,27 @@ test("C1. closing makes the bill from the final PO; advances and reserved credit
   assert.deepEqual([...PO_CLOSABLE_STATUSES], ["approved", "partially_received", "received", "received_with_issues"])
 })
 
-test("C2. reopening an unpaid PO removes its bill and the rows the close wrote; credits stay reserved; closing again remakes it", async () => {
+test("C2. reopening keeps the bill and what the close wrote (2026-11-22); editable again; closing again updates the same bill", async () => {
   const db = mk({
     purchase_orders: [po({ total: 1000, tax_amount: null })],
     supplier_credits: [{ credit_id: 1, supplier_id: 1, amount: 300, status: "used", used_in_po_id: 1, credit_type: "advance", notes: "method=cash" }],
   })
   assert.equal((await close()).status, 200)
-  db.tables.payment_schedules.push({ schedule_id: 1, invoice_id: db.tables.accounts_payable[0].invoice_id, paid_amount: 0, status: "pending" })
+  const id = db.tables.accounts_payable[0].invoice_id
+  db.tables.payment_schedules.push({ schedule_id: 1, invoice_id: id, paid_amount: 0, status: "pending" })
   const r = await reopen()
   assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.deepEqual([db.tables.accounts_payable.length, db.tables.supplier_payments.length, db.tables.payment_schedules.length], [0, 0, 0])
+  assert.deepEqual([db.tables.accounts_payable.length, db.tables.supplier_payments.length, db.tables.payment_schedules.length], [1, 1, 1])
   assert.equal(db.tables.supplier_credits[0].used_in_po_id, 1)
   assert.equal((await edit(body({ items: [{ id: "7", productId: "5", productName: "Pump", quantity: 30, unitPrice: 50 }] }))).status, 200, "editable again")
   assert.equal((await close()).status, 200)
-  assert.equal(db.tables.accounts_payable[0].paid_amount, 300)
+  assert.deepEqual(db.tables.accounts_payable.map((b) => [b.invoice_id, b.amount, b.paid_amount, b.status]), [[id, 1500, 300, "partially_paid"]])
+  assert.equal(db.tables.supplier_payments.length, 1, "the advance is not taken twice")
   assert.equal((await reopen()).status, 200)
   assert.equal((await reopen()).body.code, "PO_ALREADY_OPEN")
 })
 
-test("C3. reopening is refused once money was paid on the bill (a payment, a hand-applied credit, a paid schedule, months paid)", async () => {
+test("C3. reopening a PO whose bill has payments is allowed and the bill stays exactly as it was (2026-11-22)", async () => {
   const paidCases: Record<string, Row[]>[] = [
     { supplier_payments: [{ payment_id: 1, invoice_id: 50, amount: 10, payment_method: "cash", reference_number: "R1" }] },
     { supplier_payments: [{ payment_id: 1, invoice_id: 50, amount: 10, payment_method: "supplier_credit", reference_number: "APINV-PO-1-AP-APPLY" }] },
@@ -240,10 +242,11 @@ test("C3. reopening is refused once money was paid on the bill (a payment, a han
   ]
   for (const tables of paidCases) {
     const db = mk({ accounts_payable: [bill()], ...tables })
+    const before = JSON.stringify([db.tables.accounts_payable, db.tables.supplier_payments, db.tables.payment_schedules])
     const r = await reopen()
-    assert.equal(r.status, 409, JSON.stringify(tables))
-    assert.equal(r.body.code, "PO_PAID")
-    assert.equal(db.tables.accounts_payable.length, 1)
+    assert.equal(r.status, 200, JSON.stringify(tables))
+    assert.equal(r.body.kept, "APINV-PO-1")
+    assert.equal(JSON.stringify([db.tables.accounts_payable, db.tables.supplier_payments, db.tables.payment_schedules]), before)
   }
 })
 
@@ -383,28 +386,21 @@ test("S1. PO screen: Open / Closed badge, the More menu (exchange, advance, clos
   assert.match(src("lib/app-context.tsx"), /fetch\("\/api\/purchase-orders\/edit"/)
 })
 
-test("C4. reopening a PO whose bill has return credits linked to it: credits unlinked, then linked to the new bill on close; a failure undoes it", async () => {
-  // PO-2026-801226 case: 4 supplier credits from returns point at the bill (invoice_id), so the bill cannot simply be deleted.
+test("C4. reopening a PO whose bill has return credits linked to it: the bill and its credit links stay; closing again keeps them", async () => {
+  // PO-2026-801226 case: supplier credits from returns point at the bill (invoice_id). The bill is never deleted now.
   const credits = () => [
     { credit_id: 11, supplier_id: 1, amount: 4500, status: "active", credit_type: "return", invoice_id: 50, reference_type: "inventory" },
     { credit_id: 12, supplier_id: 1, amount: 700, status: "active", credit_type: "return", invoice_id: 50, reference_type: "inventory" },
   ]
-  let db = mk({ accounts_payable: [bill()], supplier_credits: credits() })
+  const db = mk({ accounts_payable: [bill()], supplier_credits: credits() })
   db.failOn["accounts_payable:delete"] = "violates foreign key constraint"
-  const failed = await reopen()
-  assert.equal(failed.status, 500)
-  assert.equal(db.tables.accounts_payable.length, 1, "bill kept")
-  assert.deepEqual(db.tables.supplier_credits.map((c) => c.invoice_id), [50, 50], "credit links put back")
-
-  db = mk({ accounts_payable: [bill()], supplier_credits: credits() })
   const r = await reopen()
   assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(db.tables.accounts_payable.length, 0)
-  assert.deepEqual(db.tables.supplier_credits.map((c) => [c.invoice_id, c.status, c.amount]), [[null, "active", 4500], [null, "active", 700]], "credits kept, only unlinked")
+  assert.equal(db.tables.accounts_payable.length, 1, "bill kept")
+  assert.deepEqual(db.tables.supplier_credits.map((c) => [c.invoice_id, c.status, c.amount]), [[50, "active", 4500], [50, "active", 700]])
   assert.equal((await close()).status, 200)
-  const newId = db.tables.accounts_payable[0].invoice_id
-  assert.deepEqual(db.tables.supplier_credits.map((c) => c.invoice_id), [newId, newId], "linked to the new bill")
-  assert.equal(db.tables.accounts_payable[0].paid_amount, 0, "active return credits are not taken off automatically")
+  assert.deepEqual(db.tables.accounts_payable.map((b) => [b.invoice_id, b.paid_amount]), [[50, 0]], "the same bill; active return credits are not taken off automatically")
+  assert.deepEqual(db.tables.supplier_credits.map((c) => c.invoice_id), [50, 50])
 })
 
 test("H1. the PO history log uses its real columns (performed_at, a real user or none) and never loses a record silently", () => {
@@ -617,22 +613,21 @@ test("RX1. open PO: the returned item is exchanged on its PO (no credit); it lea
   assert.ok(db.tables.workflow_events.some((e: Row) => e.event_type === "PO_ITEM_EXCHANGED"))
 })
 
-test("RX2. closed PO with nothing paid: reopened and exchanged in one step; paid: refused and nothing changes", async () => {
+test("RX2. closed PO: reopened (bill kept, paid or not, 2026-11-22) and exchanged in one step; closing again updates that bill", async () => {
   let db = returnDb(false)
   let holding = await returnToHolding(db, 1)
   const ok = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 1, unitPrice: 30000 } })
   assert.equal(ok.status, 200, JSON.stringify(ok.body))
   assert.equal(ok.body.reopened, true)
-  assert.equal(db.tables.accounts_payable.length, 0, "bill removed: the PO is open again")
+  assert.equal(db.tables.accounts_payable.length, 1, "the bill is kept; the PO is open again")
   db = returnDb(false)
   db.tables.supplier_payments = [{ payment_id: 1, invoice_id: 1, amount: 100, payment_method: "cash", reference_number: "R1" }]
   holding = await returnToHolding(db, 1)
-  const before = JSON.stringify([db.tables.purchase_order_items, db.tables.accounts_payable])
+  const bills = JSON.stringify([db.tables.accounts_payable, db.tables.supplier_payments])
   const paid = await exchangeReturnedItem(db, { inventoryId: holding.inventory_id, to: { name: "Pump B", quantity: 1, unitPrice: 30000 } })
-  assert.equal(paid.status, 409)
-  assert.equal(paid.body.code, "PO_PAID")
-  assert.equal(JSON.stringify([db.tables.purchase_order_items, db.tables.accounts_payable]), before)
-  assert.equal(db.tables.inventory.filter((x: Row) => x.is_returned).length, 1, "still in Returned items")
+  assert.equal(paid.status, 200, JSON.stringify(paid.body))
+  assert.equal(JSON.stringify([db.tables.accounts_payable, db.tables.supplier_payments]), bills, "the paid bill is untouched")
+  assert.equal(db.tables.inventory.filter((x: Row) => x.is_returned).length, 0)
 })
 
 test("RX3. update the customer's order: the old line goes down by what was exchanged, the new item is added as a new line", async () => {

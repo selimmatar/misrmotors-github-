@@ -41,6 +41,44 @@ export async function closedWithoutBillIds(db: Db, poIds?: number[]): Promise<Se
   return out
 }
 
+/** Key in a PO_REOPENED event's new_value JSON: the closing bill the reopen KEPT (owner decision, 2026-11-22). */
+export const KEPT_BILL_KEY = "keptBillId"
+
+/**
+ * POs reopened while keeping their closing bill (owner decision, 2026-11-22: a supplier bill is never deleted by a
+ * reopen; re-closing updates that same row). poId -> the kept bill's invoice_id, while the PO's latest PO_CLOSED /
+ * PO_REOPENED event is that reopen. With `poIds` only those are looked at; without, every PO (the PO list).
+ */
+export async function reopenedKeepingBill(db: Db, poIds?: number[]): Promise<Map<number, number>> {
+  const out = new Map<number, number>()
+  if (poIds && poIds.length === 0) return out
+  let q = db.from("workflow_events").select("event_id, entity_id, event_type, new_value").eq("entity_type", ENTITY).in("event_type", ["PO_CLOSED", "PO_REOPENED"])
+  if (poIds) q = q.in("entity_id", poIds)
+  const { data, error } = await q
+  if (error) throw new Error(`read PO history: ${error.message}`)
+  const latest = new Map<number, any>()
+  for (const e of data || []) {
+    const id = Number(e.entity_id)
+    const was = latest.get(id)
+    if (!was || Number(e.event_id) > Number(was.event_id)) latest.set(id, e)
+  }
+  for (const [id, e] of latest) {
+    if (e.event_type !== "PO_REOPENED") continue
+    try {
+      const kept = Number(JSON.parse(e.new_value || "{}")[KEPT_BILL_KEY])
+      if (kept > 0) out.set(id, kept)
+    } catch {
+      // an older reopen (its bill was removed)
+    }
+  }
+  return out
+}
+
+/** The closing bill this PO keeps while reopened, or null. */
+export async function keptBillId(db: Db, poId: number): Promise<number | null> {
+  return (await reopenedKeepingBill(db, [poId])).get(Number(poId)) ?? null
+}
+
 /** True when this PO is closed without a closing bill. */
 export async function isClosedWithoutBill(db: Db, poId: number): Promise<boolean> {
   return (await closedWithoutBillIds(db, [poId])).has(Number(poId))

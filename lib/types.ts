@@ -114,6 +114,8 @@ export interface PurchaseOrder {
   costFinalizedBy?: number
   /** closed without a closing bill: nothing was left to bill (lib/po-closed-marker.ts) */
   closedWithoutBill?: boolean
+  /** reopened while keeping its closing bill (2026-11-22): open; closing again updates that bill */
+  reopenedKeptBillId?: number | null
   paymentType?: PaymentType
   paymentDetails?: PaymentDetails
   bankName?: string
