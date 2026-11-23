@@ -165,9 +165,11 @@ export async function buildSoOverview(db: Db, soId: number): Promise<SoOverview 
   // goods held in our warehouse for this order (an outsourced row stored for it, e.g. a customer return put back)
   const stockForOrder = new Map<string, number>()
   if (so.so_number) {
-    const held = await db.from("inventory").select("product_id, outsourced_name, quantity, so_number").eq("so_number", so.so_number)
+    const held = await db.from("inventory").select("product_id, outsourced_name, quantity, so_number, is_returned").eq("so_number", so.so_number)
     if (!held.error) for (const r of (held.data || []) as any[]) {
-      if (num(r.quantity) <= 0 || r.product_id) continue
+      // a customer return put back in the warehouse is free stock (owner rule), not goods held for this order: the
+      // order then needs a new purchase order for it
+      if (num(r.quantity) <= 0 || r.product_id || r.is_returned) continue
       const k = lineKey(null, r.outsourced_name)
       stockForOrder.set(k, (stockForOrder.get(k) || 0) + num(r.quantity))
     }
