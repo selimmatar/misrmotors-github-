@@ -164,6 +164,11 @@ test("O2. a returned unit: not delivered, needs a PO (no 'ready'); exchanged wit
   const b = (await buildSoOverview(back, 1))!
   assert.equal(b.lines[0].state, "ready")
   assert.deepEqual(b.todo.filter((t: any) => t.name === "Charger"), [{ kind: "ready", name: "Charger", quantity: 1 }])
+  // booked in as a customer return (SN Automotive's tyre gauges): free stock, so the order needs a new PO
+  const freed = liveOrder(ret)
+  freed.tables.delivery_permits[0].status = "SUBMITTED_SIGNED"
+  freed.tables.inventory = [{ inventory_id: 9, product_id: null, outsourced_name: "Charger", quantity: 1, so_number: "SO-2026-860593", is_outsourced: true, is_returned: true }]
+  assert.deepEqual((await buildSoOverview(freed, 1))!.todo.filter((t: any) => t.name === "Charger"), [{ kind: "no_po", name: "Charger", quantity: 1 }])
 })
 
 // ------------------------------------------------------------------------------------------------ B. supplier bills
