@@ -282,6 +282,8 @@ export interface Customer {
   id: string
   name: string // Mapped from customer_name
   email: string
+  /** where our invoice e-mails go (comma-separated allowed); the main e-mail when empty */
+  accountantEmail?: string
   phone: string
   countryCode?: string // Added countryCode field for phone number formatting
   address: string

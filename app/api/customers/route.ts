@@ -31,6 +31,15 @@ function etaDbFields(b: any, warnings: string[]) {
   return o
 }
 
+// "Accountant e-mail" (owner request 2026-11-24): where our invoice e-mails go for this customer (comma-separated
+// allowed); lib/eta/invoice-email.ts prefers it over the main e-mail. Saved only when the column exists
+// (scripts/sql/2026-11-25-invoice-email.sql); until then the rest of the save goes through with a warning.
+const accountantField = (b: any): Record<string, string> =>
+  b.accountantEmail !== undefined ? { accountant_email: String(b.accountantEmail ?? "").trim() } : {}
+const missingColumn = (error: any) =>
+  ["42703", "PGRST204"].includes(String(error?.code || "")) && /accountant_email/.test(String(error?.message || ""))
+const ACCOUNTANT_NOT_SAVED = "accountant_email: not saved, database update needed"
+
 export async function GET() {
   try {
 
@@ -52,6 +61,7 @@ export async function GET() {
         id: item.customer_id.toString(),
         name: item.customer_name,
         email: item.email || "",
+        accountantEmail: item.accountant_email || "",
         phone: item.phone || "",
         address: item.address || "",
         city: item.city || "",
@@ -87,10 +97,16 @@ export async function POST(request: Request) {
       city: body.city || "",
       country: body.country || "",
       ...etaDbFields(body, warnings),
+      ...accountantField(body),
     }
 
 
-    const { data, error } = await supabase.from("customers").insert(dbData).select().single()
+    let { data, error } = await supabase.from("customers").insert(dbData).select().single()
+    if (error && missingColumn(error) && "accountant_email" in dbData) {
+      const { accountant_email: _skip, ...rest } = dbData as any
+      ;({ data, error } = await supabase.from("customers").insert(rest).select().single())
+      if (!error && (dbData as any).accountant_email) warnings.push(ACCOUNTANT_NOT_SAVED)
+    }
 
     if (error) {
       throw error
@@ -103,6 +119,7 @@ export async function POST(request: Request) {
       id: data.customer_id.toString(),
       name: data.customer_name,
       email: data.email || "",
+      accountantEmail: data.accountant_email || "",
       phone: data.phone || "",
       address: data.address || "",
       city: data.city || "",
@@ -136,14 +153,15 @@ export async function PUT(request: Request) {
     if (updates.address !== undefined) dbUpdates.address = updates.address
     if (updates.city !== undefined) dbUpdates.city = updates.city
     if (updates.country !== undefined) dbUpdates.country = updates.country
-    Object.assign(dbUpdates, etaDbFields(updates, warnings))
+    Object.assign(dbUpdates, etaDbFields(updates, warnings), accountantField(updates))
 
-    const { data, error } = await supabase
-      .from("customers")
-      .update(dbUpdates)
-      .eq("customer_id", Number.parseInt(id))
-      .select()
-      .single()
+    const save = (patch: any) => supabase.from("customers").update(patch).eq("customer_id", Number.parseInt(id)).select().single()
+    let { data, error } = await save(dbUpdates)
+    if (error && missingColumn(error) && "accountant_email" in dbUpdates) {
+      const { accountant_email: _skip, ...rest } = dbUpdates
+      ;({ data, error } = await save(rest))
+      if (!error && dbUpdates.accountant_email) warnings.push(ACCOUNTANT_NOT_SAVED)
+    }
 
     if (error) throw error
 
@@ -153,6 +171,7 @@ export async function PUT(request: Request) {
       id: data.customer_id.toString(),
       name: data.customer_name,
       email: data.email || "",
+      accountantEmail: data.accountant_email || "",
       phone: data.phone || "",
       address: data.address || "",
       city: data.city || "",

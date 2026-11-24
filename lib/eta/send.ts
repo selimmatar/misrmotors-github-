@@ -977,11 +977,21 @@ export async function followUp(
   }
 }
 
-/** Runs the follow-up and never fails the caller (it piggybacks on other requests, after their own work). */
+/**
+ * Runs the follow-up and never fails the caller (it piggybacks on other requests, after their own work). Then at most
+ * one automatic e-invoice e-mail to a customer whose invoice became valid (./invoice-email; nothing happens when the
+ * e-mail is not set up).
+ */
 export async function followUpQuietly(db: Db, deps: SendDeps = {}): Promise<void> {
   try {
     await followUp(db, deps)
   } catch (e: any) {
     console.error(`[eta] follow-up failed: ${e?.message || e}`)
+  }
+  try {
+    const { emailValidInvoices } = await import("./invoice-email")
+    await emailValidInvoices(db, deps, { max: 1 })
+  } catch (e: any) {
+    console.error(`[eta] invoice e-mail failed: ${e?.message || e}`)
   }
 }

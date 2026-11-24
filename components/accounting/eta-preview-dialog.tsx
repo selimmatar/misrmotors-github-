@@ -17,11 +17,12 @@ import { Money } from "@/components/erp/money"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
-import { formatMoney } from "@/lib/format"
+import { formatDateTime, formatMoney } from "@/lib/format"
 import { ETA_UNITS } from "@/lib/eta/egypt"
 import type { CodeState } from "@/lib/eta/codes"
 import type { EtaPreview, EtaPreviewLine } from "@/lib/eta/preview"
 import type { EtaDocumentView } from "@/lib/eta/after-send"
+import type { InvoiceEmailView } from "@/lib/eta/invoice-email"
 
 /** What GET /api/eta/preview answers: the preview plus the portal documents per environment. */
 export type EtaPreviewResponse = EtaPreview & {
@@ -30,6 +31,8 @@ export type EtaPreviewResponse = EtaPreview & {
   cancelWindowHours: number | null
   /** a real document is live: the company the invoice is issued for can't change */
   identityLocked?: boolean
+  /** the customer e-mail of the valid e-invoice (lib/eta/invoice-email.ts) */
+  email?: InvoiceEmailView
 }
 
 export interface EtaCodeRow {
@@ -194,6 +197,51 @@ const DAY_MS = 24 * 3600_000
 const last = <T,>(rows: T[]): T | undefined => rows[rows.length - 1]
 const isLive = (d: EtaDocumentView) => ["pending_signature", "submitted", "valid"].includes(d.status)
 
+/**
+ * The customer e-mail of the valid e-invoice (owner request 2026-11-24): "E-mailed to x on date" / "E-mail failed:
+ * reason" / "No customer e-mail" / "E-mail not set up", and "Send by e-mail again" (logged as a manual send).
+ */
+function EtaEmailStatus({ email, invoiceId, reload }: { email: InvoiceEmailView; invoiceId: string; reload: () => Promise<void> }) {
+  const { t, language } = useI18n()
+  const { toast } = useToast()
+  const [busy, setBusy] = useState(false)
+  const last = email.last
+  const sendAgain = async () => {
+    setBusy(true)
+    try {
+      const res = await fetch("/api/eta/invoice-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: Number(invoiceId) }) })
+      if (!res.ok) throw new Error(await readApiError(res, t("message.error"), language, t))
+      toast({ title: t("eta.email-sent-now") })
+    } catch (e) {
+      toast({ title: t("message.error"), description: e instanceof Error ? e.message : String(e), variant: "destructive" })
+    } finally {
+      setBusy(false)
+      await reload()
+    }
+  }
+  let line: { text: string; tone: string }
+  if (!email.dbReady) line = { text: t("eta.email-db-update-needed"), tone: "text-muted-foreground" }
+  else if (last?.status === "sent") line = { text: fill(t("eta.email-sent"), { to: last.to || "", date: formatDateTime(last.at, language) }), tone: "text-emerald-800 dark:text-emerald-300" }
+  else if (last?.status === "failed") line = { text: fill(t("eta.email-failed"), { reason: last.error || "" }), tone: "text-red-700 dark:text-red-300" }
+  else if (last?.status === "no_email") line = { text: t("eta.email-no-customer-email"), tone: "text-amber-800 dark:text-amber-300" }
+  else if (last?.status === "sending") line = { text: t("eta.email-sending"), tone: "text-muted-foreground" }
+  else if (!email.configured || last?.status === "not_configured") line = { text: t("eta.email-not-set-up"), tone: "text-muted-foreground" }
+  else line = { text: t("eta.email-not-sent"), tone: "text-muted-foreground" }
+  return (
+    <div className="space-y-1 text-sm">
+      <p className={`break-words ${line.tone}`} role={last?.status === "failed" ? "alert" : undefined}>
+        {line.text}
+      </p>
+      {email.dbReady && email.configured && (
+        <Button variant="outline" size="sm" onClick={sendAgain} disabled={busy}>
+          {busy && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+          {last ? t("eta.email-send-again") : t("eta.email-send")}
+        </Button>
+      )}
+    </div>
+  )
+}
+
 /** The send / credit note / cancel / reissue actions of the invoice, by the state of its documents on the selected portal. */
 function EtaActions({
   preview, invoiceId, invoiceDate, reload, onChanged, onReissue,
@@ -325,6 +373,8 @@ function EtaActions({
           ))}
         </ul>
       )}
+
+      {inv?.status === "valid" && preview.email && <EtaEmailStatus email={preview.email} invoiceId={invoiceId} reload={reload} />}
 
       {canSend && old && <p className="text-sm text-amber-800 dark:text-amber-300">{t("eta.old-warning")}</p>}
       {docs.length === 0 && preview.missing.length > 0 && <p className="text-sm text-muted-foreground">{t("eta.fix-missing")}</p>}

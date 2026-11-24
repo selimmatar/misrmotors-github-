@@ -42,6 +42,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    accountantEmail: "",
     countryCode: "+20",
     phone: "",
     address: "",
@@ -140,6 +141,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
       id: Date.now().toString(),
       name: formData.name,
       email: formData.email,
+      accountantEmail: formData.accountantEmail.trim(),
       countryCode: formData.countryCode,
       phone: formData.phone,
       address: formData.address,
@@ -158,6 +160,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
     setFormData({
       name: "",
       email: "",
+      accountantEmail: "",
       countryCode: "+20",
       phone: "",
       address: "",
@@ -213,6 +216,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
           initial={{
             name: selectedCustomer.name,
             email: selectedCustomer.email,
+            accountantEmail: selectedCustomer.accountantEmail || "",
             phone: selectedCustomer.phone,
             country: selectedCustomer.country || "",
             city: selectedCustomer.city || "",
@@ -246,6 +250,10 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
               <div>
                 <p className="text-sm text-muted-foreground">{t("field.email")}</p>
                 <p className="font-semibold">{selectedCustomer.email}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">{t("customer.accountant-email")}</p>
+                <p className="font-semibold break-words">{selectedCustomer.accountantEmail || t("customer.accountant-email-none")}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("field.phone")}</p>
@@ -450,6 +458,15 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="customer@example.com"
                   />
+                </div>
+                <div>
+                  <Label>{t("customer.accountant-email")}</Label>
+                  <Input
+                    value={formData.accountantEmail}
+                    onChange={(e) => setFormData({ ...formData, accountantEmail: e.target.value })}
+                    placeholder="accounts@example.com, finance@example.com"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">{t("customer.accountant-email-hint")}</p>
                 </div>
                 <div>
                   <Label>{t("customer.country")} *</Label>

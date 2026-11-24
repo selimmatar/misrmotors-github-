@@ -13,6 +13,8 @@ import { CustomerTaxIdentities } from "@/components/parties/customer-tax-identit
 export interface PartyDetails {
   name: string
   email: string
+  /** customers: the address(es) our invoice e-mails go to (comma-separated allowed) */
+  accountantEmail?: string
   phone: string
   country?: string
   city?: string
@@ -65,6 +67,7 @@ export function EditPartyDialog({ open, onOpenChange, kind, initial, customerId,
       if (Array.isArray(warnings) && warnings.length > 0) {
         const fields = warnings.map((w) => {
           const key = w.split(":")[0]
+          if (key === "accountant_email") return t("customer.accountant-email-not-saved")
           return key === "national_id" ? t("eta.national-id-warning") : t("eta.tax-number-warning")
         })
         alert(Array.from(new Set(fields)).join("\n"))
@@ -98,6 +101,12 @@ export function EditPartyDialog({ open, onOpenChange, kind, initial, customerId,
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {field("name", `${t(kind === "customer" ? "customer.name" : "supplier.name")} *`)}
           {field("email", t("field.email"), "email")}
+          {kind === "customer" && (
+            <div className="sm:col-span-2 space-y-1">
+              {field("accountantEmail", t("customer.accountant-email"))}
+              <p className="text-xs text-muted-foreground">{t("customer.accountant-email-hint")}</p>
+            </div>
+          )}
           {field("phone", t("field.phone"), "tel")}
           {field("country", t("customer.country"))}
           {field("city", t("customer.city"))}

@@ -136,8 +136,10 @@ export const PUBLIC_PATHS = [
 /**
  * Reachable without logging in, for every path under these. /api/worker-upload/<secret>: the maintenance worker's
  * photo upload (owner-approved 2026-11-19); the route checks the secret itself and can only add a photo draft.
+ * /api/doc-link/<token>: the view / print links in the customer's e-invoice e-mail (owner request 2026-11-24); the
+ * route checks the HMAC-signed token (DOC_LINK_SECRET, 180 days) and shows only the print of that one document.
  */
-export const PUBLIC_PREFIXES = ["/api/worker-upload/"]
+export const PUBLIC_PREFIXES = ["/api/worker-upload/", "/api/doc-link/"]
 
 export const isPublicPath = (path: string) => PUBLIC_PATHS.includes(path) || PUBLIC_PREFIXES.some((p) => path.startsWith(p))
 
