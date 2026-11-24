@@ -88,19 +88,19 @@ export function hasPictureColumn(items: any[]): boolean {
 /** Styles for the picture column; add only when hasPictureColumn() (the page stays byte-identical otherwise). */
 export const QUOTE_PICTURE_CSS = `
 tr:has(.q-pic) { break-inside: avoid; page-break-inside: avoid; }
-.q-pic-col { inline-size: 80px; text-align: center; vertical-align: middle; }
-.q-pic { display: block; inline-size: 68px; block-size: 68px; margin-inline: auto; object-fit: contain; border: 1px solid #d6d6d6; border-radius: 6px; background: #fff; }`
+.q-pic-col { inline-size: 120px !important; min-inline-size: 120px !important; max-inline-size: 120px; text-align: center; vertical-align: middle; padding: 6px 4px; }
+.q-pic { display: block; inline-size: 110px !important; block-size: 110px !important; min-inline-size: 110px; max-inline-size: none !important; margin-inline: auto; object-fit: contain; border: 1px solid #e2e2e2; border-radius: 6px; background: #fff; }`
 
 /** The header cell of the picture column ("" when no line has a picture). */
 export function pictureHeadHtml(show: boolean, label = "صورة"): string {
-  return show ? `<th class="pm-center q-pic-col" style="width: 80px;">${escapeHtml(label)}</th>` : ""
+  return show ? `<th class="pm-center q-pic-col" style="width: 120px; min-width: 120px;">${escapeHtml(label)}</th>` : ""
 }
 
 /** One line's picture cell ("" when the table has no picture column; an empty cell for a line without a picture). */
 export function pictureCellHtml(show: boolean, rawUrl: unknown): string {
   if (!show) return ""
   const url = cleanPictureUrl(rawUrl)
-  return `<td class="q-pic-col">${url ? `<img class="q-pic" src="${escapeHtml(url)}" alt="" loading="eager">` : ""}</td>`
+  return `<td class="q-pic-col">${url ? `<img class="q-pic" src="${escapeHtml(url)}" alt="" width="110" height="110" loading="eager">` : ""}</td>`
 }
 
 /**
