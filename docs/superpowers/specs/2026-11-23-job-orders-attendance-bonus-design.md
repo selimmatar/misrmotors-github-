@@ -143,3 +143,23 @@ code (add one if missing, in the new tables).
 7. New small "official holidays" list maintained by the office; Fridays always off.
 8. One setting "job orders live": off = CEO/admin only; on = accountant too, and the "job card" option appears on the
    engineers' photo link.
+
+## 11. REVISED FLOW (owner, 2026-11-23/24) — supersedes 5.1–5.3 where they differ
+- The MAINTENANCE MANAGER is the hub (not the office): he receives the request, uses two NEW pre-numbered carbon
+  booklets, and photographs the filled pages through his existing photo link (as with MINV pages today).
+  - JOB CARD booklet (customer-facing; may be photographed and sent to the customer): printed number (+ QR as a reading
+    aid), customer, branch/location, machine, optional sales order number, ZONE tick boxes (قريب / متوسط / بعيد / خارج
+    القاهرة), engineers on the visit, date, arrival/finish times, problem found, a LARGE lined "work done" area, fixed /
+    not fixed, parts installed or needed WITHOUT prices or suppliers, customer name + signature + stamp.
+  - PURCHASE SLIP booklet (office only, never sent to the customer): own printed number, a box for the job-card number,
+    rows of item / shop or supplier / price / "from stock" tick, shop receipt stapled.
+- A job is created automatically when its first job-card page photo arrives (job number = the booklet page number);
+  later pages for the same job number attach to it. The office can also open a job by hand. Jobs never require a sales
+  order (optional link only).
+- Zone: ticked on the card; the system remembers it per customer site so later cards need not repeat it.
+- The office only checks the read-out and presses Confirm. Job difficulty = real hours on site (no size picking).
+  Job type chosen once per job.
+- Purchase slip rows become job expenses on the job (cost per job); "from stock" rows take the item out of stock at stock
+  cost. (Whether they also create formal POs: builder proposes; owner wants the simplest path.)
+- Invoices stay on the existing MINV booklet flow; a job's MINV can be linked to the job for profit per job.
+- The existing MINV booklet is unchanged.
