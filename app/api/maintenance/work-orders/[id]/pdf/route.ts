@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
-import { escapeHtml } from "@/lib/html-escape"
+import { escapeHtml, ltrText } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
@@ -95,8 +95,8 @@ company: {
 nameAr: `${COMPANY_SETTINGS.nameAr}`,
 nameEn: `${COMPANY_SETTINGS.nameEn}`,
 detailsHtml: `<div>\u0627\u0644\u0639\u0646\u0648\u0627\u0646: ${COMPANY_SETTINGS.address}</div>
-<div>\u062A\u0644\u064A\u0641\u0648\u0646: ${COMPANY_SETTINGS.phone} | \u0641\u0627\u0643\u0633: ${COMPANY_SETTINGS.fax}</div>
-<div>\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A: ${COMPANY_SETTINGS.email}</div>`,
+<div>\u062A\u0644\u064A\u0641\u0648\u0646: ${ltrText(COMPANY_SETTINGS.phone)} | \u0641\u0627\u0643\u0633: ${ltrText(COMPANY_SETTINGS.fax)}</div>
+<div>\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A: ${ltrText(COMPANY_SETTINGS.email)}</div>`,
 },
 taxInfo: `${getTaxInfo()}`,
 })}
@@ -119,7 +119,7 @@ ${docTitle({ titleAr: `\u062A\u0642\u0631\u064A\u0631 \u0635\u064A\u0627\u0646\u
 <div class="pm-fields">
 <div class="pm-field"><span class="pm-label">\u0627\u0633\u0645 \u0627\u0644\u0639\u0645\u064A\u0644:</span><span class="pm-value">${escapeHtml(customer?.customer_name || na)}</span></div>
 <div class="pm-field"><span class="pm-label">\u0627\u0644\u0639\u0646\u0648\u0627\u0646 / \u0627\u0644\u0645\u0648\u0642\u0639:</span><span class="pm-value">${escapeHtml(customer?.address || workOrder.location || na)}</span></div>
-<div class="pm-field"><span class="pm-label">\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641:</span><span class="pm-value">${escapeHtml(customer?.phone || na)}</span></div>
+<div class="pm-field"><span class="pm-label">\u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641:</span><span class="pm-value">${ltrText(customer?.phone || na)}</span></div>
 </div>
 </div>
 

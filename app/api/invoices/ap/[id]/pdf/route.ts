@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
-import { escapeHtml } from "@/lib/html-escape"
+import { escapeHtml, ltrText } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
@@ -144,8 +144,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         nameAr: `${COMPANY_SETTINGS.nameAr}`,
         nameEn: `${COMPANY_SETTINGS.nameEn}`,
         detailsHtml: `<div>العنوان: ${COMPANY_SETTINGS.address}</div>
-          <div>تليفون: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax}</div>
-          <div>البريد الإلكتروني: ${COMPANY_SETTINGS.email}</div>`,
+          <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
+          <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>`,
       },
       taxInfo: `${getTaxInfo()}`,
     })}
@@ -207,7 +207,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         </div>
         <div class="pm-field">
           <span class="pm-label">الهاتف:</span>
-          <span class="pm-value">${escapeHtml(supplier.phone || "-")}</span>
+          <span class="pm-value">${ltrText(supplier.phone || "-")}</span>
         </div>
         <div class="pm-field pm-field-wide">
           <span class="pm-label">العنوان:</span>

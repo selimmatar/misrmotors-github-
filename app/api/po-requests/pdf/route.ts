@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
-import { escapeHtml } from "@/lib/html-escape"
+import { escapeHtml, ltrText } from "@/lib/html-escape"
 import { sortRequestItems } from "@/lib/po-requests/read-prices"
 import { PRINT_CSS, printHeader, docTitle, infoBox, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 
@@ -111,8 +111,8 @@ export async function GET(request: NextRequest) {
         nameEn: `${COMPANY_SETTINGS.nameEn}`,
         detailsHtml: `
         <div>العنوان: ${COMPANY_SETTINGS.address}</div>
-        <div>تليفون: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax}</div>
-        <div>البريد الإلكتروني: ${COMPANY_SETTINGS.email}</div>
+        <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
+        <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>
       `,
       },
       taxInfo: `${getTaxInfo()}`,
@@ -148,8 +148,8 @@ export async function GET(request: NextRequest) {
       
     ${infoBox(`بيانات المورد`, [
       [`اسم المورد:`, `${escapeHtml(supplier.supplier_name || "-")}`],
-      [`التليفون:`, `${escapeHtml(supplier.phone || "-")}`],
-      [`البريد الإلكتروني:`, `${escapeHtml(supplier.email || "-")}`],
+      [`التليفون:`, ltrText(supplier.phone || "-")],
+      [`البريد الإلكتروني:`, ltrText(supplier.email || "-")],
       [`العنوان:`, `${escapeHtml(supplier.address || "-")}`],
     ])}
     
@@ -215,7 +215,7 @@ export async function GET(request: NextRequest) {
     <!-- Footer -->
     <div class="pm-footer">
       <p>شركة مصر للمحركات - ${COMPANY_SETTINGS.address}</p>
-      <p>هاتف: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax} | ${COMPANY_SETTINGS.email}</p>
+      <p>هاتف: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)} | ${ltrText(COMPANY_SETTINGS.email)}</p>
     </div>
   </div>
 ${PRINT_ROWS_SCRIPT}

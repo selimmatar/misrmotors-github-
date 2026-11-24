@@ -18,7 +18,8 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { Loader2, Package, Printer, Trash2, UserPlus, Upload } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
-import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
+import { escapeHtml, ltrText, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
+import { COMPANY_SETTINGS } from "@/lib/company-settings"
 import { useAppContext } from "@/lib/app-context"
 import { ProductSearchCombobox } from "@/components/product-search-combobox"
 import { DiscountFields, calculateDiscount, type DiscountType } from "@/components/discount"
@@ -609,8 +610,8 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     <div class="company-name-en">Misr Motors Co.</div>
     <div class="company-details">
       <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
-      <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
-      <div>البريد الإلكتروني: sales@misrmotors.com</div>
+      <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
+      <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>
     </div>
     <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
   </div>
@@ -649,9 +650,9 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         ? `
     <tr>
       <td><strong>الهاتف:</strong></td>
-      <td>${escapeHtml(customerPhone)}</td>
+      <td>${ltrText(customerPhone)}</td>
       <td><strong>البريد الإلكتروني:</strong></td>
-      <td>${escapeHtml(customerEmail || "-")}</td>
+      <td>${ltrText(customerEmail || "-")}</td>
     </tr>`
         : ""
     }
@@ -671,7 +672,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       <td><strong>مسؤول الاستلام:</strong></td>
       <td>${escapeHtml(deliveryContactName)}</td>
       <td><strong>هاتف الاستلام:</strong></td>
-      <td>${escapeHtml(deliveryContactPhone || "-")}</td>
+      <td>${ltrText(deliveryContactPhone || "-")}</td>
     </tr>`
         : ""
     }
@@ -827,8 +828,8 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
             <h3 className="font-semibold text-sm">{t("so-edit.customer-delivery")}</h3>
             <p className="text-xs text-muted-foreground">
               {t("quote-convert.quoted-to")} {quotation.customer_name}
-              {quotation.customer_phone ? ` • ${quotation.customer_phone}` : ""}
-              {quotation.customer_email ? ` • ${quotation.customer_email}` : ""}
+              {quotation.customer_phone ? <> • <bdi dir="ltr">{quotation.customer_phone}</bdi></> : ""}
+              {quotation.customer_email ? <> • <bdi dir="ltr">{quotation.customer_email}</bdi></> : ""}
             </p>
             {quotation.addressed_to ? (
               <p className="text-xs text-muted-foreground">

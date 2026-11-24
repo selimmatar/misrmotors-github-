@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
-import { escapeHtml } from "@/lib/html-escape"
+import { escapeHtml, ltrText } from "@/lib/html-escape"
 import { moneyCell } from "@/lib/print-html"
 import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 import {
@@ -288,8 +288,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       nameAr: `${COMPANY_SETTINGS.nameAr}`,
       nameEn: `${COMPANY_SETTINGS.nameEn}`,
       detailsHtml: `<div>العنوان: ${COMPANY_SETTINGS.address}</div>
-      <div>تليفون: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax}</div>
-      <div>البريد الإلكتروني: ${COMPANY_SETTINGS.email}</div>`,
+      <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
+      <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>`,
     },
     taxInfo: `${getTaxInfo()}`,
   })}
@@ -342,7 +342,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     ${
       so.receiver_name || so.delivery_contact_name
         ? `<div class="pm-field pm-field-wide">
-      <span class="pm-label">اسم المستلم:</span> <span class="pm-value">${escapeHtml(so.receiver_name || so.delivery_contact_name)}${so.delivery_contact_phone ? ` - تليفون: ${escapeHtml(so.delivery_contact_phone)}` : ""}</span>
+      <span class="pm-label">اسم المستلم:</span> <span class="pm-value">${escapeHtml(so.receiver_name || so.delivery_contact_name)}${so.delivery_contact_phone ? ` - تليفون: ${ltrText(so.delivery_contact_phone)}` : ""}</span>
     </div>`
         : ""
     }

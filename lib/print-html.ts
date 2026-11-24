@@ -2,9 +2,9 @@
 // from route handlers.
 import type { PrintTotals, SoPrintTotals } from "./print-totals"
 import { round2 } from "./print-totals"
-import { escapeHtml } from "./html-escape"
+import { escapeHtml, ltrText } from "./html-escape"
 
-export { escapeHtml }
+export { escapeHtml, ltrText }
 
 /** Egyptian paper layout splits money into pounds (جنيه) and piastres (قرش) columns. Exact: derived from cents. */
 export function splitMoney(amount: number): { pounds: string; piastres: string; negative: boolean } {

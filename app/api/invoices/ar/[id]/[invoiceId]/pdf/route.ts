@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
-import { escapeHtml } from "@/lib/html-escape"
+import { escapeHtml, ltrText } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 import { replacedPrint } from "@/lib/eta/replaced-print"
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
@@ -164,8 +164,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
       nameEn: `${companyLogo ? `<p>${escapeHtml(companyName)}</p>` : ""}`,
       detailsHtml: `
         ${companyAddress ? `<p>${escapeHtml(companyAddress)}</p>` : ""}
-        ${companyPhone ? `<p>${escapeHtml(companyPhone)}</p>` : ""}
-        ${companyEmail ? `<p>${escapeHtml(companyEmail)}</p>` : ""}
+        ${companyPhone ? `<p>${ltrText(companyPhone)}</p>` : ""}
+        ${companyEmail ? `<p>${ltrText(companyEmail)}</p>` : ""}
       `,
     },
   })}
@@ -184,14 +184,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
       <h3>From (Seller)</h3>
       <p style="font-weight:600;font-size:14px;">${escapeHtml(companyName)}</p>
       ${companyAddress ? `<p>${escapeHtml(companyAddress)}</p>` : ""}
-      ${companyPhone ? `<p>${escapeHtml(companyPhone)}</p>` : ""}
-      ${companyEmail ? `<p>${escapeHtml(companyEmail)}</p>` : ""}
+      ${companyPhone ? `<p>${ltrText(companyPhone)}</p>` : ""}
+      ${companyEmail ? `<p>${ltrText(companyEmail)}</p>` : ""}
     </div>
     <div class="pm-info">
       <h3>Billed To (Customer)</h3>
       <p style="font-weight:600;font-size:14px;">${escapeHtml(customer?.customer_name || "—")}</p>
-      ${customer?.email ? `<p><span>Email: </span>${escapeHtml(customer.email)}</p>` : ""}
-      ${customer?.phone ? `<p><span>Phone: </span>${escapeHtml(customer.phone)}</p>` : ""}
+      ${customer?.email ? `<p><span>Email: </span>${ltrText(customer.email)}</p>` : ""}
+      ${customer?.phone ? `<p><span>Phone: </span>${ltrText(customer.phone)}</p>` : ""}
       ${customer?.address ? `<p>${escapeHtml(customer.address)}${customer.city ? ", " + escapeHtml(customer.city) : ""}${customer.country ? ", " + escapeHtml(customer.country) : ""}</p>` : ""}
       ${so?.delivery_address ? `<p><span>Delivery: </span>${escapeHtml(so.delivery_address)}</p>` : ""}
     </div>

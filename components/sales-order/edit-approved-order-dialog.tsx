@@ -26,7 +26,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, Package, Printer, Trash2, UserPlus } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
-import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
+import { escapeHtml, ltrText, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
+import { COMPANY_SETTINGS } from "@/lib/company-settings"
 import { useAppContext } from "@/lib/app-context"
 import { LineMoveControls, LineSearchBox, lineRowDragClass, useLineOrdering } from "@/components/shared/line-order-controls"
 import { cn } from "@/lib/utils"
@@ -529,8 +530,8 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
     <div class="company-name-en">Misr Motors Co.</div>
     <div class="company-details">
       <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
-      <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
-      <div>البريد الإلكتروني: sales@misrmotors.com</div>
+      <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
+      <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>
     </div>
     <div class="tax-info">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div>
   </div>
@@ -554,9 +555,9 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         ? `
     <tr>
       <td><strong>الهاتف:</strong></td>
-      <td>${escapeHtml(customer.phone)}</td>
+      <td>${ltrText(customer.phone)}</td>
       <td><strong>البريد الإلكتروني:</strong></td>
-      <td>${escapeHtml(customer.email || "-")}</td>
+      <td>${ltrText(customer.email || "-")}</td>
     </tr>`
         : ""
     }
@@ -576,7 +577,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       <td><strong>مسؤول الاستلام:</strong></td>
       <td>${escapeHtml(deliveryContactName)}</td>
       <td><strong>هاتف الاستلام:</strong></td>
-      <td>${escapeHtml(deliveryContactPhone || "-")}</td>
+      <td>${ltrText(deliveryContactPhone || "-")}</td>
     </tr>`
         : ""
     }
