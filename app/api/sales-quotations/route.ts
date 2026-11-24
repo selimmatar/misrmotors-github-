@@ -4,6 +4,7 @@ import { getConvertedSo, getQuotationLockReason } from "@/lib/sales-quotations/c
 import { hasColumn, sortQuotationLines } from "@/lib/line-order"
 import { cleanAddressedTo } from "@/lib/quotations/addressed-to"
 import { fromStockField, hasQuotationFromStockColumn } from "@/lib/quotations/from-stock"
+import { anyLineWantsPicture, hasQuotationPictureColumn, pictureField, productPicturesFor } from "@/lib/quotations/line-picture"
 import { type NextRequest, NextResponse } from "next/server"
 import { badNumberResponse, cleanManualNumber, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
 
@@ -120,6 +121,9 @@ export async function POST(request: NextRequest) {
 
     // Insert items (a line taken from free stored stock keeps the picked row, lib/quotations/from-stock.ts)
     const withFromStock = await hasQuotationFromStockColumn(supabase)
+    // A line's picture (lib/quotations/line-picture.ts): saved once sales_quotation_items.image_url exists
+    const withPicture = await hasQuotationPictureColumn(supabase)
+    const productPictures = withPicture ? await productPicturesFor(supabase, items) : new Map<number, string>()
     const itemsData = items.map((item: any, index: number) => ({
       quotation_id: quotation.id,
       line_no: index + 1,
@@ -131,6 +135,7 @@ export async function POST(request: NextRequest) {
       unit_cost: item.unit_cost ?? null,
       supplier_name: item.supplier_name || null,
       ...fromStockField(item, withFromStock),
+      ...pictureField(item, withPicture, productPictures),
     }))
 
     const { error: itemsError } = await supabase.from("sales_quotation_items").insert(itemsData)
@@ -140,7 +145,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to create quotation items" }, { status: 500 })
     }
 
-    return NextResponse.json({ quotation }, { status: 201 })
+    // Pictures were sent but the column is not there yet: the quotation is saved without them; the form says so
+    const picturesNotSaved = !withPicture && anyLineWantsPicture(items)
+    return NextResponse.json({ quotation, ...(picturesNotSaved ? { pictures_not_saved: true } : {}) }, { status: 201 })
   } catch (error) {
     console.error("Sales quotation POST error:", error)
     return NextResponse.json({ error: "Failed to create sales quotation" }, { status: 500 })
@@ -221,6 +228,8 @@ export async function PATCH(request: NextRequest) {
     // Step 1: insert the new items (the old ones stay in place). `total` is a generated
     // column and must not be written.
     const withFromStock = await hasQuotationFromStockColumn(supabase)
+    const withPicture = await hasQuotationPictureColumn(supabase)
+    const productPictures = withPicture ? await productPicturesFor(supabase, items) : new Map<number, string>()
     const itemsData = items.map((item: any, index: number) => ({
       quotation_id: quotationId,
       line_no: index + 1,
@@ -232,6 +241,7 @@ export async function PATCH(request: NextRequest) {
       unit_cost: item.unit_cost ?? null,
       supplier_name: item.supplier_name || null,
       ...fromStockField(item, withFromStock),
+      ...pictureField(item, withPicture, productPictures),
     }))
 
     const { data: insertedItems, error: insertItemsError } = await supabase
@@ -327,7 +337,8 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, item_count: newItemIds.length })
+    const picturesNotSaved = !withPicture && anyLineWantsPicture(items)
+    return NextResponse.json({ success: true, item_count: newItemIds.length, ...(picturesNotSaved ? { pictures_not_saved: true } : {}) })
   } catch (error) {
     console.error("Sales quotation PATCH error:", error)
     return NextResponse.json({ error: "Failed to save quotation changes" }, { status: 500 })

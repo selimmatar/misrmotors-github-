@@ -43,6 +43,7 @@ import { shrinkPhoto } from "@/lib/shrink-photo"
 import type { PhotoItem } from "@/lib/quotations/read-items"
 import { photoNumbers, postPhotoRead } from "@/lib/photo-retry"
 import { StockShortfallNote } from "@/components/sales-quotation/stock-shortfall-note"
+import { LinePictureControl, useProductPictures } from "@/components/sales-quotation/line-picture-control"
 import { LineMoveControls, LineSearchBox, lineRowDragClass, useLineOrdering } from "@/components/shared/line-order-controls"
 
 interface QuotationItem {
@@ -58,6 +59,10 @@ interface QuotationItem {
   from_inventory_id?: string
   /** that item's stock cost per unit */
   stored_cost?: number
+  /** the line's picture (lib/quotations/line-picture.ts): an uploaded one, or the product's when with_product_picture */
+  image_url?: string | null
+  /** "With picture": use the catalogue product's saved picture */
+  with_product_picture?: boolean
 }
 
 interface SalesQuotationModuleProps {
@@ -129,6 +134,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
   const [savedPdfUrl, setSavedPdfUrl] = useState<string | null>(null)
   const [isCreatingQuotation, setIsCreatingQuotation] = useState(false)
   const [items, setItems] = useState<QuotationItem[]>([])
+  // Each catalogue line's product picture, for the "With picture" tick box (lib/quotations/line-picture.ts)
+  const productPictures = useProductPictures(items.map((item) => (item.item_type === "inventory" && !item.from_inventory_id ? item.product_id : null)))
   const [notes, setNotes] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -802,6 +809,8 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                 product_id: undefined,
                 from_inventory_id: storedId,
                 stored_cost: cost,
+                // the product's picture belonged to the previous choice; an uploaded one stays
+                ...(item.with_product_picture ? { image_url: null, with_product_picture: false } : {}),
                 product_name: stored.productName || stored.outsourcedName || "",
                 unit_price: cost,
                 supplier_name: stored.supplierName || undefined,
@@ -821,6 +830,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                 product_id: Number(productId),
                 from_inventory_id: undefined,
                 stored_cost: undefined,
+                ...(item.with_product_picture ? { image_url: null, with_product_picture: false } : {}),
                 supplier_name: undefined,
                 product_name: product.productName || product.product_name || "",
                 unit_price: product.unitPrice || product.unit_price || 0,
@@ -938,6 +948,9 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
           unit_cost: item.item_type === "outsourced" ? Number(item.unit_price) || null : item.from_inventory_id ? item.stored_cost ?? null : null,
           supplier_name: item.supplier_name || null,
           from_inventory_id: item.from_inventory_id ? Number(item.from_inventory_id) : null,
+          // the line's picture; "With picture" lets the server take the product's saved one (lib/quotations/line-picture.ts)
+          image_url: item.image_url || null,
+          with_product_picture: Boolean(item.with_product_picture && item.product_id && !item.from_inventory_id),
         })),
       }),
     })
@@ -949,7 +962,9 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
       throw new Error("Failed to save quotation")
     }
 
-    const { quotation } = await response.json()
+    const { quotation, pictures_not_saved: picturesNotSaved } = await response.json()
+    // The pictures column is not in the database yet (scripts/sql/2026-11-25-quote-pictures.sql): say so plainly
+    if (picturesNotSaved) alert(t("sq.pictures-not-saved"))
     const lines = items.map((item, index) => ({
       lineNo: index + 1,
       productId: item.item_type === "inventory" && item.product_id ? item.product_id : null,
@@ -983,6 +998,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
         product_name: item.product_name,
         quantity: item.quantity,
         unit_price: Number(getItemFinalPrice(item).toFixed(2)),
+        ...(item.image_url ? { image_url: item.image_url } : {}),
       })),
       validity_days: validityDays,
       notes: notes,
@@ -1483,6 +1499,17 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                     <Button variant="destructive" size="icon" aria-label={t("action.remove-item")} onClick={() => removeItem(item.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                  </div>
+                  <div className="col-span-2 lg:col-span-12">
+                    <LinePictureControl
+                      id={item.id}
+                      value={{ image_url: item.image_url, with_product_picture: item.with_product_picture }}
+                      onChange={(next) =>
+                        setItems((prev) => prev.map((line) => (line.id === item.id ? { ...line, image_url: next.image_url ?? null, with_product_picture: Boolean(next.with_product_picture) } : line)))
+                      }
+                      isProductLine={item.item_type === "inventory" && Boolean(item.product_id) && !item.from_inventory_id}
+                      productPicture={item.product_id ? productPictures[item.product_id] : undefined}
+                    />
                   </div>
                 </div>
                 )

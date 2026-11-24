@@ -13,6 +13,7 @@ import { escapeHtml, ltrText, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } f
 import { COMPANY_SETTINGS } from "@/lib/company-settings"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 import { quoteAddressee } from "@/lib/quotations/addressed-to"
+import { cleanPictureUrl, hasPictureColumn, pictureCellHtml, pictureHeadHtml, printWhenPicturesLoaded, QUOTE_PICTURE_CSS } from "@/lib/quotations/line-picture"
 
 interface QuotationItem {
   id: number
@@ -20,6 +21,8 @@ interface QuotationItem {
   quantity: number
   unit_price: number
   total: number
+  /** the line's picture (lib/quotations/line-picture.ts) */
+  image_url?: string | null
 }
 
 interface QuotationData {
@@ -120,13 +123,14 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
 
   const items = activeQuotation.items || []
   const totals = quotationTotals(activeQuotation)
+  const showPictures = hasPictureColumn(items)
 
     const itemsHtml = items.map((item, idx) => {
       const unitPrice = item.unit_price || 0
       const itemTotal = item.total || item.quantity * item.unit_price
       return `
         <tr>
-          <td class="center">${idx + 1}</td>
+          <td class="center">${idx + 1}</td>${pictureCellHtml(showPictures, item.image_url)}
           <td>${escapeHtml(item.product_name)}</td>
           <td class="center">${item.quantity}</td>
           ${moneyCell(unitPrice)}
@@ -233,7 +237,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
   <title>عرض سعر - ${escapeHtml(activeQuotation.quotation_number)}</title>
   <style>
     ${PRINT_CSS}${TOTALS_BLOCK_CSS}
-    .center { text-align: center; }
+    .center { text-align: center; }${showPictures ? QUOTE_PICTURE_CSS : ""}
   </style>
 </head>
 <body>
@@ -279,7 +283,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
   <table class="pm-table items-table">
     <thead>
       <tr>
-        <th class="pm-center" style="width: 6%;">م</th>
+        <th class="pm-center" style="width: 6%;">م</th>${pictureHeadHtml(showPictures)}
         <th style="width: 36%;">البيان</th>
         <th class="pm-center" style="width: 8%;">الكمية</th>
         <th class="pm-num" style="width: 25%;">سعر الوحدة (جنيه)</th>
@@ -321,7 +325,8 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
 </body>
 </html>`)
     printWindow.document.close()
-    printWindow.print()
+    if (showPictures) printWhenPicturesLoaded(printWindow)
+    else printWindow.print()
   }
 
   return (
@@ -427,6 +432,7 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
                   <thead>
                     <tr className="bg-gray-100">
                       <th className="border px-2 py-2 text-sm w-10">م</th>
+                      {hasPictureColumn(activeQuotation.items || []) && <th className="border px-2 py-2 text-sm w-20">صورة</th>}
                       <th className="border px-2 py-2 text-sm">البيان</th>
                       <th className="border px-2 py-2 text-sm text-center w-16">الكمية</th>
                       <th className="border px-2 py-2 text-sm text-center w-24">سعر الوحدة</th>
@@ -437,6 +443,14 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
                     {(activeQuotation.items || []).map((item, idx) => (
                       <tr key={item.id || idx}>
                         <td className="border px-2 py-2 text-sm text-center">{idx + 1}</td>
+                        {hasPictureColumn(activeQuotation.items || []) && (
+                          <td className="border px-2 py-2 text-sm">
+                            {cleanPictureUrl(item.image_url) && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={cleanPictureUrl(item.image_url)!} alt="" className="mx-auto h-16 w-16 rounded-md border object-contain bg-white" />
+                            )}
+                          </td>
+                        )}
                         <td className="border px-2 py-2 text-sm">{item.product_name}</td>
                         <td className="border px-2 py-2 text-sm text-center">{item.quantity}</td>
                         <td className="border px-2 py-2 text-sm text-center">{formatCurrency(item.unit_price)}</td>
