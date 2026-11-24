@@ -5,6 +5,7 @@ import { matchCode, type CodeState, type MatchContext } from "./codes"
 import { loadMatchContext, readEtaSettings } from "./store"
 import { etaLines, isAfterGoLive, type EtaLineIn, type EtaLineOut, type EtaTotals } from "./totals"
 import { billedLinesForInvoice, loadSoInvoicingState, loadStandaloneLines, orderDiscountRate, round2 } from "../invoicing"
+import { mergeKey, mergeSameLines } from "../merge-lines"
 import { loadCustomerIdentities, loadInvoiceIdentityId, pickIdentity, type TaxIdentity } from "./identities"
 
 type Db = any
@@ -113,7 +114,8 @@ export async function buildEtaPreview(
     if (!state || !inv) continue
     groups.push({
       // the same filter etaLines applies, so its output lines stay index-aligned with their products
-      lines: billedLinesForInvoice(state, inv).filter((b) => Number(b.line.quantity) > 0),
+      // one line per permit item here; the same item is merged below, once its item code and unit are known
+      lines: billedLinesForInvoice(state, inv, { merge: false }).filter((b) => Number(b.line.quantity) > 0),
       rate: orderDiscountRate(state.soItems, state.so.subtotal, state.so.discount_amount),
     })
   }
@@ -144,31 +146,67 @@ export async function buildEtaPreview(
   ])
   const codeById = new Map(ctx.codes.map((c) => [c.codeId, c]))
 
-  const lines: EtaPreviewLine[] = []
-  const sums = { sales: 0, discount: 0, net: 0, vat: 0, total: 0 }
-  for (const group of groups) {
-    const input = group.lines.map((b) => ({
-      ...b.line,
-      // a stock line on a whole-order invoice has no name of its own: its product's name
-      name: b.line.name || text(b.productId != null ? productById.get(b.productId)?.product_name : ""),
-    }))
-    const priced = etaLines(input, group.rate)
-    // the rate etaLines priced with (it treats a bad or negative rate as none)
-    const rate = Number.isFinite(group.rate) && group.rate > 0 ? group.rate : 0
-    priced.lines.forEach((line, idx) => {
-      const product = group.lines[idx].productId != null ? productById.get(group.lines[idx].productId!) : null
-      const match = matchCode({ name: line.name, productCodeId: product?.eta_code_id ?? null, productUnit: text(product?.eta_unit_type) || null }, ctx)
-      const code = match.codeId != null ? codeById.get(match.codeId) : undefined
-      const itemCode = code?.itemCode ?? null
-      const productId = group.lines[idx].productId ?? null
-      lines.push({
-        ...line, codeId: match.codeId, itemCode, itemType: etaItemType(itemCode, code?.codeType), discountRate: rate, unit: match.unit, state: match.state, productId,
-        ...(match.portalCodeId != null ? { portalItemCode: itemCode } : {}),
+  // One line per item (lib/merge-lines.ts, owner 2026-11-24): within an order, lines of the same product (no product:
+  // the same trimmed name) with the same item code, unit type and unit price become one line with the summed quantity,
+  // at the first one's position. `merge: false` prices every permit line on its own, as invoices stored before lines
+  // were merged were priced.
+  const STATE_RANK: Record<CodeState, number> = { green: 0, orange: 1, red: 2 }
+  const build = (merge: boolean) => {
+    const lines: EtaPreviewLine[] = []
+    const sums = { sales: 0, discount: 0, net: 0, vat: 0, total: 0 }
+    for (const group of groups) {
+      // the rate etaLines prices with (it treats a bad or negative rate as none)
+      const rate = Number.isFinite(group.rate) && group.rate > 0 ? group.rate : 0
+      const matched = group.lines.map((b) => {
+        // a stock line on a whole-order invoice has no name of its own: its product's name
+        const name = b.line.name || text(b.productId != null ? productById.get(b.productId)?.product_name : "")
+        const product = b.productId != null ? productById.get(b.productId) : null
+        const match = matchCode({ name, productCodeId: product?.eta_code_id ?? null, productUnit: text(product?.eta_unit_type) || null }, ctx)
+        return { line: { ...b.line, name }, productId: b.productId ?? null, match }
       })
-    })
-    for (const key of Object.keys(sums) as (keyof EtaTotals)[]) sums[key] += priced.totals[key]
+      const input = merge
+        ? mergeSameLines(
+            matched,
+            (m) => mergeKey({ productId: m.productId, name: m.line.name, unitPrice: m.line.unitPrice, itemCode: m.match.codeId == null ? "" : String(m.match.codeId), unit: m.match.unit }),
+            (m) => Number(m.line.quantity) || 0,
+            (first, next, quantity) => ({
+              ...first,
+              line: { ...first.line, quantity },
+              // the merged line is only as ready as its least ready part
+              match: {
+                ...first.match,
+                state: STATE_RANK[next.match.state] > STATE_RANK[first.match.state] ? next.match.state : first.match.state,
+                portalCodeId: first.match.portalCodeId ?? next.match.portalCodeId,
+              },
+            }),
+          )
+        : matched
+      const priced = etaLines(input.map((m) => m.line), group.rate)
+      priced.lines.forEach((line, idx) => {
+        const { match, productId } = input[idx]
+        const code = match.codeId != null ? codeById.get(match.codeId) : undefined
+        const itemCode = code?.itemCode ?? null
+        lines.push({
+          ...line, codeId: match.codeId, itemCode, itemType: etaItemType(itemCode, code?.codeType), discountRate: rate, unit: match.unit, state: match.state, productId,
+          ...(match.portalCodeId != null ? { portalItemCode: itemCode } : {}),
+        })
+      })
+      for (const key of Object.keys(sums) as (keyof EtaTotals)[]) sums[key] += priced.totals[key]
+    }
+    const totals: EtaTotals = { sales: round2(sums.sales), discount: round2(sums.discount), net: round2(sums.net), vat: round2(sums.vat), total: round2(sums.total) }
+    return { lines, totals }
   }
-  const totals: EtaTotals = { sales: round2(sums.sales), discount: round2(sums.discount), net: round2(sums.net), vat: round2(sums.vat), total: round2(sums.total) }
+  // The stored amount decides between the two: a new invoice was stored with the merged lines' value; an invoice stored
+  // before lines were merged may differ by a few piasters (VAT rounded per line), and then its own unmerged lines -
+  // exactly what it was priced from - are used, so it can still be sent with no amount mismatch.
+  const storedAmount = round2(Number(invoice.amount) || 0)
+  const sameAsStored = (t: EtaTotals) => Math.abs(t.total - storedAmount) <= 0.005
+  let built = build(true)
+  if (!sameAsStored(built.totals)) {
+    const unmerged = build(false)
+    if (sameAsStored(unmerged.totals)) built = unmerged
+  }
+  const { lines, totals } = built
 
   const manual = documents.find((d: any) => d.status === "manual") || null
 
@@ -216,7 +254,6 @@ export async function buildEtaPreview(
   if (lines.some((l) => l.portalItemCode)) missing.push("portal_codes")
   // The preview is recomputed from today's data; a return rejected or an order edited after invoicing moves it away
   // from what the invoice stored. Such an invoice must not be sent as is.
-  const storedAmount = round2(Number(invoice.amount) || 0)
   const handledManually = !isAfterGoLive(invoice.created_at, settings.eta_go_live_at) || manual !== null
   if (!handledManually && Math.abs(totals.total - storedAmount) > 0.005) missing.push("amount_mismatch")
 

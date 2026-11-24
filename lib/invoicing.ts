@@ -28,6 +28,7 @@ import {
   type ReturnLine,
 } from "./return-lines"
 import { etaLines, etaTolerance, type EtaLineIn } from "./eta/totals"
+import { mergeKey, mergeSameLines } from "./merge-lines"
 import { pricedPerLine, VAT_RATE, vatPerLine, vatPrintTotals } from "./vat-lines"
 import {
   correctionOfPermits, openCorrectionsForOrder, reissueInvoice, ReissueNumberTaken, ReissueRefused, REISSUE_OVERPAID, undoReissue,
@@ -298,7 +299,7 @@ export function computeWholeOrderAmount(
   }
   if (rawAll <= 0) return { ok: true, amount: total, excluded: new Map() }
   const amount = eta
-    ? etaLines(billed.map((b) => orderEtaLine(b).line), stateDiscountRate(state)).totals.total
+    ? etaLines(mergeBilledLines(billed.map(orderEtaLine)).map((b) => b.line), stateDiscountRate(state)).totals.total
     : round2(total * (1 - rawExcluded / rawAll))
   if (excluded.size === 0) return { ok: true, amount, excluded }
   if (amount <= 0.005) {
@@ -337,6 +338,20 @@ export interface BilledEtaLine {
   productId: number | null
 }
 
+/**
+ * One line per item (lib/merge-lines.ts, owner 2026-11-24): billed lines of the same product (no product: the same
+ * trimmed name) at the same unit price become one line with the summed quantity, at the first one's position. Returns
+ * are netted before (the quantities passed are net). Every new invoice is stored with the value of the merged lines.
+ */
+export function mergeBilledLines(lines: BilledEtaLine[]): BilledEtaLine[] {
+  return mergeSameLines(
+    lines,
+    (b) => mergeKey({ productId: b.productId, name: b.line.name, unitPrice: b.line.unitPrice }),
+    (b) => Number(b.line.quantity) || 0,
+    (first, _next, quantity) => ({ ...first, line: { ...first.line, quantity } }),
+  )
+}
+
 // A billed order line (from billedOrderLines) as an e-invoice line: the quantity less what was returned.
 const orderEtaLine = (b: ReturnType<typeof billedOrderLines>[number]): BilledEtaLine => ({
   line: { name: b.line.outsourced_name || "", quantity: b.qty - b.take, unitPrice: etaUnitPrice(b.line) },
@@ -344,7 +359,8 @@ const orderEtaLine = (b: ReturnType<typeof billedOrderLines>[number]): BilledEta
 })
 
 // The lines a whole-order invoice bills given `state.returns` (the order lines less those returns).
-const wholeOrderBilledLines = (state: SoInvoicingState): BilledEtaLine[] => billedOrderLines(state, excludedByKey(state)).map(orderEtaLine)
+const wholeOrderBilledLines = (state: SoInvoicingState): BilledEtaLine[] =>
+  mergeBilledLines(billedOrderLines(state, excludedByKey(state)).map(orderEtaLine))
 
 /** The lines a whole-order invoice created now would bill (the order lines less returns), as e-invoice lines. */
 export function wholeOrderEtaLines(state: SoInvoicingState): EtaLineIn[] {
@@ -387,13 +403,17 @@ const permitEtaLines = (permit: SoInvoicingState["permits"][number], net: number
     productId: item.product_id ?? null,
   }))
 
-const dpInvoiceBilledLines = (state: SoInvoicingState, permitIds: number[], asOfMs?: number): BilledEtaLine[] =>
+// Each permit item at its net quantity, one line per permit item (not merged).
+const dpInvoiceUnmergedLines = (state: SoInvoicingState, permitIds: number[], asOfMs?: number): BilledEtaLine[] =>
   state.permits.filter((p) => permitIds.includes(p.permit_id)).flatMap((p) => permitEtaLines(p, netPermitQuantities(state, p, asOfMs)))
+
+const dpInvoiceBilledLines = (state: SoInvoicingState, permitIds: number[], asOfMs?: number): BilledEtaLine[] =>
+  mergeBilledLines(dpInvoiceUnmergedLines(state, permitIds, asOfMs))
 
 /**
  * The lines a delivery-permit invoice bills for this order's permits among `permitIds`: each permit item at its net
- * quantity (delivered less the returns known at `asOfMs`; all returns when omitted). The same item on two permits
- * stays two lines.
+ * quantity (delivered less the returns known at `asOfMs`; all returns when omitted), then the same item at the same
+ * unit price on several permits merged into one line (mergeBilledLines).
  */
 export function dpInvoiceEtaLines(state: SoInvoicingState, permitIds: number[], asOfMs?: number): EtaLineIn[] {
   return dpInvoiceBilledLines(state, permitIds, asOfMs).map((b) => b.line)
@@ -408,9 +428,17 @@ const returnsKnownAt = (state: SoInvoicingState, inv: SoInvoicingState["invoices
  * permit items at the net quantity billed (dpInvoiceEtaLines); a whole-order invoice, the order lines less the returns
  * known when it was created. Lines may carry quantity 0 (returned in full); etaLines drops them.
  */
-export function billedLinesForInvoice(state: SoInvoicingState, inv: SoInvoicingState["invoices"][number]): BilledEtaLine[] {
-  if (!isSoLevelInvoice(inv)) return dpInvoiceBilledLines(state, inv.permit_ids, invoiceAsOf(inv))
-  return wholeOrderBilledLines({ ...state, returns: returnsKnownAt(state, inv) })
+export function billedLinesForInvoice(
+  state: SoInvoicingState,
+  inv: SoInvoicingState["invoices"][number],
+  opts: { merge?: boolean } = {},
+): BilledEtaLine[] {
+  const merge = opts.merge !== false
+  if (!isSoLevelInvoice(inv)) {
+    return merge ? dpInvoiceBilledLines(state, inv.permit_ids, invoiceAsOf(inv)) : dpInvoiceUnmergedLines(state, inv.permit_ids, invoiceAsOf(inv))
+  }
+  const known = { ...state, returns: returnsKnownAt(state, inv) }
+  return merge ? wholeOrderBilledLines(known) : billedOrderLines(known, excludedByKey(known)).map(orderEtaLine)
 }
 
 const countedLines = (lines: EtaLineIn[]) => lines.filter((l) => l.quantity > QTY_EPSILON).length
@@ -423,7 +451,8 @@ function postGoLiveEtaLineCount(
 ) {
   return invoices
     .filter((inv) => pricedPerLine(createdAt(inv), state.etaGoLiveAt))
-    .reduce((n, inv) => n + (isSoLevelInvoice(inv) ? state.soItems.length : countedLines(dpInvoiceEtaLines(state, inv.permit_ids, invoiceAsOf(inv)))), 0)
+    // the unmerged count: the larger, so an invoice stored before lines were merged still fits the slack
+    .reduce((n, inv) => n + (isSoLevelInvoice(inv) ? state.soItems.length : countedLines(dpInvoiceUnmergedLines(state, inv.permit_ids, invoiceAsOf(inv)).map((b) => b.line))), 0)
 }
 
 // Value of an item for `netQty` units (pro-rata of its stored line total).
@@ -570,9 +599,11 @@ export function evaluateDpInvoice(state: SoInvoicingState, newPermitIds: number[
   const priorValue = state.invoices.reduce((sum, inv) => sum + invoiceShare(state, inv), 0)
   // The invoice is created now: priced line by line (lib/vat-lines.ts).
   const eta = pricedPerLine(nowIso(), state.etaGoLiveAt)
-  const newLines = eta ? newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])).map((b) => b.line) : []
+  // one line per item across the new permits (mergeBilledLines); the slack still counts every permit line
+  const newUnmerged = eta ? newPermits.flatMap((p) => permitEtaLines(p, netByPermit.get(p.permit_id) || [])) : []
+  const newLines = newUnmerged.map((b) => b.line)
   const newValue = eta
-    ? etaLines(newLines, stateDiscountRate(state)).totals.total
+    ? etaLines(mergeBilledLines(newUnmerged).map((b) => b.line), stateDiscountRate(state)).totals.total
     : newPermits.reduce((sum, p) => {
         const net = netByPermit.get(p.permit_id) || []
         const raw = p.items.reduce((s, it, idx) => s + itemNetRawTotal(it, net[idx]), 0)

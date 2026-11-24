@@ -14,9 +14,14 @@ import {
   round2,
 } from "@/lib/invoicing"
 import { vatPrintTotals } from "@/lib/vat-lines"
+import { mergePrintItems } from "@/lib/merge-lines"
 import { replacedPrint } from "@/lib/eta/replaced-print"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
+
+// Item name - outsourced_name for outsourced items, product_name for stock items
+const printItemName = (item: any): string =>
+  item.item_type === "outsourced" ? item.outsourced_name || "صنف خارجي" : item.products?.product_name || "-"
 
 export const dynamic = "force-dynamic"
 
@@ -156,6 +161,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               const unchanged = net[idx] === originalQty
               const lineTotal = Number(item.total) || (Number(item.unit_price) || 0) * originalQty
               return {
+                product_id: item.product_id ?? null,
                 quantity: unchanged ? item.quantity : net[idx],
                 unit_price: item.unit_price,
                 total: unchanged ? item.total : originalQty > 0 ? (lineTotal * net[idx]) / originalQty : 0,
@@ -233,11 +239,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       vatAmount = replaced.totals ? round2(replaced.totals.vat) : round2(totalWithVat - subtotalBeforeVat)
     } else {
       const discountRate = invoice.so_id ? orderDiscountRate(so.sales_order_items || [], soSubtotal, soDiscount) : 0
-      const printed = vatPrintTotals(
-        items.map((item: any) => ({ quantity: Number(item.quantity) || 0, unitPrice: etaUnitPrice(item) })),
-        discountRate,
-        invoice.amount,
-      )
+      const priceOf = (rows: any[]) =>
+        vatPrintTotals(rows.map((item: any) => ({ quantity: Number(item.quantity) || 0, unitPrice: etaUnitPrice(item) })), discountRate, invoice.amount)
+      // One row per item (lib/merge-lines.ts, owner 2026-11-24): the same product (or name) at the same unit price on
+      // several permits prints once with the summed quantity, as the e-invoice sends it. An invoice stored before lines
+      // were merged whose amount matches its unmerged rows exactly keeps printing those rows.
+      const merged = mergePrintItems(items, (item: any) => etaUnitPrice(item), printItemName)
+      let printed = priceOf(merged)
+      if (printed.storedDiffers && merged.length !== items.length) {
+        const unmerged = priceOf(items)
+        if (!unmerged.storedDiffers) printed = unmerged
+        else items = merged
+      } else items = merged
       ;({ totalWithVat, subtotalBeforeVat, vatAmount } = printed)
     }
 
