@@ -508,6 +508,9 @@ export interface DeliveryPermit {
   /** the actions the server allows next (lib/dp-transitions.ts allowedDpActions) */
   nextActions?: string[]
   allocatedAt?: string | null
+  /** sent back to shipping for a new signed upload (wrong / unclear upload), with the reason */
+  needsReupload?: boolean
+  reuploadReason?: string | null
 }
 
 export interface DeliveryPermitItem {

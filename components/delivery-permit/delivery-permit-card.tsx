@@ -9,6 +9,8 @@ import { useAppContext } from "@/lib/app-context"
 import { PermitStatusBadge } from "./permit-status-badge"
 import { SignedUploadWidget } from "./signed-upload-widget"
 import { ApproveRejectControls } from "./approve-reject-controls"
+import { SendBackToShippingButton } from "./send-back-button"
+import { NotReceivedDialog, recordNotReceived, type ConfirmedLine } from "./not-received-dialog"
 import type { DeliveryPermit, UserRole } from "@/lib/types"
 import { Printer, Truck, Upload, FileText, ExternalLink, Package, CheckCircle } from "lucide-react"
 
@@ -23,9 +25,11 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
   const { t, formatDate, language } = useI18n()
   const { user } = useAppContext()
   const [isLoading, setIsLoading] = useState(false)
+  // the signed upload waiting for the "not received" confirmation (lib/dp-not-received.ts)
+  const [checkFiles, setCheckFiles] = useState<File[] | null>(null)
 
-  const updatePermitStatus = async (action: string, additionalData?: any) => {
-    if (!permit) return
+  const updatePermitStatus = async (action: string, additionalData?: any): Promise<boolean> => {
+    if (!permit) return false
     setIsLoading(true)
     try {
       const response = await fetch("/api/delivery-permits", {
@@ -45,14 +49,16 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
         // Always show the server's reason (not enough stock, already approved, not allowed in this status, ...)
         if (language === "ar" && errorData.errorAr) errorData.error = errorData.errorAr
         alert(errorData.error || t("message.error"))
-        return
+        return false
       }
 
       const result = await response.json()
       onRefresh?.()
+      return true
     } catch (error) {
       console.error("DeliveryPermitCard - Error updating permit:", error)
       alert(t("message.error"))
+      return false
     } finally {
       setIsLoading(false)
     }
@@ -73,6 +79,21 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
   const handleMarkSubmittedSigned = () => updatePermitStatus("MARK_SUBMITTED_SIGNED")
   const handleApprove = () => updatePermitStatus("APPROVE")
   const handleReject = (reason: string) => updatePermitStatus("REJECT", { rejectionReason: reason })
+  const handleSendBack = async (reason: string) => {
+    await updatePermitStatus("SEND_BACK_TO_SHIPPING", { reason })
+  }
+  // The signed upload is complete once the "not received" lines are confirmed: mark it signed, then record the
+  // confirmed lines as a return (the same return flow as "Return items").
+  const handleConfirmSigned = async (lines: ConfirmedLine[]) => {
+    if (!permit) return
+    const signed = await updatePermitStatus("MARK_SUBMITTED_SIGNED")
+    setCheckFiles(null)
+    if (!signed) return
+    const recorded = await recordNotReceived(permit.id, lines, user?.name)
+    if (!recorded.ok) alert(fill(t("dp-nr.returns-failed"), { error: recorded.error || "" }))
+    else if (recorded.count > 0) alert(fill(t("dp-nr.returns-done"), { count: recorded.count }))
+    onRefresh?.()
+  }
 
   // the next steps the server allows (lib/dp-transitions.ts); an older response without them keeps the old buttons
   const allows = (action: string) =>
@@ -246,16 +267,32 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
             </Button>
           )}
 
-          {/* Upload Signed - After out for delivery */}
+          {/* Sent back by the approver: the reason, so shipping uploads the right signed permit */}
+          {permit.status === "OUT_FOR_DELIVERY" && permit.needsReupload && (
+            <div className="rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-300 px-3 py-2 text-sm">
+              <p className="font-semibold">{t("permit.reupload-needed")}</p>
+              {permit.reuploadReason && <p>{fill(t("permit.reupload-reason"), { reason: permit.reuploadReason })}</p>}
+            </div>
+          )}
+
+          {/* Upload Signed - After out for delivery; completed after the "not received" check */}
           {canUploadSigned && permit.status === "OUT_FOR_DELIVERY" && (
             <SignedUploadWidget
               permitId={permit.id}
-              onUploadComplete={() => {
-                handleMarkSubmittedSigned()
+              onUploadComplete={(_url, file) => {
+                if (file) setCheckFiles([file])
+                else handleMarkSubmittedSigned()
               }}
               existingFiles={permit.files}
             />
           )}
+          <NotReceivedDialog
+            open={!!checkFiles}
+            permitId={permit.id}
+            files={checkFiles || []}
+            onCancel={() => setCheckFiles(null)}
+            onConfirm={handleConfirmSigned}
+          />
 
           {/* Approve/Reject - After signed uploaded */}
           {canApproveReject && permit.status === "SUBMITTED_SIGNED" && (
@@ -263,8 +300,14 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
               permitId={permit.id}
               onApprove={handleApprove}
               onReject={handleReject}
+              onSendBack={handleSendBack}
               disabled={isLoading}
             />
+          )}
+
+          {/* A permit rejected for a wrong / unclear upload, not invoiced: back to shipping (accountant, CEO, admin) */}
+          {canApproveReject && permit.status === "REJECTED" && (!permit.nextActions || permit.nextActions.includes("SEND_BACK_TO_SHIPPING")) && (
+            <SendBackToShippingButton onSendBack={handleSendBack} disabled={isLoading} initialReason={permit.rejectionReason} />
           )}
 
           {/* View Signed Files - If any exist */}

@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { PermitPreviewDialog } from "@/components/delivery-permit/permit-preview-dialog"
+import { NotReceivedDialog, recordNotReceived, type ConfirmedLine } from "@/components/delivery-permit/not-received-dialog"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { formatDate, returnReasonLabel } from "@/lib/format"
@@ -44,7 +45,9 @@ export function ShippingModule() {
   const [permits, setPermits] = useState<DeliveryPermit[]>([])
   const [loading, setLoading] = useState(true)
   const [uploadingFor, setUploadingFor] = useState<string | null>(null)
-  const [signedFile, setSignedFile] = useState<File | null>(null)
+  // the signed permit photo(s) / PDF; read for the "not received" boxes before the upload is completed
+  const [signedFiles, setSignedFiles] = useState<File[]>([])
+  const [checkingPermit, setCheckingPermit] = useState<DeliveryPermit | null>(null)
   const [uploading, setUploading] = useState(false)
   const [selectedCouriers, setSelectedCouriers] = useState<Record<string, string>>({})
   const [assigningDriver, setAssigningDriver] = useState<string | null>(null)
@@ -122,7 +125,10 @@ export function ShippingModule() {
       ? p.nextActions.includes("MARK_OUT_FOR_DELIVERY")
       : p.status === "READY_FOR_PICKUP" || p.status === "PRINTED",
   )
-  const outForDelivery = permits.filter((p) => p.status === "OUT_FOR_DELIVERY")
+  // a permit sent back by the approver (wrong / unclear upload) comes first, marked "re-upload needed"
+  const outForDelivery = permits
+    .filter((p) => p.status === "OUT_FOR_DELIVERY")
+    .sort((a, b) => Number(!!b.needsReupload) - Number(!!a.needsReupload))
   const delivered = permits.filter((p) => p.status === "SUBMITTED_SIGNED" || p.status === "APPROVED")
 
   const getCustomerName = (customerId?: string) => {
@@ -171,26 +177,38 @@ export function ShippingModule() {
     }
   }
 
-  const handleUploadSigned = async (permit: DeliveryPermit) => {
-    if (!signedFile) {
+  // Step 1: read the upload and show the "not received" confirmation (components/delivery-permit/not-received-dialog.tsx)
+  const startSignedCheck = (permit: DeliveryPermit) => {
+    if (signedFiles.length === 0) {
+      alert(t("shipping.select-file"))
+      return
+    }
+    setCheckingPermit(permit)
+  }
+
+  // Step 2 (after the check mark): upload, mark signed, then the confirmed lines become a return (existing flow)
+  const handleUploadSigned = async (permit: DeliveryPermit, lines: ConfirmedLine[] = []) => {
+    if (signedFiles.length === 0) {
       alert(t("shipping.select-file"))
       return
     }
 
     setUploading(true)
     try {
-      const formData = new FormData()
-      formData.append("file", signedFile)
-      formData.append("permitId", permit.id)
-      formData.append("fileType", "SIGNED_PERMIT")
+      for (const file of signedFiles) {
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("permitId", permit.id)
+        formData.append("fileType", "SIGNED_PERMIT")
 
-      const uploadResponse = await fetch("/api/delivery-permits/upload", {
-        method: "POST",
-        body: formData,
-      })
+        const uploadResponse = await fetch("/api/delivery-permits/upload", {
+          method: "POST",
+          body: formData,
+        })
 
-      if (!uploadResponse.ok) {
-        throw new Error("Upload failed")
+        if (!uploadResponse.ok) {
+          throw new Error("Upload failed")
+        }
       }
 
       const response = await fetch("/api/delivery-permits", {
@@ -204,13 +222,19 @@ export function ShippingModule() {
       })
 
       if (response.ok) {
-        setSignedFile(null)
+        setSignedFiles([])
         setUploadingFor(null)
+        setCheckingPermit(null)
+        const recorded = await recordNotReceived(permit.id, lines, user?.name)
         fetchPermits()
-        alert(t("message.success"))
+        fetchPendingReturns()
+        if (!recorded.ok) alert(fill(t("dp-nr.returns-failed"), { error: recorded.error || "" }))
+        else if (recorded.count > 0) alert(fill(t("dp-nr.returns-done"), { count: recorded.count }))
+        else alert(t("message.success"))
       } else {
         const error = await response.json()
-        alert(error.error || t("message.error"))
+        setCheckingPermit(null)
+        alert((language === "ar" && error.errorAr) || error.error || t("message.error"))
       }
     } catch (error) {
       console.error("Error uploading signed permit:", error)
@@ -572,6 +596,12 @@ export function ShippingModule() {
                             </span>
                           </p>
                         )}
+                        {permit.needsReupload && (
+                          <div className="mt-2 rounded-md bg-amber-500/15 text-amber-800 dark:text-amber-300 px-3 py-2 text-sm">
+                            <p className="font-semibold">{t("permit.reupload-needed")}</p>
+                            {permit.reuploadReason && <p>{fill(t("permit.reupload-reason"), { reason: permit.reuploadReason })}</p>}
+                          </div>
+                        )}
                       </div>
                       <div className="text-end">
                         <p className="text-sm text-muted-foreground">
@@ -613,14 +643,15 @@ export function ShippingModule() {
                               id={`signed-${permit.id}`}
                               type="file"
                               accept="image/*,.pdf"
-                              onChange={(e) => setSignedFile(e.target.files?.[0] || null)}
+                              multiple
+                              onChange={(e) => setSignedFiles(Array.from(e.target.files || []))}
                               className="mt-1"
                             />
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button
-                              onClick={() => handleUploadSigned(permit)}
-                              disabled={!signedFile || uploading}
+                              onClick={() => startSignedCheck(permit)}
+                              disabled={signedFiles.length === 0 || uploading}
                               className="flex-1"
                             >
                               <CheckCircle className="w-4 h-4 me-2" />
@@ -630,7 +661,7 @@ export function ShippingModule() {
                               variant="outline"
                               onClick={() => {
                                 setUploadingFor(null)
-                                setSignedFile(null)
+                                setSignedFiles([])
                               }}
                             >
                               {t("action.cancel")}
@@ -782,6 +813,17 @@ export function ShippingModule() {
           <ShippingMaintenanceTab userRole={user?.role || "shipping"} />
         </TabsContent>
       </Tabs>
+
+      {/* "Not received" check of the signed upload, before it is completed */}
+      <NotReceivedDialog
+        open={!!checkingPermit}
+        permitId={checkingPermit?.id || ""}
+        files={signedFiles}
+        onCancel={() => setCheckingPermit(null)}
+        onConfirm={async (lines) => {
+          if (checkingPermit) await handleUploadSigned(checkingPermit, lines)
+        }}
+      />
 
       {/* Return Dialog */}
       <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>

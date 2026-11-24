@@ -13,16 +13,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useI18n } from "@/lib/i18n-context"
-import { CheckCircle, XCircle, Loader2 } from "lucide-react"
+import { CheckCircle, XCircle, Loader2, Undo2 } from "lucide-react"
 
 interface ApproveRejectControlsProps {
   permitId: string
   onApprove: () => void
   onReject: (reason: string) => void
+  /** wrong / unclear signed upload: the permit goes back to shipping to upload again (SEND_BACK_TO_SHIPPING) */
+  onSendBack?: (reason: string) => void
   disabled?: boolean
 }
 
-export function ApproveRejectControls({ permitId, onApprove, onReject, disabled = false }: ApproveRejectControlsProps) {
+export function ApproveRejectControls({ permitId, onApprove, onReject, onSendBack, disabled = false }: ApproveRejectControlsProps) {
   const { t } = useI18n()
   const [showRejectDialog, setShowRejectDialog] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
@@ -37,14 +39,15 @@ export function ApproveRejectControls({ permitId, onApprove, onReject, disabled 
     }
   }
 
-  const handleReject = async () => {
+  const handleReject = async (choice: "reject" | "send-back" = "reject") => {
     if (!rejectionReason.trim()) {
       alert(t("permit.rejection-reason-required"))
       return
     }
     setIsProcessing(true)
     try {
-      await onReject(rejectionReason)
+      if (choice === "send-back" && onSendBack) await onSendBack(rejectionReason.trim())
+      else await onReject(rejectionReason)
       setShowRejectDialog(false)
       setRejectionReason("")
     } finally {
@@ -78,7 +81,7 @@ export function ApproveRejectControls({ permitId, onApprove, onReject, disabled 
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("permit.reject-permit")}</DialogTitle>
-            <DialogDescription>{t("permit.reject-description")}</DialogDescription>
+            <DialogDescription>{onSendBack ? t("permit.reject-choice") : t("permit.reject-description")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -91,13 +94,21 @@ export function ApproveRejectControls({ permitId, onApprove, onReject, disabled 
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 flex-wrap">
             <Button variant="outline" onClick={() => setShowRejectDialog(false)}>
               {t("action.cancel")}
             </Button>
-            <Button variant="destructive" onClick={handleReject} disabled={isProcessing}>
+            {/* Two different outcomes (owner rule, 2026-11-24): a wrong / unclear upload goes back to shipping to upload
+                again; "Reject permit" rejects the delivery itself. */}
+            {onSendBack && (
+              <Button variant="outline" onClick={() => handleReject("send-back")} disabled={isProcessing} className="border-amber-500 text-amber-800 dark:text-amber-300">
+                {isProcessing ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Undo2 className="h-4 w-4 me-2" />}
+                {t("permit.send-back-to-shipping")}
+              </Button>
+            )}
+            <Button variant="destructive" onClick={() => handleReject("reject")} disabled={isProcessing}>
               {isProcessing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <XCircle className="h-4 w-4 mr-2" />}
-              {t("permit.confirm-reject")}
+              {onSendBack ? t("permit.reject-permit-goods") : t("permit.confirm-reject")}
             </Button>
           </DialogFooter>
         </DialogContent>

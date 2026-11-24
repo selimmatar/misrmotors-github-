@@ -6,6 +6,8 @@
 //  - warehouse-delivery-module: ALLOCATE_WAREHOUSES from DRAFT / PRINTED, MARK_READY_FOR_PICKUP from READY_FOR_SHIPMENT;
 //  - shipping-module: MARK_OUT_FOR_DELIVERY from READY_FOR_PICKUP (or a direct-from-supplier permit), MARK_SUBMITTED_SIGNED
 //    from OUT_FOR_DELIVERY.
+//  - approval (card / delivery-permits review): SEND_BACK_TO_SHIPPING from SUBMITTED_SIGNED (wrong / unclear upload) or
+//    from an uninvoiced REJECTED permit -> OUT_FOR_DELIVERY with "re-upload needed" and the reason.
 // An APPROVED permit is refused earlier by the DP_ALREADY_APPROVED guard.
 //
 // WAREHOUSE PREPARATION (owner rule, 2026-11-22): every permit goes through the warehouse (ALLOCATE_WAREHOUSES ->
@@ -16,6 +18,8 @@
 //   - an outsourced line our inventory holds stock of for this order (inventory.so_number + outsourced_name, quantity
 //     > 0), or that was received into a warehouse, or that already has a warehouse on the permit -> warehouse
 //   - any other outsourced line                   -> direct from the supplier
+import { excludeReplaced } from "./ar-live"
+
 const NON_FINAL = ["DRAFT", "READY_FOR_SHIPMENT", "PRINTED", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "SUBMITTED_SIGNED"] as const
 
 export const DP_ACTION_FROM: Record<string, readonly string[]> = {
@@ -26,7 +30,18 @@ export const DP_ACTION_FROM: Record<string, readonly string[]> = {
   MARK_SUBMITTED_SIGNED: ["OUT_FOR_DELIVERY"],
   APPROVE: ["SUBMITTED_SIGNED", "APPROVED"], // APPROVED -> APPROVE is the existing idempotent repeat
   REJECT: NON_FINAL,
+  // Wrong / unclear signed upload (owner rule, 2026-11-24): the approver sends a signed permit back to shipping to upload
+  // again (back to OUT_FOR_DELIVERY, lines and stock kept); an already REJECTED permit that was not invoiced can be sent
+  // back the same way (accountant / CEO / admin; the route checks the invoice and the role).
+  SEND_BACK_TO_SHIPPING: ["SUBMITTED_SIGNED", "REJECTED"],
 }
+
+/** Roles that may send a permit back to shipping for a new upload. */
+export const SEND_BACK_ROLES = ["accountant", "ceo", "admin"] as const
+
+/** A permit that is out for delivery again because its signed upload was sent back (the reason is kept on it). */
+export const needsReupload = (permit: { status?: string | null; rejection_reason?: string | null; needs_reupload?: boolean | null }) =>
+  permit.status === "OUT_FOR_DELIVERY" && (permit.needs_reupload === true || (permit.needs_reupload !== false && !!permit.rejection_reason))
 
 /** True when `action` may run on a permit currently in `from`. Actions not listed (UPDATE_DETAILS, unknown) are not guarded here. */
 export function isAllowedDpTransition(from: string, action: string): boolean {
@@ -155,4 +170,19 @@ export async function permitLineRoutes(db: Db, permit: { permit_id: number; sale
   const outsourced = rows.some((l) => !l.product_id && !l.warehouse_id)
   const names = outsourced && permit.sales_order_id ? (await warehouseNamesBySo(db, [Number(permit.sales_order_id)])).get(Number(permit.sales_order_id)) || new Set<string>() : new Set<string>()
   return rows.map((l) => lineRoute(l, names))
+}
+
+/**
+ * True when the permit is on an invoice (invoice_delivery_permits, or a single-permit invoice's
+ * source_delivery_permit_id). Such a permit is never sent back to shipping. Throws when it cannot be checked.
+ */
+export async function permitInvoiced(db: Db, permitId: number): Promise<boolean> {
+  const links = must(await db.from("invoice_delivery_permits").select("invoice_id").eq("permit_id", permitId), "check invoice links") as any[]
+  if (links.length > 0) return true
+  // a replaced / cancelled invoice no longer bills the permit (lib/ar-live.ts)
+  const own = must(
+    await excludeReplaced(db.from("accounts_receivable").select("invoice_id, status").eq("source_delivery_permit_id", permitId)),
+    "check invoices",
+  ) as any[]
+  return own.length > 0
 }

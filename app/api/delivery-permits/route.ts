@@ -5,7 +5,19 @@ import { checkIdempotency, completeIdempotency, generateDPApprovalIdempotencyKey
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, returnedTotalsByPermit } from "@/lib/return-lines"
 import { isSOFullyDelivered, DP_DELIVERED_STATUSES } from "@/lib/delivery-status"
 import { planAllocation } from "@/lib/dp-allocate"
-import { allowedDpActions, isAllowedDpTransition, isPrepared, lineRoute, needsPreparation, permitLineRoutes, preparationRefusal, warehouseNamesBySo } from "@/lib/dp-transitions"
+import {
+  SEND_BACK_ROLES,
+  allowedDpActions,
+  isAllowedDpTransition,
+  isPrepared,
+  lineRoute,
+  needsPreparation,
+  needsReupload,
+  permitInvoiced,
+  permitLineRoutes,
+  preparationRefusal,
+  warehouseNamesBySo,
+} from "@/lib/dp-transitions"
 import { abortDeduction, deductStockForPermit, finishDeduction, reverseDeduction, type StockMove } from "@/lib/dp-stock"
 import { knownUserId } from "@/lib/po-history"
 import { asUuid } from "@/lib/idempotency"
@@ -142,6 +154,9 @@ export async function GET(request: NextRequest) {
         courierId: permit.courier_id?.toString(),
         status: permit.status,
         rejectionReason: permit.rejection_reason,
+        // sent back to shipping for a new signed upload (lib/dp-transitions.ts SEND_BACK_TO_SHIPPING)
+        needsReupload: needsReupload(permit),
+        reuploadReason: needsReupload(permit) ? permit.reupload_reason || permit.rejection_reason || null : null,
         printedAt: permit.printed_at,
         printedBy: permit.printed_by,
         outForDeliveryAt: permit.out_for_delivery_at,
@@ -451,7 +466,7 @@ export async function POST(request: NextRequest) {
 
 // PUT - Update permit status
 // Actions that set a status other than APPROVED; refused when the permit is already APPROVED.
-const APPROVED_LOCKED_ACTIONS = ["REJECT", "ALLOCATE_WAREHOUSES", "MARK_READY_FOR_PICKUP", "MARK_PRINTED", "MARK_OUT_FOR_DELIVERY", "MARK_SUBMITTED_SIGNED"]
+const APPROVED_LOCKED_ACTIONS = ["REJECT", "ALLOCATE_WAREHOUSES", "MARK_READY_FOR_PICKUP", "MARK_PRINTED", "MARK_OUT_FOR_DELIVERY", "MARK_SUBMITTED_SIGNED", "SEND_BACK_TO_SHIPPING"]
 
 export async function PUT(request: NextRequest) {
   try {
@@ -636,7 +651,9 @@ export async function PUT(request: NextRequest) {
       updates.status = newStatus
       updates.submitted_signed_at = new Date().toISOString()
       updates.submitted_signed_by = actorId
-      
+      // a re-upload after "sent back to shipping": the permit is no longer waiting for one
+      if (currentPermit.rejection_reason) updates.rejection_reason = null
+
       // Only mark the SO as delivered once every line item's ordered quantity has been
       // covered by delivered permits — a single delivered DP does not mean the whole SO shipped.
       if (currentPermit.sales_order_id) {
@@ -793,6 +810,65 @@ export async function PUT(request: NextRequest) {
         }
         break
 
+      case "SEND_BACK_TO_SHIPPING": {
+        // Wrong / unclear signed upload (owner rule, 2026-11-24): the permit goes back to shipping as "re-upload
+        // needed" (OUT_FOR_DELIVERY, its lines kept, the reason shown to shipping) and, once uploaded again, to approval.
+        // Also for a permit already REJECTED for that reason (DP-2026-0005), as long as it is not on an invoice.
+        const reason = String(body.reason ?? rejectionReason ?? "").trim()
+        if (!reason) {
+          return NextResponse.json(
+            { error: "Write why the upload is sent back (wrong / unclear photo, ...).", errorAr: "اكتب سبب إرجاع الرفع (صورة خاطئة / غير واضحة ...).", code: "REASON_REQUIRED" },
+            { status: 400 },
+          )
+        }
+        const rolesHeader = request.headers.get("x-mm-roles")
+        if (rolesHeader !== null) {
+          const roles = rolesHeader.split(",").map((r) => r.trim())
+          if (!roles.some((r) => (SEND_BACK_ROLES as readonly string[]).includes(r))) {
+            return NextResponse.json(
+              { error: "Only the accountant, the CEO or an admin can send a permit back to shipping.", errorAr: "إرجاع الإذن لفريق الشحن للمحاسب أو المدير التنفيذي أو المسؤول فقط.", code: "FORBIDDEN" },
+              { status: 403 },
+            )
+          }
+        }
+        if (currentPermit.status === "REJECTED") {
+          let invoiced: boolean
+          try {
+            invoiced = await permitInvoiced(supabase, currentPermit.permit_id)
+          } catch (invoiceError: any) {
+            console.error("Delivery Permits PUT - could not check the invoices:", invoiceError?.message)
+            return NextResponse.json({ error: "Could not check whether this permit was invoiced. Nothing was changed.", errorAr: "تعذّر التحقق من فوترة الإذن. لم يتغيّر شيء." }, { status: 500 })
+          }
+          if (invoiced) {
+            return NextResponse.json(
+              {
+                error: `${currentPermit.permit_no || "This permit"} is already on an invoice, so it cannot be sent back to shipping.`,
+                errorAr: `${currentPermit.permit_no || "هذا الإذن"} عليه فاتورة بالفعل، فلا يمكن إرجاعه لفريق الشحن.`,
+                code: "DP_INVOICED",
+              },
+              { status: 409 },
+            )
+          }
+        }
+        newStatus = "OUT_FOR_DELIVERY"
+        updates.status = newStatus
+        updates.rejection_reason = reason
+        updates.submitted_signed_at = null
+        if (currentPermit.sales_order_id) {
+          const stillDelivered = await isSOFullyDelivered(supabase, currentPermit.sales_order_id, Number.parseInt(permitId), newStatus)
+          if (!stillDelivered) {
+            const { data: soRows } = await supabase.from("sales_orders").select("status").eq("so_id", currentPermit.sales_order_id).limit(1)
+            if (soRows?.[0]?.status === "delivered") soUpdates.status = "ready_for_delivery"
+            const { data: otherPermits } = await supabase.from("delivery_permits").select("permit_id, status").eq("sales_order_id", currentPermit.sales_order_id)
+            const anyOtherDelivered = (otherPermits || []).some(
+              (p: any) => p.permit_id !== Number.parseInt(permitId) && DP_DELIVERED_STATUSES.includes(p.status),
+            )
+            soUpdates.fulfillment_status = anyOtherDelivered ? "PARTIALLY_DELIVERED" : "OUT_FOR_DELIVERY"
+          }
+        }
+        break
+      }
+
       default:
         return NextResponse.json({ error: "Invalid action" }, { status: 400 })
     }
@@ -857,6 +933,23 @@ export async function PUT(request: NextRequest) {
     if (action === "REJECT" && currentPermit.status === "SUBMITTED_SIGNED") {
       stockPutBack = await reverseDeduction(supabase, currentPermit, userId)
     }
+    // Sent back to shipping: the permit is out for delivery again, so its stock is held, not out, until it is signed
+    // again (the signing takes it once more). A permit sent back after a reject already had its stock put back.
+    if (action === "SEND_BACK_TO_SHIPPING") {
+      if (currentPermit.status === "SUBMITTED_SIGNED") {
+        stockPutBack = await reverseDeduction(supabase, currentPermit, userId, "Signed upload sent back to shipping")
+      }
+      // optional columns (scripts/sql/2026-11-26-dp-not-received.sql): a missing column changes nothing
+      const { error: flagError } = await supabase
+        .from("delivery_permits")
+        .update({ needs_reupload: true, reupload_reason: String(body.reason ?? rejectionReason ?? "").trim(), reupload_requested_at: new Date().toISOString() })
+        .eq("permit_id", Number.parseInt(permitId))
+      if (flagError) console.error("Delivery Permits PUT - re-upload flag not saved (column missing?):", flagError.message)
+    }
+    if (action === "MARK_SUBMITTED_SIGNED" && (currentPermit.rejection_reason || currentPermit.needs_reupload)) {
+      const { error: flagError } = await supabase.from("delivery_permits").update({ needs_reupload: false }).eq("permit_id", Number.parseInt(permitId))
+      if (flagError) console.error("Delivery Permits PUT - re-upload flag not cleared (column missing?):", flagError.message)
+    }
 
 
     // Update sales order if needed
@@ -875,11 +968,16 @@ export async function PUT(request: NextRequest) {
       supabase.from("workflow_events").insert({
         entity_type: "DELIVERY_PERMIT",
         entity_id: Number.parseInt(permitId),
-        event_type: "STATUS_CHANGED",
+        event_type: action === "SEND_BACK_TO_SHIPPING" ? "SENT_BACK_TO_SHIPPING" : "STATUS_CHANGED",
         old_value: currentPermit.status,
         new_value: newStatus,
         performed_by: actorId,
-        notes: action === "REJECT" ? `Rejected: ${rejectionReason}` : `Action: ${action}`,
+        notes:
+          action === "REJECT"
+            ? `Rejected: ${rejectionReason}`
+            : action === "SEND_BACK_TO_SHIPPING"
+              ? `Sent back to shipping for a new signed upload: ${String(body.reason ?? rejectionReason ?? "").trim()}`
+              : `Action: ${action}`,
       }),
     )
 
@@ -889,7 +987,11 @@ export async function PUT(request: NextRequest) {
       status: updatedPermit.status,
       message:
         stockPutBack === false
-          ? "Permit rejected, but its stock could not be fully put back: contact an administrator."
+          ? action === "SEND_BACK_TO_SHIPPING"
+            ? "Permit sent back to shipping, but its stock could not be fully put back: contact an administrator."
+            : "Permit rejected, but its stock could not be fully put back: contact an administrator."
+          : action === "SEND_BACK_TO_SHIPPING"
+            ? "Permit sent back to shipping for a new signed upload"
           : `Permit ${action.toLowerCase().replace(/_/g, " ")} successfully`,
       ...(stockPutBack === undefined ? {} : { stockPutBack }),
     })

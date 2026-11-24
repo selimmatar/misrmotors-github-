@@ -47,7 +47,7 @@ test("transition table: skipping steps and leaving final states is refused", () 
   assert.equal(isAllowedDpTransition("REJECTED", "APPROVE"), false)
   for (const s of ["REJECTED", "APPROVED"]) assert.equal(isAllowedDpTransition(s, "REJECT"), false)
   assert.equal(isAllowedDpTransition("DRAFT", "UPDATE_DETAILS"), true) // not guarded
-  assert.deepEqual(Object.keys(DP_ACTION_FROM).sort(), ["ALLOCATE_WAREHOUSES", "APPROVE", "MARK_OUT_FOR_DELIVERY", "MARK_PRINTED", "MARK_READY_FOR_PICKUP", "MARK_SUBMITTED_SIGNED", "REJECT"])
+  assert.deepEqual(Object.keys(DP_ACTION_FROM).sort(), ["ALLOCATE_WAREHOUSES", "APPROVE", "MARK_OUT_FOR_DELIVERY", "MARK_PRINTED", "MARK_READY_FOR_PICKUP", "MARK_SUBMITTED_SIGNED", "REJECT", "SEND_BACK_TO_SHIPPING"])
 })
 
 test("PUT: a disallowed action returns 409 DP_INVALID_TRANSITION and changes nothing", async () => {

@@ -7,6 +7,7 @@ import { PRINT_CSS, printHeader, docTitle, infoBox, PRINT_ROWS_SCRIPT } from "@/
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
 import { lineKey, loadReturnLines, returnedByKey } from "@/lib/return-lines"
 import { NOT_DELIVERED_AR, NOT_DELIVERED_EN, permitPrintLines } from "@/lib/dp-print-lines"
+import { NOT_RECEIVED_AR, NOT_RECEIVED_EN, RECEIVED_QTY_AR } from "@/lib/dp-not-received"
 
 export const dynamic = "force-dynamic"
 
@@ -155,6 +156,7 @@ export async function GET(request: NextRequest) {
     const { data: soLinesForOrder } = soIdForOrder
       ? await supabase.from("sales_order_items").select("*").eq("so_id", soIdForOrder)
       : { data: [] as any[] }
+    // (lib/dp-not-received.ts printOrder numbers the rows in this same order when it reads the signed photo back)
     const items = followLineOrder(
       permitItems,
       sortSoLines(soLinesForOrder),
@@ -187,7 +189,7 @@ export async function GET(request: NextRequest) {
         : `<span class="pm-nd">${NOT_DELIVERED_AR} / ${NOT_DELIVERED_EN} (${escapeHtml(toArabicNumbers(l.notDelivered))})</span>`
     }
     const totalsRow = anyReturned
-      ? `<tfoot><tr class="pm-total"><td></td><td class="pm-num">${escapeHtml(toArabicNumbers(printed.deliveredTotal))}</td><td colspan="3">إجمالي المُسلَّم / Total delivered${printed.notDeliveredTotal > 0 ? ` · ${NOT_DELIVERED_AR} / ${NOT_DELIVERED_EN}: ${escapeHtml(toArabicNumbers(printed.notDeliveredTotal))}` : ""}</td></tr></tfoot>`
+      ? `<tfoot><tr class="pm-total"><td></td><td class="pm-num">${escapeHtml(toArabicNumbers(printed.deliveredTotal))}</td><td colspan="3">إجمالي المُسلَّم / Total delivered${printed.notDeliveredTotal > 0 ? ` · ${NOT_DELIVERED_AR} / ${NOT_DELIVERED_EN}: ${escapeHtml(toArabicNumbers(printed.notDeliveredTotal))}` : ""}</td><td colspan="2"></td></tr></tfoot>`
       : ""
 
     // Generate HTML for PDF (Arabic RTL)
@@ -200,7 +202,10 @@ export async function GET(request: NextRequest) {
   <style>
     ${PRINT_CSS}
     .pm-table td.description { text-align: start; }
-    .pm-sign { font-size: 13px; color: #000; }${anyReturned ? `
+    .pm-sign { font-size: 13px; color: #000; }
+    .pm-table th.pm-nr, .pm-table td.pm-nr { text-align: center; }
+    .pm-tick { display: inline-block; inline-size: 16px; block-size: 16px; border: 1.5px solid #000; border-radius: 2px; }
+    .pm-recv { display: inline-block; inline-size: 44px; block-size: 18px; border: 1.5px solid #000; border-radius: 2px; }${anyReturned ? `
     .pm-nd { color: #b91c1c; font-weight: 700; font-size: 12px; }
     .pm-total td { font-weight: 700; border-top: 2px solid #000; }` : ""}
     .print-button { position: fixed; top: 10px; left: 10px; padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; z-index: 1000; }
@@ -237,11 +242,13 @@ export async function GET(request: NextRequest) {
   <table class="pm-table">
     <thead>
       <tr>
-        <th style="width: 8%;">مسلسل</th>
-        <th class="pm-num" style="width: 10%;">عدد</th>
-        <th style="width: 42%;">البيان</th>
-        <th style="width: 20%;">رقم الصنف</th>
-        <th style="width: 20%;">ملاحظات</th>
+        <th style="width: 7%;">مسلسل</th>
+        <th class="pm-num" style="width: 8%;">عدد</th>
+        <th style="width: 35%;">البيان</th>
+        <th style="width: 16%;">رقم الصنف</th>
+        <th style="width: 16%;">ملاحظات</th>
+        <th class="pm-nr" style="width: 8%;" title="${NOT_RECEIVED_EN}">${NOT_RECEIVED_AR}</th>
+        <th class="pm-nr" style="width: 10%;">${RECEIVED_QTY_AR}</th>
       </tr>
     </thead>
     <tbody>
@@ -254,6 +261,8 @@ export async function GET(request: NextRequest) {
           <td class="description">${escapeHtml(item.item_name_snapshot || "-")}</td>
           <td>${escapeHtml(item.sku_snapshot || "-")}</td>
           <td>${noteCell(index)}</td>
+          <td class="pm-nr"><span class="pm-tick"></span></td>
+          <td class="pm-nr"><span class="pm-recv"></span></td>
         </tr>
       `,
         )
@@ -267,6 +276,9 @@ export async function GET(request: NextRequest) {
   </div>
   <div class="pm-note">
     <strong>ملاحظة:</strong> التوقيع يشمل الموافقة على شروط البيع خلفه
+  </div>
+  <div class="pm-note">
+    ضع علامة ✓ في خانة «${NOT_RECEIVED_AR}» لأي صنف لم يُستلم، واكتب «${RECEIVED_QTY_AR}» إذا استُلم جزء منه فقط.
   </div>
   <div class="pm-signatures">
     <div class="pm-sign"><strong>تحريرًا في:</strong> _______________</div>

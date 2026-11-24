@@ -13,7 +13,8 @@ import { Upload, FileImage, X, Loader2 } from "lucide-react"
 
 interface SignedUploadWidgetProps {
   permitId: string
-  onUploadComplete: (fileUrl: string) => void
+  /** the uploaded file comes along for the "not received" check (components/delivery-permit/not-received-dialog.tsx) */
+  onUploadComplete: (fileUrl: string, file?: File) => void
   existingFiles?: Array<{ id: string; fileUrl: string; fileName: string; uploadedAt: string }>
 }
 
@@ -62,7 +63,7 @@ export function SignedUploadWidget({ permitId, onUploadComplete, existingFiles =
       }
 
       const result = await response.json()
-      onUploadComplete(result.url)
+      onUploadComplete(result.url, selectedFile)
       setSelectedFile(null)
       setPreviewUrl(null)
       setNotes("")
