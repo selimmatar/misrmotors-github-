@@ -13,6 +13,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
 import { DeliveryPermitCard } from "@/components/delivery-permit"
 import { ApproveRejectControls } from "@/components/delivery-permit/approve-reject-controls"
+import { SendBackToShippingButton } from "@/components/delivery-permit/send-back-button"
 import { PageHeader } from "@/components/erp/page-header"
 import { KpiGrid, KpiTile } from "@/components/erp/kpi-tile"
 import { StatusBadge } from "@/components/erp/status-badge"
@@ -121,21 +122,26 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
   }
 
   // Approve / reject straight from the review window (owner report, 2026-11-12: it only had Close).
-  const reviewAction = async (action: "APPROVE" | "REJECT", extra: Record<string, unknown> = {}) => {
-    if (!permitToReview) return
+  // "SEND_BACK_TO_SHIPPING": a wrong / unclear signed upload goes back to shipping to upload again (2026-11-24), from
+  // the review window or from an already rejected, uninvoiced permit (e.g. DP-2026-0005).
+  const permitAction = async (permit: DeliveryPermit, action: "APPROVE" | "REJECT" | "SEND_BACK_TO_SHIPPING", extra: Record<string, unknown> = {}) => {
     const response = await fetch("/api/delivery-permits", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ permitId: permitToReview.id, action, ...extra }),
+      body: JSON.stringify({ permitId: permit.id, action, ...extra }),
     })
     const body = await response.json().catch(() => ({}))
     if (!response.ok) {
       alert(body.error || t("message.error"))
-      return
+      return false
     }
     if (body.message && body.stockPutBack === false) alert(body.message)
-    setShowReviewDialog(false)
     fetchPermits()
+    return true
+  }
+  const reviewAction = async (action: "APPROVE" | "REJECT" | "SEND_BACK_TO_SHIPPING", extra: Record<string, unknown> = {}) => {
+    if (!permitToReview) return
+    if (await permitAction(permitToReview, action, extra)) setShowReviewDialog(false)
   }
 
   const handlePrintSignedDP = () => {
@@ -167,6 +173,15 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
           <Eye className="h-4 w-4 me-1" />
           {t("permit.signed-document")}
         </Button>
+      )}
+      {canApprove && permit.status === "REJECTED" && (!permit.nextActions || permit.nextActions.includes("SEND_BACK_TO_SHIPPING")) && (
+        <SendBackToShippingButton
+          size="sm"
+          initialReason={permit.rejectionReason}
+          onSendBack={async (reason) => {
+            await permitAction(permit, "SEND_BACK_TO_SHIPPING", { reason })
+          }}
+        />
       )}
     </>
   )
@@ -463,6 +478,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
               permitId={permitToReview.id}
               onApprove={() => reviewAction("APPROVE")}
               onReject={(reason) => reviewAction("REJECT", { rejectionReason: reason })}
+              onSendBack={(reason) => reviewAction("SEND_BACK_TO_SHIPPING", { reason })}
             />
           )}
           {permitToReview && !canApprove && permitToReview.status === "SUBMITTED_SIGNED" && (

@@ -72,6 +72,9 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
 
     .pm-table td.description { text-align: start; }
     .pm-sign { font-size: 13px; color: #000; }
+    .pm-table th.pm-nr, .pm-table td.pm-nr { text-align: center; }
+    .pm-tick { display: inline-block; inline-size: 16px; block-size: 16px; border: 1.5px solid #000; border-radius: 2px; }
+    .pm-recv { display: inline-block; inline-size: 44px; block-size: 18px; border: 1.5px solid #000; border-radius: 2px; }
     .print-button { position: fixed; top: 10px; left: 10px; padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; z-index: 1000; }
   </style>
 </head>
@@ -90,11 +93,13 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
   <table class="pm-table">
     <thead>
       <tr>
-        <th style="width: 8%;">مسلسل</th>
-        <th class="pm-num" style="width: 10%;">عدد</th>
-        <th style="width: 42%;">البيان</th>
-        <th style="width: 20%;">رقم الصنف</th>
-        <th style="width: 20%;">ملاحظات</th>
+        <th style="width: 7%;">مسلسل</th>
+        <th class="pm-num" style="width: 8%;">عدد</th>
+        <th style="width: 35%;">البيان</th>
+        <th style="width: 16%;">رقم الصنف</th>
+        <th style="width: 16%;">ملاحظات</th>
+        <th class="pm-nr" style="width: 8%;" title="Not received">لم يُستلم</th>
+        <th class="pm-nr" style="width: 10%;">الكمية المستلمة</th>
       </tr>
     </thead>
     <tbody>
@@ -105,6 +110,8 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
           <td class="description">Pump A</td>
           <td>SKU-A</td>
           <td></td>
+          <td class="pm-nr"><span class="pm-tick"></span></td>
+          <td class="pm-nr"><span class="pm-recv"></span></td>
         </tr>
       
         <tr>
@@ -113,6 +120,8 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
           <td class="description">مضخة ب</td>
           <td>-</td>
           <td></td>
+          <td class="pm-nr"><span class="pm-tick"></span></td>
+          <td class="pm-nr"><span class="pm-recv"></span></td>
         </tr>
       
     </tbody>
@@ -124,6 +133,9 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
   </div>
   <div class="pm-note">
     <strong>ملاحظة:</strong> التوقيع يشمل الموافقة على شروط البيع خلفه
+  </div>
+  <div class="pm-note">
+    ضع علامة ✓ في خانة «لم يُستلم» لأي صنف لم يُستلم، واكتب «الكمية المستلمة» إذا استُلم جزء منه فقط.
   </div>
   <div class="pm-signatures">
     <div class="pm-sign"><strong>تحريرًا في:</strong> _______________</div>

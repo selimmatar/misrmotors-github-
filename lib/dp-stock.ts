@@ -101,13 +101,15 @@ async function claim(db: Db, permitId: number): Promise<Claim> {
   if (previous?.status === "partial_failure") {
     return blocked("The stock for this delivery permit was only partly handled earlier. Contact an administrator to review.")
   }
-  if (previous?.status === "failed") {
+  // "reversed": a signed permit was rejected and its stock put back; when it is sent back to shipping and signed again
+  // (lib/dp-transitions.ts SEND_BACK_TO_SHIPPING) its stock goes out again, once, like a failed claim.
+  if (previous?.status === "failed" || previous?.status === "reversed") {
     const { data: reclaimed } = await db
       .from("idempotency_log")
       .update({ status: "processing", error_message: null, completed_at: null })
       .eq("operation_type", DP_STOCK_OPERATION)
       .eq("idempotency_key", dpStockKey(permitId))
-      .eq("status", "failed")
+      .eq("status", previous.status)
       .select("id")
     if (reclaimed && reclaimed.length === 1) return { state: "claimed" }
   }
@@ -391,7 +393,12 @@ export async function abortDeduction(db: Db, permit: { permit_id: number }, move
  * as kept in its history, log it ('return'), and mark its claim "reversed". Returns false when something could not be
  * put back (reported to the user; the claim is then left for an administrator).
  */
-export async function reverseDeduction(db: Db, permit: { permit_id: number; permit_no?: string }, userId?: unknown): Promise<boolean> {
+export async function reverseDeduction(
+  db: Db,
+  permit: { permit_id: number; permit_no?: string },
+  userId?: unknown,
+  why = "Delivery permit rejected",
+): Promise<boolean> {
   const { data: claimRow } = await db
     .from("idempotency_log")
     .select("status")
@@ -402,21 +409,32 @@ export async function reverseDeduction(db: Db, permit: { permit_id: number; perm
   if (claimRow?.status !== "completed") return true // nothing was taken (or it was already put back)
   const { data: events, error } = await db
     .from("workflow_events")
-    .select("new_value")
+    .select("event_type, new_value")
     .eq("entity_type", "DELIVERY_PERMIT")
     .eq("entity_id", permit.permit_id)
-    .eq("event_type", "DP_STOCK_DEDUCTED")
+    .in("event_type", ["DP_STOCK_DEDUCTED", "DP_STOCK_RETURNED"])
   if (error) {
     console.error("[dp-stock] could not read the permit's stock moves:", error.message)
     return false
   }
-  const moves: StockMove[] = []
+  // A permit sent back to shipping and signed again took its stock a second time: only what is still out (taken less
+  // what an earlier reject / send-back already put back) is put back now.
+  const taken: StockMove[] = []
+  const returned: StockMove[] = []
   for (const e of events || []) {
     try {
-      moves.push(...(JSON.parse(e.new_value || "[]") as StockMove[]))
+      const list = JSON.parse(e.new_value || "[]") as StockMove[]
+      if (e.event_type === "DP_STOCK_RETURNED") returned.push(...list)
+      else taken.push(...list)
     } catch {
       // unreadable entry: skipped
     }
+  }
+  const sameMove = (a: StockMove, b: StockMove) => a.inventoryId === b.inventoryId && a.productId === b.productId && Number(a.quantity) === Number(b.quantity)
+  const moves: StockMove[] = [...taken]
+  for (const r of returned) {
+    const i = moves.findIndex((m) => sameMove(m, r))
+    if (i >= 0) moves.splice(i, 1)
   }
   const failed = await undoMoves(db, moves)
   if (failed.length > 0) {
@@ -435,7 +453,7 @@ export async function reverseDeduction(db: Db, permit: { permit_id: number; perm
         quantity_change: m.quantity,
         quantity_before: m.after,
         quantity_after: m.before,
-        notes: `Delivery permit rejected: stock put back${m.warehouseId ? ` - warehouse ${m.warehouseId}` : ""}${userId ? ` - by user ${userId}` : ""}`,
+        notes: `${why}: stock put back${m.warehouseId ? ` - warehouse ${m.warehouseId}` : ""}${userId ? ` - by user ${userId}` : ""}`,
         created_by: null,
       })),
     )
@@ -443,7 +461,7 @@ export async function reverseDeduction(db: Db, permit: { permit_id: number; perm
   }
   await db
     .from("idempotency_log")
-    .update({ status: "reversed", error_message: "permit rejected: stock put back", completed_at: new Date().toISOString() })
+    .update({ status: "reversed", error_message: `${why}: stock put back`, completed_at: new Date().toISOString() })
     .eq("operation_type", DP_STOCK_OPERATION)
     .eq("idempotency_key", dpStockKey(permit.permit_id))
   await db.from("workflow_events").insert({
@@ -451,7 +469,7 @@ export async function reverseDeduction(db: Db, permit: { permit_id: number; perm
     entity_id: permit.permit_id,
     event_type: "DP_STOCK_RETURNED",
     new_value: JSON.stringify(moves),
-    notes: `Rejected after signing: stock put back`,
+    notes: why === "Delivery permit rejected" ? `Rejected after signing: stock put back` : `${why}: stock put back`,
   })
   return true
 }
