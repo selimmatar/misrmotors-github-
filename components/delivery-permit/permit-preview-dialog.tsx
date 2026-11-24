@@ -44,7 +44,7 @@ export function PermitPreviewDialog({ permit, open, onOpenChange }: PermitPrevie
             </div>
             <div>
               <p className="text-sm text-muted-foreground">{t("field.phone")}</p>
-              <p className="font-medium">{permit.recipientPhone || "-"}</p>
+              <p className="font-medium"><bdi dir="ltr">{permit.recipientPhone || "-"}</bdi></p>
             </div>
             <div className="col-span-2">
               <p className="text-sm text-muted-foreground">{t("permit.delivery-address")}</p>

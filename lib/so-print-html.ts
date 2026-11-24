@@ -1,5 +1,6 @@
 // Sales order print (Batch 3): Arabic RTL A4 HTML built from saved data. Pure; used by GET /api/sales-orders/print.
-import { escapeHtml, moneyCell, renderSoTotalsBlock, TOTALS_BLOCK_CSS } from "./print-html"
+import { COMPANY_SETTINGS } from "./company-settings"
+import { escapeHtml, ltrText, moneyCell, renderSoTotalsBlock, TOTALS_BLOCK_CSS } from "./print-html"
 import { computeSoPrintTotals } from "./print-totals"
 import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "./print/print-theme"
 
@@ -163,8 +164,8 @@ export function renderSoPrintHtml(data: SoPrintData): string {
       nameAr: `شركة مصر للمحركات`,
       nameEn: `Misr Motors Co.`,
       detailsHtml: `<div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
-      <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
-      <div>البريد الإلكتروني: sales@misrmotors.com</div>`,
+      <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
+      <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>`,
     },
     taxInfo: `بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100`,
   })}
@@ -176,9 +177,9 @@ export function renderSoPrintHtml(data: SoPrintData): string {
     <div class="pm-field"><div class="pm-label">التاريخ:</div><div class="pm-value">${dateAr(so.order_date)}</div></div>
     <div class="pm-field pm-field-wide"><div class="pm-label">السادة:</div><div class="pm-value">${escapeHtml(customer?.customer_name || "-")}</div></div>
     <div class="pm-field"><div class="pm-label">الحالة:</div><div class="pm-value">${escapeHtml(STATUS_AR[so.status] || so.status || "-")}</div></div>
-    ${customer?.phone ? `<div class="pm-field"><div class="pm-label">الهاتف:</div><div class="pm-value">${escapeHtml(customer.phone)}</div></div><div class="pm-field"><div class="pm-label">البريد الإلكتروني:</div><div class="pm-value">${escapeHtml(customer.email || "-")}</div></div>` : ""}
+    ${customer?.phone ? `<div class="pm-field"><div class="pm-label">الهاتف:</div><div class="pm-value">${ltrText(customer.phone)}</div></div><div class="pm-field"><div class="pm-label">البريد الإلكتروني:</div><div class="pm-value">${ltrText(customer.email || "-")}</div></div>` : ""}
     ${so.delivery_address ? `<div class="pm-field pm-field-wide"><div class="pm-label">عنوان التسليم:</div><div class="pm-value">${escapeHtml(so.delivery_address)}</div></div>` : ""}
-    ${so.delivery_contact_name ? `<div class="pm-field"><div class="pm-label">مسؤول الاستلام:</div><div class="pm-value">${escapeHtml(so.delivery_contact_name)}</div></div><div class="pm-field"><div class="pm-label">هاتف الاستلام:</div><div class="pm-value">${escapeHtml(so.delivery_contact_phone || "-")}</div></div>` : ""}
+    ${so.delivery_contact_name ? `<div class="pm-field"><div class="pm-label">مسؤول الاستلام:</div><div class="pm-value">${escapeHtml(so.delivery_contact_name)}</div></div><div class="pm-field"><div class="pm-label">هاتف الاستلام:</div><div class="pm-value">${ltrText(so.delivery_contact_phone || "-")}</div></div>` : ""}
   </div></div>
 
   <table class="pm-table">

@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label"
 import { useI18n } from "@/lib/i18n-context"
 import { Printer } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
-import { escapeHtml, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
+import { escapeHtml, ltrText, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
+import { COMPANY_SETTINGS } from "@/lib/company-settings"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 import { quoteAddressee } from "@/lib/quotations/addressed-to"
 
@@ -242,8 +243,8 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
       nameAr: `شركة مصر للمحركات`,
       nameEn: `Misr Motors Co.`,
       detailsHtml: `<div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
-      <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
-      <div>البريد الإلكتروني: sales@misrmotors.com</div>`,
+      <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
+      <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>`,
     },
     taxInfo: `بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100`,
   })}
@@ -261,8 +262,8 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
       <div class="pm-field"><div class="pm-label">مدة الصلاحية:</div><div class="pm-value">${activeQuotation.validity_days || 30} يوم</div></div>
       <div class="pm-field pm-field-wide"><div class="pm-label">السادة:</div><div class="pm-value">${escapeHtml(quoteAddressee(activeQuotation))}</div></div>
       ${activeQuotation.customer_phone ? `
-      <div class="pm-field"><div class="pm-label">الهاتف:</div><div class="pm-value">${escapeHtml(activeQuotation.customer_phone)}</div></div>
-      <div class="pm-field"><div class="pm-label">البريد الإلكتروني:</div><div class="pm-value">${escapeHtml(activeQuotation.customer_email || "-")}</div></div>` : ""}
+      <div class="pm-field"><div class="pm-label">الهاتف:</div><div class="pm-value">${ltrText(activeQuotation.customer_phone)}</div></div>
+      <div class="pm-field"><div class="pm-label">البريد الإلكتروني:</div><div class="pm-value">${ltrText(activeQuotation.customer_email || "-")}</div></div>` : ""}
       ${activeQuotation.department_name ? `
       <div class="pm-field pm-field-wide"><div class="pm-label">القسم:</div><div class="pm-value">${escapeHtml(activeQuotation.department_name)}</div></div>` : ""}
       ${activeQuotation.receiver_name ? `
@@ -370,8 +371,8 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
                 <div className="text-base font-semibold mb-2">Misr Motors Co.</div>
                 <div className="text-sm text-gray-700">
                   <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
-                  <div>تليفون: 02-33039811 | فاكس: 02-33039818</div>
-                  <div>البريد الإلكتروني: sales@misrmotors.com</div>
+                  <div>تليفون: <bdi dir="ltr">{COMPANY_SETTINGS.phone}</bdi> | فاكس: <bdi dir="ltr">{COMPANY_SETTINGS.fax}</bdi></div>
+                  <div>البريد الإلكتروني: <bdi dir="ltr">{COMPANY_SETTINGS.email}</bdi></div>
                 </div>
                 <div className="text-xs text-gray-500 mt-1 pt-1 border-t">
                   بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100
@@ -408,7 +409,7 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
                 {activeQuotation.customer_phone && (
                   <div>
                     <span className="text-sm text-gray-500">الهاتف:</span>
-                    <span className="font-semibold mr-2">{activeQuotation.customer_phone}</span>
+                    <span className="font-semibold mr-2"><bdi dir="ltr">{activeQuotation.customer_phone}</bdi></span>
                   </div>
                 )}
                 {activeQuotation.delivery_date && (

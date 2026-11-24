@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { COMPANY_SETTINGS, getTaxInfo } from "@/lib/company-settings"
-import { escapeHtml } from "@/lib/html-escape"
+import { escapeHtml, ltrText } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle, infoBox, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
 import { lineKey, loadReturnLines, returnedByKey } from "@/lib/return-lines"
@@ -215,8 +215,8 @@ export async function GET(request: NextRequest) {
       nameAr: `${COMPANY_SETTINGS.nameAr}`,
       nameEn: `${COMPANY_SETTINGS.nameEn}`,
       detailsHtml: `<div>العنوان: ${COMPANY_SETTINGS.address}</div>
-      <div>تليفون: ${COMPANY_SETTINGS.phone} | فاكس: ${COMPANY_SETTINGS.fax}</div>
-      <div>البريد الإلكتروني: ${COMPANY_SETTINGS.email}</div>`,
+      <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
+      <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>`,
     },
     taxInfo: `${getTaxInfo()}`,
   })}
@@ -230,7 +230,7 @@ export async function GET(request: NextRequest) {
     [`رقم طلب العرض (QR):`, `${escapeHtml(permit.sales_orders?.quotation_request_number || permit.qr_number || "-")}`],
     [`يسلم إلى:`, `${escapeHtml(permit.recipient_name || permit.sales_orders?.delivery_contact_name || permit.customers?.customer_name || "-")}`, true],
     [`العنوان:`, `${escapeHtml(permit.delivery_address || permit.sales_orders?.delivery_address || permit.customers?.address || "-")}`, true],
-    [`تليفون:`, `${escapeHtml(permit.recipient_phone || permit.sales_orders?.delivery_contact_phone || permit.customers?.phone || "-")}`],
+    [`تليفون:`, ltrText(permit.recipient_phone || permit.sales_orders?.delivery_contact_phone || permit.customers?.phone || "-")],
   ])}
   
   <!-- Items Table - EXACT COLUMNS -->

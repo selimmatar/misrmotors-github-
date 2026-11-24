@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
-import { escapeHtml } from "@/lib/html-escape"
+import { escapeHtml, ltrText } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
@@ -108,8 +108,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
       nameEn: `${companyLogo ? `<p>${escapeHtml(companyName)}</p>` : ""}`,
       detailsHtml: `
         ${companyAddress ? `<p>${escapeHtml(companyAddress)}</p>` : ""}
-        ${companyPhone ? `<p>${escapeHtml(companyPhone)}</p>` : ""}
-        ${companyEmail ? `<p>${escapeHtml(companyEmail)}</p>` : ""}
+        ${companyPhone ? `<p>${ltrText(companyPhone)}</p>` : ""}
+        ${companyEmail ? `<p>${ltrText(companyEmail)}</p>` : ""}
       `,
     },
   })}
@@ -126,16 +126,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
     <div class="pm-info">
       <h3>From (Supplier)</h3>
       <p style="font-weight:600;font-size:14px;">${escapeHtml(supplier?.supplier_name || "—")}</p>
-      ${supplier?.email ? `<p><span>Email: </span>${escapeHtml(supplier.email)}</p>` : ""}
-      ${supplier?.phone ? `<p><span>Phone: </span>${escapeHtml(supplier.phone)}</p>` : ""}
+      ${supplier?.email ? `<p><span>Email: </span>${ltrText(supplier.email)}</p>` : ""}
+      ${supplier?.phone ? `<p><span>Phone: </span>${ltrText(supplier.phone)}</p>` : ""}
       ${supplier?.address ? `<p>${escapeHtml(supplier.address)}${supplier.city ? ", " + escapeHtml(supplier.city) : ""}${supplier.country ? ", " + escapeHtml(supplier.country) : ""}</p>` : ""}
     </div>
     <div class="pm-info">
       <h3>Billed To</h3>
       <p style="font-weight:600;font-size:14px;">${escapeHtml(companyName)}</p>
       ${companyAddress ? `<p>${escapeHtml(companyAddress)}</p>` : ""}
-      ${companyPhone ? `<p>${escapeHtml(companyPhone)}</p>` : ""}
-      ${companyEmail ? `<p>${escapeHtml(companyEmail)}</p>` : ""}
+      ${companyPhone ? `<p>${ltrText(companyPhone)}</p>` : ""}
+      ${companyEmail ? `<p>${ltrText(companyEmail)}</p>` : ""}
     </div>
   </div>
 

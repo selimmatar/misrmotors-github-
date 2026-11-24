@@ -15,3 +15,11 @@ export function escapeHtml(value: unknown): string {
     }
   })
 }
+
+/**
+ * Escapes a left-to-right value (phone, fax, e-mail) and wraps it in an LTR bidi isolate, so an RTL (Arabic) page
+ * does not reorder its parts: "+20 100 945 5019" would otherwise print as "5019 945 100 20+".
+ */
+export function ltrText(value: unknown): string {
+  return `<bdi dir="ltr">${escapeHtml(value)}</bdi>`
+}
