@@ -36,9 +36,11 @@ interface EditPartyDialogProps {
   /** customers: the card's id, for its list of companies on the portal (tax identities) */
   customerId?: string | number
   onSave: (details: PartyDetails) => Promise<string[] | void>
+  /** customers: the card's address was filled from the portal (already saved); the screen keeps its copy in step */
+  onCardAddress?: (details: PartyDetails) => void
 }
 
-export function EditPartyDialog({ open, onOpenChange, kind, initial, customerId, onSave }: EditPartyDialogProps) {
+export function EditPartyDialog({ open, onOpenChange, kind, initial, customerId, onSave, onCardAddress }: EditPartyDialogProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<PartyDetails>(initial)
   const [saving, setSaving] = useState(false)
@@ -118,7 +120,17 @@ export function EditPartyDialog({ open, onOpenChange, kind, initial, customerId,
           {/* customers: one line per company on the portal (the identities replace the card's single tax fields) */}
           {kind === "customer" ? (
             <div className="sm:col-span-2">
-              <CustomerTaxIdentities customerId={customerId} card={form} />
+              <CustomerTaxIdentities
+                customerId={customerId}
+                card={form}
+                onCardAddress={(a) => {
+                  // the server filled only the card's empty fields; the form does the same so Save keeps them
+                  const merged = { ...form }
+                  for (const k of ["governorate", "region", "street", "buildingNumber"] as const) if (!String(merged[k] ?? "").trim() && a[k]) merged[k] = a[k]
+                  setForm(merged)
+                  onCardAddress?.(merged)
+                }}
+              />
             </div>
           ) : (
             field("taxRegistrationNumber", t("eta.tax-number"))

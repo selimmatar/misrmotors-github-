@@ -110,9 +110,10 @@ export interface EtaPortal {
   getSubmission(uuid: string): Promise<any>
   getDetails(uuid: string): Promise<any>
   cancel(uuid: string, reason: string): Promise<void>
-  searchReceived(p: { from: string; to: string; continuationToken?: string }): Promise<any>
-  /** one page of the company's own SENT documents issued in a window (read-only). SDK: GET /api/v1.0/documents/search, direction=Sent, 30-day max window */
-  searchSentWindow(p: { from: string; to: string; continuationToken?: string }): Promise<any>
+  /** issuerId: only documents of that issuer (tax number) - the search API's own filter */
+  searchReceived(p: { from: string; to: string; continuationToken?: string; issuerId?: string }): Promise<any>
+  /** one page of the company's own SENT documents issued in a window (read-only). SDK: GET /api/v1.0/documents/search, direction=Sent, 30-day max window; receiverId: only documents to that receiver */
+  searchSentWindow(p: { from: string; to: string; continuationToken?: string; receiverId?: string }): Promise<any>
   /** the company's own sent documents with this internal number (to find a send whose answer was lost) */
   searchSent(p: { internalId: string; from: string; to: string }): Promise<any>
   printout(uuid: string): Promise<ArrayBuffer>
@@ -209,13 +210,15 @@ export function createPortal(env: EtaEnv, deps: PortalDeps = {}): EtaPortal {
     async cancel(uuid, reason) {
       await json("PUT", `/api/v1.0/documents/state/${encodeURIComponent(uuid)}/state`, JSON.stringify({ status: "cancelled", reason }))
     },
-    searchReceived({ from, to, continuationToken }) {
+    searchReceived({ from, to, continuationToken, issuerId }) {
       const q = new URLSearchParams({ submissionDateFrom: from, submissionDateTo: to, direction: "Received", pageSize: "100" })
+      if (issuerId) q.set("issuerId", issuerId)
       if (continuationToken) q.set("continuationToken", continuationToken)
       return json("GET", `/api/v1.0/documents/search?${q.toString()}`)
     },
-    searchSentWindow({ from, to, continuationToken }) {
+    searchSentWindow({ from, to, continuationToken, receiverId }) {
       const q = new URLSearchParams({ issueDateFrom: from, issueDateTo: to, direction: "Sent", status: "Valid", pageSize: "100" })
+      if (receiverId) q.set("receiverId", receiverId)
       if (continuationToken) q.set("continuationToken", continuationToken)
       return json("GET", `/api/v1.0/documents/search?${q.toString()}`)
     },

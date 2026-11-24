@@ -4,7 +4,7 @@
 // green / orange / red state and a confirm / change control (writes the code memory), the portal totals, what is
 // still missing, the "already on the portal" mark, and the send / send again / credit note / cancel / portal PDF /
 // correct-and-reissue actions by the state of the invoice's documents (step 2).
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Loader2, RefreshCw } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -473,6 +473,47 @@ export function EtaPreviewDialog({
     }
   }
 
+  // the receiver's missing address from an earlier portal document of its tax number (only empty fields are filled);
+  // `auto`: once when the preview opens with the address missing - quiet unless it found one
+  const [addressBusy, setAddressBusy] = useState(false)
+  const [addressNote, setAddressNote] = useState("")
+  const autoAddressTried = useRef(false)
+  const addressFromPortal = useCallback(
+    async (auto: boolean) => {
+      setAddressBusy(true)
+      if (!auto) setAddressNote("")
+      try {
+        const res = await fetch("/api/eta/receiver-address", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invoiceId: Number(invoiceId), auto }),
+        })
+        const body = await res.json().catch(() => null)
+        const note = body && typeof body.message === "string" ? (language === "ar" && body.messageAr ? body.messageAr : body.message) : ""
+        if (res.ok && body?.status === "filled") {
+          toast({ title: t("eta.address-portal-filled") })
+          setAddressNote(note)
+          await load()
+          return
+        }
+        if (auto) return
+        if (!res.ok) throw new Error(note || (body && typeof body.error === "string" ? body.error : t("message.error")))
+        setAddressNote(body?.status === "not_found" || body?.status === "not_found_cached" ? t("eta.address-portal-not-found") : note)
+      } catch (e) {
+        if (!auto) setAddressNote(fill(t("eta.address-portal-failed"), { error: e instanceof Error ? e.message : String(e) }))
+      } finally {
+        setAddressBusy(false)
+      }
+    },
+    [invoiceId, language, load, t, toast],
+  )
+  useEffect(() => {
+    if (!preview || autoAddressTried.current || !canEditCodes || preview.handledManually) return
+    if (!preview.missing.includes("customer_address")) return
+    autoAddressTried.current = true
+    addressFromPortal(true)
+  }, [preview, canEditCodes, addressFromPortal])
+
   const undoMark = async () => {
     setMarking(true)
     try {
@@ -643,9 +684,22 @@ export function EtaPreviewDialog({
               ) : (
                 <ul className="list-disc ps-5 space-y-1 text-sm">
                   {preview.missing.map((m) => (
-                    <li key={m}>{missingText(m)}</li>
+                    <li key={m}>
+                      {missingText(m)}
+                      {m === "customer_address" && canEditCodes && (
+                        <Button type="button" variant="outline" size="sm" className="ms-2 my-1" onClick={() => addressFromPortal(false)} disabled={addressBusy}>
+                          {addressBusy && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                          {t("eta.address-from-portal")}
+                        </Button>
+                      )}
+                    </li>
                   ))}
                 </ul>
+              )}
+              {addressNote && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {addressNote}
+                </p>
               )}
             </section>
 
