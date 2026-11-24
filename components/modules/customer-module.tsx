@@ -225,6 +225,9 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
             street: selectedCustomer.street || "",
             buildingNumber: selectedCustomer.buildingNumber || "",
           }}
+          onCardAddress={(d) =>
+            setSelectedCustomer({ ...selectedCustomer, governorate: d.governorate, region: d.region, street: d.street, buildingNumber: d.buildingNumber })
+          }
           onSave={async (details) => {
             const updated = { ...selectedCustomer, ...details }
             const warnings = await updateCustomer(updated)

@@ -56,7 +56,23 @@ async function errorText(res: Response, fallback: string): Promise<string> {
   return body && typeof body.error === "string" && body.error.trim() ? body.error : fallback
 }
 
-export function CustomerTaxIdentities({ customerId, card, canEdit = true }: { customerId: string | number | null | undefined; card: CardTaxFields; canEdit?: boolean }) {
+/** a business receiver with a 9-digit tax number whose portal address is not complete: "Get address from the portal" */
+const wantsPortalAddress = (x: { receiverType?: string; taxRegistrationNumber?: string; governorate?: string; region?: string; street?: string; buildingNumber?: string }) =>
+  (x.receiverType || "B") === "B" &&
+  /^\d{9}$/.test(toLatinDigits(String(x.taxRegistrationNumber || "")).replace(/[\s-]/g, "")) &&
+  [x.governorate, x.region, x.street, x.buildingNumber].some((v) => !String(v || "").trim())
+
+export type CardAddress = { governorate: string; region: string; street: string; buildingNumber: string }
+
+export function CustomerTaxIdentities({
+  customerId, card, canEdit = true, onCardAddress,
+}: {
+  customerId: string | number | null | undefined
+  card: CardTaxFields
+  canEdit?: boolean
+  /** the card's address was filled from the portal (only its empty fields were written) */
+  onCardAddress?: (address: CardAddress) => void
+}) {
   const { t, language } = useI18n()
   const [items, setItems] = useState<TaxIdentity[] | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -155,6 +171,44 @@ export function CustomerTaxIdentities({ customerId, card, canEdit = true }: { cu
     if (ok) cancel()
   }
 
+  // the address from an earlier portal document of the tax number (/api/eta/receiver-address); empty fields only
+  const addressFromPortal = async (identityId: number | null): Promise<void> => {
+    setBusy(true)
+    setMessage("")
+    try {
+      const res = await fetch("/api/eta/receiver-address", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: Number(id), ...(identityId != null ? { identityId } : {}) }),
+      })
+      const body = await res.json().catch(() => null)
+      const note = body && typeof body.message === "string" ? (language === "ar" && body.messageAr ? body.messageAr : body.message) : ""
+      if (!res.ok) throw new Error(note || (body && typeof body.error === "string" ? body.error : t("message.error")))
+      if (body?.status === "filled") {
+        setMessage(t("eta.address-portal-filled"))
+        const a = body.address || {}
+        const found: CardAddress = { governorate: a.governate || "", region: a.regionCity || "", street: a.street || "", buildingNumber: a.buildingNumber || "" }
+        if (identityId == null) onCardAddress?.(found)
+        // an open edit form of this identity: its empty fields take the portal's values too (typed ones stay)
+        if (identityId != null && editing === identityId) {
+          setDraft((d) => {
+            if (!d) return d
+            const next = { ...d }
+            for (const k of ["governorate", "region", "street", "buildingNumber"] as const) if (!next[k].trim() && found[k]) next[k] = found[k]
+            return next
+          })
+        }
+        await load()
+      } else {
+        setMessage(body?.status === "not_found" || body?.status === "not_found_cached" ? t("eta.address-portal-not-found") : note)
+      }
+    } catch (e) {
+      setMessage(fill(t("eta.address-portal-failed"), { error: e instanceof Error ? e.message : String(e) }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const setField = (key: keyof Draft, value: string) => setDraft((d) => (d ? { ...d, [key]: value } : d))
 
   const governorateLabel = (value: string) => {
@@ -223,6 +277,11 @@ export function CustomerTaxIdentities({ customerId, card, canEdit = true }: { cu
         </div>
       </div>
       <div className="flex flex-wrap justify-end gap-2">
+        {typeof editing === "number" && wantsPortalAddress(draft) && (
+          <Button type="button" variant="outline" size="sm" onClick={() => addressFromPortal(editing)} disabled={busy}>
+            {t("eta.address-from-portal")}
+          </Button>
+        )}
         <Button type="button" variant="outline" size="sm" onClick={cancel} disabled={busy}>
           {t("action.cancel")}
         </Button>
@@ -253,6 +312,20 @@ export function CustomerTaxIdentities({ customerId, card, canEdit = true }: { cu
         </p>
       )}
       {items !== null && !loadFailed && items.length === 0 && <p className="text-sm text-muted-foreground">{t("eta.identities-none")}</p>}
+      {/* no identities: the card's own fields are used - its portal address, and the lookup when it is not complete */}
+      {items !== null && !loadFailed && items.length === 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground break-words">
+            {t("eta.card-address")}:{" "}
+            {[governorateLabel(card.governorate || ""), card.region, card.street, card.buildingNumber].filter(Boolean).join(language === "ar" ? "، " : ", ") || "-"}
+          </span>
+          {canEdit && wantsPortalAddress(card) && (
+            <Button type="button" variant="outline" size="sm" disabled={busy || editing !== null} onClick={() => addressFromPortal(null)}>
+              {t("eta.address-from-portal")}
+            </Button>
+          )}
+        </div>
+      )}
 
       {items !== null && items.length > 0 && (
         <ul className="space-y-2">
@@ -282,6 +355,18 @@ export function CustomerTaxIdentities({ customerId, card, canEdit = true }: { cu
                       >
                         {t(i.active ? "eta.identity-switch-off" : "eta.identity-switch-on")}
                       </Button>
+                      {i.active && wantsPortalAddress(i) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={busy || editing !== null}
+                          onClick={() => addressFromPortal(i.identityId)}
+                          aria-label={fill(t("eta.address-from-portal-named"), { name: i.name })}
+                        >
+                          {t("eta.address-from-portal")}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
