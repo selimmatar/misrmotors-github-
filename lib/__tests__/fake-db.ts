@@ -45,6 +45,7 @@ const PK: Record<string, string> = {
   ap_portal_links: "link_id",
   ap_line_pair_memory: "memory_id",
   customer_tax_identities: "identity_id",
+  invoice_email_log: "log_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {
@@ -67,6 +68,7 @@ const UNIQUE: Record<string, string[][]> = {
   eta_received_documents: [["uuid", "environment"]],
   ap_portal_links: [["received_id", "ap_invoice_id"]],
   ap_line_pair_memory: [["supplier_id", "portal_name", "portal_code", "our_key"]],
+  invoice_email_log: [["claim_key"]],
 }
 // Column defaults applied on insert (as the database does).
 const DEFAULTS: Record<string, Row> = {

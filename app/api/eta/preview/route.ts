@@ -8,6 +8,7 @@ import { readEtaSettings } from "@/lib/eta/store"
 import { etaEnvironment, followUpQuietly } from "@/lib/eta/send"
 import { cancelWindowHours, invoiceDocuments } from "@/lib/eta/after-send"
 import { liveRealDocument } from "@/lib/eta/live"
+import { invoiceEmailView } from "@/lib/eta/invoice-email"
 
 export const dynamic = "force-dynamic"
 
@@ -31,7 +32,9 @@ export async function GET(request: Request) {
     const windowHours = documents[environment].some((d) => d.status === "valid") ? hours : null
     // once a real document is live, the company the invoice is issued for (tax identity) can't change
     const identityLocked = (preview.identities?.length ?? 0) > 1 ? await liveRealDocument(db, invoiceId) : false
-    return NextResponse.json({ ...preview, environment, documents, cancelWindowHours: windowHours, identityLocked })
+    // the customer e-mail of the valid e-invoice: sent to / failed / no customer e-mail / not set up
+    const email = await invoiceEmailView(db, invoiceId)
+    return NextResponse.json({ ...preview, environment, documents, cancelWindowHours: windowHours, identityLocked, email })
   } catch (error: any) {
     console.error("Error building the e-invoice preview:", error)
     return NextResponse.json({ error: error.message || "Failed to build the e-invoice preview" }, { status: 500 })
