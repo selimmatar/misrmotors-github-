@@ -104,15 +104,19 @@ test("DP: a number shaped like the automatic one must end in digits", async () =
   assert.equal(db.tables.delivery_permits.length, 0)
 })
 
-test("DP: the automatic number continues after a high typed one and ignores free text", async () => {
+test("DP: automatic numbers continue the permit book from DP-3558; old DP-YYYY-#### and free text are ignored", async () => {
+  const empty = dpDb([{ permit_id: 1, permit_no: `DP-${YEAR}-0150`, sales_order_id: 1, customer_id: 5, status: "DRAFT" }])
+  assert.equal((await postDp()).status, 200)
+  assert.equal(empty.tables.delivery_permits.at(-1)!.permit_no, "DP-3558")
   const db = dpDb([
     { permit_id: 1, permit_no: `DP-${YEAR}-0150`, sales_order_id: 1, customer_id: 5, status: "DRAFT" },
-    { permit_id: 2, permit_no: `DP-${YEAR}-OLD`, sales_order_id: 1, customer_id: 5, status: "DRAFT" },
-    { permit_id: 3, permit_no: `DP-${YEAR}-0009`, sales_order_id: 1, customer_id: 5, status: "DRAFT" },
+    { permit_id: 2, permit_no: "3558", sales_order_id: 1, customer_id: 5, status: "DRAFT" },
+    { permit_id: 3, permit_no: "M-10503", sales_order_id: 1, customer_id: 5, status: "DRAFT" },
+    { permit_id: 4, permit_no: "DP-3560", sales_order_id: 1, customer_id: 5, status: "DRAFT" },
   ])
   const r = await postDp()
   assert.equal(r.status, 200, JSON.stringify(r.body))
-  assert.equal(db.tables.delivery_permits.at(-1)!.permit_no, `DP-${YEAR}-0151`)
+  assert.equal(db.tables.delivery_permits.at(-1)!.permit_no, "DP-3561")
 })
 
 // ------------------------------------------------------------------------------------------- customer invoice from DPs

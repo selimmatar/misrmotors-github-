@@ -10,7 +10,7 @@ import { abortDeduction, deductStockForPermit, finishDeduction, reverseDeduction
 import { knownUserId } from "@/lib/po-history"
 import { asUuid } from "@/lib/idempotency"
 import { actorOr } from "@/lib/auth/actor"
-import { badNumberResponse, cleanManualNumber, highestSerial, insertWithNumber, numberTakenResponse } from "@/lib/doc-number"
+import { badNumberResponse, cleanManualNumber, insertWithNumber, nextDpBookNumber, numberTakenResponse } from "@/lib/doc-number"
 import { openCorrectionsByPermit } from "@/lib/eta/correction"
 import { sortLines } from "@/lib/line-order"
 
@@ -324,17 +324,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Permit number: the typed one, or highest DP-<year>-<digits> + 1. Typed numbers in another form ("OLD-55") are
-    // not counted; a clash with a typed number moves on to the next free number (insertWithNumber).
-    const year = new Date().getFullYear()
+    // Permit number: the typed one, or the next number of the permit book (DP-3558 onwards; owner, 2026-11-24). A clash
+    // with a typed number moves on to the next free number (insertWithNumber).
     let skip = 0
     const nextPermitNumber = async () => {
-      const { data: yearPermits, error: lastPermitError } = await withRetry(() =>
-        supabase.from("delivery_permits").select("permit_no").like("permit_no", `DP-${year}-%`),
-      )
+      const { data: allPermits, error: lastPermitError } = await withRetry(() => supabase.from("delivery_permits").select("permit_no"))
       if (lastPermitError) console.error("Error fetching last permit:", lastPermitError)
-      const next = highestSerial((yearPermits || []).map((p: any) => p.permit_no), "DP", year) + 1 + skip++
-      return `DP-${year}-${String(next).padStart(4, "0")}`
+      return nextDpBookNumber((allPermits || []).map((p: any) => p.permit_no), skip++)
     }
 
     // Create the permit
