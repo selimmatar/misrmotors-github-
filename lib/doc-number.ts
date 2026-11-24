@@ -39,6 +39,22 @@ export function cleanManualNumber(raw: unknown): ManualNumber {
   return { ok: true, value }
 }
 
+/** Delivery permits continue the paper permit book (owner, 2026-11-24): DP-3558, DP-3559, … with no year. */
+export const DP_BOOK_START = 3558
+
+/**
+ * Next delivery permit number: after the highest book number already used, written "DP-3560" or typed as a bare
+ * "3558", never below DP_BOOK_START. Old DP-YYYY-#### numbers and free text are ignored.
+ */
+export function nextDpBookNumber(numbers: (string | null | undefined)[], skip = 0): string {
+  let max = DP_BOOK_START - 1
+  for (const n of numbers) {
+    const m = /^(?:DP-)?(\d{1,9})$/i.exec(String(n || "").trim())
+    if (m) max = Math.max(max, Number.parseInt(m[1], 10))
+  }
+  return `DP-${max + 1 + skip}`
+}
+
 /** Highest serial among numbers shaped `PREFIX-YEAR-<digits>`; anything else is ignored. */
 export function highestSerial(numbers: (string | null | undefined)[], prefix: string, year: number): number {
   const shape = new RegExp(`^${prefix}-${year}-(\\d{1,9})$`)
