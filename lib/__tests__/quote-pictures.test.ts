@@ -207,7 +207,7 @@ test("print helpers: header / cells only with the column; CSS sizes the thumbnai
   assert.equal(pictureCellHtml(true, null), `<td class="q-pic-col"></td>`)
   assert.equal(hasPictureColumn([{ image_url: null }, {}]), false)
   assert.equal(hasPictureColumn([{ image_url: UPLOADED }]), true)
-  assert.match(QUOTE_PICTURE_CSS, /block-size: 68px/)
+  assert.match(QUOTE_PICTURE_CSS, /block-size: 110px/)
   assert.match(QUOTE_PICTURE_CSS, /border-radius: 6px/)
   assert.match(QUOTE_PICTURE_CSS, /tr:has\(\.q-pic\) \{ break-inside: avoid/)
 })
