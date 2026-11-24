@@ -6,6 +6,7 @@ import { replacedPrint } from "@/lib/eta/replaced-print"
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
 import { lineKey } from "@/lib/return-lines"
 import { loadStandaloneLines } from "@/lib/invoicing"
+import { mergePrintItems } from "@/lib/merge-lines"
 
 export const dynamic = "force-dynamic"
 
@@ -108,6 +109,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
         item_name_snapshot: l.name,
         products: { product_name: l.name },
       }))
+    }
+
+    // One row per item (lib/merge-lines.ts, owner 2026-11-24): the same product (or name) at the same unit price on
+    // several delivery permits prints once with the summed quantity. Rows of a sent document print as sent.
+    if (!replaced) {
+      items = mergePrintItems(
+        items,
+        (item: any) => Number(item.unit_price) || 0,
+        (item: any) => item.outsourced_name || item.item_name_snapshot || item.products?.product_name || "",
+      )
     }
 
     // Fetch company settings
