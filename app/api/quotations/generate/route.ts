@@ -5,6 +5,7 @@ import { escapeHtml, ltrText } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle, PRINT_ROWS_SCRIPT } from "@/lib/print/print-theme"
 import { computeTotals } from "@/lib/print-totals"
 import { quoteAddressee } from "@/lib/quotations/addressed-to"
+import { cleanPictureUrl, hasPictureColumn, pictureCellHtml, pictureHeadHtml, QUOTE_PICTURE_CSS } from "@/lib/quotations/line-picture"
 
 export const dynamic = "force-dynamic"
 
@@ -54,8 +55,11 @@ export async function GET(request: NextRequest) {
         quantity: quantity,
         unit_price: unitPrice,
         total: itemTotal,
+        // the line's picture (lib/quotations/line-picture.ts); printed in a thumbnail column only when a line has one
+        image_url: cleanPictureUrl(item.image_url),
       }
     })
+    const showPictures = hasPictureColumn(quotationItems)
 
     // Pre-tax subtotal, minus the quotation's discount, then 14% VAT: the same arithmetic as the saved quotation
     const { subtotal, discount, netSubtotal, vat: tax, total } = computeTotals({
@@ -93,7 +97,7 @@ export async function GET(request: NextRequest) {
   <style>
     ${PRINT_CSS}
     .print-btn { position: fixed; top: 10px; left: 10px; padding: 10px 20px; background: #0066cc; color: white; border: none; border-radius: 5px; cursor: pointer; }
-    @media print { .print-btn { display: none; } }
+    @media print { .print-btn { display: none; } }${showPictures ? QUOTE_PICTURE_CSS : ""}
   </style>
 </head>
 <body>
@@ -120,10 +124,10 @@ export async function GET(request: NextRequest) {
     </div>
   </section>
   <table class="pm-table items-table">
-    <thead><tr><th class="pm-center">م</th><th>اسم الصنف</th><th class="pm-center">الكمية</th><th class="pm-num">سعر الوحدة</th><th class="pm-num">الإجمالي</th></tr></thead>
+    <thead><tr><th class="pm-center">م</th>${pictureHeadHtml(showPictures)}<th>اسم الصنف</th><th class="pm-center">الكمية</th><th class="pm-num">سعر الوحدة</th><th class="pm-num">الإجمالي</th></tr></thead>
     <tbody>${quotationItems
       .map(
-        (item, i) => `<tr><td class="pm-center">${i + 1}</td><td>${escapeHtml(item.product_name)}</td><td class="pm-center">${escapeHtml(item.quantity.toLocaleString('en-US'))}</td>
+        (item, i) => `<tr><td class="pm-center">${i + 1}</td>${pictureCellHtml(showPictures, item.image_url)}<td>${escapeHtml(item.product_name)}</td><td class="pm-center">${escapeHtml(item.quantity.toLocaleString('en-US'))}</td>
       <td class="pm-num">${escapeHtml(item.unit_price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))} جنيه</td><td class="pm-num">${item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} جنيه</td></tr>`,
       )
       .join("")}</tbody>

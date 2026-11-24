@@ -36,6 +36,8 @@ import { DocNumberField, manualNumberValue } from "@/components/erp/doc-number-f
 import { LineMoveControls, LineSearchBox, lineRowDragClass, useLineOrdering } from "@/components/shared/line-order-controls"
 import { cn } from "@/lib/utils"
 import { quoteAddressee } from "@/lib/quotations/addressed-to"
+import { hasPictureColumn, pictureCellHtml, pictureHeadHtml, printWhenPicturesLoaded, QUOTE_PICTURE_CSS } from "@/lib/quotations/line-picture"
+import { LinePictureControl, useProductPictures } from "@/components/sales-quotation/line-picture-control"
 
 interface QuotationItemInput {
   id?: number
@@ -47,6 +49,8 @@ interface QuotationItemInput {
   unit_cost?: number | null
   supplier_name?: string | null
   from_inventory_id?: number | null
+  /** the line's picture (lib/quotations/line-picture.ts) */
+  image_url?: string | null
 }
 
 interface QuotationInput {
@@ -92,6 +96,9 @@ interface EditItem {
   markup: number
   /** a line taken from free stored stock: the picked inventory row (lib/quotations/from-stock.ts), kept on save */
   fromInventoryId?: number | null
+  /** the line's picture (kept on save) and whether it is the product's saved one ("With picture") */
+  imageUrl?: string | null
+  withProductPicture?: boolean
 }
 
 interface ApproveConvertQuotationDialogProps {
@@ -137,8 +144,12 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
       unitCost: item.unit_cost ?? null,
       markup: markupFrom(item.unit_cost, item.unit_price),
       fromInventoryId: item.from_inventory_id ?? null,
+      imageUrl: item.image_url ?? null,
+      withProductPicture: false,
     })),
   )
+  // Each stock line's product picture, for the "With picture" tick box (lib/quotations/line-picture.ts)
+  const productPictures = useProductPictures(items.map((item) => (item.itemType === "stock" ? item.productId : null)))
 
   const [discountType, setDiscountType] = useState<DiscountType>((quotation.discount_type as DiscountType) || "none")
   const [discountValue, setDiscountValue] = useState<number>(quotation.discount_value || 0)
@@ -352,10 +363,13 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
 
   const handleSelectStockProduct = (key: string, productId: string) => {
     const product = products.find((p) => p.id === productId)
+    const previous = items.find((item) => item.key === key)
     updateItem(key, {
       productId,
       productName: product?.productName || "",
       unitPrice: product?.unitPrice || 0,
+      // the previous product's picture does not belong to this one; an uploaded picture stays
+      ...(previous?.withProductPicture ? { imageUrl: null, withProductPicture: false } : {}),
     })
   }
 
@@ -429,6 +443,8 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         item_type: item.itemType === "stock" ? "inventory" : "outsourced",
         supplier_name: item.itemType === "outsourced" ? item.supplierName : null,
         from_inventory_id: item.itemType === "outsourced" ? item.fromInventoryId ?? null : null,
+        image_url: item.imageUrl || null,
+        with_product_picture: Boolean(item.withProductPicture && item.itemType === "stock" && item.productId),
       }))
 
       const saveResponse = await fetch("/api/sales-quotations", {
@@ -464,6 +480,9 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
         const error = await saveResponse.json()
         throw new Error(error.error || "Failed to save quotation changes")
       }
+      // The pictures column is not in the database yet (scripts/sql/2026-11-25-quote-pictures.sql): say so plainly
+      const saved = await saveResponse.json().catch(() => ({}))
+      if (saved?.pictures_not_saved) alert(t("sq.pictures-not-saved"))
 
       // Confirm what was stored: re-read the quotation and compare the item count with what was sent,
       // so a save that silently lost lines is reported instead of looking successful.
@@ -483,13 +502,15 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
 
     const printTotals = computeTotals({ subtotal, discountType, discountValue })
 
+    // a thumbnail column only when a line has a picture (lib/quotations/line-picture.ts)
+    const showPictures = hasPictureColumn(items.map((item) => ({ image_url: item.imageUrl })))
     const itemsHtml = items
       .map((item, idx) => {
         const unitPrice = item.unitPrice || 0
         const itemTotal = item.quantity * item.unitPrice
         return `
         <tr>
-          <td class="center">${idx + 1}</td>
+          <td class="center">${idx + 1}</td>${pictureCellHtml(showPictures, item.imageUrl)}
           <td>${escapeHtml(item.productName)}</td>
           <td class="center">${item.quantity}</td>
           ${moneyCell(unitPrice)}
@@ -599,7 +620,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
     .signature-line { border-top: 1px solid #000; margin-top: 15mm; }
     .terms-section { margin-top: 8mm; font-size: 10pt; }
     .terms-section li { margin-bottom: 3px; }
-    @media print { body { margin: 0; padding: 0; } }${TOTALS_BLOCK_CSS}
+    @media print { body { margin: 0; padding: 0; } }${TOTALS_BLOCK_CSS}${showPictures ? QUOTE_PICTURE_CSS : ""}
   </style>
 </head>
 <body>
@@ -682,7 +703,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   <table class="items-table">
     <thead>
       <tr>
-        <th style="width: 6%;">م</th>
+        <th style="width: 6%;">م</th>${pictureHeadHtml(showPictures)}
         <th style="width: 36%;">البيان</th>
         <th style="width: 8%;">الكمية</th>
         <th style="width: 25%; text-align: center;">سعر الوحدة (جنيه)</th>
@@ -724,7 +745,8 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
 </body>
 </html>`)
       printWindow.document.close()
-      printWindow.print()
+      if (showPictures) printWhenPicturesLoaded(printWindow)
+      else printWindow.print()
     } catch (error) {
       console.error("Error saving quotation before printing:", error)
       alert(error instanceof Error ? error.message : t("quote-convert.save-failed"))
@@ -1048,6 +1070,15 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
                         <Button variant="destructive" size="icon" aria-label={t("action.remove-item")} onClick={() => removeItem(item.key)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                      </div>
+                      <div className="col-span-2 lg:col-span-12">
+                        <LinePictureControl
+                          id={item.key}
+                          value={{ image_url: item.imageUrl, with_product_picture: item.withProductPicture }}
+                          onChange={(next) => updateItem(item.key, { imageUrl: next.image_url ?? null, withProductPicture: Boolean(next.with_product_picture) })}
+                          isProductLine={item.itemType === "stock" && Boolean(item.productId)}
+                          productPicture={item.productId ? productPictures[Number(item.productId)] : undefined}
+                        />
                       </div>
                     </div>
                   )
