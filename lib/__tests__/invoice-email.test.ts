@@ -140,6 +140,23 @@ test("M1. valid on the portal -> one e-mail: portal PDF attached, links to the i
   assert.deepEqual(view, { configured: true, dbReady: true, last: { status: "sent", to: "buyer@acme.com, accounts@acme.com", error: null, at: NOW.toISOString(), trigger: "auto" } })
 })
 
+test("M2b. documents valid before the automatic start (invoice_email_auto_from) are not e-mailed automatically", async () => {
+  const db = emailDb({ status: "valid" })
+  db.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"
+  db.tables.eta_documents[0].eta_long_id = "LONG-1"
+  db.tables.company_settings = [{ setting_key: "invoice_email_auto_from", setting_value: "2026-11-24T10:00:00Z" }]
+  const fake = portalFake()
+  const mail = fakeTransport()
+  resetPrintoutGuard()
+  const r = await emailValidInvoices(db, { ...fake.deps, env: ENV, transport: mail.transport })
+  assert.equal(r.sent, 0)
+  assert.equal(mail.sent.length, 0)
+  // after the start: sent
+  db.tables.company_settings[0].setting_value = "2026-11-24T09:00:00Z"
+  resetPrintoutGuard()
+  assert.equal((await emailValidInvoices(db, { ...fake.deps, env: ENV, transport: mail.transport })).sent, 1)
+})
+
 test("M2. a second trigger (follow-up, daily job, two at once) never sends twice", async () => {
   const db = emailDb({ status: "valid" })
   db.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"

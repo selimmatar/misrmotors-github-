@@ -23,6 +23,8 @@ type Db = any
 export const EMAIL_LOG_TABLE = "invoice_email_log"
 export const AUTO_MAX_ATTEMPTS = 3
 export const AUTO_RETRY_AFTER_MS = 10 * 60_000
+/** Company setting: automatic e-mails only for documents valid from this moment on (ISO time). */
+export const AUTO_FROM_KEY = "invoice_email_auto_from"
 /** Valid documents are looked at for this many days after they became valid (retries and missed sends). */
 export const AUTO_WINDOW_DAYS = 3
 /** A "sending" row older than this was cut off: shown as failed, never retried by itself. */
@@ -404,7 +406,12 @@ export async function emailValidInvoices(
     const d: EmailDeps = { ...invoiceEmailDefaults, ...deps }
     if (!emailConfig(d.env || process.env).ok) return { ...out, skipped: "not_configured" }
     const now = (d.now || (() => new Date()))()
-    const since = new Date(now.getTime() - AUTO_WINDOW_DAYS * 86_400_000).toISOString()
+    let since = new Date(now.getTime() - AUTO_WINDOW_DAYS * 86_400_000).toISOString()
+    // Automatic e-mails only for documents that became valid after the feature was switched on (owner, 2026-11-26):
+    // older invoices are sent by hand with "Send". The start is the company setting `invoice_email_auto_from`.
+    const startRow = await db.from("company_settings").select("setting_value").eq("setting_key", AUTO_FROM_KEY).maybeSingle()
+    const autoFrom = Date.parse(String(startRow?.data?.setting_value || ""))
+    if (Number.isFinite(autoFrom) && autoFrom > Date.parse(since)) since = new Date(autoFrom).toISOString()
     const docs = (must(
       await db.from("eta_documents").select(DOC_COLUMNS).eq("status", "valid").eq("environment", "real").gte("validated_at", since),
       "load valid documents",
