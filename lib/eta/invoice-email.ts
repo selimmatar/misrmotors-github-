@@ -11,6 +11,8 @@
 import { escapeHtml } from "../html-escape"
 import { isMissingRelation } from "../po-bill"
 import { docLinkSecret, docLinkUrl, DOC_LINK_DAYS } from "../doc-links"
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
 import { gmailTransport, isEmailAddress, type MailMessage, type MailTransport } from "../email/smtp"
 import { portalPrintout, type PrintoutDeps } from "./after-send"
 import type { EtaEnv } from "./portal"
@@ -39,6 +41,22 @@ export interface EmailDeps extends PrintoutDeps {
   env?: EmailEnvVars
   /** downloads a signed delivery-permit upload (tests inject a fake) */
   fetchFile?: FetchFile
+  /** the company logo shown at the top of the e-mail (tests inject one); null: sent without it */
+  loadLogo?: () => Promise<Buffer | null>
+}
+const LOGO_CID = "logo@misrmotors"
+/** The logo the printed invoices use (public/images/image.png): read from the app's files, else from the live site. */
+async function defaultLoadLogo(baseUrl?: string): Promise<Buffer | null> {
+  try {
+    return await readFile(join(process.cwd(), "public", "images", "image.png"))
+  } catch {}
+  if (!baseUrl) return null
+  try {
+    const r = await fetch(`${baseUrl}/images/image.png`, { signal: AbortSignal.timeout(5000) })
+    return r.ok ? Buffer.from(await r.arrayBuffer()) : null
+  } catch {
+    return null
+  }
 }
 /** Defaults for the routes and the follow-up (tests set a fake transport / env here; the app leaves it empty). */
 export const invoiceEmailDefaults: EmailDeps = {}
@@ -96,6 +114,8 @@ export function emailConfig(env: EmailEnvVars = process.env): EmailConfig {
 // ---- the message ----
 
 export interface InvoiceEmailContent {
+  /** shows the logo (an image sent with the e-mail under this id) in the header */
+  logoCid?: string
   customerName: string
   invoiceNumber: string
   /** dd/mm/yyyy */
@@ -179,7 +199,10 @@ export function buildInvoiceEmail(c: InvoiceEmailContent): { subject: string; te
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Tahoma,Arial,sans-serif;color:#111827;direction:rtl">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 8px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;text-align:right;font-size:15px;line-height:1.7">
-<tr><td style="background:#0f3d6e;color:#ffffff;padding:16px 24px;border-radius:8px 8px 0 0;font-size:18px;font-weight:bold">مصر للمحركات <span dir="ltr" style="font-weight:normal;font-size:14px;opacity:.85;margin-right:8px">Misr Motors</span></td></tr>
+<tr><td style="padding:16px 24px;border-bottom:4px solid #0f3d6e;border-radius:8px 8px 0 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="font-size:20px;font-weight:bold;color:#0f3d6e;vertical-align:middle">مصر للمحركات<br><span dir="ltr" style="font-weight:normal;font-size:14px;color:#6b7280">Misr Motors</span></td>
+${c.logoCid ? `<td width="72" style="text-align:left;vertical-align:middle"><img src="cid:${e(c.logoCid)}" width="72" height="72" alt="Misr Motors" style="display:block;border:0;width:72px;height:72px"></td>` : ""}
+</tr></table></td></tr>
 <tr><td style="padding:20px 24px 0">السادة/ ${e(c.customerName)}<br>تحية طيبة وبعد،</td></tr>
 <tr><td style="padding:12px 24px 0">${e(arIntro)}<div dir="ltr" style="${muted};text-align:left;margin-top:6px">${e(enIntro)}</div></td></tr>
 ${heading("بيانات الفاتورة", "Invoice details")}
@@ -346,12 +369,14 @@ export async function sendInvoiceEmail(
       return { status: "failed", error, to: facts.recipients, logId }
     }
     const pdfBytes = Buffer.from(pdf.pdf)
-    const copies = fitAttachments(await signedPermitCopies(db, facts.permits, d.fetchFile || defaultFetchFile), MAX_ATTACHMENT_BYTES - pdfBytes.length)
+    const logo = await (d.loadLogo ? d.loadLogo() : defaultLoadLogo(cfg.baseUrl)).catch(() => null)
+    const copies = fitAttachments(await signedPermitCopies(db, facts.permits, d.fetchFile || defaultFetchFile), MAX_ATTACHMENT_BYTES - pdfBytes.length - (logo?.length || 0))
     const copyOf = (permitId: number) => copies.find((c) => c.permitId === permitId)
     const at = now()
     const link = (kind: "invoice" | "sales-order" | "delivery-permit", id: number) => docLinkUrl(cfg.baseUrl, kind, id, cfg.secret, at)
     const content = buildInvoiceEmail({
       customerName: facts.customerName,
+      ...(logo ? { logoCid: LOGO_CID } : {}),
       invoiceNumber: facts.invoiceNumber,
       date: facts.date,
       total: facts.total,
@@ -370,6 +395,7 @@ export async function sendInvoiceEmail(
       bcc: cfg.bcc.filter((b) => !facts.recipients.includes(b)),
       ...content,
       attachments: [
+        ...(logo ? [{ filename: "misr-motors-logo.png", content: logo, contentType: "image/png", cid: LOGO_CID }] : []),
         { filename: `invoice-${facts.invoiceNumber}.pdf`, content: pdfBytes, contentType: "application/pdf" },
         ...copies.flatMap((c) => c.attachments),
       ],

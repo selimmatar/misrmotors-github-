@@ -4,7 +4,8 @@
 import { connect as tlsConnect, type ConnectionOptions, type TLSSocket } from "node:tls"
 import { randomBytes } from "node:crypto"
 
-export interface MailAttachment { filename: string; content: Buffer; contentType: string }
+/** `cid` set: an image shown inside the HTML body (<img src="cid:...">), not listed as a file to download. */
+export interface MailAttachment { filename: string; content: Buffer; contentType: string; cid?: string }
 export interface MailMessage {
   from: { name: string; address: string }
   to: string[]
@@ -61,8 +62,13 @@ export function buildMime(message: MailMessage, opts: { date?: Date; boundarySee
     "MIME-Version: 1.0",
     `Content-Type: multipart/mixed; boundary="${mixed}"`,
   ]
-  const parts: string[] = [
-    `--${mixed}`,
+  const inline = (message.attachments || []).filter((a) => a.cid)
+  const files = (message.attachments || []).filter((a) => !a.cid)
+  const related = `rel_${seed}`
+  const parts: string[] = [`--${mixed}`]
+  // text + HTML, wrapped with the images the HTML shows (multipart/related) when there are any
+  if (inline.length) parts.push(`Content-Type: multipart/related; boundary="${related}"`, "", `--${related}`)
+  parts.push(
     `Content-Type: multipart/alternative; boundary="${alt}"`,
     "",
     `--${alt}`,
@@ -76,8 +82,21 @@ export function buildMime(message: MailMessage, opts: { date?: Date; boundarySee
     "",
     base64Lines(Buffer.from(message.html, "utf8")),
     `--${alt}--`,
-  ]
-  for (const a of message.attachments || []) {
+  )
+  for (const a of inline) {
+    const name = safeFilename(a.filename)
+    parts.push(
+      `--${related}`,
+      `Content-Type: ${a.contentType.replace(/[^\w/.+-]/g, "")}; name="${name}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-ID: <${String(a.cid).replace(/[^\w.@-]/g, "")}>`,
+      `Content-Disposition: inline; filename="${name}"`,
+      "",
+      base64Lines(a.content),
+    )
+  }
+  if (inline.length) parts.push(`--${related}--`)
+  for (const a of files) {
     const name = safeFilename(a.filename)
     parts.push(
       `--${mixed}`,

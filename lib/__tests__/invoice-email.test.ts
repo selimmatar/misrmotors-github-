@@ -72,6 +72,9 @@ function portalFake(status = "Valid") {
   return { portal, calls, deps }
 }
 
+/** the files attached to an e-mail (not the logo shown inside it) */
+const fileParts = (m: MailMessage) => (m.attachments || []).filter((a) => !a.cid)
+
 function fakeTransport(fail?: (n: number) => string | null) {
   const sent: MailMessage[] = []
   let n = 0
@@ -105,10 +108,10 @@ function rq(method: string, path: string, body?: unknown, headers: Record<string
 }
 
 /** "Send" / "Send again" in the invoice's e-invoice window, as the accountant (the only way an e-mail goes out). */
-async function pressSend(db: FakeDb, mail: { transport: MailTransport }, portal: EtaPortal = portalFake().portal, now = NOW) {
+async function pressSend(db: FakeDb, mail: { transport: MailTransport }, portal: EtaPortal = portalFake().portal, now = NOW, extra: EmailDeps = {}) {
   useDb(db)
   resetPrintoutGuard()
-  return withDefaults({ env: ENV, transport: mail.transport, now: () => now }, { portalFor: () => portal, credentialsSet: () => true }, () =>
+  return withDefaults({ env: ENV, transport: mail.transport, now: () => now, ...extra }, { portalFor: () => portal, credentialsSet: () => true }, () =>
     emailRoute.POST(rq("POST", "/api/eta/invoice-email", { invoiceId: 1 })),
   )
 }
@@ -132,9 +135,9 @@ test("M1. valid on the portal -> NO e-mail by itself; the accountant's Send -> o
   assert.deepEqual(m.bcc, ["copy@misrmotors.com"])
   assert.deepEqual(m.from, { name: "Misr Motors | مصر للمحركات", address: "misrmotors.invoices@gmail.com" })
   assert.equal(m.subject, "فاتورة رقم INV-1001 — مصر للمحركات")
-  assert.equal(m.attachments!.length, 1)
-  assert.equal(m.attachments![0].contentType, "application/pdf")
-  assert.equal(m.attachments![0].content.toString(), "%PDF-1.7 portal")
+  assert.equal(fileParts(m).length, 1)
+  assert.equal(fileParts(m)[0].contentType, "application/pdf")
+  assert.equal(fileParts(m)[0].content.toString(), "%PDF-1.7 portal")
   for (const s of ["Acme Trading", "INV-1001", "20/11/2026", "342.00", "UUID-1", "incl. VAT", "https://invoicing.eta.gov.eg/documents/UUID-1/share/LONG-1"]) assert.ok(m.text.includes(s), s)
   // the links, each opening only its document; no unsigned delivery permit (owner request 2026-11-25)
   const links = [...m.text.matchAll(/https:\/\/erp\.example\.com\/api\/doc-link\/(\S+)/g)].map((x) => x[1])
@@ -502,8 +505,8 @@ test("M13. signed delivery-permit copies: photos -> one PDF per permit, an uploa
     { file_id: 3, permit_id: 2, file_type: "OTHER", file_url: blob("2/other.pdf"), file_name: "other.pdf" },
   ]
   const m1 = await send(db)
-  assert.deepEqual(m1.attachments!.map((a) => a.filename), ["invoice-INV-1001.pdf", "signed-DP-1.pdf"])
-  const dp1 = m1.attachments![1].content.toString("latin1")
+  assert.deepEqual(fileParts(m1).map((a) => a.filename), ["invoice-INV-1001.pdf", "signed-DP-1.pdf"])
+  const dp1 = fileParts(m1)[1].content.toString("latin1")
   assert.ok(dp1.startsWith("%PDF-1.4") && /\/Count 2\b/.test(dp1))
   // only signed copies are mentioned: DP-1 attached, DP-2 (nothing signed uploaded) left out
   assert.ok(m1.text.includes("Signed delivery permit DP-1"))
@@ -514,13 +517,13 @@ test("M13. signed delivery-permit copies: photos -> one PDF per permit, an uploa
   // DP-2 uploaded as a PDF: attached as it is
   db.tables.delivery_permit_files.push({ file_id: 4, permit_id: 2, file_type: "SIGNED_PERMIT", file_url: blob("2/scan.pdf"), file_name: "scan.pdf" })
   const m2 = await send(db)
-  assert.deepEqual(m2.attachments!.map((a) => a.filename), ["invoice-INV-1001.pdf", "signed-DP-1.pdf", "signed-DP-2.pdf"])
-  assert.equal(m2.attachments![2].content.toString(), "%PDF-1.7 signed DP-2")
+  assert.deepEqual(fileParts(m2).map((a) => a.filename), ["invoice-INV-1001.pdf", "signed-DP-1.pdf", "signed-DP-2.pdf"])
+  assert.equal(fileParts(m2)[2].content.toString(), "%PDF-1.7 signed DP-2")
 
   // too big for the e-mail (over ~18 MB in all): what fits is attached, the rest linked
   files[blob("2/scan.pdf")] = { bytes: Buffer.concat([Buffer.from("%PDF-1.7 "), Buffer.alloc(MAX_ATTACHMENT_BYTES)]), type: "application/pdf" }
   const m3 = await send(db)
-  assert.deepEqual(m3.attachments!.map((a) => a.filename), ["invoice-INV-1001.pdf", "signed-DP-1.pdf"])
+  assert.deepEqual(fileParts(m3).map((a) => a.filename), ["invoice-INV-1001.pdf", "signed-DP-1.pdf"])
   assert.ok(m3.attachments!.reduce((n, a) => n + a.content.length, 0) <= MAX_ATTACHMENT_BYTES)
   assert.ok(m3.text.includes(`Signed delivery permit DP-2:\n    ${blob("2/scan.pdf")}`))
   assert.ok(m3.html.includes(`href="${blob("2/scan.pdf")}"`))
@@ -626,7 +629,7 @@ test("M15. an invoice handled manually ('already on the portal') with its tax po
   assert.equal(mail.sent.length, 1)
   const m = mail.sent[0]
   for (const s of ["Acme Trading", "INV-1001", "20/11/2026", "342.00", "UUID-OLD"]) assert.ok(m.text.includes(s), s)
-  assert.equal(m.attachments![0].content.toString(), "%PDF-1.7 portal")
+  assert.equal(fileParts(m)[0].content.toString(), "%PDF-1.7 portal")
   const log = db.tables.invoice_email_log
   assert.equal(log.length, 1)
   assert.equal(log[0].status, "sent")
@@ -679,4 +682,38 @@ test("portal password: right / wrong / missing, and every portal route refuses a
   assert.match(dialog, /portalPin\.ask\(\)/)
   const bits = readFileSync(join(REPO, "components/accounting/eta-ar-bits.tsx"), "utf8")
   assert.match(bits, /invoiceIds: invoiceIds\.slice\(0, 100\), pin/)
+})
+
+test("M16. the company logo sits in the e-mail's header as an embedded image (not a file to download); no logo -> still sent", async () => {
+  const png = Buffer.from("\x89PNG-logo")
+  for (const logo of [png, null]) {
+    const db = emailDb()
+    const fake = portalFake()
+    const mail = fakeTransport()
+    await withDefaults({ env: ENV, transport: mail.transport }, {}, () => followUpQuietly(db, fake.deps))
+    const res = await pressSend(db, mail, fake.portal, NOW, { loadLogo: async () => logo })
+    assert.equal(res.status, 200)
+    const m = mail.sent[0]
+    const inline = m.attachments!.filter((a) => a.cid)
+    if (logo) {
+      assert.equal(inline.length, 1)
+      assert.ok(inline[0].content.equals(png))
+      assert.match(m.html, new RegExp(`src="cid:${inline[0].cid}"`))
+    } else {
+      assert.equal(inline.length, 0)
+      assert.ok(!m.html.includes("cid:"))
+    }
+    assert.equal(m.attachments!.filter((a) => !a.cid).length, 1, "the e-invoice PDF is still the one file")
+  }
+  // in the MIME: the logo is an inline part with its Content-ID, the PDF a normal attachment
+  const { mime } = buildMime({
+    from: { name: "Misr Motors", address: "misrmotors.invoices@gmail.com" }, to: ["buyer@acme.com"], subject: "s", text: "t", html: '<img src="cid:logo@misrmotors">',
+    attachments: [{ filename: "logo.png", content: png, contentType: "image/png", cid: "logo@misrmotors" }, { filename: "invoice.pdf", content: Buffer.from("%PDF"), contentType: "application/pdf" }],
+  }, { boundarySeed: "x" })
+  assert.match(mime, /multipart\/related; boundary="rel_x"/)
+  assert.match(mime, /Content-ID: <logo@misrmotors>\r\nContent-Disposition: inline; filename="logo.png"/)
+  assert.match(mime, /Content-Disposition: attachment; filename="invoice.pdf"/)
+  assert.ok(mime.indexOf("--rel_x--") < mime.indexOf('filename="invoice.pdf"'))
+  // the real logo file the printed invoices use is there
+  assert.ok(readFileSync(join(REPO, "public/images/image.png")).length > 0)
 })
