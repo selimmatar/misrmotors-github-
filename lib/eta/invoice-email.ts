@@ -201,14 +201,20 @@ export type EmailOutcome =
 
 const DOC_COLUMNS = "doc_id, invoice_id, document_type, environment, version, status, eta_uuid, eta_long_id, validated_at, document"
 
-/** The newest valid invoice document (never a credit note) of an invoice, on the given portal (any when not given). */
+/** The newest valid invoice document (never a credit note) of an invoice, on the given portal (any when not given); else its "handled manually" mark when that has a tax portal ID. */
 async function validInvoiceDocument(db: Db, invoiceId: number, environment?: EtaEnv): Promise<any | null> {
   const rows = must(await db.from("eta_documents").select(DOC_COLUMNS).eq("invoice_id", invoiceId), "load e-invoice documents") as any[]
   const valid = rows
     .filter((r) => r.document_type !== "C" && r.status === "valid" && text(r.eta_uuid))
     .filter((r) => !environment || (r.environment === "test" ? "test" : "real") === environment)
     .sort((a, b) => (Number(b.version) || 0) - (Number(a.version) || 0) || Number(b.doc_id) - Number(a.doc_id))
-  return valid[0] || null
+  if (valid[0]) return valid[0]
+  // an older invoice handled by hand ("already on the portal") with its tax portal ID saved: e-mailed from the real
+  // portal by that ID. Without the ID there is nothing to send.
+  const manual = rows
+    .filter((r) => r.document_type !== "C" && r.status === "manual" && text(r.eta_uuid))
+    .sort((a, b) => Number(b.doc_id) - Number(a.doc_id))
+  return manual[0] ? { ...manual[0], environment: "real" } : null
 }
 
 /** True when the log table exists. */
