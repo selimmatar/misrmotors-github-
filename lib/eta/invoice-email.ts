@@ -106,8 +106,8 @@ export interface InvoiceEmailContent {
   portalUrl: string | null
   invoiceUrl: string
   salesOrders: { number: string; url: string }[]
-  /** signed: the shipping team's signed copy - attached, linked (too big: its file addresses), not uploaded, or failed */
-  permits: { number: string; url: string; signed?: { state: SignedCopy["state"]; urls: string[] } }[]
+  /** only the shipping team's SIGNED copy is sent: attached, linked (too big: its file addresses), not uploaded, or failed */
+  permits: { number: string; signed?: { state: SignedCopy["state"]; urls: string[] } }[]
 }
 
 const money = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -116,30 +116,38 @@ export function invoiceEmailSubject(invoiceNumber: string): string {
   return `فاتورة رقم ${invoiceNumber} — مصر للمحركات`
 }
 
-/** Formal Arabic, short, with one English line under each part. */
+/**
+ * Formal Arabic with English beside it, laid out as: greeting, one short paragraph, the invoice details, what is
+ * attached, the links, closing. Delivery permits appear only as their SIGNED copy (owner request 2026-11-25): attached,
+ * or linked when too big for the e-mail; a permit with no signed copy uploaded is not mentioned.
+ */
 export function buildInvoiceEmail(c: InvoiceEmailContent): { subject: string; text: string; html: string } {
   const subject = invoiceEmailSubject(c.invoiceNumber)
+  const details: { ar: string; en: string; value: string }[] = [
+    { ar: "رقم الفاتورة", en: "Invoice No.", value: c.invoiceNumber },
+    { ar: "التاريخ", en: "Date", value: c.date },
+    { ar: "الإجمالي شاملًا الضريبة", en: "Total incl. VAT", value: `EGP ${money(c.total)}` },
+    { ar: "الرقم الإلكتروني (UUID)", en: "ETA UUID", value: c.uuid },
+  ]
+  const attached: { ar: string; en: string }[] = [{ ar: "الفاتورة الإلكترونية (PDF) من بوابة مصلحة الضرائب", en: "E-invoice (PDF) from the ETA portal" }]
   const links: { ar: string; en: string; url: string }[] = []
-  if (c.portalUrl) links.push({ ar: "الفاتورة الإلكترونية على بوابة مصلحة الضرائب", en: "E-invoice on the ETA portal", url: c.portalUrl })
-  links.push({ ar: "الفاتورة", en: "Invoice", url: c.invoiceUrl })
+  if (c.portalUrl) links.push({ ar: "الفاتورة على بوابة مصلحة الضرائب", en: "E-invoice on the ETA portal", url: c.portalUrl })
+  links.push({ ar: "عرض وطباعة الفاتورة", en: "View and print the invoice", url: c.invoiceUrl })
   for (const s of c.salesOrders) links.push({ ar: `أمر البيع ${s.number}`, en: `Sales order ${s.number}`, url: s.url })
-  for (const p of c.permits) links.push({ ar: `إذن التسليم ${p.number}`, en: `Delivery permit ${p.number}`, url: p.url })
-  // the signed copies: attached, or linked when too big, or a note when the shipping team has not uploaded one
-  const signedLines: { ar: string; en: string; url?: string }[] = []
   for (const p of c.permits) {
     const st = p.signed?.state
-    if (st === "attached") signedLines.push({ ar: `النسخة الموقعة من إذن التسليم ${p.number} مرفقة.`, en: `Signed copy of delivery permit ${p.number}: attached.` })
-    else if (st === "not_uploaded") signedLines.push({ ar: `النسخة الموقعة من إذن التسليم ${p.number} لم تُرفع بعد.`, en: `Delivery permit ${p.number}: signed copy not uploaded.` })
+    if (st === "attached") attached.push({ ar: `إذن التسليم ${p.number} موقعًا`, en: `Signed delivery permit ${p.number}` })
     else if (st === "linked" || st === "failed")
-      p.signed!.urls.forEach((url, i) =>
-        signedLines.push({ ar: `النسخة الموقعة من إذن التسليم ${p.number}${p.signed!.urls.length > 1 ? ` (${i + 1})` : ""}`, en: `Signed copy of delivery permit ${p.number}`, url }),
-      )
+      p.signed!.urls.forEach((url, i) => {
+        const n = p.signed!.urls.length > 1 ? ` (${i + 1})` : ""
+        links.push({ ar: `إذن التسليم ${p.number} موقعًا${n}`, en: `Signed delivery permit ${p.number}${n}`, url })
+      })
   }
 
-  const arIntro = `نتشرف بأن نرسل لسيادتكم الفاتورة الإلكترونية رقم ${c.invoiceNumber} بتاريخ ${c.date} بإجمالي ${money(c.total)} جنيه مصري شاملًا ضريبة القيمة المضافة، والمعتمدة على منظومة الفاتورة الإلكترونية بمصلحة الضرائب المصرية. مرفق نسخة الفاتورة (PDF) من البوابة.`
+  const arIntro = `نتشرف بأن نرسل لسيادتكم الفاتورة الإلكترونية رقم ${c.invoiceNumber} بتاريخ ${c.date} بإجمالي ${money(c.total)} جنيه مصري شاملًا ضريبة القيمة المضافة، والمعتمدة على منظومة الفاتورة الإلكترونية بمصلحة الضرائب المصرية.`
   const enIntro = `Please find attached e-invoice No. ${c.invoiceNumber} dated ${c.date}, total EGP ${money(c.total)} incl. VAT, validated on the Egyptian Tax Authority portal.`
   const arValid = `الروابط صالحة لمدة ${DOC_LINK_DAYS} يومًا للعرض والطباعة فقط.`
-  const enValid = `The links are valid for ${DOC_LINK_DAYS} days, to view and print only.`
+  const enValid = `Links are valid for ${DOC_LINK_DAYS} days, to view and print only.`
 
   const plain = [
     `السادة/ ${c.customerName}`,
@@ -148,34 +156,49 @@ export function buildInvoiceEmail(c: InvoiceEmailContent): { subject: string; te
     arIntro,
     enIntro,
     "",
-    `الرقم الإلكتروني للفاتورة (UUID): ${c.uuid}`,
-    `ETA UUID: ${c.uuid}`,
+    "بيانات الفاتورة / Invoice details",
+    ...details.map((d) => `  ${d.ar} / ${d.en}: ${d.value}`),
     "",
-    "المستندات / Documents:",
-    ...links.map((l) => `- ${l.ar} / ${l.en}: ${l.url}`),
-    ...signedLines.map((l) => (l.url ? `- ${l.ar} / ${l.en}: ${l.url}` : `- ${l.ar} / ${l.en}`)),
+    "المرفقات / Attachments",
+    ...attached.map((l) => `  - ${l.ar} / ${l.en}`),
     "",
-    arValid,
-    enValid,
+    "روابط / Links",
+    ...links.map((l) => `  - ${l.ar} / ${l.en}:\n    ${l.url}`),
+    `  (${arValid} / ${enValid})`,
     "",
     "وتفضلوا بقبول فائق الاحترام،",
-    "مصر للمحركات",
-    "Misr Motors",
+    "مصر للمحركات | Misr Motors",
   ].join("\n")
 
   const e = escapeHtml
-  const en = (s: string) => `<div dir="ltr" style="color:#555;font-size:13px;text-align:left">${e(s)}</div>`
-  const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>${e(subject)}</title></head>
-<body style="font-family:Tahoma,Arial,sans-serif;font-size:15px;line-height:1.7;color:#111;direction:rtl;text-align:right">
-<p>السادة/ ${e(c.customerName)}<br>تحية طيبة وبعد،</p>
-<p>${e(arIntro)}</p>${en(enIntro)}
-<p>الرقم الإلكتروني للفاتورة (UUID): <span dir="ltr">${e(c.uuid)}</span></p>
-<p style="margin-bottom:4px">المستندات / Documents:</p>
-<ul>${links.map((l) => `<li><a href="${e(l.url)}">${e(l.ar)}</a> <span dir="ltr" style="color:#555">/ ${e(l.en)}</span></li>`).join("")}${signedLines
-    .map((l) => `<li>${l.url ? `<a href="${e(l.url)}">${e(l.ar)}</a>` : e(l.ar)} <span dir="ltr" style="color:#555">/ ${e(l.en)}</span></li>`)
-    .join("")}</ul>
-<p>${e(arValid)}</p>${en(enValid)}
-<p>وتفضلوا بقبول فائق الاحترام،<br>مصر للمحركات<br><span dir="ltr">Misr Motors</span></p>
+  const muted = "color:#6b7280;font-size:13px"
+  const enSpan = (s: string) => `<span dir="ltr" style="${muted}">${e(s)}</span>`
+  const heading = (ar: string, en: string) =>
+    `<tr><td style="padding:20px 24px 6px;font-weight:bold;font-size:15px;color:#0f3d6e">${e(ar)}&nbsp;&nbsp;${enSpan(en)}</td></tr>`
+  const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${e(subject)}</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Tahoma,Arial,sans-serif;color:#111827;direction:rtl">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 8px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;text-align:right;font-size:15px;line-height:1.7">
+<tr><td style="background:#0f3d6e;color:#ffffff;padding:16px 24px;border-radius:8px 8px 0 0;font-size:18px;font-weight:bold">مصر للمحركات <span dir="ltr" style="font-weight:normal;font-size:14px;opacity:.85;margin-right:8px">Misr Motors</span></td></tr>
+<tr><td style="padding:20px 24px 0">السادة/ ${e(c.customerName)}<br>تحية طيبة وبعد،</td></tr>
+<tr><td style="padding:12px 24px 0">${e(arIntro)}<div dir="ltr" style="${muted};text-align:left;margin-top:6px">${e(enIntro)}</div></td></tr>
+${heading("بيانات الفاتورة", "Invoice details")}
+<tr><td style="padding:0 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:6px;border-collapse:separate">
+${details
+  .map(
+    (d, i) =>
+      `<tr><td style="padding:8px 12px;${i ? "border-top:1px solid #e5e7eb;" : ""}width:45%;${muted}">${e(d.ar)}<br>${enSpan(d.en)}</td><td dir="ltr" style="padding:8px 12px;${i ? "border-top:1px solid #e5e7eb;" : ""}text-align:left;font-weight:bold;word-break:break-all">${e(d.value)}</td></tr>`,
+  )
+  .join("\n")}
+</table></td></tr>
+${heading("المرفقات", "Attachments")}
+<tr><td style="padding:0 24px"><ul style="margin:0;padding-right:20px">${attached.map((l) => `<li style="margin-bottom:6px">${e(l.ar)}<br>${enSpan(l.en)}</li>`).join("")}</ul></td></tr>
+${heading("روابط", "Links")}
+<tr><td style="padding:0 24px"><ul style="margin:0;padding-right:20px">${links
+    .map((l) => `<li style="margin-bottom:6px"><a href="${e(l.url)}" style="color:#0f3d6e">${e(l.ar)}</a><br>${enSpan(l.en)}</li>`)
+    .join("")}</ul><div style="${muted};margin-top:6px">${e(arValid)}<br>${enSpan(enValid)}</div></td></tr>
+<tr><td style="padding:20px 24px 24px">وتفضلوا بقبول فائق الاحترام،<br><strong>مصر للمحركات</strong> ${enSpan("Misr Motors")}</td></tr>
+</table></td></tr></table>
 </body></html>`
   return { subject, text: plain, html }
 }
@@ -338,7 +361,7 @@ export async function sendInvoiceEmail(
       salesOrders: facts.orders.map((o) => ({ number: text(o.so_number) || `#${o.so_id}`, url: link("sales-order", Number(o.so_id)) })),
       permits: facts.permits.map((p) => {
         const c = copyOf(Number(p.permit_id))
-        return { number: text(p.permit_no) || `#${p.permit_id}`, url: link("delivery-permit", Number(p.permit_id)), ...(c ? { signed: { state: c.state, urls: c.urls } } : {}) }
+        return { number: text(p.permit_no) || `#${p.permit_id}`, ...(c ? { signed: { state: c.state, urls: c.urls } } : {}) }
       }),
     })
     const message: MailMessage = {

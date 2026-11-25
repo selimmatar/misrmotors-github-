@@ -136,10 +136,11 @@ test("M1. valid on the portal -> NO e-mail by itself; the accountant's Send -> o
   assert.equal(m.attachments![0].contentType, "application/pdf")
   assert.equal(m.attachments![0].content.toString(), "%PDF-1.7 portal")
   for (const s of ["Acme Trading", "INV-1001", "20/11/2026", "342.00", "UUID-1", "incl. VAT", "https://invoicing.eta.gov.eg/documents/UUID-1/share/LONG-1"]) assert.ok(m.text.includes(s), s)
-  // the three kinds of links, each opening only its document
+  // the links, each opening only its document; no unsigned delivery permit (owner request 2026-11-25)
   const links = [...m.text.matchAll(/https:\/\/erp\.example\.com\/api\/doc-link\/(\S+)/g)].map((x) => x[1])
   const opened = links.map((t) => verifyDocLink(t, SECRET, NOW)).map((c) => (c.ok ? `${c.kind}:${c.id}` : c.reason))
-  assert.deepEqual(opened, ["invoice:1", "sales-order:1", "delivery-permit:1", "delivery-permit:2"])
+  assert.deepEqual(opened, ["invoice:1", "sales-order:1"])
+  assert.ok(!m.text.includes("doc-link/v1.delivery-permit") && !m.html.includes("doc-link/v1.delivery-permit"))
   assert.ok(m.html.includes('dir="rtl"') && m.html.includes("/api/doc-link/v1.invoice.1."))
   // the log row
   const log = db.tables.invoice_email_log
@@ -470,7 +471,7 @@ const failing = (error: { code: string; message: string }) => {
   return q
 }
 
-test("M13. signed delivery-permit copies: photos -> one PDF per permit, an uploaded PDF as is, 'not uploaded' noted, too big -> linked", async () => {
+test("M13. signed delivery-permit copies: photos -> one PDF per permit, an uploaded PDF as is, 'not uploaded' left out, too big -> linked", async () => {
   assert.deepEqual(jpegInfo(JPEG(1)), { width: 32, height: 16, components: 3 })
   assert.equal(jpegInfo(Buffer.from("%PDF-1.4")), null)
   const blob = (n: string) => `https://abc.public.blob.vercel-storage.com/delivery-permits/${n}`
@@ -504,9 +505,10 @@ test("M13. signed delivery-permit copies: photos -> one PDF per permit, an uploa
   assert.deepEqual(m1.attachments!.map((a) => a.filename), ["invoice-INV-1001.pdf", "signed-DP-1.pdf"])
   const dp1 = m1.attachments![1].content.toString("latin1")
   assert.ok(dp1.startsWith("%PDF-1.4") && /\/Count 2\b/.test(dp1))
-  assert.ok(m1.text.includes("Signed copy of delivery permit DP-1: attached."))
-  assert.ok(m1.text.includes("Delivery permit DP-2: signed copy not uploaded."))
-  assert.ok(m1.text.includes("النسخة الموقعة من إذن التسليم DP-2 لم تُرفع بعد."))
+  // only signed copies are mentioned: DP-1 attached, DP-2 (nothing signed uploaded) left out
+  assert.ok(m1.text.includes("Signed delivery permit DP-1"))
+  assert.ok(m1.text.includes("إذن التسليم DP-1 موقعًا"))
+  assert.ok(!m1.text.includes("DP-2") && !m1.html.includes("DP-2"))
   assert.ok(!fetched.includes(blob("2/other.pdf")))
 
   // DP-2 uploaded as a PDF: attached as it is
@@ -520,7 +522,7 @@ test("M13. signed delivery-permit copies: photos -> one PDF per permit, an uploa
   const m3 = await send(db)
   assert.deepEqual(m3.attachments!.map((a) => a.filename), ["invoice-INV-1001.pdf", "signed-DP-1.pdf"])
   assert.ok(m3.attachments!.reduce((n, a) => n + a.content.length, 0) <= MAX_ATTACHMENT_BYTES)
-  assert.ok(m3.text.includes(`Signed copy of delivery permit DP-2: ${blob("2/scan.pdf")}`))
+  assert.ok(m3.text.includes(`Signed delivery permit DP-2:\n    ${blob("2/scan.pdf")}`))
   assert.ok(m3.html.includes(`href="${blob("2/scan.pdf")}"`))
 
   // fitting: in permit order, a copy that doesn't fit is linked, a later smaller one still goes
