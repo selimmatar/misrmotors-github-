@@ -279,8 +279,8 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
           {canUploadSigned && permit.status === "OUT_FOR_DELIVERY" && (
             <SignedUploadWidget
               permitId={permit.id}
-              onUploadComplete={(_url, file) => {
-                if (file) setCheckFiles([file])
+              onUploadComplete={(_url, files) => {
+                if (files && files.length > 0) setCheckFiles(files)
                 else handleMarkSubmittedSigned()
               }}
               existingFiles={permit.files}

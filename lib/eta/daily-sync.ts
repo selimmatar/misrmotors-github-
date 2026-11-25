@@ -8,7 +8,6 @@ import { etaEnvironment, followUp, type SendDeps } from "./send"
 import { readEtaSettings } from "./store"
 import { receiveSupplierDocuments, type ReceiveDeps, type ReceiveResult } from "./receive"
 import { learnFromPortalWindow, type LearnDeps, type LearnResult } from "./learn"
-import { emailValidInvoices, type EmailDeps } from "./invoice-email"
 
 type Db = any
 
@@ -18,9 +17,6 @@ export const SYNC_FOLLOW_UP_BUDGET_MS = 15_000
 export const SYNC_LEARN_DAYS = 3
 /** the job's 60 s limit: receive (30 s) + follow-up (15 s) leave about this much for learning */
 export const SYNC_LEARN_BUDGET_MS = 8_000
-/** customer e-mails of valid invoices (first sends and retries): at most this many per run, none started after 48 s */
-export const SYNC_EMAIL_MAX = 3
-export const SYNC_EMAIL_START_BEFORE_MS = 48_000
 
 /** true only for exactly `Bearer <CRON_SECRET>`; false when CRON_SECRET is not set */
 export function cronAuthorized(header: string | null, secret: string | undefined = process.env.CRON_SECRET): boolean {
@@ -34,7 +30,6 @@ export interface DailySyncDeps {
   receive?: ReceiveDeps
   send?: SendDeps
   learn?: LearnDeps
-  email?: EmailDeps
   /** ms clock (tests) */
   clock?: () => number
   credentialsSet?: (env: EtaEnv) => boolean
@@ -46,10 +41,7 @@ export async function runDailySync(db: Db, deps: DailySyncDeps = {}): Promise<{
   received: ReceiveResult | { error: string } | null
   followUp: { checked: number; changed: number } | { error: string }
   learned: Omit<LearnResult, "cursor"> | { error: string } | null
-  emailed: Awaited<ReturnType<typeof emailValidInvoices>>
 }> {
-  const clock = deps.clock || (() => Date.now())
-  const started = clock()
   const env = etaEnvironment(await readEtaSettings(db))
   const today = (deps.today ? deps.today() : new Date()).toISOString().slice(0, 10)
   const from = new Date(Date.parse(`${today}T00:00:00Z`) - (SYNC_DAYS - 1) * 86_400_000).toISOString().slice(0, 10)
@@ -81,10 +73,6 @@ export async function runDailySync(db: Db, deps: DailySyncDeps = {}): Promise<{
       learned = { error: e?.message || "failed" }
     }
   }
-  // the customer e-mails of invoices that became valid (and the retries of failed ones, at most 3 attempts each)
-  const emailed = await emailValidInvoices(db, { ...(deps.send || {}), ...(deps.email || {}) }, {
-    max: SYNC_EMAIL_MAX,
-    stopAt: () => clock() - started >= SYNC_EMAIL_START_BEFORE_MS,
-  })
-  return { environment: env, received, followUp: follow, learned, emailed }
+  // no customer e-mails here: invoice e-mails go out only when a person presses "Send" (owner 2026-11-26)
+  return { environment: env, received, followUp: follow, learned }
 }

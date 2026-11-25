@@ -7,7 +7,9 @@
 -- Until this runs the app keeps working: nothing is e-mailed automatically, and the invoice window says
 -- "database update needed" instead of offering "Send again".
 --
--- Once only: an automatic send first inserts its row with claim_key 'auto:<invoice_id>:<eta_uuid>:<attempt>'; the
+-- Owner correction 2026-11-26: invoice e-mails are now MANUAL ONLY ("Send" / "Send again"); the app writes only
+-- trigger 'manual' rows with claim_key null. The 'auto' value and claim_key stay for compatibility (unused).
+-- (Before that correction:) Once only: an automatic send first inserts its row with claim_key 'auto:<invoice_id>:<eta_uuid>:<attempt>'; the
 -- unique index makes a second sender for the same invoice + portal document + attempt fail before anything is sent.
 -- Manual sends ("Send again") have no claim_key (NULLs are distinct). Automatic retries: attempts 2 and 3 only.
 -- The recipient column is called sent_to ("to" is a reserved word in SQL).

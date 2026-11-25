@@ -1,6 +1,7 @@
-// The e-invoice e-mail to the customer (owner request 2026-11-24): valid on the portal -> one e-mail with the portal's
-// PDF and signed view / print links; never twice; no customer e-mail / not set up / no log table; "Send again";
-// retries; the signed links; the public path; the Gmail SMTP conversation (fake socket). Fake SMTP and fake portal only.
+// The e-invoice e-mail to the customer (owner request 2026-11-24; manual only, owner correction 2026-11-26): nothing is
+// e-mailed when the invoice becomes valid; a person's "Send" / "Send again" e-mails the portal's PDF and signed view /
+// print links and logs it; no customer e-mail / not set up / no log table; the signed links; the public path; the
+// Gmail SMTP conversation (fake socket). Fake SMTP and fake portal only.
 import { useDb } from "./route-harness"
 import test from "node:test"
 import assert from "node:assert/strict"
@@ -12,7 +13,7 @@ import { etaSendDefaults, followUpQuietly, type SendDeps } from "../eta/send"
 import { resetPrintoutGuard } from "../eta/after-send"
 import type { EtaPortal } from "../eta/portal"
 import {
-  AUTO_RETRY_AFTER_MS, MAX_ATTACHMENT_BYTES, autoAttemptDue, buildInvoiceEmail, emailConfig, emailList, emailValidInvoices, invoiceEmailDefaults, invoiceEmailView,
+  MAX_ATTACHMENT_BYTES, buildInvoiceEmail, emailConfig, emailList, invoiceEmailDefaults, invoiceEmailView,
   sendInvoiceEmail, type EmailDeps,
 } from "../eta/invoice-email"
 import { DOC_LINK_DAYS, signDocLink, verifyDocLink } from "../doc-links"
@@ -103,13 +104,28 @@ function rq(method: string, path: string, body?: unknown, headers: Record<string
   return Object.assign(r, { nextUrl: new URL(url) })
 }
 
-test("M1. valid on the portal -> one e-mail: portal PDF attached, links to the invoice, the sales order and each delivery permit", async () => {
+/** "Send" / "Send again" in the invoice's e-invoice window, as the accountant (the only way an e-mail goes out). */
+async function pressSend(db: FakeDb, mail: { transport: MailTransport }, portal: EtaPortal = portalFake().portal, now = NOW) {
+  useDb(db)
+  resetPrintoutGuard()
+  return withDefaults({ env: ENV, transport: mail.transport, now: () => now }, { portalFor: () => portal, credentialsSet: () => true }, () =>
+    emailRoute.POST(rq("POST", "/api/eta/invoice-email", { invoiceId: 1 })),
+  )
+}
+
+test("M1. valid on the portal -> NO e-mail by itself; the accountant's Send -> one e-mail: portal PDF, links to the invoice, the sales order and each delivery permit", async () => {
   const db = emailDb()
   const fake = portalFake()
   const mail = fakeTransport()
   resetPrintoutGuard()
   await withDefaults({ env: ENV, transport: mail.transport }, {}, () => followUpQuietly(db, fake.deps))
   assert.equal(db.tables.eta_documents[0].status, "valid")
+  assert.equal(mail.sent.length, 0, "never sent automatically when the portal says valid")
+  assert.equal(db.tables.invoice_email_log.length, 0)
+  assert.deepEqual(await invoiceEmailView(db, 1, { env: ENV, now: () => NOW }), { configured: true, dbReady: true, last: null })
+  // the person presses Send
+  const res = await pressSend(db, mail, fake.portal)
+  assert.equal(res.status, 200)
   assert.equal(mail.sent.length, 1)
   const m = mail.sent[0]
   assert.deepEqual(m.to, ["buyer@acme.com", "accounts@acme.com"])
@@ -119,7 +135,6 @@ test("M1. valid on the portal -> one e-mail: portal PDF attached, links to the i
   assert.equal(m.attachments!.length, 1)
   assert.equal(m.attachments![0].contentType, "application/pdf")
   assert.equal(m.attachments![0].content.toString(), "%PDF-1.7 portal")
-  assert.deepEqual(fake.calls.printout, ["UUID-1"])
   for (const s of ["Acme Trading", "INV-1001", "20/11/2026", "342.00", "UUID-1", "incl. VAT", "https://invoicing.eta.gov.eg/documents/UUID-1/share/LONG-1"]) assert.ok(m.text.includes(s), s)
   // the three kinds of links, each opening only its document
   const links = [...m.text.matchAll(/https:\/\/erp\.example\.com\/api\/doc-link\/(\S+)/g)].map((x) => x[1])
@@ -130,99 +145,64 @@ test("M1. valid on the portal -> one e-mail: portal PDF attached, links to the i
   const log = db.tables.invoice_email_log
   assert.equal(log.length, 1)
   assert.equal(log[0].status, "sent")
-  assert.equal(log[0].trigger, "auto")
+  assert.equal(log[0].trigger, "manual")
   assert.equal(log[0].attempt, 1)
   assert.equal(log[0].eta_uuid, "UUID-1")
   assert.equal(log[0].sent_to, "buyer@acme.com, accounts@acme.com")
-  assert.equal(log[0].claim_key, "auto:1:UUID-1:1")
+  assert.equal(log[0].claim_key, null)
+  assert.equal(log[0].created_by, 7)
   assert.equal(log[0].sent_at, NOW.toISOString())
   const view = await invoiceEmailView(db, 1, { env: ENV, now: () => NOW })
-  assert.deepEqual(view, { configured: true, dbReady: true, last: { status: "sent", to: "buyer@acme.com, accounts@acme.com", error: null, at: NOW.toISOString(), trigger: "auto" } })
+  assert.deepEqual(view, { configured: true, dbReady: true, last: { status: "sent", to: "buyer@acme.com, accounts@acme.com", error: null, at: NOW.toISOString(), trigger: "manual" } })
 })
 
-test("M2b. documents valid before the automatic start (invoice_email_auto_from) are not e-mailed automatically", async () => {
+test("M2. nothing sends by itself: follow-up, the daily job and the old automatic start setting never e-mail", async () => {
   const db = emailDb({ status: "valid" })
   db.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"
   db.tables.eta_documents[0].eta_long_id = "LONG-1"
-  db.tables.company_settings = [{ setting_key: "invoice_email_auto_from", setting_value: "2026-11-24T10:00:00Z" }]
+  db.tables.company_settings.push({ setting_key: "invoice_email_auto_from", setting_value: "2026-11-01T00:00:00Z" })
   const fake = portalFake()
   const mail = fakeTransport()
   resetPrintoutGuard()
-  const r = await emailValidInvoices(db, { ...fake.deps, env: ENV, transport: mail.transport })
-  assert.equal(r.sent, 0)
-  assert.equal(mail.sent.length, 0)
-  // after the start: sent
-  db.tables.company_settings[0].setting_value = "2026-11-24T09:00:00Z"
-  resetPrintoutGuard()
-  assert.equal((await emailValidInvoices(db, { ...fake.deps, env: ENV, transport: mail.transport })).sent, 1)
-})
-
-test("M2. a second trigger (follow-up, daily job, two at once) never sends twice", async () => {
-  const db = emailDb({ status: "valid" })
-  db.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"
-  db.tables.eta_documents[0].eta_long_id = "LONG-1"
-  db.jitter = true
-  const fake = portalFake()
-  const mail = fakeTransport()
-  const deps: EmailDeps = { ...fake.deps, env: ENV, transport: mail.transport }
-  resetPrintoutGuard()
-  const both = await Promise.all([emailValidInvoices(db, deps), emailValidInvoices(db, deps)])
-  assert.equal(mail.sent.length, 1)
-  assert.equal(both.reduce((n, r) => n + r.sent, 0), 1)
-  resetPrintoutGuard()
-  await emailValidInvoices(db, deps)
   await withDefaults({ env: ENV, transport: mail.transport }, {}, () => followUpQuietly(db, fake.deps))
-  const daily = await runDailySync(db, { credentialsSet: () => false, send: fake.deps, email: { env: ENV, transport: mail.transport } })
-  assert.equal(daily.emailed.sent, 0)
-  assert.equal(mail.sent.length, 1)
-  assert.equal(db.tables.invoice_email_log.length, 1)
-  // a manual send counts as sent for the automatic one too
-  assert.equal(autoAttemptDue([{ eta_uuid: "U", trigger: "manual", status: "sent", attempt: 1, created_at: NOW.toISOString() }], "U", NOW), null)
+  const daily = await withDefaults({ env: ENV, transport: mail.transport }, {}, () => runDailySync(db, { credentialsSet: () => false, send: fake.deps }))
+  assert.ok(!("emailed" in daily))
+  assert.equal(mail.sent.length, 0)
+  assert.equal(db.tables.invoice_email_log.length, 0)
+  // the automatic sender is gone from the code, and the send itself refuses anything but a person's Send
+  const src = readFileSync(join(REPO, "lib/eta/invoice-email.ts"), "utf8")
+  for (const gone of ["emailValidInvoices", "autoAttemptDue", "invoice_email_auto_from", "claim_key: opts.trigger"]) assert.ok(!src.includes(gone), gone)
+  for (const f of ["lib/eta/send.ts", "lib/eta/daily-sync.ts", "app/api/eta-sync/route.ts"]) assert.ok(!/invoice-email|sendInvoiceEmail|emailValidInvoices/.test(readFileSync(join(REPO, f), "utf8")), f)
+  await assert.rejects(sendInvoiceEmail(db, 1, { trigger: "auto" as any }, { env: ENV, transport: mail.transport }), /by hand only/)
+  assert.equal(mail.sent.length, 0)
 })
 
-test("M3. credit notes, test-portal documents and old valid documents are never e-mailed automatically", async () => {
+test("M3. credit notes are never e-mailed: Send on a credit note only answers 'no valid invoice'", async () => {
   const mail = fakeTransport()
   const credit = emailDb({ documentType: "C", status: "valid" })
   credit.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"
-  const testEnv = emailDb({ status: "valid" })
-  Object.assign(testEnv.tables.eta_documents[0], { validated_at: "2026-11-24T09:30:00Z", environment: "test" })
-  const old = emailDb({ status: "valid" })
-  old.tables.eta_documents[0].validated_at = "2026-11-01T09:30:00Z"
-  for (const db of [credit, testEnv, old]) {
-    const r = await emailValidInvoices(db, { ...portalFake().deps, env: ENV, transport: mail.transport })
-    assert.equal(r.sent, 0)
-    assert.equal(db.tables.invoice_email_log.length, 0)
-  }
-  assert.equal(mail.sent.length, 0)
-  // and "Send again" on a credit note only: no valid invoice document
-  useDb(credit)
-  const res = await withDefaults({ env: ENV, transport: mail.transport }, {}, () => emailRoute.POST(rq("POST", "/api/eta/invoice-email", { invoiceId: 1 })))
+  const res = await pressSend(credit, mail)
   assert.equal(res.status, 409)
   assert.equal((await res.json()).code, "not_valid")
+  assert.equal(mail.sent.length, 0)
+  assert.equal(credit.tables.invoice_email_log.length, 0)
 })
 
-test("M4. no customer e-mail -> status 'no_email' on the invoice, nothing sent, not retried by itself", async () => {
+test("M4. no customer e-mail -> status 'no_email' on the invoice, nothing sent; add it and Send again", async () => {
   const db = emailDb({ email: null, status: "valid" })
   db.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"
   const mail = fakeTransport()
-  const deps: EmailDeps = { ...portalFake().deps, env: ENV, transport: mail.transport }
-  resetPrintoutGuard()
-  const r = await emailValidInvoices(db, deps)
-  assert.equal(r.noEmail, 1)
+  const res0 = await pressSend(db, mail)
+  assert.equal(res0.status, 409)
+  assert.equal((await res0.json()).code, "no_email")
   assert.equal(mail.sent.length, 0)
   assert.equal(db.tables.invoice_email_log[0].status, "no_email")
-  assert.equal((await invoiceEmailView(db, 1, deps)).last!.status, "no_email")
-  await emailValidInvoices(db, { ...deps, now: () => new Date(NOW.getTime() + 86_400_000) })
-  assert.equal(db.tables.invoice_email_log.length, 1)
+  assert.equal((await invoiceEmailView(db, 1, { env: ENV })).last!.status, "no_email")
   // a broken address is not an address
   assert.deepEqual(emailList("x, a@b.co; A@B.co\nbad@ c@d"), ["a@b.co"])
   // the accountant adds it and presses Send again
   db.tables.customers[0].email = "new@acme.com"
-  useDb(db)
-  resetPrintoutGuard()
-  const res = await withDefaults({ env: ENV, transport: mail.transport, now: () => NOW }, { portalFor: () => portalFake().portal, credentialsSet: () => true }, () =>
-    emailRoute.POST(rq("POST", "/api/eta/invoice-email", { invoiceId: 1 })),
-  )
+  const res = await pressSend(db, mail)
   assert.equal(res.status, 200)
   assert.deepEqual(mail.sent.map((m) => m.to), [["new@acme.com"]])
 })
@@ -232,17 +212,12 @@ test("M5. e-mail not set up (env missing) -> nothing sent; the invoice says 'not
   db.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"
   const mail = fakeTransport()
   for (const missing of ["EMAIL_SMTP_USER", "EMAIL_SMTP_PASS", "DOC_LINK_SECRET"] as const) {
-    const env = { ...ENV, [missing]: "" }
-    const cfg = emailConfig(env)
+    const cfg = emailConfig({ ...ENV, [missing]: "" })
     assert.ok(!cfg.ok && cfg.missing.includes(missing), missing)
-    const r = await emailValidInvoices(db, { ...portalFake().deps, env, transport: mail.transport })
-    assert.equal(r.skipped, "not_configured")
   }
   assert.ok(!emailConfig({ ...ENV, DOC_LINK_SECRET: "short" }).ok, "a short link secret counts as not set")
   assert.ok(!emailConfig({ ...ENV, APP_BASE_URL: "" }).ok)
   assert.ok(emailConfig({ ...ENV, APP_BASE_URL: "", VERCEL_PROJECT_PRODUCTION_URL: "erp.misrmotors.com" }).ok)
-  assert.equal(db.tables.invoice_email_log.length, 0)
-  assert.equal(mail.sent.length, 0)
   assert.equal((await invoiceEmailView(db, 1, { env: {} })).configured, false)
   // the button: 409 "not set up", logged by name only
   useDb(db)
@@ -253,6 +228,7 @@ test("M5. e-mail not set up (env missing) -> nothing sent; the invoice says 'not
   assert.ok(!JSON.stringify(body).includes(PASS) && !JSON.stringify(db.tables).includes(PASS))
   assert.equal(db.tables.invoice_email_log[0].status, "not_configured")
   assert.match(db.tables.invoice_email_log[0].error, /EMAIL_SMTP_USER/)
+  assert.equal(mail.sent.length, 0)
   // an SMTP error that echoes the password is masked
   const leaky = fakeTransport(() => `535 bad credentials for ${PASS.replace(/\s+/g, "")}`)
   resetPrintoutGuard()
@@ -261,61 +237,55 @@ test("M5. e-mail not set up (env missing) -> nothing sent; the invoice says 'not
   assert.ok(!JSON.stringify(r).includes(PASS.replace(/\s+/g, "")) && !JSON.stringify(db.tables).includes(PASS.replace(/\s+/g, "")))
 })
 
-test("M6. Send again -> a second e-mail, logged as manual; accountant / CEO / admin only", async () => {
+test("M6. Send, then Send again -> a second e-mail, both logged as manual; the button reads Send then Send again; accountant / CEO / admin only", async () => {
   const db = emailDb({ status: "valid" })
   db.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"
   const fake = portalFake()
   const mail = fakeTransport()
-  resetPrintoutGuard()
-  await emailValidInvoices(db, { ...fake.deps, env: ENV, transport: mail.transport })
+  const label = async () => ((await invoiceEmailView(db, 1, { env: ENV })).last ? "eta.email-send-again" : "eta.email-send")
+  assert.equal(await label(), "eta.email-send")
+  assert.equal((await pressSend(db, mail, fake.portal)).status, 200)
   assert.equal(mail.sent.length, 1)
-  useDb(db)
-  resetPrintoutGuard()
-  const res = await withDefaults({ env: ENV, transport: mail.transport }, { portalFor: () => fake.portal, credentialsSet: () => true }, () =>
-    emailRoute.POST(rq("POST", "/api/eta/invoice-email", { invoiceId: 1 })),
-  )
+  assert.equal(await label(), "eta.email-send-again")
+  const res = await pressSend(db, mail, fake.portal)
   assert.equal(res.status, 200)
   const body = await res.json()
   assert.equal(body.status, "sent")
   assert.equal(body.email.last.trigger, "manual")
   assert.equal(mail.sent.length, 2)
-  const manual = db.tables.invoice_email_log[1]
-  assert.equal(manual.trigger, "manual")
-  assert.equal(manual.attempt, 2)
-  assert.equal(manual.created_by, 7)
-  assert.equal(manual.claim_key, null)
+  assert.deepEqual(db.tables.invoice_email_log.map((r) => [r.trigger, r.attempt, r.claim_key, r.created_by]), [["manual", 1, null, 7], ["manual", 2, null, 7]])
   assert.equal((await emailRoute.POST(rq("POST", "/api/eta/invoice-email", {}))).status, 400)
   const view = await withDefaults({ env: ENV }, {}, () => emailRoute.GET(rq("GET", "/api/eta/invoice-email?invoiceId=1")))
   assert.equal((await view.json()).last.status, "sent")
+  // the window's button: "Send" before the first send, "Send again" after
+  const dialog = readFileSync(join(REPO, "components/accounting/eta-preview-dialog.tsx"), "utf8")
+  assert.ok(dialog.includes('{last ? t("eta.email-send-again") : t("eta.email-send")}'))
   const rule = ruleFor("/api/eta/invoice-email")!
   for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, "POST", [role] as any), true, role)
   for (const role of ["sales-rep", "po-rep", "warehouse-rep"]) assert.equal(allows(rule, "POST", [role] as any), false, role)
 })
 
-test("M7. SMTP failures are retried automatically up to 3 attempts, 10 minutes apart; then never again by itself", async () => {
+test("M7. an SMTP failure is logged with the reason and never retried by itself; Send again tries again", async () => {
   const db = emailDb({ status: "valid" })
   db.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"
-  const mail = fakeTransport(() => "421 try later")
-  let t = NOW.getTime()
-  const deps = (): EmailDeps => ({ ...portalFake().deps, now: () => new Date(t), env: ENV, transport: mail.transport })
-  const run = async () => { resetPrintoutGuard(); return emailValidInvoices(db, deps()) }
-  assert.equal((await run()).failed, 1)
-  assert.equal((await run()).failed, 0, "not again within 10 minutes")
-  t += AUTO_RETRY_AFTER_MS + 1000
-  assert.equal((await run()).failed, 1)
-  t += AUTO_RETRY_AFTER_MS + 1000
-  assert.equal((await run()).failed, 1)
-  t += AUTO_RETRY_AFTER_MS + 1000
-  await run()
-  assert.deepEqual(db.tables.invoice_email_log.map((r) => [r.attempt, r.status]), [[1, "failed"], [2, "failed"], [3, "failed"]])
-  const view = await invoiceEmailView(db, 1, deps())
+  let refuse = true
+  const mail = fakeTransport(() => (refuse ? "421 try later" : null))
+  const res = await pressSend(db, mail)
+  assert.equal(res.status, 502)
+  const view = await invoiceEmailView(db, 1, { env: ENV, now: () => NOW })
   assert.equal(view.last!.status, "failed")
   assert.match(view.last!.error!, /421 try later/)
-  // a row cut off while sending is shown as failed and never retried by itself
-  assert.equal(autoAttemptDue([{ eta_uuid: "U", trigger: "auto", status: "sending", attempt: 1, created_at: "2026-11-24T00:00:00Z" }], "U", NOW), null)
+  // time passes, the follow-up and the daily job run: nothing is retried by itself
+  const later = { ...portalFake().deps, now: () => new Date(NOW.getTime() + 86_400_000) }
+  await withDefaults({ env: ENV, transport: mail.transport }, {}, () => followUpQuietly(db, later))
+  await withDefaults({ env: ENV, transport: mail.transport }, {}, () => runDailySync(db, { credentialsSet: () => false, send: later }))
+  assert.equal(db.tables.invoice_email_log.length, 1)
+  refuse = false
+  assert.equal((await pressSend(db, mail)).status, 200)
+  assert.deepEqual(db.tables.invoice_email_log.map((r) => [r.attempt, r.status]), [[1, "failed"], [2, "sent"]])
 })
 
-test("M8. without the invoice_email_log table: nothing is sent automatically; the button says 'database update needed'", async () => {
+test("M8. without the invoice_email_log table: nothing is sent; the button says 'database update needed'", async () => {
   const db = emailDb({ status: "valid" })
   db.tables.eta_documents[0].validated_at = "2026-11-24T09:30:00Z"
   const from = db.from.bind(db)
@@ -326,9 +296,6 @@ test("M8. without the invoice_email_log table: nothing is sent automatically; th
     return q
   }
   const mail = fakeTransport()
-  const r = await emailValidInvoices(db, { ...portalFake().deps, env: ENV, transport: mail.transport })
-  assert.equal(r.skipped, "db_update_needed")
-  assert.equal(mail.sent.length, 0)
   assert.deepEqual(await invoiceEmailView(db, 1, { env: ENV }), { configured: true, dbReady: false, last: null })
   useDb(db)
   const res = await withDefaults({ env: ENV, transport: mail.transport }, {}, () => emailRoute.POST(rq("POST", "/api/eta/invoice-email", { invoiceId: 1 })))

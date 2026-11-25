@@ -36,6 +36,7 @@ import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDate, formatMoney } from "@/lib/format"
+import { paymentStatusLabelKey } from "@/lib/ar-status"
 import { CustomerCreditDialog, UseCreditButton } from "@/components/payment/customer-credit-dialog"
 import { arDueSchedule, summarizeDue, todayYmd } from "@/lib/due-schedule"
 import { OrdersToInvoice, useOrdersToInvoice } from "@/components/accounting/orders-to-invoice"
@@ -1495,7 +1496,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
           {t("ar.all-invoices")} ({formatNumber(tabInvoices.length)})
         </Button>
         <Button variant={listFilter === "pending" ? "default" : "outline"} onClick={() => setListFilter("pending")}>
-          {t("status.pending")} ({formatNumber(tabInvoices.filter((i) => getInvoiceStatus(i) === "pending").length)})
+          {t("ar.not-due-yet")} ({formatNumber(tabInvoices.filter((i) => getInvoiceStatus(i) === "pending").length)})
         </Button>
         <Button
           variant={listFilter === "partially_paid" ? "default" : "outline"}
@@ -1555,7 +1556,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                   party={getCustomerName(invoice.customerId)}
                   status={
                     <div className="flex flex-col items-start gap-1">
-                      <StatusBadge status={status} label={t(`status.${status}`)} />
+                      <StatusBadge status={status} label={t(paymentStatusLabelKey(status))} />
                       {renderEtaMarks(invoice)}
                     </div>
                   }
@@ -1617,7 +1618,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col items-start gap-1">
-                            <StatusBadge status={status} label={t(`status.${status}`)} />
+                            <StatusBadge status={status} label={t(paymentStatusLabelKey(status))} />
                             {renderEtaMarks(invoice)}
                           </div>
                         </TableCell>
@@ -1742,7 +1743,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                             <td className="p-3 text-green-700"><Money value={schedule.paidAmount} /></td>
                             <td className="p-3">{schedule.paymentDate ? formatDate(schedule.paymentDate, language) : "—"}</td>
                             <td className="p-3">
-                              <StatusBadge status={effectiveStatus} label={t(`status.${effectiveStatus}`)} />
+                              <StatusBadge status={effectiveStatus} label={t(paymentStatusLabelKey(effectiveStatus))} />
                             </td>
                             <td className="p-3">
                               {schedule.status !== "paid" && (userRole === "accountant" || userRole === "ceo") && (
@@ -1891,7 +1892,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
                         <td className="p-2 text-green-700"><Money value={invoice.collectedAmount || 0} /></td>
                         <td className="p-2 text-amber-700"><Money value={balance} /></td>
                         <td className="p-2">
-                          <StatusBadge status={status} label={t(`status.${status}`)} />
+                          <StatusBadge status={status} label={t(paymentStatusLabelKey(status))} />
                         </td>
                         <td className="p-2">
                           <Button
