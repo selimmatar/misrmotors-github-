@@ -14,6 +14,10 @@ const nextConfig = {
       "./node_modules/@sparticuz/chromium/bin/**",
       "./node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
+    "/api/eta/invoice-email": [
+      "./node_modules/@sparticuz/chromium/bin/**",
+      "./node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
   },
 }
 

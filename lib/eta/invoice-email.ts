@@ -14,6 +14,7 @@ import { docLinkSecret, docLinkUrl, DOC_LINK_DAYS } from "../doc-links"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { gmailTransport, isEmailAddress, type MailMessage, type MailTransport } from "../email/smtp"
+import { urlToPdf, type UrlToPdf } from "../pdf/html-to-pdf"
 import { portalPrintout, type PrintoutDeps } from "./after-send"
 import { invoiceCustomerPo } from "./customer-po"
 import type { EtaEnv } from "./portal"
@@ -44,6 +45,8 @@ export interface EmailDeps extends PrintoutDeps {
   fetchFile?: FetchFile
   /** the company logo shown at the top of the e-mail (tests inject one); null: sent without it */
   loadLogo?: () => Promise<Buffer | null>
+  /** makes the app's print page (invoice, sales order) into a PDF (tests inject a fake; the app uses Chromium) */
+  toPdf?: UrlToPdf
 }
 export const LOGO_CID = "logo@misrmotors"
 /** The logo the printed invoices use (public/images/image.png): read from the app's files, else from the live site. */
@@ -124,7 +127,9 @@ export interface InvoiceEmailContent {
   total: number
   uuid: string
   invoiceUrl: string
-  salesOrders: { number: string; url: string }[]
+  /** the company's own invoice print is attached as a PDF (else linked: the PDF could not be made or is too big) */
+  invoiceAttached?: boolean
+  salesOrders: { number: string; url: string; attached?: boolean }[]
   /** only the shipping team's SIGNED copy is sent: attached, linked (too big: its file addresses), not uploaded, or failed */
   permits: { number: string; signed?: { state: SignedCopy["state"]; urls: string[] } }[]
   /** the customer's own PO number(s), shown in the details only when given */
@@ -154,8 +159,12 @@ export function buildInvoiceEmail(c: InvoiceEmailContent): { subject: string; te
   const attached: { ar: string; en: string }[] = [{ ar: "الفاتورة الإلكترونية (PDF) من بوابة مصلحة الضرائب", en: "E-invoice (PDF) from the ETA portal" }]
   const links: { ar: string; en: string; url: string }[] = []
   // no link to the tax portal's page (it did not open for customers; owner 2026-11-25): its PDF is attached instead
-  links.push({ ar: "عرض وطباعة الفاتورة", en: "View and print the invoice", url: c.invoiceUrl })
-  for (const s of c.salesOrders) links.push({ ar: `أمر البيع ${s.number}`, en: `Sales order ${s.number}`, url: s.url })
+  // the company's own prints go as PDFs (owner request 2026-11-25); a link only when the PDF could not be made / fit
+  if (c.invoiceAttached) attached.push({ ar: "الفاتورة (PDF)", en: "Invoice (PDF)" })
+  else links.push({ ar: "عرض وطباعة الفاتورة", en: "View and print the invoice", url: c.invoiceUrl })
+  for (const s of c.salesOrders)
+    if (s.attached) attached.push({ ar: `أمر البيع ${s.number} (PDF)`, en: `Sales order ${s.number} (PDF)` })
+    else links.push({ ar: `أمر البيع ${s.number}`, en: `Sales order ${s.number}`, url: s.url })
   for (const p of c.permits) {
     const st = p.signed?.state
     if (st === "attached") attached.push({ ar: `إذن التسليم ${p.number} موقعًا`, en: `Signed delivery permit ${p.number}` })
@@ -183,10 +192,9 @@ export function buildInvoiceEmail(c: InvoiceEmailContent): { subject: string; te
     "",
     "المرفقات / Attachments",
     ...attached.map((l) => `  - ${l.ar} / ${l.en}`),
-    "",
-    "روابط / Links",
-    ...links.map((l) => `  - ${l.ar} / ${l.en}:\n    ${l.url}`),
-    `  (${arValid} / ${enValid})`,
+    ...(links.length
+      ? ["", "روابط / Links", ...links.map((l) => `  - ${l.ar} / ${l.en}:\n    ${l.url}`), `  (${arValid} / ${enValid})`]
+      : []),
     "",
     "وتفضلوا بقبول فائق الاحترام،",
     "مصر للمحركات | Misr Motors",
@@ -218,10 +226,10 @@ ${details
 </table></td></tr>
 ${heading("المرفقات", "Attachments")}
 <tr><td style="padding:0 24px"><ul style="margin:0;padding-right:20px">${attached.map((l) => `<li style="margin-bottom:6px">${e(l.ar)}<br>${enSpan(l.en)}</li>`).join("")}</ul></td></tr>
-${heading("روابط", "Links")}
+${links.length ? `${heading("روابط", "Links")}
 <tr><td style="padding:0 24px"><ul style="margin:0;padding-right:20px">${links
     .map((l) => `<li style="margin-bottom:6px"><a href="${e(l.url)}" style="color:#0f3d6e">${e(l.ar)}</a><br>${enSpan(l.en)}</li>`)
-    .join("")}</ul><div style="${muted};margin-top:6px">${e(arValid)}<br>${enSpan(enValid)}</div></td></tr>
+    .join("")}</ul><div style="${muted};margin-top:6px">${e(arValid)}<br>${enSpan(enValid)}</div></td></tr>` : ""}
 <tr><td style="padding:20px 24px 24px">وتفضلوا بقبول فائق الاحترام،<br><strong>مصر للمحركات</strong> ${enSpan("Misr Motors")}</td></tr>
 </table></td></tr></table>
 </body></html>`
@@ -367,10 +375,31 @@ export async function sendInvoiceEmail(
     }
     const pdfBytes = Buffer.from(pdf.pdf)
     const logo = await (d.loadLogo ? d.loadLogo() : defaultLoadLogo(cfg.baseUrl)).catch(() => null)
-    const copies = fitAttachments(await signedPermitCopies(db, facts.permits, d.fetchFile || defaultFetchFile), MAX_ATTACHMENT_BYTES - pdfBytes.length - (logo?.length || 0))
-    const copyOf = (permitId: number) => copies.find((c) => c.permitId === permitId)
     const at = now()
     const link = (kind: "invoice" | "sales-order" | "delivery-permit", id: number) => docLinkUrl(cfg.baseUrl, kind, id, cfg.secret, at)
+    // the company's own prints (the invoice, each sales order) as PDFs, one at a time; a failed or too-big one is linked
+    let room = MAX_ATTACHMENT_BYTES - pdfBytes.length - (logo?.length || 0)
+    const toPdf = d.toPdf || urlToPdf
+    const printPdf = async (kind: "invoice" | "sales-order", id: number): Promise<Buffer | null> => {
+      try {
+        const bytes = await toPdf(link(kind, id))
+        if (!bytes?.length || bytes.length > room) return null
+        room -= bytes.length
+        return bytes
+      } catch (e: any) {
+        console.error(`[email] invoice ${invoiceId}: the ${kind} ${id} PDF could not be made: ${hide(String(e?.message || e))}`)
+        return null
+      }
+    }
+    const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, "_")
+    const invoicePdf = await printPdf("invoice", invoiceId)
+    const orderPdfs: { number: string; id: number; pdf: Buffer | null }[] = []
+    for (const o of facts.orders) {
+      const id = Number(o.so_id)
+      orderPdfs.push({ number: text(o.so_number) || `#${o.so_id}`, id, pdf: await printPdf("sales-order", id) })
+    }
+    const copies = fitAttachments(await signedPermitCopies(db, facts.permits, d.fetchFile || defaultFetchFile), room)
+    const copyOf = (permitId: number) => copies.find((c) => c.permitId === permitId)
     const content = buildInvoiceEmail({
       customerName: facts.customerName,
       ...(logo ? { logoCid: LOGO_CID } : {}),
@@ -380,7 +409,8 @@ export async function sendInvoiceEmail(
       total: facts.total,
       uuid,
       invoiceUrl: link("invoice", invoiceId),
-      salesOrders: facts.orders.map((o) => ({ number: text(o.so_number) || `#${o.so_id}`, url: link("sales-order", Number(o.so_id)) })),
+      ...(invoicePdf ? { invoiceAttached: true } : {}),
+      salesOrders: orderPdfs.map((o) => ({ number: o.number, url: link("sales-order", o.id), ...(o.pdf ? { attached: true } : {}) })),
       permits: facts.permits.map((p) => {
         const c = copyOf(Number(p.permit_id))
         return { number: text(p.permit_no) || `#${p.permit_id}`, ...(c ? { signed: { state: c.state, urls: c.urls } } : {}) }
@@ -394,6 +424,8 @@ export async function sendInvoiceEmail(
       attachments: [
         ...(logo ? [{ filename: "misr-motors-logo.png", content: logo, contentType: "image/png", cid: LOGO_CID }] : []),
         { filename: `invoice-${facts.invoiceNumber}.pdf`, content: pdfBytes, contentType: "application/pdf" },
+        ...(invoicePdf ? [{ filename: `misr-motors-invoice-${safe(facts.invoiceNumber)}.pdf`, content: invoicePdf, contentType: "application/pdf" }] : []),
+        ...orderPdfs.flatMap((o) => (o.pdf ? [{ filename: `sales-order-${safe(o.number)}.pdf`, content: o.pdf, contentType: "application/pdf" }] : [])),
         ...copies.flatMap((c) => c.attachments),
       ],
     }

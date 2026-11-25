@@ -8,7 +8,7 @@ import { etaEnvironment } from "@/lib/eta/send"
 import { invoiceEmailView, sendInvoiceEmail } from "@/lib/eta/invoice-email"
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 60
+export const maxDuration = 120
 
 // The customer e-mail of a valid e-invoice (lib/eta/invoice-email.ts). Accountant, CEO, admin (the /api/eta rule).
 // GET ?invoiceId=N: what the invoice shows (sent to / failed / no customer e-mail / not set up / database update needed).
