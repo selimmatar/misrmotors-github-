@@ -1647,13 +1647,15 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
               {savedQuotation && savedPdfUrl && (
                 <div role="status" className="rounded-md border border-green-600/40 bg-green-50 dark:bg-green-950/30 p-3 text-sm space-y-2">
                   <p className="font-medium">{fill(t("sq.quotation-saved-number"), { number: String(savedQuotation.quotation_number ?? "") })}</p>
-                  <Button asChild variant="outline" size="sm" className="gap-2">
-                    <a href={savedPdfUrl} target="_blank" rel="noopener">
-                      <FileText className="h-4 w-4" />
-                      {t("sq.open-pdf")}
-                    </a>
-                  </Button>
-                  {savedQuotation.id != null && <SendToCustomerButton kind="quotation" id={savedQuotation.id} className="ms-2" />}
+                  <div className="flex flex-wrap gap-2">
+                    <Button asChild variant="outline" size="sm" className="gap-2">
+                      <a href={savedPdfUrl} target="_blank" rel="noopener">
+                        <FileText className="h-4 w-4" />
+                        {t("sq.open-pdf")}
+                      </a>
+                    </Button>
+                    {savedQuotation.id != null && <SendToCustomerButton kind="quotation" id={savedQuotation.id} />}
+                  </div>
                 </div>
               )}
 

@@ -47,6 +47,8 @@ export interface DocFacts {
   date: string
   total: number
   customerPo: string
+  /** the customer's own request (RFQ) number, entered on the quotation and copied to its sales order */
+  customerRequest?: string
   /** the customer's purchasing contact(s), then the main e-mail: what the Send window suggests */
   suggested: string[]
 }
@@ -63,6 +65,12 @@ export async function docFacts(db: Db, kind: DocKind, id: number): Promise<DocFa
     const r = await db.from("customers").select("*").eq("customer_id", row.customer_id).maybeSingle()
     if (!r.error) customer = r.data
   }
+  // A quotation has no PO of its own: once approved, the PO entered then is on its sales order (parent_quotation_id).
+  let customerPo = kind === "sales-order" ? text(row.customer_po) : ""
+  if (kind === "quotation") {
+    const r = await db.from("sales_orders").select("customer_po").eq("parent_quotation_id", id)
+    if (!r.error) customerPo = (r.data || []).map((o: any) => text(o.customer_po)).find(Boolean) || ""
+  }
   const suggested = emailList([customer?.salesperson_email, customer?.email || (kind === "quotation" ? row.customer_email : "")].filter(Boolean).join(","))
   return {
     kind,
@@ -71,7 +79,8 @@ export async function docFacts(db: Db, kind: DocKind, id: number): Promise<DocFa
     customerName: text(customer?.customer_name) || text(row.customer_name),
     date: cairoDate(text(kind === "quotation" ? row.created_at : row.order_date || row.created_at)),
     total: Number(row.total) || 0,
-    customerPo: kind === "sales-order" ? text(row.customer_po) : "",
+    customerPo,
+    customerRequest: text(row.quotation_request_number),
     suggested,
   }
 }
@@ -81,28 +90,33 @@ const NAMES: Record<DocKind, { ar: string; en: string; file: string }> = {
   "sales-order": { ar: "أمر البيع", en: "Sales order", file: "sales-order" },
 }
 
-export function docEmailSubject(kind: DocKind, number: string): string {
-  return kind === "quotation" ? `عرض سعر رقم ${number} — مصر للمحركات` : `أمر بيع رقم ${number} — مصر للمحركات`
+/** The customer's PO number (when given) is in the subject too, so their purchasing team finds the e-mail by it. */
+export function docEmailSubject(kind: DocKind, number: string, customerPo = ""): string {
+  const po = customerPo ? ` — أمر الشراء ${customerPo}` : ""
+  return kind === "quotation" ? `عرض سعر رقم ${number}${po} — مصر للمحركات` : `أمر بيع رقم ${number}${po} — مصر للمحركات`
 }
 
 /** Formal Arabic with English beside it: greeting, one paragraph, the details, the attachment, closing. */
 export function buildDocEmail(f: DocFacts, logoCid?: string): { subject: string; text: string; html: string } {
   const n = NAMES[f.kind]
-  const subject = docEmailSubject(f.kind, f.number)
+  const subject = docEmailSubject(f.kind, f.number, f.customerPo)
+  const arPo = f.customerPo ? `بالإشارة إلى أمر الشراء الخاص بكم رقم ${f.customerPo}، ` : ""
+  const enPo = f.customerPo ? `With reference to your PO No. ${f.customerPo}, p` : "P"
   const details: { ar: string; en: string; value: string }[] = [
     { ar: f.kind === "quotation" ? "رقم العرض" : "رقم أمر البيع", en: f.kind === "quotation" ? "Quotation No." : "Sales order No.", value: f.number },
     ...(f.date ? [{ ar: "التاريخ", en: "Date", value: f.date }] : []),
+    ...(f.customerRequest ? [{ ar: "رقم طلبكم", en: "Your request No.", value: f.customerRequest }] : []),
     ...(f.customerPo ? [{ ar: "رقم أمر الشراء الخاص بكم", en: "Your PO No.", value: f.customerPo }] : []),
     { ar: "الإجمالي شاملًا الضريبة", en: "Total incl. VAT", value: `EGP ${money(f.total)}` },
   ]
   const arIntro =
     f.kind === "quotation"
-      ? `نتشرف بأن نرسل لسيادتكم عرض السعر رقم ${f.number} بإجمالي ${money(f.total)} جنيه مصري شاملًا ضريبة القيمة المضافة، ونأمل أن ينال رضاكم.`
-      : `نتشرف بأن نرسل لسيادتكم أمر البيع رقم ${f.number} بإجمالي ${money(f.total)} جنيه مصري شاملًا ضريبة القيمة المضافة، تأكيدًا لطلبكم.`
+      ? `${arPo}نتشرف بأن نرسل لسيادتكم عرض السعر رقم ${f.number} بإجمالي ${money(f.total)} جنيه مصري شاملًا ضريبة القيمة المضافة، ونأمل أن ينال رضاكم.`
+      : `${arPo}نتشرف بأن نرسل لسيادتكم أمر البيع رقم ${f.number} بإجمالي ${money(f.total)} جنيه مصري شاملًا ضريبة القيمة المضافة، تأكيدًا لطلبكم.`
   const enIntro =
     f.kind === "quotation"
-      ? `Please find attached quotation No. ${f.number}, total EGP ${money(f.total)} incl. VAT.`
-      : `Please find attached sales order No. ${f.number}, total EGP ${money(f.total)} incl. VAT, confirming your order.`
+      ? `${enPo}lease find attached quotation No. ${f.number}, total EGP ${money(f.total)} incl. VAT.`
+      : `${enPo}lease find attached sales order No. ${f.number}, total EGP ${money(f.total)} incl. VAT, confirming your order.`
   const attachedAr = `${n.ar} (PDF)`
   const attachedEn = `${n.en} (PDF)`
   const plain = [

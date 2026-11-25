@@ -349,22 +349,23 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQ
                       <StatusBadge status={quotation.status} label={quotation.status === "sent" ? t("quote.sent-to-customer") : undefined} />
                     </div>
                   </div>
-                  {/* Approve first and full width on a phone; Print and Reject share the next row (owner request, 2026-11-12) */}
-                  <div className="grid grid-cols-2 gap-2 mt-4 sm:flex sm:flex-wrap sm:justify-end">
+                  {/* Two groups (owner request): the document (Print, Send to customer) on one side, the decision (Reject,
+                      Approve) on the other. On a phone Approve comes first and full width, the other three share one row. */}
+                  <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t sm:flex sm:items-center">
                     <Button
                       size="sm"
                       variant="outline"
-                      className="gap-2 bg-transparent order-2 sm:order-none"
+                      className="gap-2 bg-transparent order-2 sm:order-1 h-auto min-h-9 whitespace-normal"
                       onClick={() => handlePrintPreview(quotation)}
                     >
                       <Printer className="w-4 h-4" />
                       {t("quote.print-preview")}
                     </Button>
-                    <SendToCustomerButton kind="quotation" id={quotation.id} className="bg-transparent order-2 sm:order-none" />
+                    <SendToCustomerButton kind="quotation" id={quotation.id} className="bg-transparent order-3 sm:order-2 h-auto min-h-9 whitespace-normal" />
                     <Button
                       size="sm"
                       variant="destructive"
-                      className="gap-2 order-3 sm:order-none"
+                      className="gap-2 order-4 sm:order-3 sm:ms-auto h-auto min-h-9 whitespace-normal"
                       onClick={() => {
                         setSelectedQuotation(quotation as any)
                         setShowRejectDialog(true)
@@ -376,7 +377,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQ
                     </Button>
                     <Button
                       size="sm"
-                      className="gap-2 col-span-2 order-1 sm:order-none"
+                      className="gap-2 col-span-3 order-1 sm:order-4"
                       onClick={() => openApproveConvertDialog(quotation)}
                       disabled={actionLoading}
                     >

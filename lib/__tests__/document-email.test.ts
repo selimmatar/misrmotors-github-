@@ -102,14 +102,32 @@ test("DE1. suggested recipients: the purchasing contact(s) first, then the main 
 test("DE2. the e-mail: formal Arabic with English, the PO row on a sales order only, the PDF named in the attachments", async () => {
   const db = docDb()
   const so = buildDocEmail((await docFacts(db, "sales-order", 9))!, "logo")
-  assert.equal(so.subject, "أمر بيع رقم SO-9 — مصر للمحركات")
+  assert.equal(so.subject, "أمر بيع رقم SO-9 — أمر الشراء PO-77 — مصر للمحركات")
   assert.ok(so.text.includes("رقم أمر الشراء الخاص بكم / Your PO No.: PO-77"))
+  assert.ok(so.text.includes("بالإشارة إلى أمر الشراء الخاص بكم رقم PO-77") && so.text.includes("your PO No. PO-77"))
+  assert.ok(so.html.includes("بالإشارة إلى أمر الشراء الخاص بكم رقم PO-77"))
+  const noPo = buildDocEmail({ ...(await docFacts(db, "sales-order", 9))!, customerPo: "" })
+  assert.equal(noPo.subject, "أمر بيع رقم SO-9 — مصر للمحركات")
+  assert.ok(!noPo.text.includes("بالإشارة") && !noPo.text.includes("Your PO No."))
   assert.ok(so.text.includes("أمر البيع (PDF) / Sales order (PDF)"))
   assert.ok(so.html.includes('src="cid:logo"') && so.html.includes('dir="rtl"'))
   const q = buildDocEmail((await docFacts(db, "quotation", 3))!)
   assert.equal(q.subject, "عرض سعر رقم Q-2026-003 — مصر للمحركات")
   assert.ok(!q.text.includes("Your PO No."))
   assert.ok(q.text.includes("EGP 1,140.00") && !q.html.includes("cid:"))
+})
+
+test("DE2b. the customer's request number is shown, and a quotation approved with a PO shows that PO", async () => {
+  const db = docDb()
+  db.tables.sales_quotations[0].quotation_request_number = "RFQ-55"
+  const q = buildDocEmail((await docFacts(db, "quotation", 3))!)
+  assert.ok(q.text.includes("رقم طلبكم / Your request No.: RFQ-55"))
+  assert.ok(!q.text.includes("Your PO No."), "not approved yet: no PO")
+  db.tables.sales_orders.push({ so_id: 10, so_number: "SO-10", customer_id: 5, total: 1140, parent_quotation_id: 3, customer_po: " PO-88 ", quotation_request_number: "RFQ-55" })
+  const q2 = buildDocEmail((await docFacts(db, "quotation", 3))!)
+  assert.ok(q2.text.includes("Your PO No.: PO-88") && q2.subject.includes("أمر الشراء PO-88"))
+  const so = buildDocEmail((await docFacts(db, "sales-order", 10))!)
+  assert.ok(so.text.includes("Your request No.: RFQ-55") && so.text.includes("Your PO No.: PO-88"))
 })
 
 test("DE3. Send: one e-mail to the confirmed addresses, the PDF made from the signed print link attached, logged as sent", async () => {
@@ -192,7 +210,7 @@ test("DE6. the route: sales and accountant may use it; GET shows the window, POS
     const body = await sent.json()
     assert.equal(body.status, "sent")
     assert.equal(body.email.history.length, 1)
-    assert.equal(mail.sent[0].subject, "أمر بيع رقم SO-9 — مصر للمحركات")
+    assert.equal(mail.sent[0].subject, "أمر بيع رقم SO-9 — أمر الشراء PO-77 — مصر للمحركات")
     const empty = await route.POST(rq("POST", "/api/document-email", { kind: "sales-order", id: 9, to: "" }))
     assert.equal(empty.status, 409)
     const e = await empty.json()
