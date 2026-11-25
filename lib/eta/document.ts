@@ -55,6 +55,8 @@ export interface EtaDocument {
   dateTimeIssued: string
   taxpayerActivityCode: string
   internalID: string
+  /** the customer's PO number(s) (sales_orders.customer_po), only when given - the portal's "PO" field */
+  purchaseOrderReference?: string
   /** credit note only: the portal uuid of the invoice it reverses */
   references?: string[]
   invoiceLines: EtaInvoiceLine[]
@@ -133,6 +135,7 @@ export function buildInvoiceDocument(preview: EtaPreview, settings: EtaSettings,
     dateTimeIssued: etaDateTime(issuedAt),
     taxpayerActivityCode: text(settings.eta_activity_code),
     internalID: text(preview.invoiceNumber),
+    ...(text(preview.customerPo) ? { purchaseOrderReference: text(preview.customerPo) } : {}),
     invoiceLines: lines,
     totalDiscountAmount: preview.totals.discount,
     totalSalesAmount: preview.totals.sales,
@@ -177,6 +180,7 @@ function inPortalOrder(d: EtaDocument): EtaDocument {
     dateTimeIssued: d.dateTimeIssued,
     taxpayerActivityCode: d.taxpayerActivityCode,
     internalID: d.internalID,
+    ...(d.purchaseOrderReference ? { purchaseOrderReference: d.purchaseOrderReference } : {}),
     ...(d.references ? { references: [...d.references] } : {}),
     invoiceLines: d.invoiceLines.map((l) => ({
       description: l.description,

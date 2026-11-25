@@ -32,6 +32,8 @@ export type EtaPreviewResponse = EtaPreview & {
   cancelWindowHours: number | null
   /** a real document is live: the company the invoice is issued for can't change */
   identityLocked?: boolean
+  /** a real document is live: the customer's PO number can't change */
+  poLocked?: boolean
   /** the customer e-mail of the valid e-invoice (lib/eta/invoice-email.ts) */
   email?: InvoiceEmailView
 }
@@ -650,6 +652,10 @@ export function EtaPreviewDialog({
               </div>
             )}
 
+            {(preview.orders?.length ?? 0) > 0 && (
+              <CustomerPoFields invoiceId={Number(invoiceId)} orders={preview.orders!} locked={!!preview.poLocked} onSaved={load} />
+            )}
+
             {preview.handledManually && (
               <div className="rounded-lg border bg-muted/50 p-3 space-y-1">
                 <p className="font-semibold">{t("eta.manual-title")}</p>
@@ -767,5 +773,79 @@ export function EtaPreviewDialog({
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * The customer's PO number of each sales order the invoice bills (optional; owner request 2026-11-25): filled from
+ * the order when typed at approval, editable here until the invoice is on the portal. Sent as the portal's PO field.
+ */
+function CustomerPoFields({
+  invoiceId,
+  orders,
+  locked,
+  onSaved,
+}: {
+  invoiceId: number
+  orders: { soId: number; soNumber: string; customerPo: string }[]
+  locked: boolean
+  onSaved: () => Promise<void> | void
+}) {
+  const { t } = useI18n()
+  const { toast } = useToast()
+  const [values, setValues] = useState<Record<number, string>>({})
+  const [saving, setSaving] = useState<number | null>(null)
+  useEffect(() => setValues(Object.fromEntries(orders.map((o) => [o.soId, o.customerPo]))), [orders])
+
+  const save = async (soId: number) => {
+    setSaving(soId)
+    try {
+      const res = await fetch("/api/eta/customer-po", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId, soId, customerPo: (values[soId] || "").trim() }),
+      })
+      if (!res.ok) throw new Error(await readError(res, t("message.error")))
+      toast({ title: t("eta.saved") })
+      await onSaved()
+    } catch (e) {
+      toast({ title: t("message.error"), description: fill(t("eta.save-failed"), { error: e instanceof Error ? e.message : String(e) }), variant: "destructive" })
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  return (
+    <div className="space-y-2 max-w-md">
+      {orders.map((o) => {
+        const changed = (values[o.soId] ?? "").trim() !== o.customerPo
+        const id = `eta-customer-po-${o.soId}`
+        return (
+          <div key={o.soId} className="space-y-1">
+            <Label htmlFor={id}>
+              {t("so.customer-po")}
+              {orders.length > 1 && <span className="text-muted-foreground"> · <bdi>{o.soNumber}</bdi></span>}
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id={id}
+                dir="ltr"
+                maxLength={100}
+                value={values[o.soId] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [o.soId]: e.target.value }))}
+                disabled={locked || saving !== null}
+                placeholder={t("so.customer-po-placeholder")}
+              />
+              {!locked && (
+                <Button type="button" variant="outline" onClick={() => save(o.soId)} disabled={!changed || saving !== null}>
+                  {t("eta.po-save")}
+                </Button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+      <p className="text-xs text-muted-foreground">{locked ? t("eta.po-locked") : t("eta.po-help")}</p>
+    </div>
   )
 }

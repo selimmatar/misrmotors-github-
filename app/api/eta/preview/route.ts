@@ -31,10 +31,13 @@ export async function GET(request: Request) {
     const documents = await invoiceDocuments(db, invoiceId)
     const windowHours = documents[environment].some((d) => d.status === "valid") ? hours : null
     // once a real document is live, the company the invoice is issued for (tax identity) can't change
-    const identityLocked = (preview.identities?.length ?? 0) > 1 ? await liveRealDocument(db, invoiceId) : false
+    const live = (preview.identities?.length ?? 0) > 1 || (preview.orders?.length ?? 0) > 0 ? await liveRealDocument(db, invoiceId) : false
+    const identityLocked = (preview.identities?.length ?? 0) > 1 ? live : false
+    // the customer's PO number can't change once the invoice is on the portal
+    const poLocked = (preview.orders?.length ?? 0) > 0 ? live : false
     // the customer e-mail of the valid e-invoice: sent to / failed / no customer e-mail / not set up
     const email = await invoiceEmailView(db, invoiceId)
-    return NextResponse.json({ ...preview, environment, documents, cancelWindowHours: windowHours, identityLocked, email })
+    return NextResponse.json({ ...preview, environment, documents, cancelWindowHours: windowHours, identityLocked, poLocked, email })
   } catch (error: any) {
     console.error("Error building the e-invoice preview:", error)
     return NextResponse.json({ error: error.message || "Failed to build the e-invoice preview" }, { status: 500 })

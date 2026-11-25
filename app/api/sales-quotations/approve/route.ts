@@ -1,3 +1,4 @@
+import { cleanCustomerPo } from "@/lib/eta/customer-po"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getConvertedSo, LOCKED_QUOTATION_STATUSES } from "@/lib/sales-quotations/converted"
 import { buildSalesOrderPaymentFields } from "@/lib/payment-type"
@@ -21,6 +22,9 @@ export async function POST(request: NextRequest) {
     // Optional sales order number typed by the person (lib/doc-number.ts); empty = the next automatic number.
     const manual = cleanManualNumber(body.manualNumber)
     if (!manual.ok) return badNumberResponse(manual.error)
+    // Optional: the customer's purchase order number (lib/eta/customer-po.ts); sent to the tax portal when given.
+    const customerPo = cleanCustomerPo(body.customerPo)
+    if (!customerPo.ok) return NextResponse.json({ error: customerPo.error }, { status: 400 })
 
     if (!quotation_id) {
       return NextResponse.json({ error: "Quotation ID is required" }, { status: 400 })
@@ -160,6 +164,7 @@ export async function POST(request: NextRequest) {
         order_date: safeDate(quotation.order_date) || new Date().toISOString().split('T')[0],
         parent_quotation_id: quotation.id,
         approval_document_url: approval_document_url || null,
+        ...(customerPo.value ? { customer_po: customerPo.value } : {}),
         // Quotation info
         quotation_request_number: quotation.quotation_request_number,
         department_name: quotation.department_name,

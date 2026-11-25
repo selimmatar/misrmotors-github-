@@ -335,6 +335,7 @@ export interface SalesOrder {
   installments?: number
   invoiceFileUrl?: string // Invoice uploaded by accountant
   approvalDocumentUrl?: string | null // Customer approval document uploaded when the quotation was converted
+  customerPo?: string | null // The customer's purchase order number (optional; sent to the tax portal on invoices)
   shippingInvoiceUrl?: string // Shipping invoice uploaded by shipping team
   paymentType?: PaymentType
   paymentDetails?: PaymentDetails

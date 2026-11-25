@@ -2179,6 +2179,12 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
                       </div>
                     )}
                   </div>
+                  {selectedOrder.customerPo && (
+                    <div className="col-span-full text-sm">
+                      <span className="text-muted-foreground">{t("so.customer-po-short")}: </span>
+                      <span className="font-medium" dir="ltr">{selectedOrder.customerPo}</span>
+                    </div>
+                  )}
                   <ApprovalDocumentLink url={selectedOrder.approvalDocumentUrl} className="col-span-full" />
                 </div>
 

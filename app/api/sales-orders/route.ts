@@ -152,6 +152,7 @@ export async function GET() {
         notes: order.notes,
         invoiceFileUrl: order.invoice_file_url,
         approvalDocumentUrl: order.approval_document_url || null,
+        customerPo: order.customer_po || null,
         createdAt: order.created_at,
         paymentType: order.payment_type || (order.payment_terms === "prepaid" ? "cash" : "installments"),
         scheduleEntries: order.schedule_entries

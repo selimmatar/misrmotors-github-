@@ -73,6 +73,13 @@ export interface EtaPreview {
   identities?: { identityId: number; name: string }[]
   /** the identity this invoice is issued for (chosen, or the only one); null with none or 2+ and none chosen */
   identityId?: number | null
+  /**
+   * The sales orders the invoice bills, each with the customer's PO number (sales_orders.customer_po; owner request
+   * 2026-11-25). Optional; the window lets the accountant type it.
+   */
+  orders?: { soId: number; soNumber: string; customerPo: string }[]
+  /** the customers' PO numbers of those orders, joined: sent to the portal as purchaseOrderReference when not empty */
+  customerPo?: string
 }
 
 const must = (result: any, what: string): any => {
@@ -210,6 +217,9 @@ export async function buildEtaPreview(
 
   const manual = documents.find((d: any) => d.status === "manual") || null
 
+  // The customer's PO number of each order (a database without the column yet: none)
+  const orders = soIds.length ? await loadOrderPos(db, soIds) : []
+
   // The receiver: the customer's chosen (or only) active tax identity; the card fields when it has none.
   const active: TaxIdentity[] = invoice.customer_id != null ? await loadCustomerIdentities(db, invoice.customer_id, { activeOnly: true }) : []
   const pick = pickIdentity(active, active.length > 1 ? await loadInvoiceIdentityId(db, invoiceId) : null)
@@ -280,5 +290,26 @@ export async function buildEtaPreview(
     missing,
     identities: active.map((i) => ({ identityId: i.identityId, name: i.name })),
     identityId: pick.kind === "identity" ? pick.identity.identityId : null,
+    orders,
+    customerPo: joinCustomerPos(orders.map((o) => o.customerPo)),
   }
+}
+
+/** The non-empty PO numbers, each once, in order, joined with ", " (an invoice of several orders). */
+export function joinCustomerPos(pos: string[]): string {
+  return [...new Set(pos.map((p) => text(p)).filter(Boolean))].join(", ")
+}
+
+async function loadOrderPos(db: Db, soIds: number[]): Promise<{ soId: number; soNumber: string; customerPo: string }[]> {
+  const withPo = await db.from("sales_orders").select("so_id, so_number, customer_po").in("so_id", soIds)
+  const rows: any[] = withPo.error
+    ? must(await db.from("sales_orders").select("so_id, so_number").in("so_id", soIds), "load sales orders")
+    : withPo.data || []
+  const byId = new Map(rows.map((r) => [Number(r.so_id), r]))
+  return soIds
+    .filter((id) => byId.has(Number(id)))
+    .map((id) => {
+      const r = byId.get(Number(id))
+      return { soId: Number(id), soNumber: text(r.so_number) || `#${id}`, customerPo: text(r.customer_po) }
+    })
 }

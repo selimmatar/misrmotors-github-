@@ -186,6 +186,8 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   const [approvalDocument, setApprovalDocument] = useState<File | null>(null)
   // The new sales order's number: empty = the next automatic one
   const [soManualNumber, setSoManualNumber] = useState("")
+  // the customer's PO number (optional; sent to the tax portal on the invoice when given)
+  const [customerPo, setCustomerPo] = useState("")
   const [saving, setSaving] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [uploadingDocument, setUploadingDocument] = useState(false)
@@ -808,6 +810,7 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
           quotation_id: quotation.id,
           approval_document_url: documentUrl,
           manualNumber: manualNumberValue(soManualNumber),
+          customerPo: customerPo.trim() || null,
         }),
       })
 
@@ -1121,6 +1124,13 @@ ${renderTotalsBlock(printTotals, { total: "إجمالي العرض" })}
 
           {/* The sales order number (optional) */}
           <DocNumberField id="so-manual-number" value={soManualNumber} onChange={setSoManualNumber} disabled={saving} />
+
+          {/* The customer's purchase order number (optional) */}
+          <div className="space-y-1">
+            <Label htmlFor="so-customer-po">{t("so.customer-po")}</Label>
+            <Input id="so-customer-po" value={customerPo} maxLength={100} onChange={(e) => setCustomerPo(e.target.value)} disabled={saving} placeholder={t("so.customer-po-placeholder")} />
+            <p className="text-xs text-muted-foreground">{t("so.customer-po-help")}</p>
+          </div>
 
           {/* Approval document */}
           <div className="border rounded-lg p-4 space-y-2">
