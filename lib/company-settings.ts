@@ -1,11 +1,11 @@
 export const COMPANY_SETTINGS = {
   // Arabic company info
   nameAr: "شركة مصر للمحركات",
-  nameEn: "Misr Motors Co.",
+  nameEn: "Misr Motors Co",
   
   // Aliases for backwards compatibility with quotation PDF
   company_name_ar: "شركة مصر للمحركات",
-  company_name_en: "Misr Motors Co.",
+  company_name_en: "Misr Motors Co",
 
   // Contact details - These should match the photo provided
   address: "212 ش السودان - ميدان لبنان - المهندسين - الجيزة",

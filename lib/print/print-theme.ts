@@ -18,10 +18,10 @@ tr { break-inside: avoid; page-break-inside: avoid; }
 .pm-rows th, .pm-rows td { inline-size: auto !important; min-inline-size: 0; }
 .pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
 .pm-brand { display: flex; align-items: center; gap: 12px; }
-.pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }
+.pm-brand img { block-size: 76px; inline-size: auto; max-inline-size: 190px; object-fit: contain; }
 .pm-names { display: block; }
 .pm-name-ar { font-size: 17px; font-weight: 700; }
-.pm-name-en { font-size: 11px; color: #555; letter-spacing: 0.06em; }
+.pm-name-en { font-size: 14px; color: #444; letter-spacing: 0.04em; }
 .pm-company { font-size: 11px; color: #555; line-height: 1.7; text-align: end; }
 .pm-tax { margin-block-start: 4px; font-size: 11px; color: #555; }
 .pm-title { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 18px 16px; }
@@ -66,6 +66,9 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
 .pm-sign { flex: 1; font-size: 11px; color: #333; }
 .pm-sign-line { margin-block-start: 6px; border-block-end: 1px solid #000; block-size: 28px; }
 .pm-footer { margin-block-start: 16px; font-size: 11px; color: #555; text-align: center; }
+table.pm-page { inline-size: 100%; border-collapse: collapse; }
+table.pm-page > thead > tr > td, table.pm-page > tbody > tr > td { padding: 0; border: 0; vertical-align: top; }
+table.pm-page > tbody > tr { break-inside: auto; page-break-inside: auto; }
 @media print { .no-print { display: none !important; } }
 `
 
@@ -76,7 +79,8 @@ export function printHeader(o: {
   taxInfo?: string
 }): string {
   const ar = o.company.nameAr !== undefined ? `<div class="pm-name-ar">${o.company.nameAr}</div>` : ""
-  const en = o.company.nameEn !== undefined ? `<div class="pm-name-en">${o.company.nameEn}</div>` : ""
+  // dir="ltr": English text inside an Arabic page keeps its own order
+  const en = o.company.nameEn !== undefined ? `<div class="pm-name-en" dir="ltr">${o.company.nameEn}</div>` : ""
   const tax = o.taxInfo !== undefined ? `<div class="pm-tax">${o.taxInfo}</div>` : ""
   return `<header class="pm-header"><div class="pm-brand">${o.logoHtml}<div class="pm-names">${ar}${en}</div></div><div class="pm-company">${o.company.detailsHtml}${tax}</div></header>`
 }
@@ -109,11 +113,39 @@ export function infoBox(title: string, rows: InfoRow[]): string {
 }
 
 /**
+ * Repeats the company header (logo and names) at the top of every printed page. Once the page has loaded, the header
+ * and everything after it are put in a one-cell table whose header row is the company header: the browser prints a
+ * table's header row again on each new page. On screen the page looks the same. Pages without the header are left alone.
+ */
+export const PRINT_HEADER_SCRIPT = `<script>(function () {
+  function repeatHeader() {
+    var header = document.querySelector("header.pm-header")
+    if (!header || header.closest("table.pm-page")) return
+    var parent = header.parentNode
+    var table = document.createElement("table")
+    table.className = "pm-page"
+    var headCell = table.createTHead().insertRow().insertCell()
+    var bodyCell = table.createTBody().insertRow().insertCell()
+    parent.insertBefore(table, header)
+    headCell.appendChild(header)
+    var node = table.nextSibling
+    while (node) {
+      var next = node.nextSibling
+      if (node.nodeName !== "SCRIPT") bodyCell.appendChild(node)
+      node = next
+    }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", repeatHeader)
+  else repeatHeader()
+})()</script>`
+
+/**
  * Keeps every item row whole on paper. Chrome honours "don't break inside a row", the iPhone does not, so each row of
  * the item table is turned into its own block (a grid with the table's own column widths) once the page has laid out.
- * The page looks the same; only page breaks change. Put it once, just before </body>.
+ * The page looks the same; only page breaks change. Put it once, just before </body>. It also repeats the company
+ * header on every page (PRINT_HEADER_SCRIPT, run first).
  */
-export const PRINT_ROWS_SCRIPT = `<script>(function () {
+export const PRINT_ROWS_SCRIPT = PRINT_HEADER_SCRIPT + `<script>(function () {
   function keepRowsWhole() {
     document.querySelectorAll("table.pm-table").forEach(function (table) {
       var rows = Array.prototype.slice.call(table.rows)

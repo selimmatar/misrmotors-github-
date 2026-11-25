@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { escapeHtml, ltrText } from "@/lib/html-escape"
-import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
+import { PRINT_CSS, PRINT_HEADER_SCRIPT, printHeader, docTitle } from "@/lib/print/print-theme"
 
 export const dynamic = "force-dynamic"
 
@@ -237,6 +237,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
 
 </div>
 <script>window.onload = () => window.print()</script>
+${PRINT_HEADER_SCRIPT}
 </body>
 </html>`
 

@@ -11,7 +11,7 @@ import { Printer } from "lucide-react"
 import { computeTotals } from "@/lib/print-totals"
 import { escapeHtml, ltrText, moneyCell, renderTotalsBlock, TOTALS_BLOCK_CSS } from "@/lib/print-html"
 import { COMPANY_SETTINGS } from "@/lib/company-settings"
-import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
+import { PRINT_CSS, PRINT_HEADER_SCRIPT, printHeader, docTitle } from "@/lib/print/print-theme"
 import { quoteAddressee } from "@/lib/quotations/addressed-to"
 import { cleanPictureUrl, hasPictureColumn, pictureCellHtml, pictureHeadHtml, printWhenPicturesLoaded, QUOTE_PICTURE_CSS } from "@/lib/quotations/line-picture"
 
@@ -245,7 +245,7 @@ export function QuotationPreviewDialog({ quotation, open, onOpenChange }: Quotat
     logoHtml: `<img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" onerror="this.style.display='none'" />`,
     company: {
       nameAr: `شركة مصر للمحركات`,
-      nameEn: `Misr Motors Co.`,
+      nameEn: `Misr Motors Co`,
       detailsHtml: `<div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
       <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
       <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>`,
@@ -322,6 +322,7 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
       <div class="pm-sign-line"></div>
     </div>
   </div>
+${PRINT_HEADER_SCRIPT}
 </body>
 </html>`)
     printWindow.document.close()
@@ -373,7 +374,7 @@ ${renderTotalsBlock(totals, { total: "إجمالي العرض" })}
                   />
                 </div>
                 <div className="text-xl font-bold mb-1">شركة مصر للمحركات</div>
-                <div className="text-base font-semibold mb-2">Misr Motors Co.</div>
+                <div className="text-base font-semibold mb-2">Misr Motors Co</div>
                 <div className="text-sm text-gray-700">
                   <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
                   <div>تليفون: <bdi dir="ltr">{COMPANY_SETTINGS.phone}</bdi> | فاكس: <bdi dir="ltr">{COMPANY_SETTINGS.fax}</bdi></div>

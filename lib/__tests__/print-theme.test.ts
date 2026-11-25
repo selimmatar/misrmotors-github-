@@ -4,7 +4,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
-import { PRINT_CSS, printHeader, docTitle, infoBox } from "../print/print-theme"
+import { PRINT_CSS, PRINT_HEADER_SCRIPT, PRINT_ROWS_SCRIPT, printHeader, docTitle, infoBox } from "../print/print-theme"
 
 const REPO = process.env.REPO_ROOT || path.resolve(__dirname, "..", "..", "..", "..")
 const strip = (h: string) => h.replace(/<[^>]*>/g, "").replace(/\s+/g, "")
@@ -69,7 +69,7 @@ test("PT6 printHeader keeps the input order and adds no text", () => {
     taxInfo: "D4",
   })
   assert.ok(h.startsWith('<header class="pm-header">'))
-  const order = ['<img src="x">', 'pm-name-ar">A1<', 'pm-name-en">B2<', "<div>C3</div>", 'pm-tax">D4<'].map((s) => h.indexOf(s))
+  const order = ['<img src="x">', 'pm-name-ar">A1<', 'pm-name-en" dir="ltr">B2<', "<div>C3</div>", 'pm-tax">D4<'].map((s) => h.indexOf(s))
   assert.ok(order.every((i) => i >= 0), "every input appears")
   for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1], "inputs keep their order")
   assert.equal(strip(h), "A1B2C3D4")
@@ -150,4 +150,31 @@ test("PT16 no printable splits money into a piastre (قرش) column", () => {
 test("PT17 the work order report has an on-screen print button that is hidden on paper", () => {
   const src = fs.readFileSync(path.join(REPO, "app/api/maintenance/work-orders/[id]/pdf/route.ts"), "utf8")
   assert.match(src, /<button class="print-button no-print" onclick="window\.print\(\)">/)
+})
+
+test("PT-H1. bigger logo and English name; the English name has no trailing dot and keeps left-to-right order", () => {
+  assert.match(PRINT_CSS, /\.pm-brand img \{ block-size: 76px;/)
+  assert.match(PRINT_CSS, /\.pm-name-en \{ font-size: 14px;/)
+  assert.match(printHeader({ logoHtml: "", company: { nameEn: "X", detailsHtml: "" } }), /class="pm-name-en" dir="ltr">X</)
+  const root = process.env.REPO_ROOT || process.cwd()
+  const settings = fs.readFileSync(path.join(root, "lib/company-settings.ts"), "utf8")
+  assert.ok(!settings.includes("Misr Motors Co."), "no dot after Co")
+})
+
+test("PT-H2. every printable repeats the company header on each page", () => {
+  assert.ok(PRINT_ROWS_SCRIPT.startsWith(PRINT_HEADER_SCRIPT), "the rows script carries the header script")
+  assert.match(PRINT_HEADER_SCRIPT, /createTHead\(\)/)
+  assert.match(PRINT_CSS, /table\.pm-page > tbody > tr \{ break-inside: auto;/)
+  const root = process.env.REPO_ROOT || process.cwd()
+  const files = [
+    "app/api/delivery-permits/pdf/route.ts", "app/api/po-requests/pdf/route.ts", "app/api/quotations/generate/route.ts",
+    "app/api/purchase-orders/pdf/route.ts", "app/api/invoices/ap/[id]/[invoiceId]/pdf/route.ts", "app/api/invoices/ap/[id]/pdf/route.ts",
+    "app/api/invoices/ar/[id]/[invoiceId]/pdf/route.ts", "app/api/invoices/ar/[id]/pdf/route.ts",
+    "app/api/maintenance/work-orders/[id]/pdf/route.ts", "lib/so-print-html.ts", "components/quotation/quotation-preview-dialog.tsx",
+  ]
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(root, f), "utf8")
+    assert.ok(src.includes("printHeader("), f)
+    assert.ok(/PRINT_(ROWS|HEADER)_SCRIPT\}/.test(src), `${f} has no header script`)
+  }
 })

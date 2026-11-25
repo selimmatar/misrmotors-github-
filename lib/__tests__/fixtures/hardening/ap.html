@@ -20,10 +20,10 @@ tr { break-inside: avoid; page-break-inside: avoid; }
 .pm-rows th, .pm-rows td { inline-size: auto !important; min-inline-size: 0; }
 .pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
 .pm-brand { display: flex; align-items: center; gap: 12px; }
-.pm-brand img { block-size: 56px; inline-size: auto; max-inline-size: 140px; object-fit: contain; }
+.pm-brand img { block-size: 76px; inline-size: auto; max-inline-size: 190px; object-fit: contain; }
 .pm-names { display: block; }
 .pm-name-ar { font-size: 17px; font-weight: 700; }
-.pm-name-en { font-size: 11px; color: #555; letter-spacing: 0.06em; }
+.pm-name-en { font-size: 14px; color: #444; letter-spacing: 0.04em; }
 .pm-company { font-size: 11px; color: #555; line-height: 1.7; text-align: end; }
 .pm-tax { margin-block-start: 4px; font-size: 11px; color: #555; }
 .pm-title { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 18px 16px; }
@@ -68,6 +68,9 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
 .pm-sign { flex: 1; font-size: 11px; color: #333; }
 .pm-sign-line { margin-block-start: 6px; border-block-end: 1px solid #000; block-size: 28px; }
 .pm-footer { margin-block-start: 16px; font-size: 11px; color: #555; text-align: center; }
+table.pm-page { inline-size: 100%; border-collapse: collapse; }
+table.pm-page > thead > tr > td, table.pm-page > tbody > tr > td { padding: 0; border: 0; vertical-align: top; }
+table.pm-page > tbody > tr { break-inside: auto; page-break-inside: auto; }
 @media print { .no-print { display: none !important; } }
 
     .print-bar {
@@ -112,7 +115,7 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
   <div class="print-spacer no-print"></div>
   
   <div class="invoice-container">
-    <header class="pm-header"><div class="pm-brand"><img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" /><div class="pm-names"><div class="pm-name-ar">شركة مصر للمحركات</div><div class="pm-name-en">Misr Motors Co.</div></div></div><div class="pm-company"><div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
+    <header class="pm-header"><div class="pm-brand"><img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" /><div class="pm-names"><div class="pm-name-ar">شركة مصر للمحركات</div><div class="pm-name-en" dir="ltr">Misr Motors Co</div></div></div><div class="pm-company"><div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
           <div>تليفون: <bdi dir="ltr">02-33039811</bdi> | فاكس: <bdi dir="ltr">02-33039818</bdi></div>
           <div>البريد الإلكتروني: <bdi dir="ltr">sales@misrmotors.com</bdi></div><div class="pm-tax">بطاقة ضريبية رقم: 2001 | ملف ضريبة: 10-191-343-5 | رقم التسجيل: 455-050-100</div></div></header>
     <div class="pm-title"><div class="doc-title">فاتورة مورد</div><div class="pm-title-note"><div class="invoice-badge">مستحقة الدفع</div></div></div>
@@ -258,6 +261,26 @@ body .totals-block *, .returned, .missing, [class*="status"], [class*="badge"] {
     </div>
   </div>
 <script>(function () {
+  function repeatHeader() {
+    var header = document.querySelector("header.pm-header")
+    if (!header || header.closest("table.pm-page")) return
+    var parent = header.parentNode
+    var table = document.createElement("table")
+    table.className = "pm-page"
+    var headCell = table.createTHead().insertRow().insertCell()
+    var bodyCell = table.createTBody().insertRow().insertCell()
+    parent.insertBefore(table, header)
+    headCell.appendChild(header)
+    var node = table.nextSibling
+    while (node) {
+      var next = node.nextSibling
+      if (node.nodeName !== "SCRIPT") bodyCell.appendChild(node)
+      node = next
+    }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", repeatHeader)
+  else repeatHeader()
+})()</script><script>(function () {
   function keepRowsWhole() {
     document.querySelectorAll("table.pm-table").forEach(function (table) {
       var rows = Array.prototype.slice.call(table.rows)

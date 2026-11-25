@@ -630,7 +630,7 @@ export function ApproveConvertQuotationDialog({ quotation, onOpenChange, onAppro
   <div class="company-header">
     <img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" onerror="this.style.display='none'" />
     <div class="company-name-ar">شركة مصر للمحركات</div>
-    <div class="company-name-en">Misr Motors Co.</div>
+    <div class="company-name-en" dir="ltr">Misr Motors Co</div>
     <div class="company-details">
       <div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
       <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>

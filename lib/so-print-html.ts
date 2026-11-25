@@ -162,7 +162,7 @@ export function renderSoPrintHtml(data: SoPrintData): string {
     logoHtml: `<img src="/images/image.png" alt="Misr Motors Logo" class="company-logo" onerror="this.style.display='none'" />`,
     company: {
       nameAr: `شركة مصر للمحركات`,
-      nameEn: `Misr Motors Co.`,
+      nameEn: `Misr Motors Co`,
       detailsHtml: `<div>العنوان: 212 ش السودان - ميدان لبنان - المهندسين - الجيزة</div>
       <div>تليفون: ${ltrText(COMPANY_SETTINGS.phone)} | فاكس: ${ltrText(COMPANY_SETTINGS.fax)}</div>
       <div>البريد الإلكتروني: ${ltrText(COMPANY_SETTINGS.email)}</div>`,
