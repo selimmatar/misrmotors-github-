@@ -138,7 +138,8 @@ test("M1. valid on the portal -> NO e-mail by itself; the accountant's Send -> o
   assert.equal(fileParts(m).length, 1)
   assert.equal(fileParts(m)[0].contentType, "application/pdf")
   assert.equal(fileParts(m)[0].content.toString(), "%PDF-1.7 portal")
-  for (const s of ["Acme Trading", "INV-1001", "20/11/2026", "342.00", "UUID-1", "incl. VAT", "https://invoicing.eta.gov.eg/documents/UUID-1/share/LONG-1"]) assert.ok(m.text.includes(s), s)
+  for (const s of ["Acme Trading", "INV-1001", "20/11/2026", "342.00", "UUID-1", "incl. VAT"]) assert.ok(m.text.includes(s), s)
+  assert.ok(!m.text.includes("invoicing.eta.gov.eg") && !m.html.includes("invoicing.eta.gov.eg"), "no link to the tax portal page (owner 2026-11-25)")
   // the links, each opening only its document; no unsigned delivery permit (owner request 2026-11-25)
   const links = [...m.text.matchAll(/https:\/\/erp\.example\.com\/api\/doc-link\/(\S+)/g)].map((x) => x[1])
   const opened = links.map((t) => verifyDocLink(t, SECRET, NOW)).map((c) => (c.ok ? `${c.kind}:${c.id}` : c.reason))
@@ -458,7 +459,7 @@ test("M12. the database script, the screen and the texts", () => {
     assert.ok(i18n.indexOf(`"${k}"`, arAt) < i18n.indexOf('"eta.go-live-started"', arAt), `${k} before eta.go-live-started (ar)`)
   }
   // the e-mail text itself
-  const e = buildInvoiceEmail({ customerName: "<b>Acme</b>", invoiceNumber: "INV-1", date: "01/01/2026", total: 1000, uuid: "U", portalUrl: null, invoiceUrl: "https://x/i", salesOrders: [], permits: [] })
+  const e = buildInvoiceEmail({ customerName: "<b>Acme</b>", invoiceNumber: "INV-1", date: "01/01/2026", total: 1000, uuid: "U", invoiceUrl: "https://x/i", salesOrders: [], permits: [] })
   assert.ok(e.html.includes("&lt;b&gt;Acme&lt;/b&gt;") && !e.html.includes("<b>Acme"))
   assert.match(e.text, /بإجمالي 1,000.00 جنيه مصري شاملًا ضريبة القيمة المضافة/)
 })

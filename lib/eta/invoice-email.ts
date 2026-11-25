@@ -122,8 +122,6 @@ export interface InvoiceEmailContent {
   date: string
   total: number
   uuid: string
-  /** the portal's public page of the document, when its long id is known */
-  portalUrl: string | null
   invoiceUrl: string
   salesOrders: { number: string; url: string }[]
   /** only the shipping team's SIGNED copy is sent: attached, linked (too big: its file addresses), not uploaded, or failed */
@@ -151,7 +149,7 @@ export function buildInvoiceEmail(c: InvoiceEmailContent): { subject: string; te
   ]
   const attached: { ar: string; en: string }[] = [{ ar: "الفاتورة الإلكترونية (PDF) من بوابة مصلحة الضرائب", en: "E-invoice (PDF) from the ETA portal" }]
   const links: { ar: string; en: string; url: string }[] = []
-  if (c.portalUrl) links.push({ ar: "الفاتورة على بوابة مصلحة الضرائب", en: "E-invoice on the ETA portal", url: c.portalUrl })
+  // no link to the tax portal's page (it did not open for customers; owner 2026-11-25): its PDF is attached instead
   links.push({ ar: "عرض وطباعة الفاتورة", en: "View and print the invoice", url: c.invoiceUrl })
   for (const s of c.salesOrders) links.push({ ar: `أمر البيع ${s.number}`, en: `Sales order ${s.number}`, url: s.url })
   for (const p of c.permits) {
@@ -224,13 +222,6 @@ ${heading("روابط", "Links")}
 </table></td></tr></table>
 </body></html>`
   return { subject, text: plain, html }
-}
-
-/** The portal's public page of a document (the address in its QR code). */
-export function portalShareUrl(env: EtaEnv, uuid: string, longId: string | null): string | null {
-  if (!uuid || !longId) return null
-  const host = env === "test" ? "https://preprod.invoicing.eta.gov.eg" : "https://invoicing.eta.gov.eg"
-  return `${host}/documents/${encodeURIComponent(uuid)}/share/${encodeURIComponent(longId)}`
 }
 
 function cairoDate(iso: string): string {
@@ -381,7 +372,6 @@ export async function sendInvoiceEmail(
       date: facts.date,
       total: facts.total,
       uuid,
-      portalUrl: portalShareUrl(env, uuid, text(doc.eta_long_id) || null),
       invoiceUrl: link("invoice", invoiceId),
       salesOrders: facts.orders.map((o) => ({ number: text(o.so_number) || `#${o.so_id}`, url: link("sales-order", Number(o.so_id)) })),
       permits: facts.permits.map((p) => {
