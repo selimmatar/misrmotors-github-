@@ -45,6 +45,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { ReturnedExchangeDialog } from "@/components/inventory/returned-exchange-dialog"
 import { fill } from "@/lib/i18n-format"
 import { soldLineCostAndSupplier } from "@/lib/sold-cost"
+import { matchesSearch } from "@/lib/search-match"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -198,6 +199,11 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
     return () => clearInterval(interval)
   }, [])
 
+  // The search box above the tabs also narrows the Pending and Sold lists (owner report 2026-11-25: it only
+  // filtered the stock list): product, SKU, sales order, delivery permit, customer or supplier.
+  const searchHit = (item: PendingItem): boolean =>
+    matchesSearch(searchQuery, [item.productName, item.sku, item.soNumber, (item as any).dpNumber, item.customerName, (item as any).supplierName])
+
   const pendingItems: PendingItem[] = useMemo(() => {
     const items: PendingItem[] = []
 
@@ -264,8 +270,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       })
     }
 
-    return items
-  }, [deliveryPermits, salesOrders, customers, products, directPending])
+    return items.filter(searchHit)
+  }, [deliveryPermits, salesOrders, customers, products, directPending, searchQuery])
 
   // Sold tab (owner, 2026-11-17): our cost per unit and the supplier of a sold line. Outsourced: from its purchase
   // order (landed once finalized, else the PO unit price; a line taken from stock: its stock row's cost), never the
@@ -339,8 +345,8 @@ export function InventoryModule({ userRole }: InventoryModuleProps) {
       }
     })
 
-    return items.sort((a, b) => new Date(b.soldDate).getTime() - new Date(a.soldDate).getTime())
-  }, [deliveryPermits, salesOrders, customers, products, soldDateFrom, soldDateTo, inventory, outsourcedCosts])
+    return items.filter(searchHit).sort((a, b) => new Date(b.soldDate).getTime() - new Date(a.soldDate).getTime())
+  }, [deliveryPermits, salesOrders, customers, products, soldDateFrom, soldDateTo, inventory, outsourcedCosts, searchQuery])
 
   const handleViewSODetails = (item: PendingItem | SoldItem) => {
     const so = salesOrders.find((s) => s.id === item.soId || String(s.id) === String(item.soId))

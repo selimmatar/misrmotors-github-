@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAppContext } from "@/lib/app-context"
+import { matchesSearch } from "@/lib/search-match"
 import { itemDeliveryChip, permitChip } from "@/lib/customer-dp-chip"
 import { orderDisplayStatus, orderPayment } from "@/lib/customer-order-status"
 import { useI18n } from "@/lib/i18n-context"
@@ -54,11 +55,10 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
   const [orderInvoices, setOrderInvoices] = useState<Record<string, any[]>>({})
   const [searchQuery, setSearchQuery] = useState("")
 
-  const filteredCustomers = customers.filter(
-    (customer) =>
-      customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      customer.phone.includes(searchQuery),
+  // Search (owner report 2026-11-25: typing crashed on a customer with no e-mail or phone saved): name, e-mail,
+  // phone, company, tax number or city; empty fields are skipped.
+  const filteredCustomers = customers.filter((customer: any) =>
+    matchesSearch(searchQuery, [customer.name, customer.email, customer.phone, customer.company, customer.taxNumber, customer.taxId, customer.city, customer.salespersonEmail]),
   )
 
   useEffect(() => {
