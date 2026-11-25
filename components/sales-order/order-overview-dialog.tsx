@@ -19,7 +19,7 @@ import type { UserRole } from "@/lib/types"
 const PROFIT_ROLES: UserRole[] = ["ceo", "admin"]
 const DP_STATUSES = ["DRAFT", "PENDING", "CREATED", "READY_FOR_PICKUP", "READY_FOR_SHIPMENT", "OUT_FOR_DELIVERY", "SUBMITTED_SIGNED", "DELIVERED", "APPROVED"]
 const FULFILMENT = ["DELIVERED", "PARTIALLY_DELIVERED", "OUT_FOR_DELIVERY", "READY_FOR_PICKUP", "READY_FOR_SHIPMENT"]
-const EVENTS = ["PO_CLOSED", "PO_REOPENED", "PO_ITEM_EXCHANGED", "PO_ITEM_SENT_BACK"]
+const EVENTS = ["PO_CLOSED", "PO_REOPENED", "PO_ITEM_EXCHANGED", "PO_ITEM_SENT_BACK", "DELIVERY_REFUSED"]
 /** keys that have a translation; anything else shows its raw value made readable */
 const LABELLED = new Set([...DP_STATUSES.map((s) => `ov.dp-status.${s}`), ...FULFILMENT.map((s) => `ov.fulfilment.${s}`), ...EVENTS.map((s) => `ov.event.${s}`)])
 

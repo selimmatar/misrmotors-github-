@@ -5,9 +5,10 @@
       "migrated": true,
       "surface": {
         "api": [
+          "\"/api/goods-receipts/refuse",
           "\"/api/product-images",
           "'/api/goods-receipts",
-          "`/api/goods-receipts?po_id=${encodeURIComponent(String(po.id))}"
+          "`/api/goods-receipts?po_id=${encodeURIComponent(poId)}"
         ],
         "handlers": [
           "handleAcceptWithPhotos",
@@ -24,8 +25,8 @@
           "id={`photo-notes-${line.productId}`}",
           "id={`qty-${line.productId}`}"
         ],
-        "fetch": 3,
-        "iso": 1,
+        "fetch": 4,
+        "iso": 0,
         "t": 38,
         "onClick": 11
       }

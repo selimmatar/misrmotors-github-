@@ -17,7 +17,7 @@ import { exchangeOnPo, readPairs, type Undo } from "@/lib/po-exchange"
 export const dynamic = "force-dynamic"
 
 const refuse = (status: number, code: string, error: string) => NextResponse.json({ error, code }, { status })
-const PO_HISTORY_EVENTS = ["PO_ITEM_EXCHANGED", "PO_ITEM_SENT_BACK", "PO_CLOSED", "PO_REOPENED"]
+const PO_HISTORY_EVENTS = ["PO_ITEM_EXCHANGED", "PO_ITEM_SENT_BACK", "PO_CLOSED", "PO_REOPENED", "DELIVERY_REFUSED"]
 
 export async function POST(request: Request) {
   const db = createAdminClient()

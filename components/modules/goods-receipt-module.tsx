@@ -74,6 +74,25 @@ interface WarehouseType {
   isActive: boolean
 }
 
+/** Quantity already received per PO line (all earlier receipts of the order); {} when they cannot be read. */
+async function loadReceivedByItem(poId: string): Promise<Record<string, number>> {
+  const receivedByItem: Record<string, number> = {}
+  try {
+    const res = await fetch(`/api/goods-receipts?po_id=${encodeURIComponent(poId)}`)
+    if (res.ok) {
+      const receipts = await res.json()
+      for (const r of Array.isArray(receipts) ? receipts : []) {
+        for (const l of r.lines || []) {
+          if (l.poItemId) receivedByItem[String(l.poItemId)] = (receivedByItem[String(l.poItemId)] || 0) + (Number(l.quantityReceived) || 0)
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Could not load earlier receipts for this order", e)
+  }
+  return receivedByItem
+}
+
 export function GoodsReceiptModule() {
   const { t, formatNumber, language } = useI18n()
   const { purchaseOrders, updatePurchaseOrder, products, suppliers, loadData, user, warehouses: warehousesFromContext } = useAppContext()
@@ -99,6 +118,22 @@ export function GoodsReceiptModule() {
 
   // approved and partially received orders are open for receiving (the server makes the final decision)
   const approvedPOs = purchaseOrders.filter((po) => ["approved", "partially_received"].includes(po.status as string))
+
+  // What was already received on each open order, per PO line (owner report 2026-11-25: after a partial receipt the
+  // card still showed the full ordered quantities). The card shows only what is still to come.
+  const [receivedByPo, setReceivedByPo] = useState<Record<string, Record<string, number>>>({})
+  const [receivedVersion, setReceivedVersion] = useState(0)
+  const openPoKey = approvedPOs.map((po) => po.id).join(",")
+  useEffect(() => {
+    let live = true
+    const ids = openPoKey ? openPoKey.split(",") : []
+    Promise.all(ids.map(async (id) => [id, await loadReceivedByItem(id)] as const)).then((pairs) => {
+      if (live) setReceivedByPo(Object.fromEntries(pairs))
+    })
+    return () => {
+      live = false
+    }
+  }, [openPoKey, receivedVersion])
 
   useEffect(() => {
     // Set default warehouse if available
@@ -153,20 +188,7 @@ export function GoodsReceiptModule() {
     const defaultWh = warehouses.find((w: any) => w.isDefault) || warehouses[0]
     
     // Earlier receipts for this order (display only - the server recalculates the remaining quantity itself)
-    const receivedByItem: Record<string, number> = {}
-    try {
-      const res = await fetch(`/api/goods-receipts?po_id=${encodeURIComponent(String(po.id))}`)
-      if (res.ok) {
-        const receipts = await res.json()
-        for (const r of Array.isArray(receipts) ? receipts : []) {
-          for (const l of r.lines || []) {
-            if (l.poItemId) receivedByItem[String(l.poItemId)] = (receivedByItem[String(l.poItemId)] || 0) + (Number(l.quantityReceived) || 0)
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Could not load earlier receipts for this order', e)
-    }
+    const receivedByItem = await loadReceivedByItem(String(po.id))
 
     const lines: ReceiptLineItem[] = po.items.map((item: any) => {
       const ordered = Number(item.quantity) || 0
@@ -384,6 +406,7 @@ export function GoodsReceiptModule() {
     }
 
     receiveKeyRef.current = null
+    setReceivedVersion((v) => v + 1)
     setIsSubmitting(false)
     setShowPhotoModal(false)
     setSelectedPOForPhotos(null)
@@ -392,23 +415,37 @@ export function GoodsReceiptModule() {
     setReceiptLines([])
   }
 
-  const handleRejectReceipt = () => {
+  // "Reject receipt" refuses THIS delivery (owner decision 2026-11-25): the approved order is not cancelled; the reason
+  // is saved as a note on the PO for purchasing and the CEO, and the order stays open (/api/goods-receipts/refuse).
+  // Before, it tried to set an approved order to "rejected", which the server refuses, and still said "rejected".
+  const [refusing, setRefusing] = useState(false)
+  const handleRejectReceipt = async () => {
     if (!rejectionReason.trim()) {
       alert(`${t("gr.please-provide-reason")}`)
       return
     }
-
-    updatePurchaseOrder({
-      ...selectedPOForRejection,
-      status: "rejected" as const,
-      rejectionReason: rejectionReason,
-      rejectedAt: new Date().toISOString(),
-    })
-
-    setShowRejectModal(false)
-    setSelectedPOForRejection(null)
-    setRejectionReason("")
-    alert(`${t("gr.po-rejected")}: ${selectedPOForRejection.poNumber}. ${t("gr.po-rep-ceo-notified")}`)
+    setRefusing(true)
+    try {
+      const res = await fetch("/api/goods-receipts/refuse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selectedPOForRejection.id, reason: rejectionReason.trim(), userId: user?.id }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        alert(fill(t("gr.refuse-failed"), { message: body?.error || res.statusText }))
+        return
+      }
+      const poNumber = selectedPOForRejection.poNumber
+      setShowRejectModal(false)
+      setSelectedPOForRejection(null)
+      setRejectionReason("")
+      alert(fill(t("gr.delivery-refused"), { po: poNumber }))
+    } catch (e: any) {
+      alert(fill(t("gr.refuse-failed"), { message: e?.message || "" }))
+    } finally {
+      setRefusing(false)
+    }
   }
 
   return (
@@ -488,20 +525,32 @@ export function GoodsReceiptModule() {
                     <div>
                       <h4 className="font-semibold text-sm mb-2">{t("gr.items-to-receive")}:</h4>
                       <div className="space-y-2">
-                        {po.items.map((item: any) => (
-                          <div key={item.id} className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                            <div>
-                              <p className="font-medium text-sm">{item.productName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {t("field.quantity")}: {formatNumber(item.quantity)} {t("gr.units")} @{" "}
-                                <Money value={item.unitPrice} /> {t("gr.egp-per")}{t("gr.unit")}
+                        {po.items.map((item: any) => {
+                          // only what is still to come; a line received in full is not shown
+                          const ordered = Number(item.quantity) || 0
+                          const received = receivedByPo[String(po.id)]?.[String(item.id)] || 0
+                          const left = Math.max(0, ordered - received)
+                          if (received > 0 && left <= 0) return null
+                          return (
+                            <div key={item.id} className="flex justify-between items-center p-2 bg-muted/50 rounded">
+                              <div>
+                                <p className="font-medium text-sm">{item.productName}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {t("field.quantity")}: {formatNumber(left)} {t("gr.units")} @{" "}
+                                  <Money value={item.unitPrice} /> {t("gr.egp-per")}{t("gr.unit")}
+                                </p>
+                                {received > 0 && (
+                                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                                    {fill(t("gr.partly-received"), { received: formatNumber(received), ordered: formatNumber(ordered) })}
+                                  </p>
+                                )}
+                              </div>
+                              <p className="font-semibold text-sm">
+                                <Money value={received > 0 ? Math.round(left * (Number(item.unitPrice) || 0) * 100) / 100 : item.total} /> {t("common.egp-2")}
                               </p>
                             </div>
-                            <p className="font-semibold text-sm">
-                              <Money value={item.total} /> {t("common.egp-2")}
-                            </p>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
 
@@ -583,7 +632,7 @@ export function GoodsReceiptModule() {
             >
               {t("action.cancel")}
             </Button>
-            <Button variant="destructive" onClick={handleRejectReceipt} disabled={!rejectionReason.trim()}>
+            <Button variant="destructive" onClick={handleRejectReceipt} disabled={!rejectionReason.trim() || refusing}>
               {t("gr.confirm-rejection")}
             </Button>
           </div>
