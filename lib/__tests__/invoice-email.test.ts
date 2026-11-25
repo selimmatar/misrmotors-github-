@@ -219,6 +219,11 @@ test("M5. e-mail not set up (env missing) -> nothing sent; the invoice says 'not
   assert.ok(!emailConfig({ ...ENV, APP_BASE_URL: "" }).ok)
   assert.ok(emailConfig({ ...ENV, APP_BASE_URL: "", VERCEL_PROJECT_PRODUCTION_URL: "erp.misrmotors.com" }).ok)
   assert.equal((await invoiceEmailView(db, 1, { env: {} })).configured, false)
+  // the window names the setting that is wrong (name only, never a value)
+  const short = await invoiceEmailView(db, 1, { env: { ...ENV, DOC_LINK_SECRET: "short" } })
+  assert.deepEqual(short.missing, ["DOC_LINK_SECRET"])
+  assert.ok(!JSON.stringify(short).includes(PASS), "no value leaks into the view")
+  assert.equal((await invoiceEmailView(db, 1, { env: ENV })).missing, undefined)
   // the button: 409 "not set up", logged by name only
   useDb(db)
   const res = await withDefaults({ env: { EMAIL_SMTP_PASS: PASS }, transport: mail.transport }, {}, () => emailRoute.POST(rq("POST", "/api/eta/invoice-email", { invoiceId: 1 })))

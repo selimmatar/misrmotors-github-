@@ -374,6 +374,8 @@ export async function sendInvoiceEmail(
 export interface InvoiceEmailView {
   /** EMAIL_* / DOC_LINK_SECRET are set */
   configured: boolean
+  /** when not configured: the NAMES of the settings that are missing or not valid (never a value) */
+  missing?: string[]
   /** the invoice_email_log table exists */
   dbReady: boolean
   last: { status: EmailStatus | "sending"; to: string | null; error: string | null; at: string | null; trigger: EmailTrigger } | null
@@ -382,16 +384,19 @@ export interface InvoiceEmailView {
 /** The newest e-mail attempt of an invoice (a "sending" row older than 15 minutes counts as failed). Never throws. */
 export async function invoiceEmailView(db: Db, invoiceId: number, deps: EmailDeps = {}): Promise<InvoiceEmailView> {
   const d: EmailDeps = { ...invoiceEmailDefaults, ...deps }
-  const configured = emailConfig(d.env || process.env).ok
+  const cfg = emailConfig(d.env || process.env)
+  const configured = cfg.ok
+  const extra = cfg.ok ? {} : { missing: cfg.missing }
   try {
     const r = await db.from(EMAIL_LOG_TABLE).select("log_id, status, sent_to, error, sent_at, created_at, trigger").eq("invoice_id", invoiceId)
-    if (r.error) return { configured, dbReady: !isMissingRelation(r.error), last: null }
+    if (r.error) return { configured, ...extra, dbReady: !isMissingRelation(r.error), last: null }
     const row = [...((r.data as any[]) || [])].sort((a, b) => Number(b.log_id) - Number(a.log_id))[0]
-    if (!row) return { configured, dbReady: true, last: null }
+    if (!row) return { configured, ...extra, dbReady: true, last: null }
     const now = (d.now || (() => new Date()))().getTime()
     const stale = row.status === "sending" && now - (Date.parse(text(row.created_at)) || 0) > SENDING_STALE_MS
     return {
       configured,
+      ...extra,
       dbReady: true,
       last: {
         status: stale ? "failed" : row.status,
@@ -402,6 +407,6 @@ export async function invoiceEmailView(db: Db, invoiceId: number, deps: EmailDep
       },
     }
   } catch {
-    return { configured, dbReady: false, last: null }
+    return { configured, ...extra, dbReady: false, last: null }
   }
 }

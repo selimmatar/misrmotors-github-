@@ -225,7 +225,11 @@ function EtaEmailStatus({ email, invoiceId, reload }: { email: InvoiceEmailView;
   else if (last?.status === "failed") line = { text: fill(t("eta.email-failed"), { reason: last.error || "" }), tone: "text-red-700 dark:text-red-300" }
   else if (last?.status === "no_email") line = { text: t("eta.email-no-customer-email"), tone: "text-amber-800 dark:text-amber-300" }
   else if (last?.status === "sending") line = { text: t("eta.email-sending"), tone: "text-muted-foreground" }
-  else if (!email.configured || last?.status === "not_configured") line = { text: t("eta.email-not-set-up"), tone: "text-muted-foreground" }
+  else if (!email.configured)
+    line = {
+      text: email.missing?.length ? `${t("eta.email-not-set-up")}. ${fill(t("eta.email-check-settings"), { names: email.missing.join(", ") })}` : t("eta.email-not-set-up"),
+      tone: "text-muted-foreground",
+    }
   else line = { text: t("eta.email-not-sent"), tone: "text-muted-foreground" }
   return (
     <div className="space-y-1 text-sm">
