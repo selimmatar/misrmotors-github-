@@ -375,6 +375,7 @@ function EtaActions({
       )}
 
       {inv?.status === "valid" && preview.email && <EtaEmailStatus email={preview.email} invoiceId={invoiceId} reload={reload} />}
+            {!(inv?.status === "valid") && preview.handledManually && preview.manualEtaUuid && preview.email && <EtaEmailStatus email={preview.email} invoiceId={invoiceId} reload={reload} />}
 
       {canSend && old && <p className="text-sm text-amber-800 dark:text-amber-300">{t("eta.old-warning")}</p>}
       {docs.length === 0 && preview.missing.length > 0 && <p className="text-sm text-muted-foreground">{t("eta.fix-missing")}</p>}

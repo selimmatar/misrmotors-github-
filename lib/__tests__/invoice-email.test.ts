@@ -598,3 +598,39 @@ test("M14. the customer card's 'Accountant email': preferred over the main e-mai
   for (const k of ["customer.accountant-email-hint", "customer.accountant-email-none", "customer.accountant-email-not-saved"])
     assert.ok(i18n.slice(0, arAt).includes(`"${k}":`) && i18n.slice(arAt).includes(`"${k}":`), k)
 })
+
+test("M15. an invoice handled manually ('already on the portal') with its tax portal ID saved can be e-mailed; without the ID it cannot", async () => {
+  const manualDb = (uuid: string | null) => {
+    const db = emailDb()
+    // as POST /api/eta/preview stores it: no environment, no body, only the ID typed in
+    db.tables.eta_documents = [{ doc_id: 9, invoice_id: 1, document_type: "I", status: "manual", eta_uuid: uuid, created_at: "2026-11-20T09:00:00Z" }]
+    return db
+  }
+  const db = manualDb("UUID-OLD")
+  const fake = portalFake()
+  const mail = fakeTransport()
+  const res = await pressSend(db, mail, fake.portal)
+  assert.equal(res.status, 200)
+  assert.deepEqual(fake.calls.printout, ["UUID-OLD"], "the PDF comes from the real portal by the saved ID")
+  assert.equal(mail.sent.length, 1)
+  const m = mail.sent[0]
+  for (const s of ["Acme Trading", "INV-1001", "20/11/2026", "342.00", "UUID-OLD"]) assert.ok(m.text.includes(s), s)
+  assert.equal(m.attachments![0].content.toString(), "%PDF-1.7 portal")
+  const log = db.tables.invoice_email_log
+  assert.equal(log.length, 1)
+  assert.equal(log[0].status, "sent")
+  assert.equal(log[0].eta_uuid, "UUID-OLD")
+  assert.equal(log[0].environment, "real")
+
+  // no ID saved -> nothing sent, "no valid e-invoice"
+  const bare = manualDb(null)
+  const mail2 = fakeTransport()
+  const res2 = await pressSend(bare, mail2)
+  assert.equal(res2.status, 409)
+  assert.equal((await res2.json()).code, "not_valid")
+  assert.equal(mail2.sent.length, 0)
+
+  // the window shows the e-mail section for such an invoice too
+  const dialog = readFileSync(join(REPO, "components/accounting/eta-preview-dialog.tsx"), "utf8")
+  assert.match(dialog, /preview\.handledManually && preview\.manualEtaUuid[^\n]*<EtaEmailStatus/)
+})

@@ -189,7 +189,7 @@ export function resetPrintoutGuard() { printoutSlot.clear() }
 export type PrintoutDeps = SendDeps & { clock?: () => number; sleep?: (ms: number) => Promise<void> }
 
 /**
- * The portal's PDF of one of our documents (`valid` or `cancelled`, by doc_id) or of a received supplier document
+ * The portal's PDF of one of our documents (`valid`, `cancelled`, or `manual` with a saved portal ID, by doc_id) or of a received supplier document
  * (by received_id). 400 NotReady and the other portal answers come back in plain words.
  */
 export async function portalPrintout(
@@ -208,7 +208,8 @@ export async function portalPrintout(
       "load document",
     )
     if (!row) return refusal("not_found", "Document not found.", 404)
-    if (!["valid", "cancelled"].includes(row.status) || !text(row.eta_uuid))
+    // "manual": an invoice marked "already on the portal" with its tax portal ID saved (always the real portal)
+    if (!["valid", "cancelled", "manual"].includes(row.status) || !text(row.eta_uuid))
       return refusal("not_on_portal", "The portal printout is available for valid or cancelled documents only.", 409)
     uuid = text(row.eta_uuid)
     env = envOf(row)
