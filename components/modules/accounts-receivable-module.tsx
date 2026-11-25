@@ -24,7 +24,7 @@ import { isSinglePayment } from "@/lib/payment-type"
 import { scheduleShare, scaleSchedule } from "@/lib/invoicing"
 import { invoicesForTab, type ArTab } from "@/lib/ar-tabs"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal, Pencil, XCircle, Image as ImageIcon } from "lucide-react"
+import { Eye, FileText, Calendar, DollarSign, CheckCircle, Clock, AlertCircle, Plus, Upload, Search, Wallet, Receipt, MoreHorizontal, Pencil, Mail, XCircle, Image as ImageIcon } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PageHeader } from "@/components/erp/page-header"
@@ -47,7 +47,7 @@ import { canDecideCodes } from "@/lib/eta/code-roles"
 import { EtaReissueDialog } from "@/components/accounting/eta-reissue-dialog"
 import { RenameInvoiceDialog } from "@/components/accounting/rename-invoice-dialog"
 import { CancelMinvDialog } from "@/components/accounting/cancel-minv-dialog"
-import { EtaBadge, EtaSendAll, ReplacementMarks, useEtaBadges } from "@/components/accounting/eta-ar-bits"
+import { EmailedBadge, EtaBadge, EtaSendAll, ReplacementMarks, useEtaBadges, useSendInvoiceEmail } from "@/components/accounting/eta-ar-bits"
 import { MaintenancePhotoDrafts } from "@/components/accounting/maintenance-photo-drafts"
 import { SharedInvoiceNumbers } from "@/components/accounting/shared-invoice-numbers"
 
@@ -1188,6 +1188,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
     return (!state || state === "invalid") && !/^INV-MNT-/i.test(invoice.invoiceNumber)
   }
 
+  // "Send by e-mail" in the ⋯ menu: only for an invoice whose e-invoice is valid (or was typed on the portal by hand);
+  // the server checks this again and answers in plain words.
+  const sendInvoiceEmail = useSendInvoiceEmail(etaBadges.reload)
+  const canEmail = (invoice: CustomerInvoice) =>
+    !isReplaced(invoice) && !isCancelled(invoice) && ["valid", "manual"].includes(String(etaBadges.statuses[invoice.id] || ""))
+
   // The e-invoice badge and the Replaced / Replaces marks of a row.
   const renderEtaMarks = (invoice: CustomerInvoice) => (
     <div className="flex flex-col items-start gap-1">
@@ -1200,6 +1206,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         </span>
       )}
       {mayEta && !isReplaced(invoice) && !isCancelled(invoice) && <EtaBadge state={etaBadges.statuses[invoice.id]} environment={etaBadges.environment} />}
+      {mayEta && etaBadges.emailed.has(String(invoice.id)) && <EmailedBadge />}
       <ReplacementMarks
         invoice={invoice}
         replacedBy={replacedByOf(invoice)}
@@ -1319,6 +1326,12 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
               <DropdownMenuItem onSelect={() => setCreditDialogInvoice(invoice)}>
                 <Wallet className="w-4 h-4 me-2" />
                 {t("ar.credit.use")}
+              </DropdownMenuItem>
+            )}
+            {mayEta && canEmail(invoice) && (
+              <DropdownMenuItem onSelect={() => sendInvoiceEmail(invoice.id)}>
+                <Mail className="w-4 h-4 me-2" />
+                {etaBadges.emailed.has(String(invoice.id)) ? t("eta.email-send-again-menu") : t("eta.email-send")}
               </DropdownMenuItem>
             )}
             {mayEta && canRenameNumber(invoice) && (

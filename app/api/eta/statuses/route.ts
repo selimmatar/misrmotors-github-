@@ -5,6 +5,7 @@ import { etaEnvironment } from "@/lib/eta/send"
 import { invoiceBadge } from "@/lib/eta/badge"
 import { credentialsSet } from "@/lib/eta/portal"
 import { cairoToday } from "@/lib/eta/go-live"
+import { EMAIL_LOG_TABLE } from "@/lib/eta/invoice-email"
 
 export const dynamic = "force-dynamic"
 
@@ -30,7 +31,11 @@ export async function GET() {
     }
     const statuses: Record<string, string> = {}
     for (const [id, rows] of byInvoice) statuses[String(id)] = invoiceBadge(rows)
-    return NextResponse.json({ environment, statuses, waiting, sentToday, credentials: { test: credentialsSet("test"), real: credentialsSet("real") } })
+    // invoices whose e-invoice was e-mailed to the customer ("Sent to customer" on the row; owner request 2026-11-25)
+    // (every row, in pages; a database without the e-mail log just shows no label)
+    const log = await allRows(db, EMAIL_LOG_TABLE, "log_id, invoice_id, status, environment", [{ column: "log_id" }]).catch(() => [] as any[])
+    const emailed = [...new Set(log.filter((r) => r.status === "sent" && (r.environment || "real") === environment).map((r) => Number(r.invoice_id)))]
+    return NextResponse.json({ environment, statuses, emailed, waiting, sentToday, credentials: { test: credentialsSet("test"), real: credentialsSet("real") } })
   } catch (error: any) {
     console.error("Error reading e-invoice states:", error)
     return NextResponse.json({ error: "Failed to read e-invoice states" }, { status: 500 })
