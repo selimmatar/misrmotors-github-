@@ -83,6 +83,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
   const [deliveryContactName, setDeliveryContactName] = useState(order.deliveryContactName || "")
   const [deliveryContactPhone, setDeliveryContactPhone] = useState(order.deliveryContactPhone || "")
   const [notes, setNotes] = useState(order.notes || "")
+  const [customerPo, setCustomerPo] = useState(String((order as any).customerPo || ""))
 
   const [items, setItems] = useState<EditItem[]>(() =>
     (order.items || []).map((item: any) => ({
@@ -343,6 +344,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
         id: order.id,
         status: order.status,
         notes,
+        editCustomerPo: customerPo,
         customerId,
         deliveryAddress,
         deliveryContactName,
@@ -672,6 +674,18 @@ ${renderTotalsBlock(printTotals)}
               <div className="space-y-2">
                 <Label>{t("so.delivery-address")}</Label>
                 <Input value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="so-edit-customer-po">{t("so.customer-po")}</Label>
+                <Input
+                  id="so-edit-customer-po"
+                  dir="ltr"
+                  maxLength={100}
+                  value={customerPo}
+                  onChange={(e) => setCustomerPo(e.target.value)}
+                  placeholder={t("so.customer-po-placeholder")}
+                />
+                <p className="text-xs text-muted-foreground">{t("so.customer-po-help")}</p>
               </div>
             </div>
             <div className="space-y-2">

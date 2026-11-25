@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { parsePositiveId } from "@/lib/parse-id"
+import { cleanCustomerPo, orderPoLocked } from "@/lib/eta/customer-po"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { NextResponse } from "next/server"
 import { isSinglePayment, resolveInstallmentCount, toSalesOrderPaymentTerms } from "@/lib/payment-type"
@@ -745,6 +746,25 @@ export async function PUT(request: Request) {
     }
     if (body.receiver_name !== undefined) {
       dbUpdates.receiver_name = body.receiver_name || null
+    }
+
+    // The customer's PO number, from the edit window (lib/eta/customer-po.ts). Locked once an invoice of this order is
+    // on the tax portal, as in the e-invoice window. Checked before anything is written.
+    const rawPo = updates.customerPo !== undefined ? updates.customerPo : updates.customer_po
+    if (rawPo !== undefined) {
+      const po = cleanCustomerPo(rawPo)
+      if (!po.ok) return NextResponse.json({ error: po.error, code: "INVALID_CUSTOMER_PO" }, { status: 400 })
+      const poId = typeof finalId === "string" ? parseInt(finalId, 10) : finalId
+      const cur = await supabase.from("sales_orders").select("customer_po").eq("so_id", poId).maybeSingle()
+      if (cur.error) throw cur.error
+      if (String(cur.data?.customer_po ?? "").trim() !== po.value) {
+        if (await orderPoLocked(supabase, poId))
+          return NextResponse.json(
+            { error: "This order's invoice is already on the tax portal; its PO number can't change.", code: "ETA_LIVE" },
+            { status: 409 },
+          )
+        dbUpdates.customer_po = po.value || null
+      }
     }
 
     // Ensure we have something to update

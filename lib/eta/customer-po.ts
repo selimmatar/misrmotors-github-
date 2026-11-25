@@ -44,6 +44,23 @@ export async function saveCustomerPo(db: Db, invoiceId: number, soId: number, ra
   return { ok: true, value: clean.value }
 }
 
+/** True when an invoice billing this sales order (directly, or through its delivery permits) is on the tax portal:
+ *  then its PO number was sent there and must not change from the sales order's edit window either. */
+export async function orderPoLocked(db: Db, soId: number): Promise<boolean> {
+  const direct = await db.from("accounts_receivable").select("invoice_id").eq("so_id", soId)
+  if (direct.error) throw new Error(direct.error.message)
+  const ids = new Set<number>((direct.data || []).map((r: any) => Number(r.invoice_id)))
+  const permits = await db.from("delivery_permits").select("permit_id").eq("sales_order_id", soId)
+  if (permits.error) throw new Error(permits.error.message)
+  if ((permits.data || []).length) {
+    const links = await db.from("invoice_delivery_permits").select("invoice_id").in("permit_id", permits.data.map((p: any) => p.permit_id))
+    if (links.error) throw new Error(links.error.message)
+    for (const l of links.data || []) ids.add(Number(l.invoice_id))
+  }
+  for (const id of ids) if (await liveRealDocument(db, id)) return true
+  return false
+}
+
 /**
  * The customer's PO number(s) of an invoice's sales orders, joined with ", " ("" when none), for the printed
  * invoice and the customer e-mail. Never throws: a database without the column, or a failed read, gives "".

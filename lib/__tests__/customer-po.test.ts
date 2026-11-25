@@ -143,3 +143,25 @@ test("PO7. both printed invoices show the customer's PO number when given", () =
     assert.match(src, /customerPo\s*\?/, f)
   }
 })
+
+test("PO8. the sales order's Edit window saves the PO number; locked once an invoice of the order is on the portal", async () => {
+  const soRoute = await import("../../app/api/sales-orders/route")
+  const put = (body: any) => soRoute.PUT(new Request("http://t/api/sales-orders", { method: "PUT", body: JSON.stringify({ so_id: 1, ...body }) }))
+  const { d, invoiceId } = await invoiced(null)
+  useDb(d)
+  let r = await put({ customerPo: "  4500  777 " })
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()))
+  assert.equal(d.tables.sales_orders[0].customer_po, "4500 777")
+  r = await put({ customerPo: "" })
+  assert.equal(r.status, 200)
+  assert.equal(d.tables.sales_orders[0].customer_po, null)
+  assert.equal((await put({ customerPo: "x".repeat(101) })).status, 400)
+  d.tables.sales_orders[0].customer_po = "KEPT"
+  d.tables.eta_documents.push({ doc_id: 1, invoice_id: invoiceId, document_type: "I", environment: "real", status: "valid" })
+  r = await put({ customerPo: "NEW" })
+  assert.equal(r.status, 409)
+  assert.equal((await r.json()).code, "ETA_LIVE")
+  assert.equal(d.tables.sales_orders[0].customer_po, "KEPT")
+  r = await put({ customerPo: "KEPT", notes: "n" })
+  assert.equal(r.status, 200, "unchanged PO is fine on a portal invoice")
+})

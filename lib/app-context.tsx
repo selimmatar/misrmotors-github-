@@ -796,6 +796,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (extended.deliveryAddress !== undefined) payload.deliveryAddress = extended.deliveryAddress
       if (extended.deliveryContactName !== undefined) payload.deliveryContactName = extended.deliveryContactName
       if (extended.deliveryContactPhone !== undefined) payload.deliveryContactPhone = extended.deliveryContactPhone
+      // only from the Edit dialog (its own key), so a status change carrying an older copy of the order can't overwrite it
+      if (extended.editCustomerPo !== undefined) payload.customerPo = extended.editCustomerPo
       if (extended.paymentTerms !== undefined) payload.paymentTerms = extended.paymentTerms
       if (extended.installments !== undefined) payload.installments = extended.installments
       if (extended.subtotal !== undefined) payload.subtotal = extended.subtotal
