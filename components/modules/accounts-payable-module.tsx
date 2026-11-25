@@ -19,6 +19,7 @@ import { StatusBadge } from "@/components/erp/status-badge"
 import { ErpTable, NumHead, NumCell, IdCell, ActionsHead, ActionsCell } from "@/components/erp/data-table"
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { formatDate, formatMoney } from "@/lib/format"
+import { paymentStatusLabelKey } from "@/lib/ar-status"
 import { fill } from "@/lib/i18n-format"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
@@ -939,7 +940,7 @@ export function AccountsPayableModule() {
                       <NumCell>{formatMoney(invoice.paidAmount || 0, language)}</NumCell>
                       <NumCell className={balance > 0.009 ? "font-semibold text-foreground" : ""}>{formatMoney(balance, language)}</NumCell>
                       <TableCell>
-                        <StatusBadge status={status} label={t(`status.${status}`)} />
+                        <StatusBadge status={status} label={t(paymentStatusLabelKey(status))} />
                       </TableCell>
                       <ActionsCell>{renderRowActions(invoice)}</ActionsCell>
                     </TableRow>
@@ -955,7 +956,7 @@ export function AccountsPayableModule() {
                 id={poBillLabel(invoice) || invoice.invoiceNumber}
                 amount={formatMoney((invoice.amount || 0) - (invoice.paidAmount || 0), language)}
                 party={getSupplierName(invoice.supplierId)}
-                status={<StatusBadge status={status} label={t(`status.${status}`)} />}
+                status={<StatusBadge status={status} label={t(paymentStatusLabelKey(status))} />}
                 actions={renderRowActions(invoice)}
               />
             )
@@ -1114,7 +1115,7 @@ export function AccountsPayableModule() {
                                 {getScheduleStatusIcon(isPaid ? "paid" : isOverdue ? "overdue" : schedule.status)}
                                 <StatusBadge
                                   status={isPaid ? "paid" : isOverdue ? "overdue" : schedule.status}
-                                  label={t(`status.${isPaid ? "paid" : isOverdue ? "overdue" : schedule.status}`)}
+                                  label={t(paymentStatusLabelKey(isPaid ? "paid" : isOverdue ? "overdue" : schedule.status))}
                                 />
                               </div>
                             </TableCell>

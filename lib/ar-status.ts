@@ -41,3 +41,12 @@ export function computeArStatus(input: ArStatusInput): ArPaymentStatus {
   if (collected > 0) return "partially_paid"
   return "pending"
 }
+
+/**
+ * The i18n key of an invoice / bill payment status label (owner request 2026-11-26): an unpaid invoice that is not
+ * overdue ("pending") reads "Not due yet" / "لم يحن موعدها" in Accounts Receivable and Accounts Payable. Label only:
+ * the stored status value stays "pending", and other "pending" meanings (approval, warehouse...) keep their labels.
+ */
+export function paymentStatusLabelKey(status: string): string {
+  return status === "pending" ? "ar.not-due-yet" : `status.${status}`
+}

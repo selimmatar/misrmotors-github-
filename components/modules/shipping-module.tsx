@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from "@/components/ui/textarea"
 import { PermitPreviewDialog } from "@/components/delivery-permit/permit-preview-dialog"
 import { NotReceivedDialog, recordNotReceived, type ConfirmedLine } from "@/components/delivery-permit/not-received-dialog"
+import { SignedFilesPicker } from "@/components/delivery-permit/signed-files-picker"
 import { PageHeader } from "@/components/erp/page-header"
 import { StatusBadge } from "@/components/erp/status-badge"
 import { formatDate, returnReasonLabel } from "@/lib/format"
@@ -638,15 +639,10 @@ export function ShippingModule() {
                       {uploadingFor === permit.id ? (
                         <div className="space-y-3 border-t pt-4">
                           <div>
-                            <Label htmlFor={`signed-${permit.id}`}>{t("shipping.upload-signed-permit")}</Label>
-                            <Input
-                              id={`signed-${permit.id}`}
-                              type="file"
-                              accept="image/*,.pdf"
-                              multiple
-                              onChange={(e) => setSignedFiles(Array.from(e.target.files || []))}
-                              className="mt-1"
-                            />
+                            <Label htmlFor={`signed-${permit.id}-camera`}>{t("shipping.upload-signed-permit")}</Label>
+                            <div className="mt-1">
+                              <SignedFilesPicker id={`signed-${permit.id}`} files={signedFiles} onChange={setSignedFiles} disabled={uploading} />
+                            </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button

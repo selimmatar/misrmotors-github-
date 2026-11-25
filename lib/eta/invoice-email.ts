@@ -1,13 +1,12 @@
-// The e-invoice e-mail to the customer (owner request 2026-11-24): when a customer invoice's e-invoice becomes VALID on
-// the real ETA portal, the customer gets one e-mail with the portal's PDF attached and signed "view / print" links to
-// the invoice, its sales order(s) and its delivery permit(s) (lib/doc-links.ts). "Send by e-mail again" sends it again
-// by hand. Every attempt is a row of invoice_email_log (scripts/sql/2026-11-25-invoice-email.sql).
+// The e-invoice e-mail to the customer (owner request 2026-11-24): once a customer invoice's e-invoice is VALID on the
+// ETA portal, a person can e-mail the customer the portal's PDF and signed "view / print" links to the invoice, its
+// sales order(s) and its delivery permit(s) (lib/doc-links.ts). Every attempt is a row of invoice_email_log
+// (scripts/sql/2026-11-25-invoice-email.sql).
 //
-// Once only: an automatic e-mail first claims its row with claim_key "auto:<invoice>:<uuid>:<attempt>" (unique), so two
-// requests that see the same valid document can't both send. A refused SMTP send (or a portal PDF that is not ready)
-// is retried automatically at most 3 times in all, at least 10 minutes apart (follow-up and the daily job). A row left
-// at "sending" (the function was cut off mid-send) is never retried by itself: it may have gone out.
-// Credit notes are never e-mailed. Test-portal documents are e-mailed only by hand.
+// MANUAL ONLY (owner correction 2026-11-26): nothing is ever e-mailed automatically - not when the portal says valid,
+// not from the follow-up, not from the daily job. The only way an invoice e-mail goes out is a person pressing "Send"
+// (first time) / "Send again" in the invoice's e-invoice window (POST /api/eta/invoice-email). Credit notes are never
+// e-mailed (there is no valid invoice document to send).
 // Sender: Gmail SMTP with an App Password, from env only (EMAIL_SMTP_USER, EMAIL_SMTP_PASS, EMAIL_FROM_NAME, EMAIL_BCC).
 import { escapeHtml } from "../html-escape"
 import { isMissingRelation } from "../po-bill"
@@ -21,13 +20,7 @@ import { defaultFetchFile, fitAttachments, signedPermitCopies, type FetchFile, t
 type Db = any
 
 export const EMAIL_LOG_TABLE = "invoice_email_log"
-export const AUTO_MAX_ATTEMPTS = 3
-export const AUTO_RETRY_AFTER_MS = 10 * 60_000
-/** Company setting: automatic e-mails only for documents valid from this moment on (ISO time). */
-export const AUTO_FROM_KEY = "invoice_email_auto_from"
-/** Valid documents are looked at for this many days after they became valid (retries and missed sends). */
-export const AUTO_WINDOW_DAYS = 3
-/** A "sending" row older than this was cut off: shown as failed, never retried by itself. */
+/** A "sending" row older than this was cut off: shown as failed. */
 export const SENDING_STALE_MS = 15 * 60_000
 export const MAX_RECIPIENTS = 10
 export const DEFAULT_FROM_NAME = "Misr Motors | مصر للمحركات"
@@ -35,6 +28,7 @@ export const DEFAULT_FROM_NAME = "Misr Motors | مصر للمحركات"
 export const MAX_ATTACHMENT_BYTES = 18 * 1024 * 1024
 
 export type EmailStatus = "sent" | "failed" | "no_email" | "not_configured"
+/** "auto" only on log rows written before the e-mail became manual-only; every new row is "manual". */
 export type EmailTrigger = "auto" | "manual"
 export type EmailEnvVars = Record<string, string | undefined>
 
@@ -203,7 +197,7 @@ function cairoDate(iso: string): string {
 
 export type EmailOutcome =
   | { status: EmailStatus; to?: string[]; error?: string; logId?: number }
-  | { status: "db_update_needed" | "not_valid" | "already" }
+  | { status: "db_update_needed" | "not_valid" }
 
 const DOC_COLUMNS = "doc_id, invoice_id, document_type, environment, version, status, eta_uuid, eta_long_id, validated_at, document"
 
@@ -267,16 +261,17 @@ async function emailFacts(db: Db, invoiceId: number, doc: any) {
 }
 
 /**
- * E-mails one invoice's documents to its customer and logs the attempt. `auto` sends happen once (claim_key); `manual`
- * ("Send by e-mail again") always sends. Without the log table nothing is sent ("db_update_needed"). Never throws for
- * an SMTP or portal failure: those are logged as "failed" with the reason.
+ * E-mails one invoice's documents to its customer and logs the attempt, on a person's "Send" / "Send again" only (the
+ * one caller is POST /api/eta/invoice-email). Without the log table nothing is sent ("db_update_needed"). Never
+ * throws for an SMTP or portal failure: those are logged as "failed" with the reason.
  */
 export async function sendInvoiceEmail(
   db: Db,
   invoiceId: number,
-  opts: { trigger: EmailTrigger; environment?: EtaEnv; userId?: number | null; attempt?: number; doc?: any },
+  opts: { trigger: "manual"; environment?: EtaEnv; userId?: number | null; doc?: any },
   deps: EmailDeps = {},
 ): Promise<EmailOutcome> {
+  if (opts.trigger !== "manual") throw new Error("Invoice e-mails are sent by hand only")
   const d: EmailDeps = { ...invoiceEmailDefaults, ...deps }
   const now = d.now || (() => new Date())
   const doc = opts.doc || (await validInvoiceDocument(db, invoiceId, opts.environment))
@@ -286,33 +281,23 @@ export async function sendInvoiceEmail(
   const env: EtaEnv = doc.environment === "test" ? "test" : "real"
   const cfg = emailConfig(d.env || process.env)
 
-  let attempt = opts.attempt || 1
-  if (opts.trigger === "manual") {
-    const earlier = must(await db.from(EMAIL_LOG_TABLE).select("log_id").eq("invoice_id", invoiceId).eq("eta_uuid", uuid), "read e-mail log") as any[]
-    attempt = earlier.length + 1
-  }
+  const earlier = must(await db.from(EMAIL_LOG_TABLE).select("log_id").eq("invoice_id", invoiceId).eq("eta_uuid", uuid), "read e-mail log") as any[]
+  const attempt = earlier.length + 1
   const base = {
     invoice_id: invoiceId,
     eta_uuid: uuid,
     environment: env,
-    trigger: opts.trigger,
+    trigger: "manual" as const,
     attempt,
     created_by: opts.userId ?? null,
     created_at: now().toISOString(),
   }
   if (!cfg.ok) {
-    // automatic sends without a configuration are not logged (the invoice shows "E-mail not set up" from env)
-    if (opts.trigger === "manual")
-      must(await db.from(EMAIL_LOG_TABLE).insert({ ...base, status: "not_configured", error: `Not set: ${cfg.missing.join(", ")}` }), "log e-mail")
+    must(await db.from(EMAIL_LOG_TABLE).insert({ ...base, status: "not_configured", error: `Not set: ${cfg.missing.join(", ")}` }), "log e-mail")
     return { status: "not_configured", error: `Not set: ${cfg.missing.join(", ")}` }
   }
 
-  // claim first: a second automatic sender for the same invoice / document / attempt stops here
-  const claim = await db
-    .from(EMAIL_LOG_TABLE)
-    .insert({ ...base, status: "sending", claim_key: opts.trigger === "auto" ? `auto:${invoiceId}:${uuid}:${attempt}` : null })
-    .select("log_id")
-  if (claim.error?.code === "23505") return { status: "already" }
+  const claim = await db.from(EMAIL_LOG_TABLE).insert({ ...base, status: "sending", claim_key: null }).select("log_id")
   if (claim.error) throw new Error(`log e-mail: ${claim.error.message || claim.error}`)
   const logId = Number((Array.isArray(claim.data) ? claim.data[0] : claim.data)?.log_id)
   const finish = async (patch: Record<string, any>) =>
@@ -376,67 +361,6 @@ export async function sendInvoiceEmail(
     await finish({ status: "failed", error }).catch(() => undefined)
     return { status: "failed", error, logId }
   }
-}
-
-/** Whether an automatic e-mail is due for this document, from its log rows; the attempt number when it is. */
-export function autoAttemptDue(rows: any[], uuid: string, now: Date): number | null {
-  const mine = rows.filter((r) => text(r.eta_uuid) === uuid)
-  if (mine.some((r) => r.status === "sent")) return null // sent (automatically or by hand)
-  const auto = mine.filter((r) => r.trigger === "auto")
-  if (auto.some((r) => r.status === "no_email" || r.status === "sending")) return null
-  const failed = auto.filter((r) => r.status === "failed")
-  if (auto.length >= AUTO_MAX_ATTEMPTS || failed.length >= AUTO_MAX_ATTEMPTS) return null
-  const last = Math.max(0, ...auto.map((r) => Date.parse(text(r.created_at)) || 0))
-  if (last && now.getTime() - last < AUTO_RETRY_AFTER_MS) return null
-  return Math.max(0, ...auto.map((r) => Number(r.attempt) || 0)) + 1
-}
-
-/**
- * The automatic e-mails: real-portal invoice documents that became valid in the last 3 days and have no e-mail yet
- * (or a failed one to retry). At most `max` e-mails per run. Nothing at all happens (not even a read) when the
- * e-mail is not configured. Never throws.
- */
-export async function emailValidInvoices(
-  db: Db,
-  deps: EmailDeps = {},
-  opts: { max?: number; stopAt?: () => boolean } = {},
-): Promise<{ sent: number; failed: number; noEmail: number; skipped?: "not_configured" | "db_update_needed" }> {
-  const out = { sent: 0, failed: 0, noEmail: 0 }
-  try {
-    const d: EmailDeps = { ...invoiceEmailDefaults, ...deps }
-    if (!emailConfig(d.env || process.env).ok) return { ...out, skipped: "not_configured" }
-    const now = (d.now || (() => new Date()))()
-    let since = new Date(now.getTime() - AUTO_WINDOW_DAYS * 86_400_000).toISOString()
-    // Automatic e-mails only for documents that became valid after the feature was switched on (owner, 2026-11-26):
-    // older invoices are sent by hand with "Send". The start is the company setting `invoice_email_auto_from`.
-    const startRow = await db.from("company_settings").select("setting_value").eq("setting_key", AUTO_FROM_KEY).maybeSingle()
-    const autoFrom = Date.parse(String(startRow?.data?.setting_value || ""))
-    if (Number.isFinite(autoFrom) && autoFrom > Date.parse(since)) since = new Date(autoFrom).toISOString()
-    const docs = (must(
-      await db.from("eta_documents").select(DOC_COLUMNS).eq("status", "valid").eq("environment", "real").gte("validated_at", since),
-      "load valid documents",
-    ) as any[])
-      .filter((r) => r.document_type !== "C" && text(r.eta_uuid) && r.invoice_id)
-      .sort((a, b) => text(a.validated_at).localeCompare(text(b.validated_at)))
-    if (!docs.length) return out
-    const logs = await db.from(EMAIL_LOG_TABLE).select("invoice_id, eta_uuid, trigger, status, attempt, created_at").in("invoice_id", [...new Set(docs.map((r) => r.invoice_id))])
-    if (logs.error && isMissingRelation(logs.error)) return { ...out, skipped: "db_update_needed" }
-    if (logs.error) throw new Error(`read e-mail log: ${logs.error.message || logs.error}`)
-    let done = 0
-    for (const doc of docs) {
-      if (done >= (opts.max ?? 1) || opts.stopAt?.()) break
-      const attempt = autoAttemptDue((logs.data as any[]).filter((r) => r.invoice_id === doc.invoice_id), text(doc.eta_uuid), now)
-      if (attempt === null) continue
-      done++
-      const r = await sendInvoiceEmail(db, Number(doc.invoice_id), { trigger: "auto", attempt, doc }, d)
-      if (r.status === "sent") out.sent++
-      else if (r.status === "failed") out.failed++
-      else if (r.status === "no_email") out.noEmail++
-    }
-  } catch (e: any) {
-    console.error(`[email] automatic e-mails failed: ${e?.message || e}`)
-  }
-  return out
 }
 
 // ---- what the invoice window shows ----
