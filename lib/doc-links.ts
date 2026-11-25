@@ -1,11 +1,11 @@
-// Signed, read-only links to ONE printed document (the customer invoice, a sales order or a delivery permit), for the
+// Signed, read-only links to ONE printed document (the customer invoice, a sales order, a delivery permit or a quotation), for the
 // e-invoice e-mail to the customer. A link opens /api/doc-link/<token> without a login and shows only the print of
 // the document it was made for, until it expires (180 days). The token is
 //   v1.<kind>.<id>.<expires, unix seconds>.<HMAC-SHA256(DOC_LINK_SECRET, "doc-link:v1:<kind>.<id>.<expires>"), base64url>
 // so changing the kind, the id or the date breaks the signature. The secret lives only in the server's env.
 import { createHmac, timingSafeEqual } from "node:crypto"
 
-export const DOC_LINK_KINDS = ["invoice", "sales-order", "delivery-permit"] as const
+export const DOC_LINK_KINDS = ["invoice", "sales-order", "delivery-permit", "quotation"] as const
 export type DocLinkKind = (typeof DOC_LINK_KINDS)[number]
 export const DOC_LINK_DAYS = 180
 /** A shorter secret is treated as not set. */
@@ -35,7 +35,7 @@ export type DocLinkCheck = { ok: true; kind: DocLinkKind; id: number } | { ok: f
 /** Checks a token: the signature first (constant time), then the expiry. Anything malformed is "invalid". */
 export function verifyDocLink(token: string, secret: string | null, now: Date = new Date()): DocLinkCheck {
   if (!secret) return { ok: false, reason: "not_configured" }
-  const m = /^v1\.(invoice|sales-order|delivery-permit)\.([1-9]\d{0,14})\.(\d{1,12})\.([A-Za-z0-9_-]{43})$/.exec(String(token || ""))
+  const m = /^v1\.(invoice|sales-order|delivery-permit|quotation)\.([1-9]\d{0,14})\.(\d{1,12})\.([A-Za-z0-9_-]{43})$/.exec(String(token || ""))
   if (!m) return { ok: false, reason: "invalid" }
   const body = `${m[1]}.${m[2]}.${m[3]}`
   const want = Buffer.from(sign(secret, body))

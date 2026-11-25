@@ -46,6 +46,7 @@ import {
   Search,
   Settings,
   Wrench,
+  Mail,
   FileText,
   Printer,
   CheckCircle,
@@ -93,6 +94,7 @@ import { ApprovalDocumentLink } from "@/components/sales-order/approval-document
 import { ChainLine } from "@/components/shared/chain-line"
 import { LineMoveControls, LineSearchBox, lineRowDragClass, useLineOrdering } from "@/components/shared/line-order-controls"
 import { cn } from "@/lib/utils"
+import { SendToCustomerDialog } from "@/components/email/send-to-customer-dialog"
 
 // Declare SalesOrderModuleProps type
 type SalesOrderModuleProps = {
@@ -127,6 +129,8 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
 
   const [selectedOrder, setSelectedOrder] = useState<SalesOrder | null>(null)
   const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null)
+  // "Send to customer" (owner request 2026-11-27): the order whose e-mail window is open
+  const [sendingOrderId, setSendingOrderId] = useState<number | null>(null)
   const [overviewOrder, setOverviewOrder] = useState<any | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [aiInsights, setAiInsights] = useState<any>(null)
@@ -1904,6 +1908,10 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
             <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order)}>{t("so.print-plain")}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order, "status")}>{t("so.print-delivery-status")}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => handlePrintSalesOrder(order, "delivered")}>{t("so.print-delivered-only")}</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setSendingOrderId(Number(order.so_id || order.id))}>
+              <Mail className="w-4 h-4 me-2" /> {t("send.to-customer")}
+            </DropdownMenuItem>
             {getSODeliveryStatus(order) !== "delivered" && (
               <>
                 <DropdownMenuSeparator />
@@ -2438,6 +2446,9 @@ export function SalesOrderModule({ userRole, embedded = false }: SalesOrderModul
           onOpenOrder={() => setSelectedOrder(overviewOrder)}
           onPrint={() => handlePrintSalesOrder(overviewOrder, "status")}
         />
+      )}
+      {sendingOrderId !== null && (
+        <SendToCustomerDialog kind="sales-order" id={sendingOrderId} open onOpenChange={(o) => !o && setSendingOrderId(null)} />
       )}
       {editingOrder && (
         <EditApprovedOrderDialog

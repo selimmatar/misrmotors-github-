@@ -48,6 +48,8 @@ export const RULES: Rule[] = [
   rule("/api/sales-quotations/supplier-quotes/upload", ALL, ALL),
   rule("/api/quotation-drafts", ALL, SALES),
   rule("/api/quotations", ALL, SALES),
+  // "Send to customer" for quotations and sales orders (owner request 2026-11-27): sales send, everyone sees the history
+  rule("/api/document-email", ALL, SALES),
   rule("/api/notes", ALL, ALL),
   rule("/api/sales-orders", ALL, SALES),
   rule("/api/sales-orders/overview/profit", ONLY_TOP, ONLY_TOP),

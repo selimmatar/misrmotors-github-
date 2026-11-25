@@ -284,6 +284,8 @@ export interface Customer {
   email: string
   /** where our invoice e-mails go (comma-separated allowed); the main e-mail when empty */
   accountantEmail?: string
+  /** the customer's purchasing contact: quotations and sales orders are e-mailed here (comma-separated allowed) */
+  salespersonEmail?: string
   phone: string
   countryCode?: string // Added countryCode field for phone number formatting
   address: string

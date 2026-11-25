@@ -9,13 +9,49 @@ import { cleanPictureUrl, hasPictureColumn, pictureCellHtml, pictureHeadHtml, QU
 
 export const dynamic = "force-dynamic"
 
+/** A saved quotation in the shape the screen sends in ?data= (its lines in their order); null when not found. */
+async function savedQuotationData(idParam: string): Promise<any | null> {
+  if (!/^\d{1,9}$/.test(idParam) || Number(idParam) < 1) return null
+  const db = getAdminClient()
+  const { data, error } = await db.from("sales_quotations").select("*").eq("id", Number(idParam)).maybeSingle()
+  const q: any = data
+  if (error) throw new Error(`load quotation: ${error.message}`)
+  if (!q) return null
+  const { data: lines, error: linesError } = await db.from("sales_quotation_items").select("*").eq("quotation_id", q.id).order("line_no", { ascending: true })
+  if (linesError) throw new Error(`load quotation lines: ${linesError.message}`)
+  return {
+    quotation_number: String(q.quotation_number ?? q.id),
+    created_at: q.created_at,
+    customer_name: q.customer_name || "",
+    addressed_to: q.addressed_to,
+    customer_email: q.customer_email,
+    customer_phone: q.customer_phone,
+    items: (lines || []).map((l: any) => ({
+      product_name: l.product_name,
+      quantity: Number(l.quantity) || 0,
+      unit_price: Number(l.unit_price) || 0,
+      ...(l.image_url ? { image_url: l.image_url } : {}),
+    })),
+    validity_days: Number(q.validity_days) || 30,
+    notes: q.notes,
+    discount_type: q.discount_type,
+    discount_value: q.discount_value == null ? undefined : Number(q.discount_value),
+    discount_amount: q.discount_amount == null ? undefined : Number(q.discount_amount),
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
-    const dataParam = searchParams.get("data")
-    const quotationNumber = searchParams.get("qn") || `QT-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`
+    const idParam = searchParams.get("id")
+    // ?id=<saved quotation id>: the saved quotation as it is in the database (the "Send to customer" PDF and its
+    // signed link, owner request 2026-11-27); otherwise the screen's data in ?data= as before
+    const saved = idParam !== null ? await savedQuotationData(idParam) : null
+    if (idParam !== null && !saved) return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
+    const dataParam = saved ? null : searchParams.get("data")
+    const quotationNumber = saved?.quotation_number || searchParams.get("qn") || `QT-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`
 
-    if (!dataParam) {
+    if (!saved && !dataParam) {
       return NextResponse.json({ error: "Missing quotation data" }, { status: 400 })
     }
 
@@ -30,7 +66,7 @@ export async function GET(request: NextRequest) {
       discount_type,
       discount_value,
       discount_amount,
-    } = JSON.parse(decodeURIComponent(dataParam))
+    } = saved || JSON.parse(decodeURIComponent(dataParam!))
 
 
     if (!customer_name || !items || items.length === 0) {
@@ -71,8 +107,10 @@ export async function GET(request: NextRequest) {
     const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     
     // Use English date format to avoid Arabic numerals that show as 2022
-    const quotationDate = new Date().toLocaleDateString("en-GB", { day: '2-digit', month: '2-digit', year: 'numeric' })
-    const validUntil = new Date(Date.now() + validity_days * 24 * 60 * 60 * 1000).toLocaleDateString("en-GB", { day: '2-digit', month: '2-digit', year: 'numeric' })
+    // a saved quotation keeps its own date; the screen's print is dated today
+    const issuedMs = saved?.created_at && !Number.isNaN(Date.parse(saved.created_at)) ? Date.parse(saved.created_at) : Date.now()
+    const quotationDate = new Date(issuedMs).toLocaleDateString("en-GB", { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: "Africa/Cairo" })
+    const validUntil = new Date(issuedMs + validity_days * 24 * 60 * 60 * 1000).toLocaleDateString("en-GB", { day: '2-digit', month: '2-digit', year: 'numeric' })
     
     // Fetch logo and convert to base64 for embedding in HTML
     let logoDataUrl = ""

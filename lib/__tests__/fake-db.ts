@@ -46,6 +46,7 @@ const PK: Record<string, string> = {
   ap_line_pair_memory: "memory_id",
   customer_tax_identities: "identity_id",
   invoice_email_log: "log_id",
+  document_email_log: "log_id",
 }
 // Unique constraints; NULLs are distinct (Postgres semantics).
 const UNIQUE: Record<string, string[][]> = {

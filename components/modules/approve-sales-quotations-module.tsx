@@ -19,6 +19,7 @@ import { useAppContext } from "@/lib/app-context"
 import { QuotationPreviewDialog } from "@/components/quotation/quotation-preview-dialog"
 import { ApproveConvertQuotationDialog } from "@/components/sales-quotation/approve-convert-quotation-dialog"
 import type { UserRole } from "@/lib/types"
+import { SendToCustomerButton } from "@/components/email/send-to-customer-dialog"
 
 interface Quotation {
   id: number
@@ -359,6 +360,7 @@ export function ApproveSalesQuotationsModule({ userRole, embedded = false, openQ
                       <Printer className="w-4 h-4" />
                       {t("quote.print-preview")}
                     </Button>
+                    <SendToCustomerButton kind="quotation" id={quotation.id} className="bg-transparent order-2 sm:order-none" />
                     <Button
                       size="sm"
                       variant="destructive"

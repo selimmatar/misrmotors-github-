@@ -27,6 +27,8 @@ export const OWNED: Record<Area, string[]> = {
     ...["sales-order", "sales-quotation", "sales", "payment", "discount", "so-type"].map((d) => `components/${d}/`),
     "components/order-summary-card.tsx", "components/product-search-combobox.tsx",
     "components/notes/",
+    // "Send to customer" for quotations and sales orders (owner, 2026-11-27)
+    "components/email/",
   ],
   customers: [
     ...mods(["approve-sales-orders", "delivery-permits", "customer", "lost-sales"]),

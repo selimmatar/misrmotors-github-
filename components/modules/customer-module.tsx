@@ -43,6 +43,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
     name: "",
     email: "",
     accountantEmail: "",
+    salespersonEmail: "",
     countryCode: "+20",
     phone: "",
     address: "",
@@ -142,6 +143,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
       name: formData.name,
       email: formData.email,
       accountantEmail: formData.accountantEmail.trim(),
+      salespersonEmail: formData.salespersonEmail.trim(),
       countryCode: formData.countryCode,
       phone: formData.phone,
       address: formData.address,
@@ -161,6 +163,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
       name: "",
       email: "",
       accountantEmail: "",
+      salespersonEmail: "",
       countryCode: "+20",
       phone: "",
       address: "",
@@ -217,6 +220,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
             name: selectedCustomer.name,
             email: selectedCustomer.email,
             accountantEmail: selectedCustomer.accountantEmail || "",
+            salespersonEmail: selectedCustomer.salespersonEmail || "",
             phone: selectedCustomer.phone,
             country: selectedCustomer.country || "",
             city: selectedCustomer.city || "",
@@ -254,6 +258,10 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
               <div>
                 <p className="text-sm text-muted-foreground">{t("customer.accountant-email")}</p>
                 <p className="font-semibold break-words">{selectedCustomer.accountantEmail || t("customer.accountant-email-none")}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">{t("customer.salesperson-email")}</p>
+                <p className="font-semibold break-words">{selectedCustomer.salespersonEmail || t("customer.salesperson-email-none")}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("field.phone")}</p>
@@ -467,6 +475,15 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                     placeholder="accounts@example.com, finance@example.com"
                   />
                   <p className="text-xs text-muted-foreground mt-1">{t("customer.accountant-email-hint")}</p>
+                </div>
+                <div>
+                  <Label>{t("customer.salesperson-email")}</Label>
+                  <Input
+                    value={formData.salespersonEmail}
+                    onChange={(e) => setFormData({ ...formData, salespersonEmail: e.target.value })}
+                    placeholder="purchasing@example.com"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">{t("customer.salesperson-email-hint")}</p>
                 </div>
                 <div>
                   <Label>{t("customer.country")} *</Label>

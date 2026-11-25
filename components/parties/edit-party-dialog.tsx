@@ -15,6 +15,8 @@ export interface PartyDetails {
   email: string
   /** customers: the address(es) our invoice e-mails go to (comma-separated allowed) */
   accountantEmail?: string
+  /** customers: the purchasing contact our quotations and sales orders are e-mailed to */
+  salespersonEmail?: string
   phone: string
   country?: string
   city?: string
@@ -68,6 +70,7 @@ export function EditPartyDialog({ open, onOpenChange, kind, initial, customerId,
         const fields = warnings.map((w) => {
           const key = w.split(":")[0]
           if (key === "accountant_email") return t("customer.accountant-email-not-saved")
+          if (key === "salesperson_email") return t("customer.salesperson-email-not-saved")
           return key === "national_id" ? t("eta.national-id-warning") : t("eta.tax-number-warning")
         })
         alert(Array.from(new Set(fields)).join("\n"))
@@ -105,6 +108,12 @@ export function EditPartyDialog({ open, onOpenChange, kind, initial, customerId,
             <div className="sm:col-span-2 space-y-1">
               {field("accountantEmail", t("customer.accountant-email"))}
               <p className="text-xs text-muted-foreground">{t("customer.accountant-email-hint")}</p>
+            </div>
+          )}
+          {kind === "customer" && (
+            <div className="sm:col-span-2 space-y-1">
+              {field("salespersonEmail", t("customer.salesperson-email"))}
+              <p className="text-xs text-muted-foreground">{t("customer.salesperson-email-hint")}</p>
             </div>
           )}
           {field("phone", t("field.phone"), "tel")}

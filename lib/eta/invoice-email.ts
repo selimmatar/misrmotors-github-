@@ -45,9 +45,9 @@ export interface EmailDeps extends PrintoutDeps {
   /** the company logo shown at the top of the e-mail (tests inject one); null: sent without it */
   loadLogo?: () => Promise<Buffer | null>
 }
-const LOGO_CID = "logo@misrmotors"
+export const LOGO_CID = "logo@misrmotors"
 /** The logo the printed invoices use (public/images/image.png): read from the app's files, else from the live site. */
-async function defaultLoadLogo(baseUrl?: string): Promise<Buffer | null> {
+export async function defaultLoadLogo(baseUrl?: string): Promise<Buffer | null> {
   try {
     return await readFile(join(process.cwd(), "public", "images", "image.png"))
   } catch {}

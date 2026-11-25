@@ -34,11 +34,35 @@ function etaDbFields(b: any, warnings: string[]) {
 // "Accountant e-mail" (owner request 2026-11-24): where our invoice e-mails go for this customer (comma-separated
 // allowed); lib/eta/invoice-email.ts prefers it over the main e-mail. Saved only when the column exists
 // (scripts/sql/2026-11-25-invoice-email.sql); until then the rest of the save goes through with a warning.
-const accountantField = (b: any): Record<string, string> =>
-  b.accountantEmail !== undefined ? { accountant_email: String(b.accountantEmail ?? "").trim() } : {}
-const missingColumn = (error: any) =>
-  ["42703", "PGRST204"].includes(String(error?.code || "")) && /accountant_email/.test(String(error?.message || ""))
+// "Purchasing contact e-mail" (salesperson_email, owner request 2026-11-27): where quotations and sales orders are
+// e-mailed (lib/email/document-email.ts). Same rule: saved only when its column exists
+// (scripts/sql/2026-11-27-document-email.sql).
+const accountantField = (b: any): Record<string, string> => ({
+  ...(b.accountantEmail !== undefined ? { accountant_email: String(b.accountantEmail ?? "").trim() } : {}),
+  ...(b.salespersonEmail !== undefined ? { salesperson_email: String(b.salespersonEmail ?? "").trim() } : {}),
+})
+const OPTIONAL_COLUMNS = ["accountant_email", "salesperson_email"] as const
+/** The optional e-mail column the database says it does not have, if that is the error. */
+const missingColumn = (error: any): (typeof OPTIONAL_COLUMNS)[number] | null => {
+  if (!["42703", "PGRST204"].includes(String(error?.code || ""))) return null
+  return OPTIONAL_COLUMNS.find((c) => String(error?.message || "").includes(c)) || null
+}
 const ACCOUNTANT_NOT_SAVED = "accountant_email: not saved, database update needed"
+const notSaved = (column: string) => `${column}: not saved, database update needed`
+/** Saves; when an optional e-mail column is missing, saves without it (each at most once) and warns if it had a value. */
+async function saveWithout(save: (patch: any) => PromiseLike<any>, patch: Record<string, any>, warnings: string[]) {
+  let current = { ...patch }
+  let res = await save(current)
+  for (let i = 0; i < OPTIONAL_COLUMNS.length && res.error; i++) {
+    const column = missingColumn(res.error)
+    if (!column || !(column in current)) break
+    const { [column]: value, ...rest } = current
+    current = rest
+    res = await save(current)
+    if (!res.error && value) warnings.push(column === "accountant_email" ? ACCOUNTANT_NOT_SAVED : notSaved(column))
+  }
+  return res
+}
 
 export async function GET() {
   try {
@@ -62,6 +86,7 @@ export async function GET() {
         name: item.customer_name,
         email: item.email || "",
         accountantEmail: item.accountant_email || "",
+        salespersonEmail: item.salesperson_email || "",
         phone: item.phone || "",
         address: item.address || "",
         city: item.city || "",
@@ -101,12 +126,7 @@ export async function POST(request: Request) {
     }
 
 
-    let { data, error } = await supabase.from("customers").insert(dbData).select().single()
-    if (error && missingColumn(error) && "accountant_email" in dbData) {
-      const { accountant_email: _skip, ...rest } = dbData as any
-      ;({ data, error } = await supabase.from("customers").insert(rest).select().single())
-      if (!error && (dbData as any).accountant_email) warnings.push(ACCOUNTANT_NOT_SAVED)
-    }
+    const { data, error } = await saveWithout((row) => supabase.from("customers").insert(row).select().single(), dbData, warnings)
 
     if (error) {
       throw error
@@ -120,6 +140,7 @@ export async function POST(request: Request) {
       name: data.customer_name,
       email: data.email || "",
       accountantEmail: data.accountant_email || "",
+      salespersonEmail: data.salesperson_email || "",
       phone: data.phone || "",
       address: data.address || "",
       city: data.city || "",
@@ -156,12 +177,7 @@ export async function PUT(request: Request) {
     Object.assign(dbUpdates, etaDbFields(updates, warnings), accountantField(updates))
 
     const save = (patch: any) => supabase.from("customers").update(patch).eq("customer_id", Number.parseInt(id)).select().single()
-    let { data, error } = await save(dbUpdates)
-    if (error && missingColumn(error) && "accountant_email" in dbUpdates) {
-      const { accountant_email: _skip, ...rest } = dbUpdates
-      ;({ data, error } = await save(rest))
-      if (!error && dbUpdates.accountant_email) warnings.push(ACCOUNTANT_NOT_SAVED)
-    }
+    const { data, error } = await saveWithout(save, dbUpdates, warnings)
 
     if (error) throw error
 
@@ -172,6 +188,7 @@ export async function PUT(request: Request) {
       name: data.customer_name,
       email: data.email || "",
       accountantEmail: data.accountant_email || "",
+      salespersonEmail: data.salesperson_email || "",
       phone: data.phone || "",
       address: data.address || "",
       city: data.city || "",

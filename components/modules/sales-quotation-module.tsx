@@ -45,6 +45,7 @@ import { photoNumbers, postPhotoRead } from "@/lib/photo-retry"
 import { StockShortfallNote } from "@/components/sales-quotation/stock-shortfall-note"
 import { LinePictureControl, useProductPictures } from "@/components/sales-quotation/line-picture-control"
 import { LineMoveControls, LineSearchBox, lineRowDragClass, useLineOrdering } from "@/components/shared/line-order-controls"
+import { SendToCustomerButton } from "@/components/email/send-to-customer-dialog"
 
 interface QuotationItem {
   id: string
@@ -1652,6 +1653,7 @@ export function SalesQuotationModule({ userRole, embedded = false }: SalesQuotat
                       {t("sq.open-pdf")}
                     </a>
                   </Button>
+                  {savedQuotation.id != null && <SendToCustomerButton kind="quotation" id={savedQuotation.id} className="ms-2" />}
                 </div>
               )}
 

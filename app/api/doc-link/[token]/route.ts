@@ -4,6 +4,7 @@ import { escapeHtml } from "@/lib/html-escape"
 import * as invoicePrint from "@/app/api/invoices/ar/[id]/pdf/route"
 import * as salesOrderPrint from "@/app/api/sales-orders/print/route"
 import * as permitPrint from "@/app/api/delivery-permits/pdf/route"
+import * as quotationPrint from "@/app/api/quotations/generate/route"
 
 export const dynamic = "force-dynamic"
 
@@ -40,6 +41,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   try {
     if (check.kind === "invoice") res = await invoicePrint.GET(inner(`/api/invoices/ar/${check.id}/pdf`), { params: Promise.resolve({ id: String(check.id) }) })
     else if (check.kind === "sales-order") res = await salesOrderPrint.GET(inner(`/api/sales-orders/print?soId=${check.id}`))
+    else if (check.kind === "quotation") res = await quotationPrint.GET(inner(`/api/quotations/generate?id=${check.id}`))
     else res = await permitPrint.GET(inner(`/api/delivery-permits/pdf?permitId=${check.id}`))
   } catch (e: any) {
     console.error(`[doc-link] ${check.kind} ${check.id} failed: ${e?.message || e}`)
