@@ -262,9 +262,12 @@ test("M6. Send, then Send again -> a second e-mail, both logged as manual; the b
   assert.equal((await emailRoute.POST(rq("POST", "/api/eta/invoice-email", {}))).status, 400)
   const view = await withDefaults({ env: ENV }, {}, () => emailRoute.GET(rq("GET", "/api/eta/invoice-email?invoiceId=1")))
   assert.equal((await view.json()).last.status, "sent")
-  // the window's button: "Send" before the first send, "Send again" after
-  const dialog = readFileSync(join(REPO, "components/accounting/eta-preview-dialog.tsx"), "utf8")
-  assert.ok(dialog.includes('{last ? t("eta.email-send-again") : t("eta.email-send")}'))
+  // the button is in the invoice's ⋯ menu (owner request 2026-11-25): "Send by e-mail", then "Send by e-mail again",
+  // and the row shows "Sent to customer" once an e-mail went out
+  const ar = readFileSync(join(REPO, "components/modules/accounts-receivable-module.tsx"), "utf8")
+  assert.ok(ar.includes('etaBadges.emailed.has(String(invoice.id)) ? t("eta.email-send-again-menu") : t("eta.email-send")'))
+  assert.ok(ar.includes("<EmailedBadge />"))
+  assert.ok(!readFileSync(join(REPO, "components/accounting/eta-preview-dialog.tsx"), "utf8").includes("/api/eta/invoice-email"))
   const rule = ruleFor("/api/eta/invoice-email")!
   for (const role of ["accountant", "ceo", "admin"]) assert.equal(allows(rule, "POST", [role] as any), true, role)
   for (const role of ["sales-rep", "po-rep", "warehouse-rep"]) assert.equal(allows(rule, "POST", [role] as any), false, role)
@@ -437,7 +440,8 @@ test("M12. the database script, the screen and the texts", () => {
   for (const c of ["invoice_id", "eta_uuid", "sent_to", "status", "error", "sent_at", "attempt", "trigger"]) assert.ok(sql.includes(` ${c} `), c)
   for (const s of ["'sent'", "'failed'", "'no_email'", "'not_configured'", "'auto'", "'manual'"]) assert.ok(sql.includes(s), s)
 
-  const dialog = readFileSync(join(REPO, "components/accounting/eta-preview-dialog.tsx"), "utf8")
+  // the window shows the e-mail line; sending is in the row's ⋯ menu (eta-ar-bits.tsx, owner request 2026-11-25)
+  const dialog = readFileSync(join(REPO, "components/accounting/eta-preview-dialog.tsx"), "utf8") + readFileSync(join(REPO, "components/accounting/eta-ar-bits.tsx"), "utf8")
   assert.ok(dialog.includes('"/api/eta/invoice-email"'))
   assert.match(dialog, /<EtaEmailStatus email=\{preview\.email\}/)
   const i18n = readFileSync(join(REPO, "lib/i18n-context.tsx"), "utf8")
@@ -638,4 +642,39 @@ test("M15. an invoice handled manually ('already on the portal') with its tax po
   // the window shows the e-mail section for such an invoice too
   const dialog = readFileSync(join(REPO, "components/accounting/eta-preview-dialog.tsx"), "utf8")
   assert.match(dialog, /preview\.handledManually && preview\.manualEtaUuid[^\n]*<EtaEmailStatus/)
+})
+
+// The password before anything goes to the tax portal (owner request 2026-11-25): it lives only in ETA_SEND_PIN.
+test("portal password: right / wrong / missing, and every portal route refuses a wrong one before doing anything", async () => {
+  const { portalPinOk, portalPinRefusal } = await import("../eta/portal-pin")
+  const env = { ETA_SEND_PIN: "1234" }
+  assert.equal(portalPinOk({ pin: "1234" }, env), true)
+  assert.equal(portalPinOk({ pin: " 1234 " }, env), true)
+  assert.equal(portalPinOk({ pin: "1235" }, env), false)
+  assert.equal(portalPinOk({}, env), false)
+  assert.equal(portalPinOk(null, env), false)
+  assert.equal(portalPinOk({ pin: 1234 }, env), false)
+  assert.equal(portalPinOk({}, {}), true, "no password set: nothing is asked")
+  const refusal = portalPinRefusal({ pin: "x" }, env)!
+  assert.equal(refusal.status, 403)
+  assert.equal((await refusal.json()).code, "wrong_pin")
+  assert.equal(portalPinRefusal({ pin: "1234" }, env), null)
+  const before = process.env.ETA_SEND_PIN
+  process.env.ETA_SEND_PIN = "1234"
+  try {
+    for (const name of ["send", "send-again", "credit-note", "cancel"]) {
+      const route = await import(`../../app/api/eta/${name}/route`)
+      const res = await route.POST(new Request(`http://x/api/eta/${name}`, { method: "POST", body: JSON.stringify({ invoiceIds: [1], invoiceId: 1, docId: 1, pin: "0000" }) }))
+      assert.equal(res.status, 403, name)
+      assert.equal((await res.json()).code, "wrong_pin", name)
+    }
+  } finally {
+    if (before === undefined) delete process.env.ETA_SEND_PIN
+    else process.env.ETA_SEND_PIN = before
+  }
+  // the screens send the password with every portal action
+  const dialog = readFileSync(join(REPO, "components/accounting/eta-preview-dialog.tsx"), "utf8")
+  assert.match(dialog, /portalPin\.ask\(\)/)
+  const bits = readFileSync(join(REPO, "components/accounting/eta-ar-bits.tsx"), "utf8")
+  assert.match(bits, /invoiceIds: invoiceIds\.slice\(0, 100\), pin/)
 })

@@ -3,7 +3,7 @@
 // Receivables list helpers for the e-invoice (spec §9): the state badge on each row, "Send all ready", and the
 // "Replaced by / Replaces" links of a corrected invoice.
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Send } from "lucide-react"
+import { Loader2, Mail, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
@@ -11,6 +11,7 @@ import { fill } from "@/lib/i18n-format"
 import { formatMoney } from "@/lib/format"
 import type { EtaBadgeKey } from "@/lib/eta/badge"
 import { readApiError, reasonText } from "@/components/accounting/eta-preview-dialog"
+import { usePortalPin } from "@/components/accounting/portal-pin"
 
 const TONE: Record<EtaBadgeKey, string> = {
   not_sent: "bg-muted text-muted-foreground",
@@ -31,6 +32,7 @@ const TONE: Record<EtaBadgeKey, string> = {
 export function useEtaBadges(enabled: boolean) {
   const [statuses, setStatuses] = useState<Record<string, EtaBadgeKey>>({})
   const [environment, setEnvironment] = useState<"test" | "real">("test")
+  const [emailed, setEmailed] = useState<Set<string>>(new Set())
   const reload = useCallback(async () => {
     if (!enabled) return
     try {
@@ -38,6 +40,7 @@ export function useEtaBadges(enabled: boolean) {
       if (!res.ok) return
       const body = await res.json()
       setStatuses(body.statuses || {})
+      setEmailed(new Set((Array.isArray(body.emailed) ? body.emailed : []).map(String)))
       setEnvironment(body.environment === "real" ? "real" : "test")
     } catch {
       /* the badge is a convenience: the list works without it */
@@ -46,7 +49,7 @@ export function useEtaBadges(enabled: boolean) {
   useEffect(() => {
     reload()
   }, [reload])
-  return { statuses, environment, reload }
+  return { statuses, environment, emailed, reload }
 }
 
 export function EtaBadge({ state, environment }: { state: EtaBadgeKey | undefined; environment: "test" | "real" }) {
@@ -66,18 +69,53 @@ export function sendAllReason(refused: { reasons?: string[] }[]): string {
   return all.find((r) => r === "portal_check_later") || all.find((r) => r === "portal_check_failed") || all[0] || ""
 }
 
+/** "Sent to customer": the e-invoice of this row was e-mailed to the customer. */
+export function EmailedBadge() {
+  const { t } = useI18n()
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap bg-emerald-500/15 text-emerald-800 dark:text-emerald-300">
+      <Mail className="w-3 h-3" aria-hidden="true" />
+      {t("eta.emailed-badge")}
+    </span>
+  )
+}
+
+/** "Send by e-mail" from the invoice's ⋯ menu: e-mails the valid e-invoice to the customer now (logged as manual). */
+export function useSendInvoiceEmail(onDone: () => void) {
+  const { t, language } = useI18n()
+  const { toast } = useToast()
+  return useCallback(
+    async (invoiceId: string | number) => {
+      toast({ title: t("eta.email-sending") })
+      try {
+        const res = await fetch("/api/eta/invoice-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: Number(invoiceId) }) })
+        if (!res.ok) throw new Error(await readApiError(res, t("message.error"), language, t))
+        toast({ title: t("eta.email-sent-now") })
+      } catch (e) {
+        toast({ title: t("message.error"), description: e instanceof Error ? e.message : String(e), variant: "destructive" })
+      } finally {
+        onDone()
+      }
+    },
+    [t, language, toast, onDone],
+  )
+}
+
 /** "Send all ready": queues the given (not yet sent) invoices; the server refuses the ones that are not ready. */
 export function EtaSendAll({ invoiceIds, onDone }: { invoiceIds: number[]; onDone: () => void }) {
   const { t, language } = useI18n()
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
+  const portalPin = usePortalPin()
   const send = async () => {
+    const pin = await portalPin.ask()
+    if (pin === null) return
     setBusy(true)
     try {
       const res = await fetch("/api/eta/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoiceIds: invoiceIds.slice(0, 100) }),
+        body: JSON.stringify({ invoiceIds: invoiceIds.slice(0, 100), pin }),
       })
       if (!res.ok) throw new Error(await readApiError(res, t("message.error"), language, t))
       const body = await res.json()
@@ -96,10 +134,13 @@ export function EtaSendAll({ invoiceIds, onDone }: { invoiceIds: number[]; onDon
     }
   }
   return (
-    <Button variant="outline" onClick={send} disabled={busy || invoiceIds.length === 0}>
-      {busy ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Send className="w-4 h-4 me-2" />}
-      {t("eta.send-all")} ({invoiceIds.length})
-    </Button>
+    <>
+      <Button variant="outline" onClick={send} disabled={busy || invoiceIds.length === 0}>
+        {busy ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Send className="w-4 h-4 me-2" />}
+        {t("eta.send-all")} ({invoiceIds.length})
+      </Button>
+      {portalPin.dialog}
+    </>
   )
 }
 

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { portalPinRefusal } from "@/lib/eta/portal-pin"
 import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { readEtaSettings } from "@/lib/eta/store"
@@ -15,6 +16,8 @@ export async function POST(request: Request) {
   try {
     const db = createAdminClient()
     const body = await request.json().catch(() => null)
+    const wrongPin = portalPinRefusal(body)
+    if (wrongPin) return wrongPin
     const raw = body && typeof body === "object" ? (body as any).invoiceIds : null
     if (!Array.isArray(raw) || raw.length === 0) return NextResponse.json({ error: "invoiceIds must be a list of invoice ids" }, { status: 400 })
     if (raw.length > MAX_PER_SEND) return NextResponse.json({ error: `At most ${MAX_PER_SEND} invoices at a time` }, { status: 400 })

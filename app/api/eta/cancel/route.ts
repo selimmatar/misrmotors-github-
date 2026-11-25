@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { portalPinRefusal } from "@/lib/eta/portal-pin"
 import { parsePositiveId } from "@/lib/parse-id"
 import { cancelOnPortal } from "@/lib/eta/after-send"
 
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic"
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null)
+    const wrongPin = portalPinRefusal(body)
+    if (wrongPin) return wrongPin
     if (!body || typeof body !== "object") return NextResponse.json({ error: "Invalid body" }, { status: 400 })
     const docId = parsePositiveId((body as any).docId == null ? null : String((body as any).docId))
     if (docId === null) return NextResponse.json({ error: "docId is required" }, { status: 400 })

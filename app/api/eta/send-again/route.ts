@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { portalPinRefusal } from "@/lib/eta/portal-pin"
 import { actorUserId } from "@/lib/auth/actor"
 import { knownUserId } from "@/lib/po-history"
 import { parsePositiveId } from "@/lib/parse-id"
@@ -14,6 +15,8 @@ export async function POST(request: Request) {
   try {
     const db = createAdminClient()
     const body = await request.json().catch(() => null)
+    const wrongPin = portalPinRefusal(body)
+    if (wrongPin) return wrongPin
     const invoiceId = parsePositiveId(body && typeof body === "object" && (body as any).invoiceId != null ? String((body as any).invoiceId) : null)
     if (invoiceId === null) return NextResponse.json({ error: "invoiceId is required" }, { status: 400 })
     const env = etaEnvironment(await readEtaSettings(db))

@@ -23,6 +23,7 @@ import type { CodeState } from "@/lib/eta/codes"
 import type { EtaPreview, EtaPreviewLine } from "@/lib/eta/preview"
 import type { EtaDocumentView } from "@/lib/eta/after-send"
 import type { InvoiceEmailView } from "@/lib/eta/invoice-email"
+import { usePortalPin } from "@/components/accounting/portal-pin"
 
 /** What GET /api/eta/preview answers: the preview plus the portal documents per environment. */
 export type EtaPreviewResponse = EtaPreview & {
@@ -199,26 +200,11 @@ const isLive = (d: EtaDocumentView) => ["pending_signature", "submitted", "valid
 
 /**
  * The customer e-mail of the valid e-invoice (owner request 2026-11-24): "E-mailed to x on date" / "E-mail failed:
- * reason" / "No customer e-mail" / "E-mail not set up", and "Send by e-mail again" (logged as a manual send).
+ * reason" / "No customer e-mail" / "E-mail not set up". Sending is in the invoice's ⋯ menu (owner request 2026-11-25).
  */
-function EtaEmailStatus({ email, invoiceId, reload }: { email: InvoiceEmailView; invoiceId: string; reload: () => Promise<void> }) {
+function EtaEmailStatus({ email }: { email: InvoiceEmailView }) {
   const { t, language } = useI18n()
-  const { toast } = useToast()
-  const [busy, setBusy] = useState(false)
   const last = email.last
-  const sendAgain = async () => {
-    setBusy(true)
-    try {
-      const res = await fetch("/api/eta/invoice-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: Number(invoiceId) }) })
-      if (!res.ok) throw new Error(await readApiError(res, t("message.error"), language, t))
-      toast({ title: t("eta.email-sent-now") })
-    } catch (e) {
-      toast({ title: t("message.error"), description: e instanceof Error ? e.message : String(e), variant: "destructive" })
-    } finally {
-      setBusy(false)
-      await reload()
-    }
-  }
   let line: { text: string; tone: string }
   if (!email.dbReady) line = { text: t("eta.email-db-update-needed"), tone: "text-muted-foreground" }
   else if (last?.status === "sent") line = { text: fill(t("eta.email-sent"), { to: last.to || "", date: formatDateTime(last.at, language) }), tone: "text-emerald-800 dark:text-emerald-300" }
@@ -236,12 +222,6 @@ function EtaEmailStatus({ email, invoiceId, reload }: { email: InvoiceEmailView;
       <p className={`break-words ${line.tone}`} role={last?.status === "failed" ? "alert" : undefined}>
         {line.text}
       </p>
-      {email.dbReady && email.configured && (
-        <Button variant="outline" size="sm" onClick={sendAgain} disabled={busy}>
-          {busy && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
-          {last ? t("eta.email-send-again") : t("eta.email-send")}
-        </Button>
-      )}
     </div>
   )
 }
@@ -273,10 +253,14 @@ function EtaActions({
   const liveNote = notes.some(isLive)
   const old = invoiceDate ? Date.now() - Date.parse(invoiceDate) > 7 * DAY_MS : false
 
-  const run = async (path: string, body: unknown, done: string) => {
+  const portalPin = usePortalPin()
+  // every action here goes to the tax portal: the password is asked first (owner request 2026-11-25)
+  const run = async (path: string, body: Record<string, unknown>, done: string) => {
+    const pin = await portalPin.ask()
+    if (pin === null) return
     setBusy(true)
     try {
-      const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, pin }) })
       if (!res.ok) throw new Error(await readApiError(res, t("message.error"), language, t))
       const answer = await res.json().catch(() => ({}))
       if (Array.isArray(answer.refused) && answer.refused[0]?.reasons?.[0] === "already_on_portal") {
@@ -378,8 +362,8 @@ function EtaActions({
         </ul>
       )}
 
-      {inv?.status === "valid" && preview.email && <EtaEmailStatus email={preview.email} invoiceId={invoiceId} reload={reload} />}
-            {!(inv?.status === "valid") && preview.handledManually && preview.manualEtaUuid && preview.email && <EtaEmailStatus email={preview.email} invoiceId={invoiceId} reload={reload} />}
+      {inv?.status === "valid" && preview.email && <EtaEmailStatus email={preview.email} />}
+            {!(inv?.status === "valid") && preview.handledManually && preview.manualEtaUuid && preview.email && <EtaEmailStatus email={preview.email} />}
 
       {canSend && old && <p className="text-sm text-amber-800 dark:text-amber-300">{t("eta.old-warning")}</p>}
       {docs.length === 0 && preview.missing.length > 0 && <p className="text-sm text-muted-foreground">{t("eta.fix-missing")}</p>}
@@ -419,6 +403,7 @@ function EtaActions({
         )}
       </div>
 
+      {portalPin.dialog}
       {cancelDoc !== null && (
         <div className="rounded-lg border p-3 space-y-2">
           {preview.cancelWindowHours != null && <p className="text-sm text-muted-foreground">{fill(t("eta.cancel-window"), { hours: preview.cancelWindowHours })}</p>}
