@@ -15,6 +15,7 @@ import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { gmailTransport, isEmailAddress, type MailMessage, type MailTransport } from "../email/smtp"
 import { portalPrintout, type PrintoutDeps } from "./after-send"
+import { invoiceCustomerPo } from "./customer-po"
 import type { EtaEnv } from "./portal"
 import { storedBody } from "./send"
 import { defaultFetchFile, fitAttachments, signedPermitCopies, type FetchFile, type SignedCopy } from "./signed-permits"
@@ -126,6 +127,8 @@ export interface InvoiceEmailContent {
   salesOrders: { number: string; url: string }[]
   /** only the shipping team's SIGNED copy is sent: attached, linked (too big: its file addresses), not uploaded, or failed */
   permits: { number: string; signed?: { state: SignedCopy["state"]; urls: string[] } }[]
+  /** the customer's own PO number(s), shown in the details only when given */
+  customerPo?: string
 }
 
 const money = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -144,6 +147,7 @@ export function buildInvoiceEmail(c: InvoiceEmailContent): { subject: string; te
   const details: { ar: string; en: string; value: string }[] = [
     { ar: "رقم الفاتورة", en: "Invoice No.", value: c.invoiceNumber },
     { ar: "التاريخ", en: "Date", value: c.date },
+    ...(text(c.customerPo) ? [{ ar: "رقم أمر الشراء الخاص بكم", en: "Your PO No.", value: text(c.customerPo) }] : []),
     { ar: "الإجمالي شاملًا الضريبة", en: "Total incl. VAT", value: `EGP ${money(c.total)}` },
     { ar: "الرقم الإلكتروني (UUID)", en: "ETA UUID", value: c.uuid },
   ]
@@ -300,6 +304,8 @@ async function emailFacts(db: Db, invoiceId: number, doc: any) {
     total,
     permits: [...permits].sort((a, b) => Number(a.permit_id) - Number(b.permit_id)),
     orders: [...orders].sort((a, b) => Number(a.so_id) - Number(b.so_id)),
+    // the customer's PO number: as sent to the portal, else (an invoice sent before it existed) its orders' own
+    customerPo: text(body.purchaseOrderReference) || (await invoiceCustomerPo(db, { invoice_id: Number(inv.invoice_id), so_id: inv.so_id ?? null })),
   }
 }
 
@@ -370,6 +376,7 @@ export async function sendInvoiceEmail(
       ...(logo ? { logoCid: LOGO_CID } : {}),
       invoiceNumber: facts.invoiceNumber,
       date: facts.date,
+      ...(facts.customerPo ? { customerPo: facts.customerPo } : {}),
       total: facts.total,
       uuid,
       invoiceUrl: link("invoice", invoiceId),

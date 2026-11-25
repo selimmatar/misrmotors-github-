@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { escapeHtml, ltrText } from "@/lib/html-escape"
 import { PRINT_CSS, printHeader, docTitle } from "@/lib/print/print-theme"
 import { replacedPrint } from "@/lib/eta/replaced-print"
+import { invoiceCustomerPo } from "@/lib/eta/customer-po"
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
 import { lineKey } from "@/lib/return-lines"
 import { loadStandaloneLines } from "@/lib/invoicing"
@@ -136,6 +137,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
 
     const customer = invoice.customers
     const so = invoice.sales_orders
+    // the customer's own PO number(s), when given (owner request 2026-11-25)
+    const customerPo = await invoiceCustomerPo(supabase, invoice)
 
     const totalAmount = Number(invoice.amount) || 0
     const collectedAmount = Number(invoice.collected_amount) || 0
@@ -222,7 +225,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
       <div class="pm-label">SO Number</div>
       <div class="pm-value">${escapeHtml(so?.so_number || "—")}</div>
     </div>
-    <div class="pm-field">
+    ${customerPo ? `<div class="pm-field">
+      <div class="pm-label">Customer PO No.</div>
+      <div class="pm-value" dir="ltr">${escapeHtml(customerPo)}</div>
+    </div>
+    ` : ""}<div class="pm-field">
       <div class="pm-label">Payment Type</div>
       <div class="pm-value">${escapeHtml((invoice.payment_terms || so?.payment_type || "—").replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()))}</div>
     </div>

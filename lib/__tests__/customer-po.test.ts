@@ -113,3 +113,33 @@ test("PO4. typed at approval (optional), shown on the order, editable in the e-i
   const sql = readFileSync(join(REPO, "scripts/sql/2026-11-25-customer-po.sql"), "utf8")
   assert.match(sql, /ADD COLUMN IF NOT EXISTS customer_po text;/)
 })
+
+test("PO5. invoiceCustomerPo: the invoice's orders' PO numbers, \"\" when none or on a failed read", async () => {
+  const { invoiceCustomerPo } = await import("../eta/customer-po")
+  const { d, invoiceId } = await invoiced("4500012345")
+  assert.equal(await invoiceCustomerPo(d, { invoice_id: invoiceId, so_id: null }), "4500012345")
+  const empty = await invoiced(null)
+  assert.equal(await invoiceCustomerPo(empty.d, { invoice_id: empty.invoiceId, so_id: null }), "")
+  const broken = { from: () => { throw new Error("down") } }
+  assert.equal(await invoiceCustomerPo(broken, { invoice_id: 1, so_id: 1 }), "")
+})
+
+test("PO6. the customer e-mail shows the PO number only when given", async () => {
+  const { buildInvoiceEmail } = await import("../eta/invoice-email")
+  const base = { customerName: "Acme", invoiceNumber: "INV-1", date: "01/01/2026", total: 1000, uuid: "U", invoiceUrl: "https://x/i", salesOrders: [], permits: [] }
+  const withPo = buildInvoiceEmail({ ...base, customerPo: "4500012345" })
+  assert.match(withPo.html, /Your PO No\./)
+  assert.match(withPo.html, /4500012345/)
+  assert.match(withPo.text, /4500012345/)
+  const without = buildInvoiceEmail(base)
+  assert.doesNotMatch(without.html, /Your PO No\./)
+  assert.doesNotMatch(without.text, /PO No\./)
+})
+
+test("PO7. both printed invoices show the customer's PO number when given", () => {
+  for (const f of ["app/api/invoices/ar/[id]/pdf/route.ts", "app/api/invoices/ar/[id]/[invoiceId]/pdf/route.ts"]) {
+    const src = readFileSync(join(REPO, f), "utf8")
+    assert.match(src, /invoiceCustomerPo\(/, f)
+    assert.match(src, /customerPo\s*\?/, f)
+  }
+})

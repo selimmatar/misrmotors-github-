@@ -16,6 +16,7 @@ import {
 import { vatPrintTotals } from "@/lib/vat-lines"
 import { mergePrintItems } from "@/lib/merge-lines"
 import { replacedPrint } from "@/lib/eta/replaced-print"
+import { invoiceCustomerPo } from "@/lib/eta/customer-po"
 import { lineKey, loadReturnLines, netLineQuantities, returnedByKey, toMs } from "@/lib/return-lines"
 import { followLineOrder, sortSoLines } from "@/lib/line-order"
 
@@ -94,6 +95,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const customer = invoice.customers || {}
     const so = invoice.sales_orders || {}
     const qrNumber = so.quotation_request_number || null
+    // the customer's own PO number(s), when given (owner request 2026-11-25)
+    const customerPo = await invoiceCustomerPo(supabase, invoice)
     // A replaced invoice (correct and reissue, spec §6.5a) prints what was sent to the tax portal, with "Replaced by".
     const replaced = await replacedPrint(supabase, invoice)
 
@@ -335,6 +338,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         : ""
     }
     ${
+      customerPo
+        ? `<div class="pm-field pm-field-wide">
+      <span class="pm-label">رقم أمر الشراء الخاص بالعميل:</span>
+      <span class="pm-value" dir="ltr">${escapeHtml(customerPo)}</span>
+    </div>
+    `
+        : ""
+    }${
       deliveryPermits.length > 0
         ? `<div class="pm-field pm-field-wide">
       <span class="pm-label">أذونات التسليم:</span>

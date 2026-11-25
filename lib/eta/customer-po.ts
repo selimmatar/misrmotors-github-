@@ -43,3 +43,20 @@ export async function saveCustomerPo(db: Db, invoiceId: number, soId: number, ra
   if (up.error) return { ok: false, status: 500, code: "WRITE_FAILED", error: "Could not save the PO number." }
   return { ok: true, value: clean.value }
 }
+
+/**
+ * The customer's PO number(s) of an invoice's sales orders, joined with ", " ("" when none), for the printed
+ * invoice and the customer e-mail. Never throws: a database without the column, or a failed read, gives "".
+ */
+export async function invoiceCustomerPo(db: Db, invoice: { invoice_id: number; so_id: number | null }): Promise<string> {
+  try {
+    const ids = await invoiceOrderIds(db, invoice)
+    if (!ids.length) return ""
+    const r = await db.from("sales_orders").select("so_id, customer_po").in("so_id", ids)
+    if (r.error) return ""
+    const byId = new Map((r.data || []).map((o: any) => [Number(o.so_id), String(o.customer_po ?? "").trim()]))
+    return [...new Set(ids.map((id) => byId.get(id) || "").filter(Boolean))].join(", ")
+  } catch {
+    return ""
+  }
+}
