@@ -560,7 +560,8 @@ test("F14. queueSend: missing data and handled-manually refused, a ready invoice
   assert.equal(body.internalID, db.tables.accounts_receivable[0].invoice_number)
   assert.equal(body.totalAmount, 342)
   assert.equal(body.issuer.id, RIN)
-  assert.equal(body.dateTimeIssued, etaIso(db.tables.accounts_receivable[0].created_at), "P6: the invoice's creation time")
+  // P6 / CF313: made on an earlier day than it is sent -> dated when sent (the same day keeps its own time: F14c)
+  assert.equal(body.dateTimeIssued, "2026-11-15T10:00:00Z")
   // a second Send of the same invoice is refused as already live
   assert.deepEqual((await queueSend(db, [id], "real", 7, QS)).refused, [{ invoiceId: id, reasons: ["already_live"] }])
   assert.equal(db.tables.eta_documents.length, 1)
@@ -4224,4 +4225,37 @@ test("IC7. permissions, screen wiring, texts and the memory table script (writte
   assert.ok(!/create policy|\$\$/.test(flat), "no policies, no code")
   assert.match(flat, /kind text not null check \(kind in \('confirmed','rejected'\)\)/)
   assert.match(flat, /unique \(supplier_id, portal_name, portal_code, our_key\)/)
+})
+
+test("F14c. CF313: the portal takes an invoice only on its own day: made / queued on an earlier day -> dated when sent", async () => {
+  const at = (iso: string) => () => new Date(iso)
+  const sendAt = (iso: string): SendDeps => ({ ...QS, now: at(iso) })
+  const issued = (db: any, i = 0) => JSON.parse(db.tables.eta_documents[i].document).dateTimeIssued
+  // made yesterday, sent today: today's sending time (the ERP invoice keeps its own date)
+  const y = await withInvoice("real")
+  y.db.tables.accounts_receivable[0].created_at = "2026-11-14T14:52:13Z"
+  assert.deepEqual((await queueSend(y.db, [y.id], "real", 7, sendAt("2026-11-15T08:07:00Z"))).queued, [y.id])
+  assert.equal(issued(y.db), "2026-11-15T08:07:00Z")
+  assert.equal(y.db.tables.accounts_receivable[0].created_at, "2026-11-14T14:52:13Z")
+  // made earlier the same day: its own time, as before
+  const s = await withInvoice("real")
+  s.db.tables.accounts_receivable[0].created_at = "2026-11-15T08:00:00Z"
+  await queueSend(s.db, [s.id], "real", 7, QS)
+  assert.equal(issued(s.db), "2026-11-15T08:00:00Z")
+  // queued in the evening, signed next morning: re-dated at hand-out, only the date changes, the signer signs the new text
+  const q = await withInvoice("real")
+  q.db.tables.accounts_receivable[0].created_at = "2026-11-14T14:52:13Z"
+  await queueSend(q.db, [q.id], "real", 7, sendAt("2026-11-14T14:54:00Z"))
+  const before = q.db.tables.eta_documents[0].document
+  assert.equal(issued(q.db), "2026-11-14T14:52:13Z")
+  const out = await nextForSigner(q.db, 1, 20, { now: at("2026-11-15T08:07:00Z"), credentialsSet: yes })
+  const row = q.db.tables.eta_documents[0]
+  assert.equal(row.status, "pending_signature")
+  assert.equal(issued(q.db), "2026-11-15T08:07:00Z")
+  assert.equal(row.document, before.replace('"dateTimeIssued":"2026-11-14T14:52:13Z"', '"dateTimeIssued":"2026-11-15T08:07:00Z"'))
+  assert.deepEqual(out, [{ docId: row.doc_id, canonical: canonicalize(row.document) }])
+  assert.equal(row.canonical, canonicalize(row.document))
+  // handed out again the same day: unchanged
+  const again = await nextForSigner(q.db, 1, 20, { now: at("2026-11-15T09:00:00Z"), credentialsSet: yes })
+  assert.deepEqual(again, out)
 })

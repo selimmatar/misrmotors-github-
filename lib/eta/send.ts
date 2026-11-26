@@ -2,7 +2,7 @@
 // the follow-up. Never sends a document twice: a row leaves `pending_signature` once (a guarded update claims it before
 // the portal is called), and nothing here ever submits a row that is already `submitted`.
 import { buildEtaPreview, type EtaPreview } from "./preview"
-import { buildCreditNoteDocument, buildInvoiceDocument } from "./document"
+import { buildCreditNoteDocument, buildInvoiceDocument, etaDateTime } from "./document"
 import { canonicalize, toEtaJson } from "./serialize"
 import { readEtaSettings } from "./store"
 import { checkSignature } from "./cms"
@@ -73,11 +73,38 @@ function previewReasons(preview: EtaPreview, env: EtaEnv): string[] {
   return reasons
 }
 
-/** P6: the invoice's creation time, never in the future. */
+const cairoDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo" }).format(d)
+/** The portal takes a company invoice only on the day it is dated (CF313 "out of the range of submission workflow
+ *  parameter", 2026-11-26): a time on an earlier day - in Cairo or by UTC - is too old to send now. */
+export function staleIssueDay(issuedAt: unknown, now: Date): boolean {
+  const ms = Date.parse(text(issuedAt))
+  if (!Number.isFinite(ms)) return false
+  const d = new Date(ms)
+  return cairoDay(d) < cairoDay(now) || d.toISOString().slice(0, 10) < now.toISOString().slice(0, 10)
+}
+
+/** P6: the invoice's creation time, never in the future; the sending time when it was made on an earlier day
+ *  (owner approval 2026-11-26: the tax document is dated the day it is sent, the ERP's invoice keeps its own date). */
 function issueTime(createdAt: unknown, now: Date): string | null {
   const ms = Date.parse(text(createdAt))
   if (!text(createdAt) || !Number.isFinite(ms)) return null
+  if (staleIssueDay(createdAt, now)) return now.toISOString()
   return new Date(Math.min(ms, now.getTime())).toISOString()
+}
+
+/** A waiting document dated an earlier day (e.g. sent in the evening, signed next morning) is re-dated to now before
+ *  it is signed: only its issue time changes. Returns the row as stored afterwards. */
+async function redateIfStale(db: Db, row: any, now: Date): Promise<any> {
+  const doc = parsedBody(row)
+  if (!doc || !staleIssueDay(doc.dateTimeIssued, now)) return row
+  doc.dateTimeIssued = etaDateTime(now.toISOString())
+  const body = toEtaJson(doc)
+  const canonical = canonicalize(body)
+  must(
+    await db.from("eta_documents").update({ document: body, canonical, updated_at: now.toISOString() }).eq("doc_id", row.doc_id).eq("status", "pending_signature"),
+    "re-date the waiting document",
+  )
+  return { ...row, document: body, canonical }
 }
 
 export interface QueueRefusal {
@@ -480,7 +507,8 @@ export async function nextForSigner(
     "load waiting documents",
   ) as any[]
   const out: { docId: number; canonical: string }[] = []
-  for (const row of rows) {
+  for (const stored of rows) {
+    const row = (await stillSame(db, stored, settings)) ? await redateIfStale(db, stored, now()) : stored
     if (await stillSame(db, row, settings)) {
       out.push({ docId: row.doc_id, canonical: row.canonical })
       continue
