@@ -543,7 +543,7 @@ export function CustomerModule({ userRole }: CustomerModuleProps) {
                     />
                   </div>
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <Label>{t("customer.address")}</Label>
                   <Input
                     value={formData.address}

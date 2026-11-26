@@ -691,7 +691,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="text-sm text-muted-foreground">{t("field.monthly")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={monthlyAmount} /></p>
                           </div>
-                          <div className="col-span-2">
+                          <div className="md:col-span-2">
                             <p className="text-sm text-muted-foreground mb-1">{t("field.progress")}</p>
                             <div className="space-y-1">
                               <Progress value={progressPercentage} className="h-2" />
@@ -763,7 +763,7 @@ export function AccountantModule({ defaultTab }: { defaultTab?: string }) {
                             <p className="text-sm text-muted-foreground">{t("field.monthly")} {t("common.egp")}</p>
                             <p className="font-semibold"><Money value={monthlyAmount} /></p>
                           </div>
-                          <div className="col-span-2">
+                          <div className="md:col-span-2">
                             <p className="text-sm text-muted-foreground mb-1">{t("field.progress")}</p>
                             <div className="space-y-1">
                               <Progress value={progressPercentage} className="h-2" />
