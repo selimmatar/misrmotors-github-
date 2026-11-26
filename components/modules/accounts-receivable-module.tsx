@@ -1190,7 +1190,7 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
 
   // "Send by e-mail" in the ⋯ menu: only for an invoice whose e-invoice is valid (or was typed on the portal by hand);
   // the server checks this again and answers in plain words.
-  const { send: sendInvoiceEmail, picker: emailPicker } = useSendInvoiceEmail(etaBadges.reload)
+  const sendInvoiceEmail = useSendInvoiceEmail(etaBadges.reload)
   const canEmail = (invoice: CustomerInvoice) =>
     !isReplaced(invoice) && !isCancelled(invoice) && ["valid", "manual"].includes(String(etaBadges.statuses[invoice.id] || ""))
 
@@ -1494,7 +1494,6 @@ export function AccountsReceivableModule({ userRole }: AccountsReceivableModuleP
         </>
       )}
 
-      {emailPicker}
       {/* Filter Buttons */}
       <div className="flex gap-2 flex-wrap">
         {mayEta && (
