@@ -40,7 +40,7 @@
     ],
     "fetch": 4,
     "iso": 10,
-    "t": 53,
+    "t": 188,
     "onClick": 16
   },
   "components/modules/sales-quotation-module.tsx": {
@@ -88,7 +88,7 @@
     ],
     "fetch": 5,
     "iso": 7,
-    "t": 109,
+    "t": 111,
     "onClick": 11
   },
   "components/modules/sales-quotations-hub-module.tsx": {
@@ -97,7 +97,7 @@
     "ids": [],
     "fetch": 0,
     "iso": 0,
-    "t": 0,
+    "t": 10,
     "onClick": 0
   },
   "components/modules/approve-sales-orders-module.tsx": {
@@ -110,7 +110,7 @@
     ],
     "fetch": 0,
     "iso": 0,
-    "t": 23,
+    "t": 44,
     "onClick": 5
   },
   "components/modules/approve-sales-quotations-module.tsx": {
@@ -131,13 +131,14 @@
     ],
     "fetch": 5,
     "iso": 0,
-    "t": 0,
+    "t": 59,
     "onClick": 5
   },
   "components/modules/delivery-permits-module.tsx": {
     "api": [
       "\"/api/delivery-permits",
-      "\"/api/delivery-permits"
+      "\"/api/delivery-permits",
+      "\"/api/delivery-permits/files"
     ],
     "handlers": [
       "handleOpenReviewDialog",
@@ -146,10 +147,10 @@
       "handleViewDetails"
     ],
     "ids": [],
-    "fetch": 2,
+    "fetch": 3,
     "iso": 0,
-    "t": 45,
-    "onClick": 10
+    "t": 59,
+    "onClick": 12
   },
   "components/modules/customer-module.tsx": {
     "api": [
@@ -163,8 +164,8 @@
     "ids": [],
     "fetch": 2,
     "iso": 1,
-    "t": 49,
-    "onClick": 5
+    "t": 69,
+    "onClick": 6
   },
   "components/modules/lost-sales-module.tsx": {
     "api": [
@@ -178,7 +179,7 @@
     "ids": [],
     "fetch": 2,
     "iso": 0,
-    "t": 31,
+    "t": 34,
     "onClick": 4
   },
   "components/modules/accounts-receivable-module.tsx": {
@@ -215,8 +216,8 @@
     ],
     "fetch": 13,
     "iso": 10,
-    "t": 238,
-    "onClick": 41
+    "t": 248,
+    "onClick": 42
   },
   "components/modules/accounts-payable-module.tsx": {
     "api": [
@@ -241,8 +242,8 @@
     "ids": [],
     "fetch": 8,
     "iso": 6,
-    "t": 106,
-    "onClick": 28
+    "t": 170,
+    "onClick": 29
   },
   "components/modules/payment-schedule-module.tsx": {
     "api": [
@@ -252,7 +253,7 @@
     "ids": [],
     "fetch": 2,
     "iso": 0,
-    "t": 0,
+    "t": 22,
     "onClick": 1
   },
   "components/modules/balance-module.tsx": {
@@ -263,7 +264,7 @@
     "ids": [],
     "fetch": 1,
     "iso": 0,
-    "t": 38,
+    "t": 44,
     "onClick": 0
   },
   "components/modules/maintenance-invoices-module.tsx": {
@@ -272,7 +273,7 @@
     "ids": [],
     "fetch": 0,
     "iso": 0,
-    "t": 0,
+    "t": 3,
     "onClick": 0
   },
   "components/modules/accountant-module.tsx": {
@@ -292,7 +293,7 @@
     ],
     "fetch": 4,
     "iso": 1,
-    "t": 157,
+    "t": 218,
     "onClick": 16
   },
   "components/accounting/maintenance-invoice-tab.tsx": {
@@ -311,7 +312,7 @@
     ],
     "fetch": 2,
     "iso": 0,
-    "t": 0,
+    "t": 67,
     "onClick": 4
   }
 }

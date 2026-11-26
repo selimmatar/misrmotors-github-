@@ -22,7 +22,8 @@ import { ErpTable, IdCell, ActionsHead, ActionsCell } from "@/components/erp/dat
 import { ResponsiveList, ListCard } from "@/components/erp/responsive-list"
 import { formatDate } from "@/lib/format"
 import type { DeliveryPermit, UserRole } from "@/lib/types"
-import { Search, FileText, RefreshCw, Eye, Download } from "lucide-react"
+import { Search, FileText, RefreshCw, Eye, Download, X } from "lucide-react"
+import { sentSignedFiles } from "@/lib/dp-signed-choice"
 
 interface DeliveryPermitsModuleProps {
   userRole: UserRole
@@ -142,6 +143,33 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
   const reviewAction = async (action: "APPROVE" | "REJECT" | "SEND_BACK_TO_SHIPPING", extra: Record<string, unknown> = {}) => {
     if (!permitToReview) return
     if (await permitAction(permitToReview, action, extra)) setShowReviewDialog(false)
+  }
+
+  // the sent signed photos of the permit under review; the approver can cancel one (it is kept, not sent)
+  const reviewFiles = sentSignedFiles(permitToReview?.files).filter((f) => f.fileType === "SIGNED_PERMIT" && f.fileUrl)
+  const [cancellingFile, setCancellingFile] = useState<string | null>(null)
+  const cancelPhoto = async (fileId: string) => {
+    if (!permitToReview || !confirm(t("permit.cancel-photo-confirm"))) return
+    setCancellingFile(fileId)
+    try {
+      const response = await fetch("/api/delivery-permits/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permitId: permitToReview.id, fileId }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        alert((language === "ar" && body.errorAr) || body.error || t("message.error"))
+        return
+      }
+      setPermitToReview({
+        ...permitToReview,
+        files: (permitToReview.files || []).map((f) => (f.id === fileId ? { ...f, fileType: "SIGNED_PERMIT_UNUSED" as const } : f)),
+      })
+      fetchPermits()
+    } finally {
+      setCancellingFile(null)
+    }
   }
 
   const handlePrintSignedDP = () => {
@@ -411,64 +439,64 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
                 </div>
               )}
 
-              {/* Signed Document Preview */}
+              {/* Signed photos: every photo shipping sent, each can be opened, and the approver can cancel one
+                  (owner request 2026-11-27; lib/dp-signed-choice.ts). One sent photo always stays. */}
               <div className="border rounded-lg p-4 bg-muted/30">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <p className="font-medium">{t("permit.signed-document")}</p>
-                  {(permitToReview.signedDocumentUrl ||
-                    permitToReview.files?.some((f) => f.fileType === "SIGNED_PERMIT")) && (
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const signedFile = permitToReview.files?.find((f) => f.fileType === "SIGNED_PERMIT")
-                          const url = permitToReview.signedDocumentUrl || signedFile?.fileUrl
-                          if (url) window.open(url, "_blank")
-                        }}
-                      >
-                        <Eye className="h-4 w-4 me-1" />
-                        {t("action.view")}
-                      </Button>
-                      <Button variant="outline" size="sm" asChild>
-                        <a
-                          href={
-                            permitToReview.signedDocumentUrl ||
-                            permitToReview.files?.find((f) => f.fileType === "SIGNED_PERMIT")?.fileUrl
-                          }
-                          download
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <Download className="h-4 w-4 me-1" />
-                          {t("action.download")}
-                        </a>
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                {(() => {
-                  const signedFile = permitToReview.files?.find((f) => f.fileType === "SIGNED_PERMIT")
-                  const documentUrl = permitToReview.signedDocumentUrl || signedFile?.fileUrl
-
-
-                  if (documentUrl) {
-                    return (
-                      <div className="border rounded bg-white">
-                        {documentUrl.toLowerCase().includes(".pdf") ? (
-                          <iframe src={documentUrl} className="w-full h-[300px] rounded" title={t("permit.signed-dp")} />
+                <p className="font-medium mb-3">
+                  {t("permit.signed-document")}
+                  {reviewFiles.length > 1 && ` (${reviewFiles.length})`}
+                </p>
+                {reviewFiles.length === 0 && !permitToReview.signedDocumentUrl ? (
+                  <p className="text-muted-foreground text-center py-8">{t("permit.no-signed-document")}</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {(reviewFiles.length
+                      ? reviewFiles
+                      : [{ id: "", fileUrl: permitToReview.signedDocumentUrl as string, fileName: t("permit.signed-dp") }]
+                    ).map((file, i) => (
+                      <li key={file.id || "legacy"} className="border rounded bg-background p-2 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-sm font-medium truncate">
+                            {i + 1}. {file.fileName || t("permit.signed-dp")}
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={() => window.open(file.fileUrl, "_blank")}>
+                              <Eye className="h-4 w-4 me-1" />
+                              {t("action.view")}
+                            </Button>
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={file.fileUrl} download target="_blank" rel="noopener noreferrer">
+                                <Download className="h-4 w-4 me-1" />
+                                {t("action.download")}
+                              </a>
+                            </Button>
+                            {canApprove && permitToReview.status === "SUBMITTED_SIGNED" && file.id && reviewFiles.length > 1 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-red-700"
+                                disabled={cancellingFile === file.id}
+                                onClick={() => cancelPhoto(file.id)}
+                              >
+                                <X className="h-4 w-4 me-1" />
+                                {t("permit.cancel-photo")}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {file.fileUrl.toLowerCase().includes(".pdf") ? (
+                          <iframe src={file.fileUrl} className="w-full h-[300px] rounded" title={`${t("permit.signed-dp")} ${i + 1}`} />
                         ) : (
                           <img
-                            src={documentUrl || "/placeholder.svg"}
-                            alt={t("permit.signed-dp")}
-                            className="w-full max-h-[300px] object-contain rounded"
+                            src={file.fileUrl}
+                            alt={`${t("permit.signed-dp")} ${i + 1}`}
+                            className="w-full max-h-[300px] object-contain rounded bg-white"
                           />
                         )}
-                      </div>
-                    )
-                  }
-                  return <p className="text-muted-foreground text-center py-8">{t("permit.no-signed-document")}</p>
-                })()}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           )}

@@ -45,3 +45,35 @@ export async function applySignedChoice(db: any, permitId: number, ids: number[]
 /** the files the approver sees: the sent ones only */
 export const sentSignedFiles = <T extends { fileType?: string }>(files: T[] = []) =>
   files.filter((f) => String(f.fileType || "").toUpperCase() !== UNUSED_SIGNED_FILE)
+
+type CancelResult = { ok: true } | Refusal
+
+/** The approver cancels one sent photo while reviewing (owner request 2026-11-27): it is kept but no longer sent.
+ *  Only on a permit waiting for approval, and one sent photo must stay (to refuse them all: "send back to shipping"). */
+export async function cancelSignedFile(db: any, permitId: number, fileId: number, userId: number | null): Promise<CancelResult> {
+  const p = await db.from("delivery_permits").select("permit_id, status").eq("permit_id", permitId).maybeSingle()
+  if (p.error) return { ok: false, status: 500, error: "Could not read the delivery permit.", errorAr: "تعذّرت قراءة إذن التسليم." }
+  if (!p.data) return { ok: false, status: 404, error: "Delivery permit not found.", errorAr: "إذن التسليم غير موجود." }
+  if (p.data.status !== "SUBMITTED_SIGNED") {
+    return { ok: false, status: 409, error: "Photos can only be cancelled while the permit waits for approval.", errorAr: "لا يمكن إلغاء الصور إلا والإذن في انتظار الاعتماد." }
+  }
+  const r = await db.from("delivery_permit_files").select("file_id, file_type, file_name").eq("permit_id", permitId)
+  if (r.error) return { ok: false, status: 500, error: "Could not read the uploaded files. Nothing was changed.", errorAr: "تعذّرت قراءة الملفات المرفوعة. لم يتغيّر شيء." }
+  const sent = ((r.data || []) as any[]).filter((f) => String(f.file_type || "").toUpperCase() === SIGNED_FILE)
+  const target = sent.find((f) => Number(f.file_id) === fileId)
+  if (!target) return { ok: false, status: 404, error: "This photo is not one of the sent photos of this permit.", errorAr: "هذه الصورة ليست من الصور المرسلة لهذا الإذن." }
+  if (sent.length < 2) {
+    return { ok: false, status: 409, error: "This is the only sent photo. To refuse it, send the permit back to shipping.", errorAr: "هذه هي الصورة المرسلة الوحيدة. لرفضها أعد الإذن إلى الشحن." }
+  }
+  const u = await db.from("delivery_permit_files").update({ file_type: UNUSED_SIGNED_FILE }).eq("permit_id", permitId).eq("file_id", fileId)
+  if (u.error) return { ok: false, status: 500, error: "The photo was not cancelled. Try again.", errorAr: "لم تُلغَ الصورة. حاول مرة أخرى." }
+  await db.from("workflow_events").insert({
+    entity_type: "DELIVERY_PERMIT",
+    entity_id: permitId,
+    event_type: "SIGNED_PHOTO_CANCELLED",
+    old_value: String(fileId),
+    performed_by: userId,
+    notes: `Signed photo cancelled by the approver: ${target.file_name || fileId}`,
+  })
+  return { ok: true }
+}

@@ -9,6 +9,7 @@ import { join } from "node:path"
 import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import * as dpRoute from "../../app/api/delivery-permits/route"
+import * as filesRoute from "../../app/api/delivery-permits/files/route"
 import { chosenFileIds, sentSignedFiles, UNUSED_SIGNED_FILE } from "../dp-signed-choice"
 import { signedPermitCopies } from "../eta/signed-permits"
 
@@ -81,4 +82,43 @@ test("C5 the screens send the tick: upload marks unticked photos, both upload sc
   for (const p of ["components/delivery-permit/delivery-permit-card.tsx", "components/delivery-permit/permit-preview-dialog.tsx"]) {
     assert.match(src(p), /sentSignedFiles\(permit\.files\)/, p)
   }
+})
+
+// ------------------------------------------------------------------ the approver cancels a photo (owner request 2026-11-27)
+const cancel = (fileId: number | string, permitId: number | string = 1) => call(filesRoute.POST, "POST", { permitId: String(permitId), fileId: String(fileId) })
+const awaiting = (db: FakeDb) => { db.tables.delivery_permits[0].status = "SUBMITTED_SIGNED"; return db }
+
+test("C6 the approver cancels one of several sent photos: it is kept, marked unused, and logged", async () => {
+  const db = awaiting(dpDb([file(1), file(2), file(3, UNUSED_SIGNED_FILE)]))
+  const r = await cancel(2)
+  assert.equal(r.status, 200, JSON.stringify(r.body))
+  assert.deepEqual(types(db), { 1: "SIGNED_PERMIT", 2: UNUSED_SIGNED_FILE, 3: UNUSED_SIGNED_FILE })
+  assert.equal(db.tables.delivery_permit_files.length, 3, "nothing is deleted")
+  assert.ok(db.tables.workflow_events.some((e) => e.event_type === "SIGNED_PHOTO_CANCELLED"))
+})
+
+test("C7 the last sent photo, an unsent photo, another permit's photo, or a permit not awaiting approval is refused", async () => {
+  const cases: [string, () => FakeDb, number, number][] = [
+    ["last sent photo", () => awaiting(dpDb([file(1), file(2, UNUSED_SIGNED_FILE)])), 1, 409],
+    ["already unused", () => awaiting(dpDb([file(1), file(2), file(3, UNUSED_SIGNED_FILE)])), 3, 404],
+    ["other permit", () => awaiting(dpDb([file(1), file(2), file(9, "SIGNED_PERMIT", 2)])), 9, 404],
+    ["not awaiting approval", () => dpDb([file(1), file(2)]), 1, 409],
+  ]
+  for (const [name, make, id, status] of cases) {
+    const db = make()
+    const before = JSON.stringify(types(db))
+    const r = await cancel(id)
+    assert.equal(r.status, status, name)
+    assert.ok(r.body.errorAr, name)
+    assert.equal(JSON.stringify(types(db)), before, `${name}: nothing changed`)
+  }
+  assert.equal((await cancel("x")).status, 400)
+})
+
+test("C8 only the approver roles may cancel; the review window lists every sent photo with a cancel button", () => {
+  assert.match(src("lib/auth/permissions.ts"), /rule\("\/api\/delivery-permits\/files", ACCOUNTANT, ACCOUNTANT\)/)
+  const m = src("components/modules/delivery-permits-module.tsx")
+  assert.match(m, /reviewFiles\.length\s*\?\s*reviewFiles/)
+  assert.match(m, /onClick=\{\(\) => cancelPhoto\(file\.id\)\}/)
+  assert.ok(!/files\?\.find\(\(f\) => f\.fileType === "SIGNED_PERMIT"\)/.test(m), "no longer only the first photo")
 })

@@ -65,6 +65,8 @@ export const RULES: Rule[] = [
   rule("/api/delivery-permits/upload", ALL, ALL),
   // "Correct delivery permit" during correct-and-reissue (spec §6.5a): accountant, CEO, admin only
   rule("/api/delivery-permits/correct", ACCOUNTANT, ACCOUNTANT),
+  // the approver cancels one sent signed photo while reviewing (owner request 2026-11-27)
+  rule("/api/delivery-permits/files", ACCOUNTANT, ACCOUNTANT),
   rule("/api/couriers", ALL, ONLY_TOP),
   rule("/api/operations", ALL, ONLY_TOP),
   rule("/api/returns", RETURNS, RETURNS),
