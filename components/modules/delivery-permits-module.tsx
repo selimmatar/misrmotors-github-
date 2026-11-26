@@ -164,7 +164,7 @@ export default function DeliveryPermitsModule({ userRole }: DeliveryPermitsModul
       }
       setPermitToReview({
         ...permitToReview,
-        files: (permitToReview.files || []).map((f) => (f.id === fileId ? { ...f, fileType: "SIGNED_PERMIT_UNUSED" as const } : f)),
+        files: (permitToReview.files || []).map((f) => (f.id === fileId ? { ...f, fileType: "OTHER" as const } : f)),
       })
       fetchPermits()
     } finally {

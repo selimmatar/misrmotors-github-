@@ -1,10 +1,13 @@
 // Owner request 2026-11-26: the shipping user can take several photos of a signed delivery permit and tick which ones
 // are sent for approval. Every photo is saved; the ticked ones keep the file type SIGNED_PERMIT (the approver sees
-// them and the invoice e-mail attaches them, lib/eta/signed-permits.ts), the others are kept as SIGNED_PERMIT_UNUSED.
+// them and the invoice e-mail attaches them, lib/eta/signed-permits.ts), the others are kept as OTHER.
 // Sending a new set (e.g. after "sent back to shipping") also retires the photos of the earlier round.
-// No new column: only the existing file_type text changes.
+// No new column: only the existing file_type text changes. The database allows only these two values
+// (check delivery_permit_files_file_type_check: SIGNED_PERMIT, OTHER), so a kept-but-not-sent photo is OTHER.
 export const SIGNED_FILE = "SIGNED_PERMIT"
-export const UNUSED_SIGNED_FILE = "SIGNED_PERMIT_UNUSED"
+export const UNUSED_SIGNED_FILE = "OTHER"
+/** the file_type values the database accepts */
+export const DB_FILE_TYPES = ["SIGNED_PERMIT", "OTHER"] as const
 
 const isSigned = (type: unknown) => {
   const t = String(type || "").toUpperCase()
@@ -35,7 +38,7 @@ export async function planSignedChoice(db: any, permitId: number, ids: number[])
   return { ok: true, unused: files.map((f) => Number(f.file_id)).filter((id) => !chosen.has(id)) }
 }
 
-/** apply the choice: the chosen ones are SIGNED_PERMIT, the rest SIGNED_PERMIT_UNUSED */
+/** apply the choice: the chosen ones are SIGNED_PERMIT, the rest OTHER */
 export async function applySignedChoice(db: any, permitId: number, ids: number[], unused: number[]): Promise<boolean> {
   const a = await db.from("delivery_permit_files").update({ file_type: SIGNED_FILE }).eq("permit_id", permitId).in("file_id", ids)
   const b = unused.length ? await db.from("delivery_permit_files").update({ file_type: UNUSED_SIGNED_FILE }).eq("permit_id", permitId).in("file_id", unused) : { error: null }

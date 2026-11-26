@@ -10,7 +10,7 @@ import { FakeDb, type Row } from "./fake-db"
 import { call, useDb } from "./route-harness"
 import * as dpRoute from "../../app/api/delivery-permits/route"
 import * as filesRoute from "../../app/api/delivery-permits/files/route"
-import { chosenFileIds, sentSignedFiles, UNUSED_SIGNED_FILE } from "../dp-signed-choice"
+import { chosenFileIds, DB_FILE_TYPES, sentSignedFiles, UNUSED_SIGNED_FILE } from "../dp-signed-choice"
 import { signedPermitCopies } from "../eta/signed-permits"
 
 const src = (p: string) => readFileSync(join(process.env.REPO_ROOT || process.cwd(), p), "utf8")
@@ -121,4 +121,12 @@ test("C8 only the approver roles may cancel; the review window lists every sent 
   assert.match(m, /reviewFiles\.length\s*\?\s*reviewFiles/)
   assert.match(m, /onClick=\{\(\) => cancelPhoto\(file\.id\)\}/)
   assert.ok(!/files\?\.find\(\(f\) => f\.fileType === "SIGNED_PERMIT"\)/.test(m), "no longer only the first photo")
+})
+
+test("C9 the kept-but-not-sent label is one the database accepts (the cancel failed on the live site with a new label)", () => {
+  assert.ok((DB_FILE_TYPES as readonly string[]).includes(UNUSED_SIGNED_FILE))
+  assert.ok((DB_FILE_TYPES as readonly string[]).includes("SIGNED_PERMIT"))
+  for (const p of ["lib/dp-signed-choice.ts", "app/api/delivery-permits/upload/route.ts", "components/modules/delivery-permits-module.tsx", "lib/types.ts"]) {
+    assert.ok(!src(p).includes("SIGNED_PERMIT_UNUSED"), p)
+  }
 })
