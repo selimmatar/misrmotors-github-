@@ -197,19 +197,18 @@ test("R4. Missing Items: a fully delivered order says so; returns bring the quan
   assert.match(back.html, /<td class="n missing">3<\/td>/)
 })
 
-test("R5. Missing Items report has the separate Out for Delivery column with the right figures", async () => {
+test("R5. Missing Items report shows ordered, delivered (net, with returns), out for delivery and missing with the right figures", async () => {
   const db = world({ items: [{ so_item_id: 1, so_id: 1, product_id: 7, quantity: 10, unit_price: 10000, total: 100000, item_type: "stock", outsourced_name: null }] })
   db.tables.delivery_permits = [{ permit_id: 1, sales_order_id: 1, status: "OUT_FOR_DELIVERY" }, { permit_id: 2, sales_order_id: 1, status: "APPROVED" }, { permit_id: 3, sales_order_id: 1, status: "DRAFT" }]
   db.tables.delivery_permit_items = [{ permit_id: 1, product_id: 7, item_name_snapshot: "Pump A", quantity: 3 }, { permit_id: 2, product_id: 7, item_name_snapshot: "Pump A", quantity: 4 }, { permit_id: 3, product_id: 7, item_name_snapshot: "Pump A", quantity: 2 }]
   db.tables.product_returns = [{ return_id: 1, permit_id: "2", status: "pending_warehouse", created_at: "2026-10-02T00:00:00Z" }]
   db.tables.return_items = [{ return_item_id: 1, return_id: 1, product_id: 7, product_name: "Pump A", returned_quantity: 1 }]
   const html = (await get(missingRoute.GET, "?soId=1")).html
-  assert.match(html, /<th class="n">خرج للتسليم<\/th>/)
+  // Simplified layout (owner request 2026-11-26): delivered shows the net figure with the return in small text.
   const headers = [...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1])
-  assert.deepEqual(headers.slice(headers.indexOf("المطلوب"), headers.indexOf("المستلم") + 1), ["المطلوب", "خرج للتسليم", "المُسلَّم", "المرتجع", "صافي المُسلَّم", "الناقص", "في أوامر الشراء", "المستلم"])
-  // Ordered 10 | Out for Delivery 3 | Delivered 4 | Returned 1 | Net 3 | Missing 4
-  const cells = [...html.matchAll(/<td class="n( missing)?">(\d+)<\/td>/g)].map((m) => m[2]).slice(0, 8)
-  assert.deepEqual(cells, ["10", "3", "4", "1", "3", "4", "0", "0"])
+  assert.deepEqual(headers.slice(headers.indexOf("المطلوب"), headers.indexOf("الناقص") + 1), ["المطلوب", "تم تسليمه", "في الطريق", "الناقص"])
+  // Ordered 10 | Delivered net 3 (1 returned) | Out for Delivery 3 | Missing 4
+  assert.match(html, /<td class="n">10<\/td>\s*<td class="n">3<div class="sku">مرتجع 1<\/div><\/td>\s*<td class="n">3<\/td>\s*<td class="n missing">4<\/td>/)
 })
 
 test("R6. report labels a PO-price valuation and notes it under the cost total", async () => {

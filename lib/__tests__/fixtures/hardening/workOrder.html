@@ -18,7 +18,7 @@ tr { break-inside: avoid; page-break-inside: avoid; }
 .pm-rows th, .pm-rows td { inline-size: auto !important; min-inline-size: 0; }
 .pm-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block-end: 14px; }
 .pm-brand { display: flex; align-items: center; gap: 12px; }
-.pm-brand img { block-size: 76px; inline-size: auto; max-inline-size: 190px; object-fit: contain; }
+.pm-brand img { block-size: 110px; inline-size: auto; max-inline-size: 280px; object-fit: contain; }
 .pm-names { display: block; }
 .pm-name-ar { font-size: 17px; font-weight: 700; }
 .pm-name-en { font-size: 14px; color: #444; letter-spacing: 0.04em; }

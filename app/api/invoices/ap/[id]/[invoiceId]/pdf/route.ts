@@ -82,7 +82,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ invoice
   <title>AP Invoice ${escapeHtml(invoice.invoice_number)}</title>
   <style>
     ${PRINT_CSS}
-    .logo { max-height: 64px; max-width: 180px; object-fit: contain; }
+    .logo { max-height: 110px; max-width: 280px; object-fit: contain; }
     .badge { text-transform: uppercase; }
     .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-block: 14px 18px; padding-block-start: 10px; border-block-start: 1.5px solid #000; }
     .pm-info h3 { text-transform: uppercase; }

@@ -503,7 +503,7 @@ export function EditApprovedOrderDialog({ order, onOpenChange, onSaved }: EditAp
       flex-direction: column;
       align-items: center;
     }
-    .company-logo { width: 80px; height: 80px; object-fit: contain; margin-bottom: 10px; }
+    .company-logo { width: 110px; height: 110px; object-fit: contain; margin-bottom: 10px; }
     .company-name-ar { font-size: 18pt; font-weight: 700; margin-bottom: 3px; }
     .company-name-en { font-size: 14pt; font-weight: 600; margin-bottom: 8px; }
     .company-details { font-size: 10pt; line-height: 1.6; }

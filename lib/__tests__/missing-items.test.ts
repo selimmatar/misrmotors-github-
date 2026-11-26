@@ -5,7 +5,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { FakeDb, type Row } from "./fake-db"
 import { loadMissingItems, type MissingItemRow } from "../missing-items"
-import { procurementAr, renderMissingItemsHtml } from "../missing-items-html"
+import { nextStep, procurementAr, renderMissingItemsHtml } from "../missing-items-html"
 
 interface World {
   lines?: Row[]
@@ -396,9 +396,9 @@ test("S7. the report still lists stock-covered lines (Missing 0, Received N), sh
   assert.ok(report)
   const html = renderMissingItemsHtml(report, { hideCost: false, generatedAt: "now" })
   assert.match(html, /Pump/)
-  assert.match(html, /<span class="type-tag type-stock">محجوز<\/span>/)
+  assert.match(html, /<span class="step step-ok">محجوز في المخزن<\/span>/)
   assert.match(html, /<td class="n missing">0<\/td>/)
-  assert.match(html, /المستلم = استلام بضاعة، أو مخزون موجود في مخزننا/)
+  assert.match(html, /«جاهز في المخزن» يعني أن الكمية متوفرة لدينا/)
   assert.match(html, /تقرير الأصناف الناقصة/)
   assert.doesNotMatch(html, /Missing Items Report|Sales Order #|Unit Cost/)
   assert.doesNotMatch(html, /EGP 3,000\.00/) // 10 x 300 is covered by stock, so it is not a missing cost
@@ -410,4 +410,17 @@ test("missing items print: procurement status in Arabic", () => {
   assert.equal(procurementAr("On Hold 4/10 — Needs PO for 6"), "محجوز 4/10 — يحتاج أمر شراء لـ 6")
   assert.equal(procurementAr("Ordered 4/4 — PO-1 (4, approved) ⚠ received 10 > PO 4"), "تم الطلب 4/4 — PO-1 (4، معتمد) ⚠ المستلم 10 أكبر من أمر الشراء 4")
   assert.equal(procurementAr("Rejected PO — Needs Reorder (PO-2 (3, rejected))"), "أمر شراء مرفوض — يحتاج إعادة طلب (PO-2 (3، مرفوض))")
+})
+
+test("missing items print is simple (owner request 2026-11-27): summary boxes, 7 columns, a plain status per line", async () => {
+  const report = await loadMissingItems(db({ status: "accountant_approved", lines: [stockLine(1, 7, 10), outLine(2, "Gearbox", 2)], inventory: [inv(7, 10, 300)] }), 1)
+  assert.ok(report)
+  const html = renderMissingItemsHtml(report, { hideCost: true, generatedAt: "now" })
+  const head = html.match(/<thead>([\s\S]*?)<\/thead>/)![1]
+  assert.equal((head.match(/<th/g) || []).length, 7)
+  for (const label of ["أصناف لم تُسلَّم", "إجمالي الكمية الناقصة", "تحتاج أمر شراء", "جاهزة في المخزن"]) assert.match(html, new RegExp(label))
+  assert.match(html, /<span class="step step-act">يحتاج أمر شراء<\/span>/) // the Gearbox is not ordered
+  assert.doesNotMatch(html, /في أوامر الشراء<\/th>|خرج للتسليم/)
+  assert.deepEqual(nextStep({ missing: 2, inStock: 0, onHold: false, procurementStatus: "Ordered 2/2 — PO-1 (2, approved)" }), { label: "مطلوب من المورد", tone: "wait" })
+  assert.equal(nextStep({ missing: 2, inStock: 0, onHold: false, procurementStatus: "Rejected PO — Needs Reorder (PO-1)" }).tone, "act")
 })

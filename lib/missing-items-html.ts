@@ -36,10 +36,21 @@ export function procurementAr(status: string): string {
     .replace(/ ⚠ received (\d+) > PO (\d+)/, " ⚠ المستلم $1 أكبر من أمر الشراء $2")
 }
 
+/** The plain "where is it" label of a line (owner request 2026-11-27: a simpler report). The full purchasing detail
+ *  (PO numbers, quantities) is printed under it in small text when it adds something. */
+export function nextStep(r: { missing: number; inStock: number; onHold: boolean; procurementStatus: string }): { label: string; tone: "ok" | "wait" | "act" } {
+  const s = r.procurementStatus
+  if (r.missing <= 0 && r.inStock > 0) return { label: r.onHold ? "محجوز في المخزن" : "جاهز في المخزن", tone: "ok" }
+  if (/Needs PO|Needs Reorder/.test(s)) return { label: s.startsWith("Rejected") ? "أمر الشراء مرفوض — يحتاج إعادة طلب" : "يحتاج أمر شراء", tone: "act" }
+  if (s.startsWith("Ordered") || s.startsWith("Partially")) return { label: "مطلوب من المورد", tone: "wait" }
+  return { label: "من المخزن — لا يحتاج أمر شراء", tone: "ok" }
+}
+const PLAIN_STATUS = new Set(["Not Ordered — Needs PO", "In Stock — No PO Needed", "On Hold — In Stock", "Stock Item — No PO Needed", "Taken from stock — No PO Needed"])
+
 /** `hideCost` removes the Unit Cost column and the total value that depends on it. Nothing else changes. */
 export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideCost: boolean; generatedAt: string }): string {
   const { so, rows } = report
-  // every line still to deliver: truly missing, or covered by stock in our warehouse (Missing 0, counted under Received)
+  // every line still to deliver: truly missing, or covered by stock in our warehouse (Missing 0, ready in stock)
   const missing = rows.filter((r) => r.missing > 0 || r.inStock > 0)
   const hideCost = opts.hideCost
   // value of what is still missing, from the items that HAVE a cost; items without one are counted, never priced
@@ -47,31 +58,34 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
   const totalValue = costed.reduce((s, r) => s + r.missing * (r.unitCost as number), 0)
   const uncosted = missing.filter((r) => r.missing > 0).length - costed.length
   const atPoPrice = costed.filter((r) => r.costSource === "po_price").length
-
-  const badge = (status: string) =>
-    status.startsWith("Ordered") ? "badge-ordered" : status.startsWith("Partially") ? "badge-partial" : status.startsWith("Rejected") ? "badge-rejected" : status.startsWith("Stock") || status.startsWith("On Hold") || status.startsWith("In Stock") || status.startsWith("In stock") ? "badge-stock" : "badge-needs-po"
+  const steps = missing.map(nextStep)
+  const totalMissing = missing.reduce((s, r) => s + r.missing, 0)
+  const needPo = steps.filter((x) => x.tone === "act").length
+  const ready = missing.filter((r) => r.missing <= 0 && r.inStock > 0).length
 
   const body = missing
-    .map(
-      (r, i) => `
+    .map((r, i) => {
+      const step = steps[i]
+      const sub = [r.sku !== "-" ? `الكود: ${escapeHtml(r.sku)}` : "", r.supplierName && r.supplierName !== "-" ? `المورد: ${escapeHtml(r.supplierName)}` : ""].filter(Boolean).join(" · ")
+      const detail = [
+        PLAIN_STATUS.has(r.procurementStatus) ? "" : escapeHtml(procurementAr(r.procurementStatus)),
+        r.inProgress > 0 ? `${r.inProgress} على إذن تسليم لم يخرج بعد` : "",
+      ].filter(Boolean).join("<br>")
+      return `
         <tr>
-          <td>${i + 1}</td>
-          <td>${escapeHtml(r.name)}${r.sku !== "-" ? `<div class="sku">الكود: ${escapeHtml(r.sku)}</div>` : ""}</td>
-          <td><span class="type-tag ${r.isOutsourced ? "type-outsourced" : "type-stock"}">${r.isOutsourced ? "خارجي" : r.onHold ? "محجوز" : "مخزون"}</span></td>
-          <td>${escapeHtml(r.supplierName)}</td>
-          ${hideCost ? "" : `<td class="mi-cost">${r.unitCost === null ? "غير متاح" : money(r.unitCost)}${r.costSource === "po_price" ? '<div class="sku">سعر أمر الشراء</div>' : ""}</td>`}
+          <td class="n">${i + 1}</td>
+          <td class="item">${escapeHtml(r.name)}${r.isOutsourced ? ' <span class="type-tag">خارجي</span>' : ""}${sub ? `<div class="sku">${sub}</div>` : ""}</td>
           <td class="n">${r.ordered}</td>
-          <td class="n">${r.outForDelivery}</td>
-          <td class="n">${r.delivered}</td>
-          <td class="n">${r.returned}</td>
-          <td class="n">${r.netDelivered}</td>
+          <td class="n">${r.netDelivered}${r.returned > 0 ? `<div class="sku">مرتجع ${r.returned}</div>` : ""}</td>
+          <td class="n">${r.outForDelivery || "-"}</td>
           <td class="n missing">${r.missing}</td>
-          <td class="n">${r.poOrdered}</td>
-          <td class="n">${r.received}</td>
-          <td><span class="badge ${badge(r.procurementStatus)}">${escapeHtml(procurementAr(r.procurementStatus))}</span>${r.inProgress > 0 ? `<div class="sku">${r.inProgress} على إذن تسليم لم يخرج بعد</div>` : ""}</td>
-        </tr>`,
-    )
+          <td><span class="step step-${step.tone}">${step.label}</span>${detail ? `<div class="sku">${detail}</div>` : ""}</td>
+          ${hideCost ? "" : `<td class="mi-cost">${r.unitCost === null ? "غير متاح" : money(r.unitCost)}${r.costSource === "po_price" ? '<div class="sku">سعر أمر الشراء</div>' : ""}</td>`}
+        </tr>`
+    })
     .join("")
+
+  const box = (value: string | number, label: string, cls = "") => `<div class="mi-box ${cls}"><div class="v">${value}</div><div class="l">${label}</div></div>`
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -81,21 +95,32 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
   <title>الأصناف الناقصة — ${escapeHtml(so.so_number)}</title>
   <style>
     ${PRINT_CSS}
-    @page { size: A4 landscape; margin: 12mm; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    .mi-sub { font-size: 12px; color: #555; }
+    @page { size: A4; margin: 12mm; }
+    .container { max-width: 900px; margin: 0 auto; }
+    .mi-sub { font-size: 13px; color: #555; }
+    .mi-generated { font-size: 11px; color: #555; }
     .mi-cost { white-space: nowrap; }
-    .mi-generated { margin-block-start: 2px; font-size: 11px; color: #555; }
     .pm-fields .pm-label { display: inline; }
-    .pm-table { font-size: 11px; }
-    .pm-table th.n, .pm-table td.n { text-align: center; }
-    .pm-table td.missing { font-weight: 700; }
-    .sku { color: #555; font-size: 10px; }
-    .badge, .type-tag { font-size: 10px; font-weight: 600; }
-    .totals { text-align: end; font-size: 13px; margin-block-end: 12px; break-inside: avoid; }
+    .mi-boxes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-block: 14px; break-inside: avoid; }
+    .mi-box { border: 1px solid #999; padding: 8px; text-align: center; }
+    .mi-box .v { font-size: 22px; font-weight: 700; line-height: 1.2; }
+    .mi-box .l { font-size: 11px; color: #555; }
+    .mi-box.act .v { color: #b91c1c; }
+    .mi-box.ok .v { color: #15803d; }
+    .pm-table { font-size: 12px; }
+    .pm-table th.n, .pm-table td.n { text-align: center; white-space: nowrap; }
+    .pm-table td.item { text-align: start; }
+    .pm-table td.missing { font-weight: 700; font-size: 14px; }
+    .sku { color: #555; font-size: 10px; margin-block-start: 2px; }
+    .type-tag { font-size: 10px; border: 1px solid #999; padding: 0 4px; }
+    .step { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border: 1px solid; }
+    .step-act { color: #b91c1c; border-color: #b91c1c; }
+    .step-wait { color: #1d4ed8; border-color: #1d4ed8; }
+    .step-ok { color: #15803d; border-color: #15803d; }
+    .totals { text-align: end; font-size: 13px; margin-block: 12px; break-inside: avoid; }
     .totals .value { font-weight: 700; font-size: 16px; }
     .note { font-size: 11px; color: #555; }
-    .legend { font-size: 11px; color: #555; margin-block-end: 16px; }
+    .legend { font-size: 11px; color: #555; margin-block: 8px; }
     .empty-state { text-align: center; padding: 40px; border: 1px solid #ccc; color: #555; }
     .print-button { position: fixed; top: 14px; inset-inline-end: 14px; padding: 10px 18px; background: #1a56db; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; z-index: 1000; }
     @media screen { body { padding: 24px; } }
@@ -106,8 +131,7 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
   <button class="print-button no-print" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
   <div class="container">
     ${docTitle({ titleAr: `تقرير الأصناف الناقصة` })}
-    <div class="mi-sub">أصناف أمر البيع التي لم تُسلَّم للعميل بعد</div>
-    <div class="mi-generated">تاريخ الإصدار: ${escapeHtml(opts.generatedAt)}</div>
+    <div class="mi-sub">ما لم يُسلَّم بعد للعميل من أمر البيع، وأين وصل كل صنف</div>
     <div class="pm-info">
       <div class="pm-fields">
         <div class="pm-field"><span class="pm-label">رقم أمر البيع:</span> <span class="pm-value">${escapeHtml(so.so_number)}</span></div>
@@ -115,31 +139,36 @@ export function renderMissingItemsHtml(report: MissingItemsReport, opts: { hideC
         <div class="pm-field"><span class="pm-label">تاريخ الأمر:</span> <span class="pm-value">${date(so.order_date)}</span></div>
         <div class="pm-field"><span class="pm-label">تاريخ التسليم:</span> <span class="pm-value">${date(so.delivery_date)}</span></div>
         <div class="pm-field"><span class="pm-label">حالة الأمر:</span> <span class="pm-value">${escapeHtml(statusAr(so.status))}</span></div>
-        <div class="pm-field"><span class="pm-label">أذون التسليم الصادرة:</span> <span class="pm-value">${report.permitCount}</span></div>
       </div>
     </div>
     ${
       missing.length === 0
         ? `<div class="empty-state">✅ لا توجد أصناف ناقصة — تم تسليم كل أصناف هذا الأمر.</div>`
         : `
-    <div class="legend">المطلوب = كمية أمر البيع · خرج للتسليم = على أذون تسليم خرجت حالياً · المُسلَّم = على أذون مُسلَّمة أو معتمدة · المرتجع = مرتجعات مقبولة · الصافي = المُسلَّم − المرتجع · الناقص = المطلوب − الصافي − خرج للتسليم · في أوامر الشراء = أوامر شراء سارية · المستلم = استلام بضاعة، أو مخزون موجود في مخزننا</div>
+    <div class="mi-boxes">
+      ${box(missing.length, "أصناف لم تُسلَّم")}
+      ${box(totalMissing, "إجمالي الكمية الناقصة")}
+      ${box(needPo, "تحتاج أمر شراء", needPo > 0 ? "act" : "")}
+      ${box(ready, "جاهزة في المخزن", ready > 0 ? "ok" : "")}
+    </div>
     <table class="pm-table">
       <thead>
         <tr>
-          <th>#</th><th style="width:20%">الصنف</th><th>النوع</th><th>المورد</th>
+          <th class="n">#</th><th>الصنف</th><th class="n">المطلوب</th><th class="n">تم تسليمه</th><th class="n">في الطريق</th><th class="n">الناقص</th><th>الموقف</th>
           ${hideCost ? "" : "<th>تكلفة الوحدة</th>"}
-          <th class="n">المطلوب</th><th class="n">خرج للتسليم</th><th class="n">المُسلَّم</th><th class="n">المرتجع</th><th class="n">صافي المُسلَّم</th><th class="n">الناقص</th><th class="n">في أوامر الشراء</th><th class="n">المستلم</th><th style="width:20%">الشراء</th>
         </tr>
       </thead>
       <tbody>${body}
       </tbody>
     </table>
+    <div class="legend">الناقص = المطلوب − تم تسليمه − في الطريق. «جاهز في المخزن» يعني أن الكمية متوفرة لدينا وتنتظر إذن تسليم.</div>
     ${
       hideCost
         ? ""
         : `<div class="totals">إجمالي تكلفة الأصناف الناقصة: <span class="value">${money(totalValue)}</span>${atPoPrice > 0 ? `<div class="note">${atPoPrice} صنف محسوب بسعر أمر الشراء (سعر المورد، وليس التكلفة الفعلية)</div>` : ""}${uncosted > 0 ? `<div class="note">${uncosted} صنف بدون تكلفة غير محسوب</div>` : ""}</div>`
     }`
     }
+    <div class="mi-generated">تاريخ الإصدار: ${escapeHtml(opts.generatedAt)}</div>
   </div>
 ${PRINT_ROWS_SCRIPT}
 </body>

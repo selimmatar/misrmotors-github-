@@ -108,7 +108,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   .page { width: 128mm; min-height: 190mm; margin: 12px auto; padding: 3mm; display: flex; flex-direction: column; gap: 2.5mm; page-break-after: always; break-after: page; }
   header { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 2px solid #111; padding-bottom: 2.5mm; }
   .brand { display: flex; align-items: center; gap: 3mm; }
-  .logo { width: 17mm; height: 17mm; object-fit: contain; }
+  .logo { width: 25mm; height: 25mm; object-fit: contain; }
   .name { font-size: 17px; font-weight: 700; }
   .title { font-size: 12px; font-weight: 700; margin-top: 1mm; }
   .number { font-size: 20px; font-weight: 700; letter-spacing: 1px; direction: ltr; border: 2px solid #111; padding: 2px 8px; white-space: nowrap; }
