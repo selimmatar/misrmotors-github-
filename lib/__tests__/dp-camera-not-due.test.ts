@@ -45,13 +45,13 @@ test("C1. the picker: a camera input (accept image/*, capture environment) and a
 
 test("C2. used wherever shipping uploads the signed permit; the files go on to the reader and the confirmation", () => {
   const ship = read("components/modules/shipping-module.tsx")
-  assert.match(ship, /<SignedFilesPicker id=\{`signed-\$\{permit\.id\}`\} files=\{signedFiles\} onChange=\{setSignedFiles\}/)
+  assert.match(ship, /<SignedFilesPicker id=\{`signed-\$\{permit\.id\}`\}\s+files=\{signedFiles\}\s+onChange=\{setSignedFiles\}/)
   assert.ok(!/type="file"/.test(ship), "the old bare file input is gone")
-  assert.match(ship, /<NotReceivedDialog[\s\S]*?files=\{signedFiles\}/)
+  assert.match(ship, /<NotReceivedDialog[\s\S]*?files=\{filesToSend\}/)
   const widget = read("components/delivery-permit/signed-upload-widget.tsx")
   assert.match(widget, /<SignedFilesPicker /)
   assert.match(widget, /for \(const file of selectedFiles\)/)
-  assert.match(widget, /onUploadComplete\(lastUrl, files\)/)
+  assert.match(widget, /onUploadComplete\(lastUrl, files, sentIds\)/)
   const card = read("components/delivery-permit/delivery-permit-card.tsx")
   assert.match(card, /if \(files && files\.length > 0\) setCheckFiles\(files\)/)
   // the reader still shrinks every photo

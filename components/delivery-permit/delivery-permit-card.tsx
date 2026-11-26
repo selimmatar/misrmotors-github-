@@ -10,6 +10,7 @@ import { PermitStatusBadge } from "./permit-status-badge"
 import { SignedUploadWidget } from "./signed-upload-widget"
 import { ApproveRejectControls } from "./approve-reject-controls"
 import { SendBackToShippingButton } from "./send-back-button"
+import { sentSignedFiles } from "@/lib/dp-signed-choice"
 import { NotReceivedDialog, recordNotReceived, type ConfirmedLine } from "./not-received-dialog"
 import type { DeliveryPermit, UserRole } from "@/lib/types"
 import { Printer, Truck, Upload, FileText, ExternalLink, Package, CheckCircle } from "lucide-react"
@@ -27,6 +28,8 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
   const [isLoading, setIsLoading] = useState(false)
   // the signed upload waiting for the "not received" confirmation (lib/dp-not-received.ts)
   const [checkFiles, setCheckFiles] = useState<File[] | null>(null)
+  // the uploads the shipping user ticked to send (lib/dp-signed-choice.ts)
+  const [sentFileIds, setSentFileIds] = useState<string[] | null>(null)
 
   const updatePermitStatus = async (action: string, additionalData?: any): Promise<boolean> => {
     if (!permit) return false
@@ -76,7 +79,8 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
 
   const handleMarkReadyForPickup = () => updatePermitStatus("MARK_READY_FOR_PICKUP")
   const handleMarkOutForDelivery = () => updatePermitStatus("MARK_OUT_FOR_DELIVERY")
-  const handleMarkSubmittedSigned = () => updatePermitStatus("MARK_SUBMITTED_SIGNED")
+  const handleMarkSubmittedSigned = (ids?: string[] | null) =>
+    updatePermitStatus("MARK_SUBMITTED_SIGNED", ids && ids.length ? { signedFileIds: ids } : undefined)
   const handleApprove = () => updatePermitStatus("APPROVE")
   const handleReject = (reason: string) => updatePermitStatus("REJECT", { rejectionReason: reason })
   const handleSendBack = async (reason: string) => {
@@ -86,8 +90,9 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
   // confirmed lines as a return (the same return flow as "Return items").
   const handleConfirmSigned = async (lines: ConfirmedLine[]) => {
     if (!permit) return
-    const signed = await updatePermitStatus("MARK_SUBMITTED_SIGNED")
+    const signed = await handleMarkSubmittedSigned(sentFileIds)
     setCheckFiles(null)
+    setSentFileIds(null)
     if (!signed) return
     const recorded = await recordNotReceived(permit.id, lines, user?.name)
     if (!recorded.ok) alert(fill(t("dp-nr.returns-failed"), { error: recorded.error || "" }))
@@ -279,9 +284,10 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
           {canUploadSigned && permit.status === "OUT_FOR_DELIVERY" && (
             <SignedUploadWidget
               permitId={permit.id}
-              onUploadComplete={(_url, files) => {
+              onUploadComplete={(_url, files, ids) => {
+                setSentFileIds(ids || null)
                 if (files && files.length > 0) setCheckFiles(files)
-                else handleMarkSubmittedSigned()
+                else handleMarkSubmittedSigned(ids)
               }}
               existingFiles={permit.files}
             />
@@ -290,7 +296,10 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
             open={!!checkFiles}
             permitId={permit.id}
             files={checkFiles || []}
-            onCancel={() => setCheckFiles(null)}
+            onCancel={() => {
+              setCheckFiles(null)
+              setSentFileIds(null)
+            }}
             onConfirm={handleConfirmSigned}
           />
 
@@ -311,10 +320,10 @@ export function DeliveryPermitCard({ permit, userRole, onCreatePermit, onRefresh
           )}
 
           {/* View Signed Files - If any exist */}
-          {permit.files && permit.files.length > 0 && permit.status !== "OUT_FOR_DELIVERY" && (
+          {sentSignedFiles(permit.files).length > 0 && permit.status !== "OUT_FOR_DELIVERY" && (
             <div className="space-y-2">
               <p className="text-sm font-medium">{t("permit.signed-documents")}:</p>
-              {permit.files.map((file) => (
+              {sentSignedFiles(permit.files).map((file) => (
                 <a
                   key={file.id}
                   href={file.fileUrl}

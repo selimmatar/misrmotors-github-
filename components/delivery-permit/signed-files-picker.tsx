@@ -7,10 +7,13 @@
 //   "Upload file" -> the usual picker: photos or PDFs from the gallery / files (several at once).
 // Every file shows a thumbnail (a PDF icon for a PDF) with a remove "×". The caller does the rest as before (upload,
 // the "not received" reader and confirmation).
+// With onSkippedChange, each photo also has a "send" tick (owner request 2026-11-26): every photo is uploaded, but only
+// the ticked ones go to the approver and the invoice e-mail (lib/dp-signed-choice.ts).
 import type React from "react"
 import { useEffect, useMemo, useRef } from "react"
 import { Camera, FileText, Upload, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useI18n } from "@/lib/i18n-context"
 import { shrinkPhoto } from "@/lib/shrink-photo"
 
@@ -23,9 +26,12 @@ interface Props {
   files: File[]
   onChange: (files: File[]) => void
   disabled?: boolean
+  /** photos the user unticked: uploaded, not sent */
+  skipped?: Set<File>
+  onSkippedChange?: (skipped: Set<File>) => void
 }
 
-export function SignedFilesPicker({ id, files, onChange, disabled }: Props) {
+export function SignedFilesPicker({ id, files, onChange, disabled, skipped, onSkippedChange }: Props) {
   const { t } = useI18n()
   const cameraRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -57,6 +63,12 @@ export function SignedFilesPicker({ id, files, onChange, disabled }: Props) {
   }
 
   const remove = (index: number) => onChange(files.filter((_, i) => i !== index))
+  const toggle = (file: File, send: boolean) => {
+    const next = new Set(skipped)
+    if (send) next.delete(file)
+    else next.add(file)
+    onSkippedChange?.(next)
+  }
 
   return (
     <div className="space-y-3">
@@ -95,7 +107,10 @@ export function SignedFilesPicker({ id, files, onChange, disabled }: Props) {
       {files.length > 0 ? (
         <ul className="grid grid-cols-3 sm:grid-cols-4 gap-2" aria-label={t("permit.photos-to-upload")}>
           {files.map((f, i) => (
-            <li key={`${f.name}-${f.size}-${i}`} className="relative rounded-md border bg-muted/40 overflow-hidden aspect-square">
+            <li
+              key={`${f.name}-${f.size}-${i}`}
+              className={`relative rounded-md border bg-muted/40 overflow-hidden aspect-square ${skipped?.has(f) ? "opacity-50" : ""}`}
+            >
               {previews[i] ? (
                 <img src={previews[i]!} alt={`${t("permit.preview")} ${i + 1}`} className="w-full h-full object-cover" />
               ) : (
@@ -114,10 +129,25 @@ export function SignedFilesPicker({ id, files, onChange, disabled }: Props) {
               >
                 <X className="w-4 h-4" />
               </button>
+              {onSkippedChange && (
+                <label className="absolute bottom-1 start-1 flex items-center gap-1 rounded bg-black/60 text-white text-xs px-1.5 py-1">
+                  <Checkbox
+                    checked={!skipped?.has(f)}
+                    onCheckedChange={(v) => toggle(f, v === true)}
+                    disabled={disabled}
+                    aria-label={`${t("permit.send-photo")} ${i + 1}`}
+                    className="border-white"
+                  />
+                  {t("permit.send-photo")}
+                </label>
+              )}
             </li>
           ))}
         </ul>
-      ) : (
+      ) : null}
+      {files.length > 1 && onSkippedChange ? (
+        <p className="text-xs text-muted-foreground">{t("permit.send-photo-help")}</p>
+      ) : files.length > 0 ? null : (
         <p className="text-xs text-muted-foreground">{t("permit.photo-hint")}</p>
       )}
     </div>

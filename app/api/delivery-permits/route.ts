@@ -22,6 +22,7 @@ import { abortDeduction, deductStockForPermit, finishDeduction, reverseDeduction
 import { knownUserId } from "@/lib/po-history"
 import { asUuid } from "@/lib/idempotency"
 import { actorOr } from "@/lib/auth/actor"
+import { applySignedChoice, chosenFileIds, planSignedChoice } from "@/lib/dp-signed-choice"
 import { badNumberResponse, cleanManualNumber, insertWithNumber, nextDpBookNumber, numberTakenResponse } from "@/lib/doc-number"
 import { openCorrectionsByPermit } from "@/lib/eta/correction"
 import { sortLines } from "@/lib/line-order"
@@ -639,6 +640,13 @@ export async function PUT(request: NextRequest) {
         break
 
     case "MARK_SUBMITTED_SIGNED": {
+      // the photos the shipping user ticked to send (lib/dp-signed-choice.ts); checked before anything changes
+      const chosen = chosenFileIds(body.signedFileIds)
+      if (chosen === "bad") {
+        return NextResponse.json({ error: "Choose at least one signed photo to send.", errorAr: "اختر صورة موقّعة واحدة على الأقل للإرسال." }, { status: 400 })
+      }
+      const choice = chosen ? await planSignedChoice(supabase, Number.parseInt(permitId), chosen) : null
+      if (choice && !choice.ok) return NextResponse.json({ error: choice.error, errorAr: choice.errorAr }, { status: choice.status })
       // Owner rule, 2026-11-12: the customer signed, so the goods have left: the stock goes out NOW (approval then
       // only confirms it and never takes it twice). Same guarded deduction as approval used: a refusal changes nothing.
       const deduction = await deductStockForPermit(supabase, currentPermit)
@@ -647,6 +655,9 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json(body, { status: deduction.status })
       }
       if (deduction.state === "deducted") stockMoves = deduction.moves
+      if (chosen && choice?.ok && !(await applySignedChoice(supabase, Number.parseInt(permitId), chosen, choice.unused))) {
+        console.error("Delivery Permits PUT - the signed photo choice was not saved")
+      }
       newStatus = "SUBMITTED_SIGNED"
       updates.status = newStatus
       updates.submitted_signed_at = new Date().toISOString()

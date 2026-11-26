@@ -1,5 +1,6 @@
 "use client"
 
+import { sentSignedFiles } from "@/lib/dp-signed-choice"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n-context"
@@ -88,11 +89,11 @@ export function PermitPreviewDialog({ permit, open, onOpenChange }: PermitPrevie
           )}
 
           {/* Files */}
-          {permit.files && permit.files.length > 0 && (
+          {sentSignedFiles(permit.files).length > 0 && (
             <div>
               <p className="text-sm font-medium mb-2">{t("permit.signed-documents")}</p>
               <div className="space-y-2">
-                {permit.files.map((file) => (
+                {sentSignedFiles(permit.files).map((file) => (
                   <div key={file.id} className="flex items-center justify-between p-3 border rounded-md bg-muted/50">
                     <div className="flex items-center gap-2">
                       <FileText className="h-4 w-4 text-muted-foreground" />

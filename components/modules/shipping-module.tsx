@@ -48,6 +48,9 @@ export function ShippingModule() {
   const [uploadingFor, setUploadingFor] = useState<string | null>(null)
   // the signed permit photo(s) / PDF; read for the "not received" boxes before the upload is completed
   const [signedFiles, setSignedFiles] = useState<File[]>([])
+  // photos the user unticked: uploaded and kept, not sent for approval (lib/dp-signed-choice.ts)
+  const [skippedFiles, setSkippedFiles] = useState<Set<File>>(new Set())
+  const filesToSend = signedFiles.filter((f) => !skippedFiles.has(f))
   const [checkingPermit, setCheckingPermit] = useState<DeliveryPermit | null>(null)
   const [uploading, setUploading] = useState(false)
   const [selectedCouriers, setSelectedCouriers] = useState<Record<string, string>>({})
@@ -184,6 +187,10 @@ export function ShippingModule() {
       alert(t("shipping.select-file"))
       return
     }
+    if (filesToSend.length === 0) {
+      alert(t("permit.choose-one-photo"))
+      return
+    }
     setCheckingPermit(permit)
   }
 
@@ -196,11 +203,13 @@ export function ShippingModule() {
 
     setUploading(true)
     try {
+      const sentIds: string[] = []
       for (const file of signedFiles) {
         const formData = new FormData()
         formData.append("file", file)
         formData.append("permitId", permit.id)
         formData.append("fileType", "SIGNED_PERMIT")
+        formData.append("chosen", skippedFiles.has(file) ? "0" : "1")
 
         const uploadResponse = await fetch("/api/delivery-permits/upload", {
           method: "POST",
@@ -210,6 +219,8 @@ export function ShippingModule() {
         if (!uploadResponse.ok) {
           throw new Error("Upload failed")
         }
+        const uploaded = await uploadResponse.json().catch(() => ({}))
+        if (!skippedFiles.has(file) && uploaded.id) sentIds.push(String(uploaded.id))
       }
 
       const response = await fetch("/api/delivery-permits", {
@@ -219,11 +230,13 @@ export function ShippingModule() {
           permitId: permit.id,
           action: "MARK_SUBMITTED_SIGNED",
           userId: user?.id,
+          ...(sentIds.length ? { signedFileIds: sentIds } : {}),
         }),
       })
 
       if (response.ok) {
         setSignedFiles([])
+        setSkippedFiles(new Set())
         setUploadingFor(null)
         setCheckingPermit(null)
         const recorded = await recordNotReceived(permit.id, lines, user?.name)
@@ -641,13 +654,18 @@ export function ShippingModule() {
                           <div>
                             <Label htmlFor={`signed-${permit.id}-camera`}>{t("shipping.upload-signed-permit")}</Label>
                             <div className="mt-1">
-                              <SignedFilesPicker id={`signed-${permit.id}`} files={signedFiles} onChange={setSignedFiles} disabled={uploading} />
+                              <SignedFilesPicker id={`signed-${permit.id}`} files={signedFiles}
+                                onChange={setSignedFiles}
+                                disabled={uploading}
+                                skipped={skippedFiles}
+                                onSkippedChange={setSkippedFiles}
+                              />
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button
                               onClick={() => startSignedCheck(permit)}
-                              disabled={signedFiles.length === 0 || uploading}
+                              disabled={filesToSend.length === 0 || uploading}
                               className="flex-1"
                             >
                               <CheckCircle className="w-4 h-4 me-2" />
@@ -658,6 +676,7 @@ export function ShippingModule() {
                               onClick={() => {
                                 setUploadingFor(null)
                                 setSignedFiles([])
+                                setSkippedFiles(new Set())
                               }}
                             >
                               {t("action.cancel")}
@@ -814,7 +833,7 @@ export function ShippingModule() {
       <NotReceivedDialog
         open={!!checkingPermit}
         permitId={checkingPermit?.id || ""}
-        files={signedFiles}
+        files={filesToSend}
         onCancel={() => setCheckingPermit(null)}
         onConfirm={async (lines) => {
           if (checkingPermit) await handleUploadSigned(checkingPermit, lines)

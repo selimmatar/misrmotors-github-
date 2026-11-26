@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { withRetry } from "@/lib/supabase/rate-limit-handler"
 import { checkUpload } from "@/lib/upload-allowlist"
 import { actorOr } from "@/lib/auth/actor"
+import { SIGNED_FILE, UNUSED_SIGNED_FILE } from "@/lib/dp-signed-choice"
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,8 @@ export async function POST(request: NextRequest) {
     const permitId = formData.get("permitId") as string
     const userId = actorOr(request, formData.get("userId") as string)
     const notes = formData.get("notes") as string
+    // a photo the shipping user did not tick is kept, but not sent for approval (lib/dp-signed-choice.ts)
+    const fileType = formData.get("chosen") === "0" ? UNUSED_SIGNED_FILE : SIGNED_FILE
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
@@ -36,7 +39,7 @@ export async function POST(request: NextRequest) {
         .from("delivery_permit_files")
         .insert({
           permit_id: Number.parseInt(permitId),
-          file_type: "SIGNED_PERMIT",
+          file_type: fileType,
           file_url: blob.url,
           file_name: file.name,
           uploaded_by: userId ? Number.parseInt(userId) : null,

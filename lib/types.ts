@@ -536,7 +536,7 @@ export interface DeliveryPermitItem {
 export interface DeliveryPermitFile {
   id: string
   permitId: string
-  fileType: "SIGNED_PERMIT" | "OTHER"
+  fileType: "SIGNED_PERMIT" | "SIGNED_PERMIT_UNUSED" | "OTHER"
   fileUrl: string
   fileName?: string
   uploadedBy?: number
