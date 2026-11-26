@@ -13,7 +13,7 @@ import { etaSendDefaults, followUpQuietly, type SendDeps } from "../eta/send"
 import { resetPrintoutGuard } from "../eta/after-send"
 import type { EtaPortal } from "../eta/portal"
 import {
-  MAX_ATTACHMENT_BYTES, buildInvoiceEmail, emailConfig, emailList, invoiceEmailDefaults, invoiceEmailView,
+  MAX_ATTACHMENT_BYTES, buildInvoiceEmail, emailConfig, emailList, invoiceEmailDefaults, invoiceEmailView, invoiceSignedFiles,
   sendInvoiceEmail, type EmailDeps,
 } from "../eta/invoice-email"
 import { DOC_LINK_DAYS, signDocLink, verifyDocLink } from "../doc-links"
@@ -753,4 +753,37 @@ test("M17. the invoice / sales order PDF could not be made, or does not fit: tha
   assert.deepEqual(fileParts(m2).map((a) => a.filename), ["invoice-INV-1001.pdf"])
   assert.ok(m2.text.includes("View and print the invoice") && m2.text.includes("Sales order SO-1:"))
   assert.ok(m2.attachments!.reduce((n, a) => n + a.content.length, 0) <= MAX_ATTACHMENT_BYTES)
+})
+
+test("M18. several signed uploads on a permit: the person picks which go; the rest stay out of the e-mail", async () => {
+  const blob = (n: string) => `https://abc.public.blob.vercel-storage.com/delivery-permits/${n}`
+  const files: Record<string, Buffer> = { [blob("1/a.pdf")]: Buffer.from("%PDF-1.7 A"), [blob("1/b.pdf")]: Buffer.from("%PDF-1.7 B"), [blob("1/c.pdf")]: Buffer.from("%PDF-1.7 C") }
+  const fetchFile = async (url: string) => ({ bytes: files[url], type: "application/pdf" })
+  const db = emailDb({ status: "valid" })
+  db.tables.delivery_permit_files = [
+    { file_id: 11, permit_id: 1, file_type: "SIGNED_PERMIT", file_url: blob("1/a.pdf"), file_name: "a.pdf", uploaded_at: "2026-11-24T10:00:00Z" },
+    { file_id: 12, permit_id: 1, file_type: "SIGNED_PERMIT", file_url: blob("1/b.pdf"), file_name: "b.pdf", uploaded_at: "2026-11-26T10:00:00Z" },
+    { file_id: 13, permit_id: 1, file_type: "SIGNED_PERMIT", file_url: blob("1/c.pdf"), file_name: "c.pdf", uploaded_at: "2026-11-26T11:00:00Z" },
+    { file_id: 14, permit_id: 2, file_type: "OTHER", file_url: blob("2/x.pdf"), file_name: "x.pdf" },
+  ]
+  // what the window lists: only signed uploads, per permit, oldest first
+  const listed = await invoiceSignedFiles(db, 1)
+  assert.deepEqual(listed.map((p) => [p.permitNo, p.files.map((f) => f.fileId)]), [["DP-1", [11, 12, 13]]])
+  const send = async (signedFileIds?: number[]) => {
+    const mail = fakeTransport()
+    resetPrintoutGuard()
+    const r = await sendInvoiceEmail(db, 1, { trigger: "manual", ...(signedFileIds ? { signedFileIds } : {}) }, { ...portalFake().deps, env: ENV, transport: mail.transport, fetchFile })
+    assert.equal(r.status, "sent")
+    return fileParts(mail.sent[0]).filter((a) => a.filename.startsWith("signed-")).map((a) => a.content.toString())
+  }
+  assert.deepEqual(await send(), ["%PDF-1.7 A", "%PDF-1.7 B", "%PDF-1.7 C"], "nothing chosen: all, as before")
+  assert.deepEqual(await send([13]), ["%PDF-1.7 C"])
+  assert.deepEqual(await send([12, 13, 999]), ["%PDF-1.7 B", "%PDF-1.7 C"], "an id not of this invoice is ignored")
+  assert.deepEqual(await send([]), [], "none ticked: sent without the signed copy")
+  // the route: GET lists, POST passes the choice, a bad list is refused
+  useDb(db)
+  const g = await withDefaults({ env: ENV }, {}, () => emailRoute.GET(rq("GET", "/api/eta/invoice-email?invoiceId=1&files=1")))
+  assert.deepEqual((await g.json()).permits[0].files.map((f: any) => f.fileId), [11, 12, 13])
+  const bad = await withDefaults({ env: ENV }, {}, () => emailRoute.POST(rq("POST", "/api/eta/invoice-email", { invoiceId: 1, signedFileIds: ["x"] })))
+  assert.equal(bad.status, 400)
 })

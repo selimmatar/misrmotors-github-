@@ -325,7 +325,7 @@ async function emailFacts(db: Db, invoiceId: number, doc: any) {
 export async function sendInvoiceEmail(
   db: Db,
   invoiceId: number,
-  opts: { trigger: "manual"; environment?: EtaEnv; userId?: number | null; doc?: any },
+  opts: { trigger: "manual"; environment?: EtaEnv; userId?: number | null; doc?: any; signedFileIds?: number[] },
   deps: EmailDeps = {},
 ): Promise<EmailOutcome> {
   if (opts.trigger !== "manual") throw new Error("Invoice e-mails are sent by hand only")
@@ -398,7 +398,7 @@ export async function sendInvoiceEmail(
       const id = Number(o.so_id)
       orderPdfs.push({ number: text(o.so_number) || `#${o.so_id}`, id, pdf: await printPdf("sales-order", id) })
     }
-    const copies = fitAttachments(await signedPermitCopies(db, facts.permits, d.fetchFile || defaultFetchFile), room)
+    const copies = fitAttachments(await signedPermitCopies(db, facts.permits, d.fetchFile || defaultFetchFile, opts.signedFileIds), room)
     const copyOf = (permitId: number) => copies.find((c) => c.permitId === permitId)
     const content = buildInvoiceEmail({
       customerName: facts.customerName,
@@ -445,6 +445,39 @@ export async function sendInvoiceEmail(
     await finish({ status: "failed", error }).catch(() => undefined)
     return { status: "failed", error, logId }
   }
+}
+
+// ---- choosing which signed photos go (owner request 2026-11-26) ----
+
+export interface InvoiceSignedFiles {
+  permitId: number
+  permitNo: string
+  files: { fileId: number; name: string; url: string; uploadedAt: string | null }[]
+}
+
+/** The signed delivery-permit uploads of an invoice's permits, oldest first, so the person can choose before Send. */
+export async function invoiceSignedFiles(db: Db, invoiceId: number): Promise<InvoiceSignedFiles[]> {
+  const links = must(await db.from("invoice_delivery_permits").select("permit_id").eq("invoice_id", invoiceId), "load invoice links") as any[]
+  const ids = [...new Set(links.map((l) => Number(l.permit_id)).filter((n) => Number.isSafeInteger(n) && n > 0))]
+  if (!ids.length) return []
+  const permits = must(await db.from("delivery_permits").select("permit_id, permit_no").in("permit_id", ids), "load delivery permits") as any[]
+  const r = await db.from("delivery_permit_files").select("file_id, permit_id, file_type, file_url, file_name, uploaded_at").in("permit_id", ids)
+  if (r.error) {
+    if (isMissingRelation(r.error)) return []
+    throw new Error(`load signed files: ${r.error.message || r.error}`)
+  }
+  const files = (r.data || []).filter((f: any) => String(f.file_type || "").toUpperCase() === "SIGNED_PERMIT" && /^https:\/\//i.test(String(f.file_url || "")))
+  return [...permits]
+    .sort((a, b) => Number(a.permit_id) - Number(b.permit_id))
+    .map((p) => ({
+      permitId: Number(p.permit_id),
+      permitNo: text(p.permit_no) || `#${p.permit_id}`,
+      files: files
+        .filter((f: any) => Number(f.permit_id) === Number(p.permit_id))
+        .sort((a: any, b: any) => Number(a.file_id) - Number(b.file_id))
+        .map((f: any) => ({ fileId: Number(f.file_id), name: text(f.file_name) || `file-${f.file_id}`, url: String(f.file_url), uploadedAt: f.uploaded_at ? String(f.uploaded_at) : null })),
+    }))
+    .filter((p) => p.files.length)
 }
 
 // ---- what the invoice window shows ----

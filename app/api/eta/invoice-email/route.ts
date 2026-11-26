@@ -5,7 +5,7 @@ import { knownUserId } from "@/lib/po-history"
 import { parsePositiveId } from "@/lib/parse-id"
 import { readEtaSettings } from "@/lib/eta/store"
 import { etaEnvironment } from "@/lib/eta/send"
-import { invoiceEmailView, sendInvoiceEmail } from "@/lib/eta/invoice-email"
+import { invoiceEmailView, invoiceSignedFiles, sendInvoiceEmail } from "@/lib/eta/invoice-email"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 120
@@ -14,10 +14,29 @@ export const maxDuration = 120
 // GET ?invoiceId=N: what the invoice shows (sent to / failed / no customer e-mail / not set up / database update needed).
 // POST { invoiceId }: "Send by e-mail again" - sends the newest valid invoice document of the selected portal now, and
 // logs it (trigger "manual"). Answers { status, email } (200 when sent; 409 / 502 with the reason otherwise).
+// GET ?invoiceId=N&files=1: the signed delivery-permit uploads, to choose which go when a permit has several.
+// POST may carry signedFileIds: only those uploads are attached (omitted: all of them).
 export async function GET(request: Request) {
-  const invoiceId = parsePositiveId(new URL(request.url).searchParams.get("invoiceId"))
+  const params = new URL(request.url).searchParams
+  const invoiceId = parsePositiveId(params.get("invoiceId"))
   if (invoiceId === null) return NextResponse.json({ error: "invoiceId is required" }, { status: 400 })
+  if (params.get("files") === "1") {
+    try {
+      return NextResponse.json({ permits: await invoiceSignedFiles(createAdminClient(), invoiceId) })
+    } catch (error: any) {
+      console.error("Error loading the signed permit files:", error)
+      return NextResponse.json({ error: "Could not load the signed delivery permits" }, { status: 500 })
+    }
+  }
   return NextResponse.json(await invoiceEmailView(createAdminClient(), invoiceId))
+}
+
+/** The chosen uploads: a list of positive ids (at most 200); undefined when not given, null when not valid. */
+function fileIds(raw: unknown): number[] | undefined | null {
+  if (raw === undefined || raw === null) return undefined
+  if (!Array.isArray(raw) || raw.length > 200) return null
+  const ids = raw.map((v) => parsePositiveId(String(v)))
+  return ids.every((n): n is number => n !== null) ? [...new Set(ids)] : null
 }
 
 const ANSWERS: Record<string, { status: number; error: string; errorAr: string }> = {
@@ -33,10 +52,12 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     const invoiceId = parsePositiveId(body && typeof body === "object" && (body as any).invoiceId != null ? String((body as any).invoiceId) : null)
     if (invoiceId === null) return NextResponse.json({ error: "invoiceId is required" }, { status: 400 })
+    const signedFileIds = fileIds((body as any).signedFileIds)
+    if (signedFileIds === null) return NextResponse.json({ error: "signedFileIds must be a list of file ids" }, { status: 400 })
     const db = createAdminClient()
     const environment = etaEnvironment(await readEtaSettings(db))
     const userId = await knownUserId(db, actorUserId(request))
-    const result = await sendInvoiceEmail(db, invoiceId, { trigger: "manual", environment, userId })
+    const result = await sendInvoiceEmail(db, invoiceId, { trigger: "manual", environment, userId, ...(signedFileIds ? { signedFileIds } : {}) })
     const email = await invoiceEmailView(db, invoiceId)
     if (result.status === "sent") return NextResponse.json({ status: "sent", to: result.to, email })
     if (result.status === "failed")

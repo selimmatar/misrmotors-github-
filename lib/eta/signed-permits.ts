@@ -67,6 +67,8 @@ export async function signedPermitCopies(
   db: Db,
   permits: { permit_id: number; permit_no?: string | null }[],
   fetchFile: FetchFile = defaultFetchFile,
+  /** only these uploaded files (the person's choice when a permit has several; owner request 2026-11-26); omitted: all */
+  onlyFileIds?: number[],
 ): Promise<SignedCopy[]> {
   const ids = permits.map((p) => Number(p.permit_id))
   let files: any[] = []
@@ -74,6 +76,10 @@ export async function signedPermitCopies(
     const r = await db.from("delivery_permit_files").select("file_id, permit_id, file_type, file_url, file_name, uploaded_at").in("permit_id", ids)
     if (r.error && !isMissingRelation(r.error)) console.error(`[email] signed permit files: ${r.error.message || r.error}`)
     files = ((r.error ? [] : r.data) || []).filter((f: any) => String(f.file_type || "").toUpperCase() === "SIGNED_PERMIT" && /^https:\/\//i.test(String(f.file_url || "")))
+    if (onlyFileIds) {
+      const keep = new Set(onlyFileIds.map(Number))
+      files = files.filter((f: any) => keep.has(Number(f.file_id)))
+    }
   }
   const out: SignedCopy[] = []
   for (const p of permits) {

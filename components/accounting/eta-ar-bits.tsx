@@ -3,8 +3,11 @@
 // Receivables list helpers for the e-invoice (spec §9): the state badge on each row, "Send all ready", and the
 // "Replaced by / Replaces" links of a corrected invoice.
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Mail, Send } from "lucide-react"
+import { FileText, Loader2, Mail, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import type { InvoiceSignedFiles } from "@/lib/eta/invoice-email"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n-context"
 import { fill } from "@/lib/i18n-format"
@@ -80,15 +83,25 @@ export function EmailedBadge() {
   )
 }
 
-/** "Send by e-mail" from the invoice's ⋯ menu: e-mails the valid e-invoice to the customer now (logged as manual). */
+/**
+ * "Send by e-mail" from the invoice's ⋯ menu: e-mails the valid e-invoice to the customer now (logged as manual).
+ * When a delivery permit has more than one signed upload, a window first asks which of them go (owner request
+ * 2026-11-26); render `picker` once in the page.
+ */
 export function useSendInvoiceEmail(onDone: () => void) {
   const { t, language } = useI18n()
   const { toast } = useToast()
-  return useCallback(
-    async (invoiceId: string | number) => {
+  const [choice, setChoice] = useState<{ invoiceId: number; permits: InvoiceSignedFiles[]; chosen: Set<number> } | null>(null)
+
+  const post = useCallback(
+    async (invoiceId: number, signedFileIds?: number[]) => {
       toast({ title: t("eta.email-sending") })
       try {
-        const res = await fetch("/api/eta/invoice-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ invoiceId: Number(invoiceId) }) })
+        const res = await fetch("/api/eta/invoice-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invoiceId, ...(signedFileIds ? { signedFileIds } : {}) }),
+        })
         if (!res.ok) throw new Error(await readApiError(res, t("message.error"), language, t))
         toast({ title: t("eta.email-sent-now") })
       } catch (e) {
@@ -99,6 +112,92 @@ export function useSendInvoiceEmail(onDone: () => void) {
     },
     [t, language, toast, onDone],
   )
+
+  const send = useCallback(
+    async (invoiceId: string | number) => {
+      const id = Number(invoiceId)
+      let permits: InvoiceSignedFiles[] = []
+      try {
+        const res = await fetch(`/api/eta/invoice-email?invoiceId=${id}&files=1`)
+        if (res.ok) permits = (await res.json()).permits || []
+      } catch {
+        permits = []
+      }
+      // one upload (or none) per permit: nothing to choose, send as before
+      if (!permits.some((p) => p.files.length > 1)) return post(id)
+      setChoice({ invoiceId: id, permits, chosen: new Set(permits.flatMap((p) => p.files.map((f) => f.fileId))) })
+    },
+    [post],
+  )
+
+  const toggle = (fileId: number, on: boolean) =>
+    setChoice((c) => {
+      if (!c) return c
+      const chosen = new Set(c.chosen)
+      if (on) chosen.add(fileId)
+      else chosen.delete(fileId)
+      return { ...c, chosen }
+    })
+
+  const picker = (
+    <Dialog open={!!choice} onOpenChange={(open) => !open && setChoice(null)}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t("eta.email-pick-title")}</DialogTitle>
+          <DialogDescription>{t("eta.email-pick-help")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {choice?.permits.map((p) => (
+            <div key={p.permitId} className="space-y-2">
+              <div className="font-medium text-sm">{p.permitNo}</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {p.files.map((f) => {
+                  const on = choice.chosen.has(f.fileId)
+                  const isPdf = /\.pdf$/i.test(f.name) || /\.pdf($|\?)/i.test(f.url)
+                  return (
+                    <label
+                      key={f.fileId}
+                      className={`relative flex flex-col gap-1 rounded-md border p-1 cursor-pointer ${on ? "border-primary ring-2 ring-primary/40" : "opacity-60"}`}
+                    >
+                      <Checkbox aria-label={f.name} className="absolute top-2 start-2 bg-background" checked={on} onCheckedChange={(v) => toggle(f.fileId, v === true)} />
+                      {isPdf ? (
+                        <div className="h-24 flex items-center justify-center bg-muted rounded"><FileText className="w-8 h-8 text-muted-foreground" /></div>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={f.url} alt={f.name} loading="lazy" className="h-24 w-full object-cover rounded" />
+                      )}
+                      <span className="text-xs truncate" dir="ltr">{f.name}</span>
+                      {f.uploadedAt && <span className="text-[11px] text-muted-foreground">{new Date(f.uploadedAt).toLocaleDateString("en-GB")}</span>}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+          {choice && choice.permits.some((p) => !p.files.some((f) => choice.chosen.has(f.fileId))) && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">{t("eta.email-pick-none")}</p>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setChoice(null)}>{t("button.cancel")}</Button>
+          <Button
+            onClick={() => {
+              if (!choice) return
+              const ids = [...choice.chosen]
+              const id = choice.invoiceId
+              setChoice(null)
+              void post(id, ids)
+            }}
+          >
+            <Mail className="w-4 h-4 me-2" />
+            {t("eta.email-send")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  return { send, picker }
 }
 
 /** "Send all ready": queues the given (not yet sent) invoices; the server refuses the ones that are not ready. */
