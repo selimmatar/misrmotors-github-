@@ -181,7 +181,7 @@ test("PT-H2. every printable repeats the company header on each page", () => {
 
 test("PT-H2. the delivery permit's received-quantity box is big enough to write in; logos are bigger on every printable", () => {
   const dp = fs.readFileSync(path.join(REPO, "app/api/delivery-permits/pdf/route.ts"), "utf8")
-  assert.match(dp, /\.pm-recv \{ display: inline-block; inline-size: 78px; block-size: 34px;/)
+  assert.match(dp, /\.pm-recv \{ display: inline-block; inline-size: 52px; block-size: 40px;/)
   for (const f of ["app/api/invoices/ap/[id]/[invoiceId]/pdf/route.ts", "app/api/invoices/ar/[id]/[invoiceId]/pdf/route.ts"]) {
     assert.match(fs.readFileSync(path.join(REPO, f), "utf8"), /\.logo \{ max-height: 110px;/, f)
   }

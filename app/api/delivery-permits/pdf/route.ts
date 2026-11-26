@@ -203,9 +203,9 @@ export async function GET(request: NextRequest) {
     ${PRINT_CSS}
     .pm-table td.description { text-align: start; }
     .pm-sign { font-size: 13px; color: #000; }
-    .pm-table th.pm-nr, .pm-table td.pm-nr { text-align: center; }
+    .pm-table th.pm-nr, .pm-table td.pm-nr { text-align: center; padding-inline: 6px; }
     .pm-tick { display: inline-block; inline-size: 16px; block-size: 16px; border: 1.5px solid #000; border-radius: 2px; }
-    .pm-recv { display: inline-block; inline-size: 78px; block-size: 34px; border: 1.5px solid #000; border-radius: 2px; }${anyReturned ? `
+    .pm-recv { display: inline-block; inline-size: 52px; block-size: 40px; border: 1.5px solid #000; border-radius: 2px; }${anyReturned ? `
     .pm-nd { color: #b91c1c; font-weight: 700; font-size: 12px; }
     .pm-total td { font-weight: 700; border-top: 2px solid #000; }` : ""}
     .print-button { position: fixed; top: 10px; left: 10px; padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; z-index: 1000; }
