@@ -652,3 +652,19 @@ test("RX3. update the customer's order: the old line goes down by what was excha
   assert.equal(all.body.orderLine.updated, true, JSON.stringify(all.body.orderLine))
   assert.deepEqual(db.tables.sales_order_items.map((l: Row) => [l.outsourced_name ?? l.product_id, l.quantity, l.unit_price]), [["Pump B", 2, 50000]], "no selling price given: the old one is used")
 })
+
+test("X7b. stock a customer sent back (returned stock) can be handed back to the supplier; normal stock goes first", async () => {
+  const db = mk({
+    purchase_orders: [po({ status: "received", total: 1000, tax_amount: null })],
+    purchase_order_items: [line({ quantity: 10, unit_price: 100, total: 1000 })],
+    inventory: [
+      { inventory_id: 1, product_id: 5, warehouse_id: 3, quantity: 2, is_returned: true },
+      { inventory_id: 2, product_id: 5, warehouse_id: 3, quantity: 1, is_returned: false },
+    ],
+    inventory_transactions: [],
+  })
+  receive(db, 7, 10)
+  const ok = await exchange({ exchanges: [{ fromItemId: "7", quantity: 2, handedBackFrom: "3", to: { name: "Pump v2", quantity: 2, unitPrice: 100 } }] })
+  assert.equal(ok.status, 200, JSON.stringify(ok.body))
+  assert.deepEqual(db.tables.inventory.map((r) => r.quantity), [1, 0], "normal stock first, then returned")
+})

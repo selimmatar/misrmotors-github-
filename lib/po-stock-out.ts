@@ -9,12 +9,15 @@ export const lineName = (l: any) => l.outsourced_name || l.item_name_snapshot ||
 
 /** Takes `qty` of the line out of the warehouse; the moves are added to `moves`. Returns the quantity found when short. */
 export async function takeLineFromStock(db: Db, line: any, warehouseId: number, qty: number, moves: StockMove[]): Promise<{ ok: true } | { ok: false; found: number }> {
-  let query = db.from("inventory").select("inventory_id, quantity").eq("warehouse_id", warehouseId).eq("is_returned", false)
+  // Returned stock counts too (owner report 2026-11-27: a customer sent the item back to the showroom and the exchange
+  // with the supplier found 0). Normal stock is taken first, then returned stock.
+  let query = db.from("inventory").select("inventory_id, quantity, is_returned").eq("warehouse_id", warehouseId)
   query = line.product_id ? query.eq("product_id", line.product_id) : query.eq("is_outsourced", true).eq("outsourced_name", line.outsourced_name || line.item_name_snapshot || "")
   const { data: rows, error } = await query.order("inventory_id", { ascending: true })
   if (error) throw error
+  const ordered = [...(rows || [])].sort((a: any, b: any) => Number(Boolean(a.is_returned)) - Number(Boolean(b.is_returned)))
   let need = qty
-  for (const s of rows || []) {
+  for (const s of ordered) {
     if (need <= 0) break
     const take = Math.min(need, Number(s.quantity) || 0)
     if (take <= 0) continue
