@@ -287,7 +287,10 @@ export function buildMissingItems(input: MissingItemsInput): MissingItemRow[] {
     else if (activePoLines.length > 0) {
       const cover = poOrdered >= ordered ? "Ordered" : "Partially ordered"
       // the POs cover less than the customer ordered (e.g. items returned to the supplier): the rest still needs a PO
-      const short = Math.round((ordered - poOrdered) * 1000) / 1000
+      // ...or what the POs brought was already delivered and the customer sent it back (owner report 2026-11-27): those
+      // POs no longer cover the missing quantity, so it needs a new PO. Still covered = PO qty not yet sent out.
+      const stillCovered = Math.max(0, poOrdered - deliveredQty - outQty)
+      const short = Math.round(Math.max(ordered - poOrdered, toDeliver - inStock - stillCovered, 0) * 1000) / 1000
       const needs = short > 0 ? ` — Needs PO for ${short}` : ""
       procurementStatus = `${cover} ${poOrdered}/${ordered}${needs} — ${activePoLines.map(label).join(", ")}`
     } else if (rejectedPoLines.length > 0) procurementStatus = `Rejected PO — Needs Reorder (${rejectedPoLines.map(label).join(", ")})`

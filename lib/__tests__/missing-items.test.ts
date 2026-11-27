@@ -424,3 +424,18 @@ test("missing items print is simple (owner request 2026-11-27): summary boxes, 7
   assert.deepEqual(nextStep({ missing: 2, inStock: 0, onHold: false, procurementStatus: "Ordered 2/2 — PO-1 (2, approved)" }), { label: "مطلوب من المورد", tone: "wait" })
   assert.equal(nextStep({ missing: 2, inStock: 0, onHold: false, procurementStatus: "Rejected PO — Needs Reorder (PO-1)" }).tone, "act")
 })
+
+test("M-RET. ordered from the supplier, delivered, then all sent back with no new PO: it needs a new order (owner report 2026-11-27)", async () => {
+  const base = { lines: [outLine(1, "طلمبة يدوية", 2)], pos: [po(1, "received")], poItems: [poi(1, 1, 1, 2)], grn: [grn(1, 2, 1, 1)] }
+  const back = await only({ ...base, permits: [dp(1, "APPROVED")], dpItems: [dpi(1, 2, null, "طلمبة يدوية")], returns: [ret(1, 1, 2, null, "طلمبة يدوية", "received")] })
+  assert.equal(back.missing, 2)
+  assert.match(back.procurementStatus, /Needs PO for 2/)
+  assert.equal(nextStep(back).tone, "act")
+  // received but not delivered yet: the PO still covers it, nothing new to order
+  const waiting = await only(base)
+  assert.doesNotMatch(waiting.procurementStatus, /Needs PO/)
+  assert.equal(nextStep(waiting).tone, "wait")
+  // partly delivered from a PO for everything: the rest is still covered
+  const part = await only({ lines: [outLine(1, "Borescope", 10)], pos: [po(1)], poItems: [poi(1, 1, 1, 10)], permits: [dp(1, "APPROVED")], dpItems: [dpi(1, 4, null, "Borescope")] })
+  assert.doesNotMatch(part.procurementStatus, /Needs PO/)
+})
